@@ -1,4 +1,9 @@
-use std::path::PathBuf;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+
+use anyhow::Context;
+use serde_json::Value;
 
 /// A single side effect needed to remove an augmentation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,7 +26,10 @@ pub enum Edit {
     /// Claude `installed_plugins.json`: drop entries of `plugins[id]` for one scope.
     /// `project: None` drops `"scope": "user"` entries; `Some(p)` drops entries whose
     /// `projectPath` equals `p`. Removes `plugins[id]` when it becomes empty.
-    JsonRemovePluginInstall { id: String, project: Option<PathBuf> },
+    JsonRemovePluginInstall {
+        id: String,
+        project: Option<PathBuf>,
+    },
     /// Remove the TOML key/table at `path` (e.g. `["plugins", "x@y"]`), keeping formatting.
     TomlRemoveKey { path: Vec<String> },
 }
@@ -35,12 +43,581 @@ pub struct Report {
 
 /// Apply `edit` to `contents`. The result is guaranteed to parse in the same format.
 pub fn apply_edit(edit: &Edit, contents: &str) -> anyhow::Result<String> {
-    let _ = (edit, contents);
-    todo!("lane: config-core")
+    match edit {
+        Edit::TomlRemoveKey { path } => toml_remove_key(contents, path),
+        Edit::JsonRemoveHook { event, command } => {
+            edit_json(contents, |doc| remove_hook(doc, event, command))
+        }
+        Edit::JsonRemoveKey { path } => edit_json(contents, |doc| remove_json_key(doc, path)),
+        Edit::JsonRemovePluginInstall { id, project } => edit_json(contents, |doc| {
+            remove_plugin_install(doc, id, project.as_deref())
+        }),
+    }
+}
+
+/// Parse, mutate, re-serialize. An edit that changes nothing returns `contents` verbatim so
+/// callers can detect no-ops by comparing text.
+fn edit_json(contents: &str, mutate: impl FnOnce(&mut Value)) -> anyhow::Result<String> {
+    let original: Value = serde_json::from_str(contents).context("invalid JSON")?;
+    let mut doc = original.clone();
+    mutate(&mut doc);
+    if doc == original {
+        return Ok(contents.to_string());
+    }
+    Ok(serde_json::to_string_pretty(&doc)? + "\n")
+}
+
+fn remove_json_key(doc: &mut Value, path: &[String]) {
+    let Some((last, parents)) = path.split_last() else {
+        return;
+    };
+    let parent = parents
+        .iter()
+        .try_fold(doc, |v, key| v.get_mut(key.as_str()));
+    if let Some(obj) = parent.and_then(Value::as_object_mut) {
+        obj.shift_remove(last);
+    }
+}
+
+fn remove_hook(doc: &mut Value, event: &str, command: &str) {
+    let Some(events) = doc.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let Some(groups) = events.get_mut(event).and_then(Value::as_array_mut) else {
+        return;
+    };
+    let before = groups.len();
+    groups.retain_mut(|group| keep_hook_group(group, command));
+    if groups.is_empty() && before > 0 {
+        events.shift_remove(event);
+    }
+}
+
+/// Nested groups (`{"hooks": [...]}`) lose matching handlers and are dropped once emptied;
+/// flat entries (`{"command": ...}`) are dropped when they match.
+fn keep_hook_group(group: &mut Value, command: &str) -> bool {
+    match group.get_mut("hooks").and_then(Value::as_array_mut) {
+        Some(handlers) => {
+            let before = handlers.len();
+            handlers.retain(|h| !has_command(h, command));
+            !handlers.is_empty() || before == 0
+        }
+        None => !has_command(group, command),
+    }
+}
+
+fn has_command(handler: &Value, command: &str) -> bool {
+    handler.get("command").and_then(Value::as_str) == Some(command)
+}
+
+fn remove_plugin_install(doc: &mut Value, id: &str, project: Option<&Path>) {
+    let Some(plugins) = doc.get_mut("plugins").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let Some(installs) = plugins.get_mut(id).and_then(Value::as_array_mut) else {
+        return;
+    };
+    let before = installs.len();
+    installs.retain(|install| !install_matches(install, project));
+    if installs.is_empty() && before > 0 {
+        plugins.shift_remove(id);
+    }
+}
+
+fn install_matches(install: &Value, project: Option<&Path>) -> bool {
+    match project {
+        None => install.get("scope").and_then(Value::as_str) == Some("user"),
+        Some(p) => {
+            install
+                .get("projectPath")
+                .and_then(Value::as_str)
+                .map(Path::new)
+                == Some(p)
+        }
+    }
+}
+
+fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result<String> {
+    let mut doc: toml_edit::DocumentMut = contents.parse().context("invalid TOML")?;
+    let Some((last, parents)) = path.split_last() else {
+        return Ok(contents.to_string());
+    };
+    let parent = parents
+        .iter()
+        .try_fold(doc.as_item_mut(), |item, key| item.get_mut(key.as_str()));
+    let removed = parent
+        .and_then(toml_edit::Item::as_table_like_mut)
+        .and_then(|table| table.remove(last));
+    Ok(match removed {
+        Some(_) => doc.to_string(),
+        None => contents.to_string(),
+    })
 }
 
 /// Run actions in order. Duplicate actions run once; edits are validated before writing.
 pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
-    let _ = actions;
-    todo!("lane: config-core")
+    let mut report = Report::default();
+    for (i, action) in actions.iter().enumerate() {
+        if actions[..i].contains(action) {
+            continue;
+        }
+        match action {
+            Action::RemovePath(path) => {
+                if remove_path(path)? {
+                    report.removed.push(path.clone());
+                }
+            }
+            Action::Edit { file, edit } => {
+                if edit_file(file, edit)? && !report.edited.contains(file) {
+                    report.edited.push(file.clone());
+                }
+            }
+        }
+    }
+    Ok(report)
+}
+
+/// Removes a symlink itself (never its target), a file, or a whole directory tree.
+fn remove_path(path: &Path) -> anyhow::Result<bool> {
+    let meta = match fs::symlink_metadata(path) {
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
+        other => other.with_context(|| format!("stat {}", path.display()))?,
+    };
+    if meta.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+    .with_context(|| format!("remove {}", path.display()))?;
+    Ok(true)
+}
+
+fn edit_file(file: &Path, edit: &Edit) -> anyhow::Result<bool> {
+    let before = match fs::read_to_string(file) {
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
+        other => other.with_context(|| format!("read {}", file.display()))?,
+    };
+    let after = apply_edit(edit, &before).with_context(|| format!("edit {}", file.display()))?;
+    if after == before {
+        return Ok(false);
+    }
+    validate(file, &after).with_context(|| format!("validate {}", file.display()))?;
+    fs::write(file, after).with_context(|| format!("write {}", file.display()))?;
+    Ok(true)
+}
+
+fn validate(file: &Path, contents: &str) -> anyhow::Result<()> {
+    if file.extension().is_some_and(|e| e == "toml") {
+        contents.parse::<toml_edit::DocumentMut>()?;
+    } else {
+        serde_json::from_str::<Value>(contents)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn strings(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn json_after(edit: &Edit, doc: &Value) -> Value {
+        let out = apply_edit(edit, &serde_json::to_string_pretty(doc).unwrap()).unwrap();
+        serde_json::from_str(&out).unwrap()
+    }
+
+    fn toml_after(edit: &Edit, src: &str) -> toml_edit::DocumentMut {
+        apply_edit(edit, src).unwrap().parse().unwrap()
+    }
+
+    fn hook(event: &str, command: &str) -> Edit {
+        Edit::JsonRemoveHook {
+            event: event.into(),
+            command: command.into(),
+        }
+    }
+
+    #[test]
+    fn remove_hook_nested_prunes_groups_and_events() {
+        let doc = json!({"other": 1, "hooks": {
+            "PreToolUse": [
+                {"matcher": "Bash", "hooks": [{"command": "rtk"}, {"command": "keep"}]},
+                {"matcher": "Edit", "hooks": [{"command": "rtk"}]}
+            ],
+            "SessionStart": [{"hooks": [{"command": "rtk"}]}],
+            "Stop": [{"hooks": []}]
+        }});
+        let after = json_after(&hook("PreToolUse", "rtk"), &doc);
+        assert_eq!(
+            after["hooks"]["PreToolUse"],
+            json!([{"matcher": "Bash", "hooks": [{"command": "keep"}]}])
+        );
+        let after = json_after(&hook("SessionStart", "rtk"), &after);
+        assert_eq!(
+            after,
+            json!({"other": 1, "hooks": {
+                "PreToolUse": [{"matcher": "Bash", "hooks": [{"command": "keep"}]}],
+                "Stop": [{"hooks": []}]
+            }})
+        );
+    }
+
+    #[test]
+    fn remove_hook_flat_and_keeps_empty_hooks_object() {
+        let doc = json!({"version": 1, "hooks": {"stop": [{"command": "bd"}, {"command": "bd"}]}});
+        assert_eq!(
+            json_after(&hook("stop", "bd"), &doc),
+            json!({"version": 1, "hooks": {}})
+        );
+    }
+
+    #[test]
+    fn remove_hook_preserves_key_order() {
+        let src =
+            r#"{"z": 1, "hooks": {"b": [{"command": "x"}], "a": [{"command": "y"}]}, "m": 2}"#;
+        let out: Value = serde_json::from_str(&apply_edit(&hook("b", "x"), src).unwrap()).unwrap();
+        let keys: Vec<_> = out.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(keys, ["z", "hooks", "m"]);
+        assert_eq!(out["hooks"], json!({"a": [{"command": "y"}]}));
+    }
+
+    #[test]
+    fn json_noops_return_input_verbatim() {
+        let src = "{\"hooks\":{\"a\":[{\"command\":\"x\"}]},\"plugins\":{}}";
+        let noops = [
+            hook("missing", "x"),
+            hook("a", "other"),
+            Edit::JsonRemoveKey {
+                path: strings(&["nope", "deeper"]),
+            },
+            Edit::JsonRemoveKey { path: vec![] },
+            Edit::JsonRemovePluginInstall {
+                id: "p@m".into(),
+                project: None,
+            },
+        ];
+        for edit in noops {
+            assert_eq!(apply_edit(&edit, src).unwrap(), src, "{edit:?}");
+        }
+        assert_eq!(apply_edit(&hook("a", "x"), "{}").unwrap(), "{}");
+        let not_object = r#"{"hooks": 3}"#;
+        assert_eq!(apply_edit(&hook("a", "x"), not_object).unwrap(), not_object);
+    }
+
+    #[test]
+    fn invalid_input_errors() {
+        assert!(apply_edit(&hook("a", "x"), "{oops").is_err());
+        assert!(
+            apply_edit(
+                &Edit::JsonRemoveKey {
+                    path: strings(&["a"])
+                },
+                ""
+            )
+            .is_err()
+        );
+        assert!(
+            apply_edit(
+                &Edit::TomlRemoveKey {
+                    path: strings(&["a"])
+                },
+                "a = "
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn remove_json_key_nested_and_top_level() {
+        let doc = json!({"enabledPlugins": {"x@y": true, "z@y": false}, "mp": {}});
+        let edit = Edit::JsonRemoveKey {
+            path: strings(&["enabledPlugins", "x@y"]),
+        };
+        assert_eq!(
+            json_after(&edit, &doc),
+            json!({"enabledPlugins": {"z@y": false}, "mp": {}})
+        );
+        let edit = Edit::JsonRemoveKey {
+            path: strings(&["mp"]),
+        };
+        assert_eq!(
+            json_after(&edit, &doc),
+            json!({"enabledPlugins": {"x@y": true, "z@y": false}})
+        );
+    }
+
+    #[test]
+    fn output_is_pretty_with_trailing_newline() {
+        let edit = Edit::JsonRemoveKey {
+            path: strings(&["a"]),
+        };
+        let out = apply_edit(&edit, r#"{"a":1,"b":2}"#).unwrap();
+        assert_eq!(
+            out,
+            serde_json::to_string_pretty(&json!({"b": 2})).unwrap() + "\n"
+        );
+    }
+
+    #[test]
+    fn remove_plugin_install_by_scope() {
+        let doc = json!({"version": 2, "plugins": {
+            "p@m": [
+                {"scope": "user", "installPath": "/c"},
+                {"scope": "project", "projectPath": "/proj"},
+                {"scope": "local", "projectPath": "/other"}
+            ],
+            "q@m": [{"scope": "user"}]
+        }});
+        let user = Edit::JsonRemovePluginInstall {
+            id: "p@m".into(),
+            project: None,
+        };
+        assert_eq!(
+            json_after(&user, &doc)["plugins"]["p@m"],
+            json!([
+                {"scope": "project", "projectPath": "/proj"},
+                {"scope": "local", "projectPath": "/other"}
+            ])
+        );
+        let proj = Edit::JsonRemovePluginInstall {
+            id: "p@m".into(),
+            project: Some("/proj".into()),
+        };
+        assert_eq!(
+            json_after(&proj, &doc)["plugins"]["p@m"],
+            json!([
+                {"scope": "user", "installPath": "/c"},
+                {"scope": "local", "projectPath": "/other"}
+            ])
+        );
+        let last = Edit::JsonRemovePluginInstall {
+            id: "q@m".into(),
+            project: None,
+        };
+        let after = json_after(&last, &doc);
+        assert!(after["plugins"].get("q@m").is_none());
+        assert!(after["plugins"].get("p@m").is_some());
+    }
+
+    const CODEX: &str = r#"# top comment
+model = "o3"
+
+[marketplaces.mp]
+source_type = "git" # inline comment
+source = "https://github.com/org/repo.git"
+
+# plugin comment
+[plugins."x@mp"]
+enabled = true
+
+[plugins."keep@mp"]
+enabled = false
+"#;
+
+    #[test]
+    fn toml_remove_table_keeps_formatting() {
+        let edit = Edit::TomlRemoveKey {
+            path: strings(&["plugins", "x@mp"]),
+        };
+        let out = apply_edit(&edit, CODEX).unwrap();
+        let doc: toml_edit::DocumentMut = out.parse().unwrap();
+        assert!(doc["plugins"].get("x@mp").is_none());
+        assert_eq!(doc["plugins"]["keep@mp"]["enabled"].as_bool(), Some(false));
+        assert!(out.starts_with("# top comment\nmodel = \"o3\"\n"));
+        assert!(out.contains("source_type = \"git\" # inline comment"));
+    }
+
+    #[test]
+    fn toml_remove_dotted_and_inline_keys() {
+        let edit = Edit::TomlRemoveKey {
+            path: strings(&["plugins", "x@mp"]),
+        };
+        let dotted = "plugins.\"x@mp\".enabled = true\nplugins.\"k@mp\".enabled = true\n";
+        let doc = toml_after(&edit, dotted);
+        assert!(doc["plugins"].get("x@mp").is_none());
+        assert!(doc["plugins"].get("k@mp").is_some());
+
+        let inline = "plugins = { \"x@mp\" = { enabled = true }, other = 1 }\n";
+        let doc = toml_after(&edit, inline);
+        assert!(doc["plugins"].get("x@mp").is_none());
+        assert_eq!(doc["plugins"]["other"].as_integer(), Some(1));
+
+        let whole = Edit::TomlRemoveKey {
+            path: strings(&["marketplaces", "mp"]),
+        };
+        let doc = toml_after(&whole, CODEX);
+        assert!(doc.get("marketplaces").and_then(|m| m.get("mp")).is_none());
+        assert!(doc["plugins"].get("x@mp").is_some());
+    }
+
+    #[test]
+    fn toml_noops_return_input_verbatim() {
+        for path in [
+            strings(&["plugins", "absent"]),
+            strings(&["model", "x"]),
+            vec![],
+        ] {
+            assert_eq!(
+                apply_edit(&Edit::TomlRemoveKey { path }, CODEX).unwrap(),
+                CODEX
+            );
+        }
+    }
+
+    fn write(path: &Path, contents: &str) {
+        fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn execute_removes_paths_and_skips_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("f.txt");
+        let tree = dir.path().join("tree");
+        write(&file, "x");
+        fs::create_dir_all(tree.join("a/b")).unwrap();
+        write(&tree.join("a/b/c"), "x");
+        let missing = dir.path().join("missing");
+
+        let report = execute(&[
+            Action::RemovePath(file.clone()),
+            Action::RemovePath(missing),
+            Action::RemovePath(tree.clone()),
+            Action::RemovePath(file.clone()),
+        ])
+        .unwrap();
+        assert_eq!(report.removed, vec![file.clone(), tree.clone()]);
+        assert!(report.edited.is_empty());
+        assert!(!file.exists() && !tree.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_removes_symlink_not_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("source-checkout");
+        fs::create_dir(&target).unwrap();
+        write(&target.join("SKILL.md"), "x");
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let dangling = dir.path().join("dangling");
+        std::os::unix::fs::symlink(dir.path().join("gone"), &dangling).unwrap();
+
+        let report = execute(&[
+            Action::RemovePath(link.clone()),
+            Action::RemovePath(dangling.clone()),
+        ])
+        .unwrap();
+        assert_eq!(report.removed, vec![link.clone(), dangling.clone()]);
+        assert!(fs::symlink_metadata(&link).is_err());
+        assert!(fs::symlink_metadata(&dangling).is_err());
+        assert!(target.join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn execute_edits_json_and_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = dir.path().join("settings.json");
+        let config = dir.path().join("config.toml");
+        write(
+            &settings,
+            r#"{"enabledPlugins": {"x@mp": true}, "hooks": {"a": [{"command": "c"}]}}"#,
+        );
+        write(&config, CODEX);
+        let key = Action::Edit {
+            file: settings.clone(),
+            edit: Edit::JsonRemoveKey {
+                path: strings(&["enabledPlugins", "x@mp"]),
+            },
+        };
+        let actions = [
+            key.clone(),
+            Action::Edit {
+                file: settings.clone(),
+                edit: hook("a", "c"),
+            },
+            key,
+            Action::Edit {
+                file: config.clone(),
+                edit: Edit::TomlRemoveKey {
+                    path: strings(&["plugins", "x@mp"]),
+                },
+            },
+            Action::Edit {
+                file: dir.path().join("absent.json"),
+                edit: hook("a", "c"),
+            },
+        ];
+        let report = execute(&actions).unwrap();
+        assert_eq!(report.edited, vec![settings.clone(), config.clone()]);
+        assert!(report.removed.is_empty());
+
+        let json: Value = serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(json, json!({"enabledPlugins": {}, "hooks": {}}));
+        let toml: toml_edit::DocumentMut = fs::read_to_string(&config).unwrap().parse().unwrap();
+        assert!(toml["plugins"].get("x@mp").is_none());
+    }
+
+    #[test]
+    fn execute_unchanged_edit_is_not_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.json");
+        let src = "{\"a\":1}";
+        write(&file, src);
+        let action = Action::Edit {
+            file: file.clone(),
+            edit: hook("x", "y"),
+        };
+        assert_eq!(execute(&[action]).unwrap(), Report::default());
+        assert_eq!(fs::read_to_string(&file).unwrap(), src);
+    }
+
+    #[test]
+    fn execute_fails_fast_on_invalid_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = dir.path().join("bad.json");
+        let later = dir.path().join("later");
+        write(&bad, "{");
+        write(&later, "x");
+        let result = execute(&[
+            Action::Edit {
+                file: bad.clone(),
+                edit: hook("a", "b"),
+            },
+            Action::RemovePath(later.clone()),
+        ]);
+        assert!(result.is_err());
+        assert!(later.exists());
+        assert_eq!(fs::read_to_string(&bad).unwrap(), "{");
+    }
+
+    #[test]
+    fn execute_rejects_format_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let json_named_toml = dir.path().join("x.toml");
+        write(&json_named_toml, r#"{"a": {"b": 1}}"#);
+        let action = Action::Edit {
+            file: json_named_toml.clone(),
+            edit: Edit::JsonRemoveKey {
+                path: strings(&["a", "b"]),
+            },
+        };
+        assert!(execute(&[action]).is_err());
+        assert_eq!(
+            fs::read_to_string(&json_named_toml).unwrap(),
+            r#"{"a": {"b": 1}}"#
+        );
+    }
+
+    #[test]
+    fn execute_read_error_on_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let action = Action::Edit {
+            file: dir.path().to_path_buf(),
+            edit: hook("a", "b"),
+        };
+        assert!(execute(&[action]).is_err());
+    }
 }
