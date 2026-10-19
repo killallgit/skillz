@@ -7,6 +7,7 @@ use super::AgentAdapter;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Kind, Scope};
+use crate::npx_skills;
 
 pub struct Codex;
 
@@ -19,10 +20,10 @@ impl AgentAdapter for Codex {
         match scope {
             Scope::Global => vec![
                 env.home.join(".codex/skills"),
-                env.home.join(".agents/skills"),
+                npx_skills::store_dir(env, scope),
             ],
             Scope::Project => vec![
-                env.project.join(".agents/skills"),
+                npx_skills::store_dir(env, scope),
                 env.project.join(".codex/skills"),
             ],
         }

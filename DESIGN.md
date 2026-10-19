@@ -27,13 +27,17 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
 | `action` | `Action`, `Edit`, `apply_edit` (pure), `execute` (effects: dedupe, plan, all-or-nothing commit, path removal) |
 | `hooks` | every hook layout, both ways: `Format::of(file)`, `parse` and `remove_hook` (pure, one walker per format), `hook_group`, `discover(file)` |
 | `skills` | shared loose-skill discovery (npx `skills` aware) |
+| `npx_skills` | the npx `skills` format: store dir and lock path per scope, lock parsing (name -> source), agent ids, `add` command line |
 | `matcher` | `fuzzy_rank`, `pattern_matches` (glob) |
 | `agents/*` | per-agent plugin/marketplace discovery + `skill_dirs` + `hook_files` |
 | `tree` | display tree build + text render |
 | `tui/*` | multi-select list, collapsible tree, `/` filter |
 | `prompt` | `Prompter` trait, `TuiPrompter`, `AssumeYes` |
 | `runner` | `CommandRunner` trait, `SystemRunner` |
-| `install` | install flow, `scan_available` |
+| `install` | install flow: `install()` dispatch, `InstallRequest`, `SkillSelection` |
+| `install::source` | source fetch: reject empty/option-like sources, local path or `git clone --depth 1` into a temp dir, credential-redacted `run_checked` |
+| `install::skills` | npx `skills` installer: `scan_available`, selection/patterns, runs `npx_skills::add_command` |
+| `install::marketplace` | Claude marketplace installer: reads `.claude-plugin/marketplace.json`, runs `claude plugin marketplace add` + `plugin install` |
 | `cli` | clap definitions, wiring, list/uninstall/install commands |
 
 ## On-disk formats (observed on a real machine)
@@ -74,6 +78,7 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
 - Plugins: not supported in MVP.
 
 ### npx `skills` (vercel-labs/skills)
+All of this lives in `npx_skills`; discovery, install and the Codex adapter go through it.
 - Canonical store: `~/.agents/skills/<name>/`, project `<proj>/.agents/skills/<name>/`.
   Agent dirs hold symlinks to it.
 - Lock: global `~/.agents/.skill-lock.json`, project `<proj>/skills-lock.json`:

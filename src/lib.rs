@@ -11,6 +11,7 @@ pub mod hooks;
 pub mod install;
 pub mod matcher;
 pub mod model;
+pub mod npx_skills;
 pub mod prompt;
 pub mod runner;
 pub mod skills;
