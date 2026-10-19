@@ -5,12 +5,12 @@ pub mod claude;
 pub mod codex;
 pub mod cursor;
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 
 use crate::env::Env;
 use crate::hooks;
-use crate::model::{Agent, Augmentation, Scope};
+use crate::model::{Agent, Augmentation, Kind, Scope};
 use crate::skills::{self, SkillDir};
 
 pub trait AgentAdapter {
@@ -72,7 +72,23 @@ pub fn inventory(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]
     }
     let mut seen = HashSet::new();
     inv.items.retain(|item| seen.insert(item.id.clone()));
+    join_marketplace_groups(&mut inv.items);
     inv
+}
+
+/// npx skills group by their source repo; when a marketplace comes from that same repo, show
+/// them under the marketplace instead of as a second group.
+fn join_marketplace_groups(items: &mut [Augmentation]) {
+    let by_source: BTreeMap<String, String> = items
+        .iter()
+        .filter(|i| i.kind == Kind::Marketplace)
+        .filter_map(|i| Some((i.source.clone()?, i.group.clone())))
+        .collect();
+    for item in items.iter_mut() {
+        if let Some(group) = by_source.get(&item.group) {
+            item.group = group.clone();
+        }
+    }
 }
 
 impl Inventory {
@@ -81,5 +97,37 @@ impl Inventory {
             Ok(items) => self.items.extend(items),
             Err(err) => self.warnings.push(format!("{source}: {err:#}")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(name: &str, kind: Kind, group: &str, source: Option<&str>) -> Augmentation {
+        Augmentation {
+            id: format!("{kind}:{name}"),
+            name: name.into(),
+            kind,
+            agents: vec![Agent::Codex],
+            scope: Scope::Global,
+            group: group.into(),
+            source: source.map(Into::into),
+            children: vec![],
+            removal: vec![],
+        }
+    }
+
+    #[test]
+    fn items_from_a_marketplace_repo_join_its_group() {
+        let mut items = vec![
+            item("mp", Kind::Marketplace, "mp", Some("o/r")),
+            item("tdd", Kind::Skill, "o/r", Some("o/r")),
+            item("other", Kind::Skill, "x/y", Some("x/y")),
+            item("loose", Kind::Skill, "local", None),
+        ];
+        join_marketplace_groups(&mut items);
+        let groups: Vec<&str> = items.iter().map(|i| i.group.as_str()).collect();
+        assert_eq!(groups, ["mp", "mp", "x/y", "local"]);
     }
 }
