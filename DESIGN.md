@@ -88,7 +88,9 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
 
 ## Ids and grouping
 
-- Skill: `skill:<canonical path>`; group = lock `source` or `"local"`; source = same.
+- Skill: `skill:<canonical path>` (plus `:project` for a project item whose canonical dir a
+  global item shares, e.g. a project link into `~/.agents/skills`); group = lock `source` or
+  `"local"`; source = same.
 - Hook group: `hook:<file>:<group>`; name = `hook_group(cmd)`; group = `"hooks"`;
   children = `"<Event> [<matcher>]: <command>"` (display only).
 - Plugin: `plugin:<agent>:<scope>:<name@mp>`; name = `name@mp`; group = `mp`.

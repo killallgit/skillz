@@ -43,10 +43,11 @@ pub struct Inventory {
 /// Items are deduplicated by id; a failing source becomes a warning, not an error.
 pub fn inventory(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]) -> Inventory {
     let mut inv = Inventory::default();
-    for &scope in scopes {
-        let dirs: Vec<SkillDir> = adapters
-            .iter()
-            .flat_map(|a| {
+    // One discover over every scope, so a project link into a global skill is its own item.
+    let dirs: Vec<SkillDir> = scopes
+        .iter()
+        .flat_map(|&scope| {
+            adapters.iter().flat_map(move |a| {
                 a.skill_dirs(env, scope)
                     .into_iter()
                     .map(move |path| SkillDir {
@@ -55,8 +56,10 @@ pub fn inventory(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]
                         path,
                     })
             })
-            .collect();
-        inv.absorb("skills", skills::discover(env, &dirs));
+        })
+        .collect();
+    inv.absorb("skills", skills::discover(env, &dirs));
+    for &scope in scopes {
         for a in adapters {
             for file in a.hook_files(env, scope) {
                 inv.absorb(

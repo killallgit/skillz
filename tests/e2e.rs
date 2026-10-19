@@ -5,9 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
+use skillz::action::{Action, execute};
 use skillz::agents;
 use skillz::cli::{Command, Deps, Filter, run};
-use skillz::model::{Agent, Kind, Scope};
+use skillz::model::{Agent, Augmentation, Kind, Scope};
 use skillz::prompt::Prompter;
 use skillz::runner::{CommandRunner, Output};
 
@@ -157,6 +158,48 @@ fn inventory_finds_everything_once() {
     assert!(hook_names.contains(&("bd", Agent::Claude, Scope::Global)));
     assert!(hook_names.contains(&("bd", Agent::Cursor, Scope::Global)));
     assert!(hook_names.contains(&("bd", Agent::Codex, Scope::Project)));
+}
+
+#[test]
+fn project_link_into_global_store_is_its_own_item() {
+    let w = world();
+    let env = skillz::env::Env {
+        home: w.home.canonicalize().unwrap(),
+        project: w.project.canonicalize().unwrap(),
+    };
+    let proj_link = env.project.join(".claude/skills/tdd");
+    fs::create_dir_all(proj_link.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(env.home.join(".agents/skills/tdd"), &proj_link).unwrap();
+    let skills = |scopes: &[Scope]| -> Vec<Augmentation> {
+        let inv = agents::inventory(&agents::registry(), &env, scopes);
+        inv.items
+            .into_iter()
+            .filter(|i| i.kind == Kind::Skill)
+            .collect()
+    };
+    let removed_paths = |a: &Augmentation| -> Vec<PathBuf> {
+        a.removal
+            .iter()
+            .filter_map(|act| match act {
+                Action::RemovePath(t) => Some(t.path().to_path_buf()),
+                _ => None,
+            })
+            .collect()
+    };
+
+    let only_project = skills(&[Scope::Project]);
+    assert_eq!(only_project.len(), 1);
+    assert_eq!(only_project[0].scope, Scope::Project);
+    assert_eq!(removed_paths(&only_project[0]), vec![proj_link.clone()]);
+
+    let both = skills(&[Scope::Global, Scope::Project]);
+    let scopes: Vec<Scope> = both.iter().map(|a| a.scope).collect();
+    assert_eq!(scopes.len(), 2);
+    assert!(scopes.contains(&Scope::Global) && scopes.contains(&Scope::Project));
+    let plan: Vec<Action> = both.iter().flat_map(|a| a.removal.clone()).collect();
+    execute(&plan).unwrap();
+    assert!(fs::symlink_metadata(&proj_link).is_err());
+    assert!(!env.home.join(".agents/skills/tdd").exists());
 }
 
 fn list_lines(w: &World, target: Option<&str>, all: bool) -> Vec<String> {
