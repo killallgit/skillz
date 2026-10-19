@@ -5,7 +5,7 @@ mod marketplace;
 mod skills;
 mod source;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 
 use std::path::Path;
 
@@ -13,8 +13,6 @@ use crate::env::Env;
 use crate::model::{Agent, Scope};
 use crate::prompt::Prompter;
 use crate::runner::CommandRunner;
-
-pub use skills::{AvailableSkill, scan_available};
 
 /// Which skills to install from a multi-skill source.
 #[derive(Debug, Clone, PartialEq, Eq)]

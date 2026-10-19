@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::Context;
 
@@ -24,7 +24,7 @@ pub(super) fn install(
     runner: &dyn CommandRunner,
     prompter: &dyn Prompter,
 ) -> anyhow::Result<()> {
-    let names: Vec<String> = scan_available(src)?.into_iter().map(|s| s.name).collect();
+    let names = scan_available(src)?;
     let chosen = match selection {
         SkillSelection::Interactive => {
             let picked = prompter.multi_select("Skills to install", &names)?;
@@ -68,31 +68,21 @@ fn select_skills(names: &[String], selection: &SkillSelection) -> Vec<String> {
     }
 }
 
-/// A skill found in a source tree (offered as an install choice).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AvailableSkill {
-    pub name: String,
-    pub path: PathBuf,
-}
-
-/// Every skill (dir containing `SKILL.md`) under `root`, recursively, sorted by name.
-/// Skips `.git` and `node_modules`; duplicate names keep the lexicographically first path.
-pub fn scan_available(root: &Path) -> anyhow::Result<Vec<AvailableSkill>> {
+/// Names of every skill (dir containing `SKILL.md`) under `root`, recursively, sorted.
+/// Skips `.git` and `node_modules`.
+fn scan_available(root: &Path) -> anyhow::Result<Vec<String>> {
     let mut found = Vec::new();
     walk(root, &mut found)?;
-    found.sort_by(|a: &AvailableSkill, b| a.name.cmp(&b.name).then_with(|| a.path.cmp(&b.path)));
-    found.dedup_by(|b, a| a.name == b.name);
+    found.sort();
+    found.dedup();
     Ok(found)
 }
 
-fn walk(dir: &Path, found: &mut Vec<AvailableSkill>) -> anyhow::Result<()> {
+fn walk(dir: &Path, found: &mut Vec<String>) -> anyhow::Result<()> {
     if dir.join("SKILL.md").is_file()
         && let Some(name) = dir.file_name()
     {
-        found.push(AvailableSkill {
-            name: name.to_string_lossy().into_owned(),
-            path: dir.to_path_buf(),
-        });
+        found.push(name.to_string_lossy().into_owned());
     }
     let entries = std::fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))?;
     for entry in entries {
@@ -224,19 +214,16 @@ mod tests {
         skill(root, "z/alpha");
         skill(root, ".git/hidden");
         skill(root, "node_modules/pkg/dep");
-        let found = scan_available(root).unwrap();
-        let names: Vec<&str> = found.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, vec!["alpha", "beta"]);
-        assert_eq!(found[0].path, root.join("a/alpha"));
-        assert_eq!(found[1].path, root.join("b/deep/nested/beta"));
+        assert_eq!(scan_available(root).unwrap(), s(&["alpha", "beta"]));
     }
 
     #[test]
     fn scan_available_root_itself_can_be_a_skill() {
         let dir = tempfile::tempdir().unwrap();
         skill(dir.path(), "solo");
-        let found = scan_available(&dir.path().join("solo")).unwrap();
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].name, "solo");
+        assert_eq!(
+            scan_available(&dir.path().join("solo")).unwrap(),
+            s(&["solo"])
+        );
     }
 }
