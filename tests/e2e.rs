@@ -215,6 +215,7 @@ fn list_lines(w: &World, target: Option<&str>, all: bool) -> Vec<String> {
         target: target.map(Into::into),
         project: None,
         all,
+        json: false,
         filter: Filter::default(),
         interactive: false,
     };
@@ -587,4 +588,51 @@ fn install_rejects_option_like_source() {
     };
     assert!(run(cmd, &deps(&w, &r, &p), &mut Vec::new()).is_err());
     assert!(r.0.borrow().is_empty());
+}
+
+fn list_json(w: &World, target: Option<&str>) -> Vec<Value> {
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let mut out = Vec::new();
+    let cmd = Command::List {
+        target: target.map(Into::into),
+        project: None,
+        all: false,
+        json: true,
+        filter: Filter::default(),
+        interactive: false,
+    };
+    run(cmd, &deps(w, &r, &p), &mut out).unwrap();
+    serde_json::from_slice::<Value>(&out)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+#[test]
+fn list_json_dumps_every_item_with_its_removal_plan() {
+    let w = world();
+    let all = list_json(&w, None);
+    let inv = agents::inventory(
+        &agents::registry(),
+        &skillz::env::Env {
+            home: w.home.canonicalize().unwrap(),
+            project: w.project.canonicalize().unwrap(),
+        },
+        &[Scope::Global, Scope::Project],
+    );
+    assert_eq!(all.len(), inv.items.len());
+    let tdd: Vec<&Value> = all.iter().filter(|i| i["name"] == "tdd").collect();
+    assert_eq!(tdd.len(), 1);
+    assert_eq!(tdd[0]["kind"], "skill");
+    assert_eq!(tdd[0]["scope"], "global");
+    assert!(!tdd[0]["removal"].as_array().unwrap().is_empty());
+    assert_eq!(list_json(&w, Some("tdd")).len(), 1);
+    assert!(list_json(&w, Some("zzzz-no-such-thing")).is_empty());
 }

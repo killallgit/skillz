@@ -4,12 +4,14 @@ use std::io::{ErrorKind, Write};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::Context;
+use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::hooks::{self, Format};
 
 /// A single side effect needed to remove an augmentation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Action {
     /// Delete a file, symlink, or directory tree. Missing paths are not an error.
     RemovePath(RemovalTarget),
@@ -26,7 +28,8 @@ pub enum Action {
 }
 
 /// A pure transformation of a config file's text.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Edit {
     /// Remove every hook handler under `event` whose command equals `command`, in whichever
     /// layout the file uses (`hooks::remove_hook`). Prunes emptied groups and events.
@@ -45,7 +48,7 @@ pub enum Edit {
 
 /// A path strictly inside an owned root, built from plain segments. The only way to get a
 /// `RemovePath`, so every deletion passes the same rule.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RemovalTarget {
     root: PathBuf,
     path: PathBuf,

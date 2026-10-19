@@ -1,9 +1,12 @@
 use std::fmt;
 
+use serde::Serialize;
+
 use crate::action::Action;
 
 /// A coding agent whose harness we manage. Add a variant + an adapter in `agents/` to extend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, clap::ValueEnum, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Agent {
     Claude,
     Codex,
@@ -11,7 +14,8 @@ pub enum Agent {
 }
 
 /// The kind of harness augmentation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Kind {
     Marketplace,
     Plugin,
@@ -19,7 +23,8 @@ pub enum Kind {
     Hook,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Scope {
     Global,
     Project,
@@ -29,7 +34,7 @@ pub enum Scope {
 ///
 /// Discovery builds these with `removal` already planned, so uninstalling is just
 /// executing the concatenated plans of the selected items.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Augmentation {
     /// Unique, stable across runs. Usually `<kind>:<path or config key>`.
     pub id: String,

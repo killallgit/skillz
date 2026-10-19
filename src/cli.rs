@@ -40,6 +40,9 @@ pub enum Command {
         /// Expand every group
         #[arg(long)]
         all: bool,
+        /// Print the matching items (with their removal plans) as JSON, no tree
+        #[arg(long, conflicts_with = "interactive")]
+        json: bool,
         #[command(flatten)]
         filter: Filter,
         /// Browse in a collapsible tree
@@ -169,6 +172,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
             target,
             project,
             all,
+            json,
             filter,
             interactive,
         } => {
@@ -177,6 +181,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
             let view = ListView {
                 query: query.as_deref(),
                 all,
+                json,
                 interactive,
             };
             list(deps, &env, &scopes, &filter, view, out)
@@ -287,6 +292,7 @@ fn split_target(
 struct ListView<'a> {
     query: Option<&'a str>,
     all: bool,
+    json: bool,
     interactive: bool,
 }
 
@@ -314,6 +320,11 @@ fn list(
     let mut items = gather(deps, env, scopes, filter);
     if let Some(q) = view.query {
         items = queried(items, q);
+    }
+    if view.json {
+        serde_json::to_writer_pretty(&mut *out, &items)?;
+        writeln!(out)?;
+        return Ok(());
     }
     let nodes = tree::build(&items);
     if view.interactive && deps.interactive {

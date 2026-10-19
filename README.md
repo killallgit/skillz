@@ -17,6 +17,7 @@ skillz list --all                # expand everything
 skillz list --hooks .            # project hooks only
 skillz list -g --skills -a claude
 skillz list -i                   # collapsible tree browser (/ to filter)
+skillz list --json | jq '.[].name'  # machine-readable: items + removal plans
 
 skillz rm tdd                    # fuzzy match -> pick -> confirm -> remove
 skillz rm --hook bd -a cursor    # every hook that runs `bd`, for Cursor

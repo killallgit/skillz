@@ -163,7 +163,7 @@ etc.). For the first remaining token:
 ## CLI
 
 ```
-skillz list [QUERY|PATH] [-C PATH] [--all] [-g] [--skills] [--hooks] [--plugins] [--marketplaces] [-a <agent>]... [-i]
+skillz list [QUERY|PATH] [-C PATH] [--all] [--json] [-g] [--skills] [--hooks] [--plugins] [--marketplaces] [-a <agent>]... [-i]
 skillz uninstall|rm|delete [QUERY] [same filters] [-y]
 skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,b,*commit']... [-y]
 ```

@@ -835,6 +835,7 @@ dependencies = [
  "fuzzy-matcher",
  "glob",
  "ratatui",
+ "serde",
  "serde_json",
  "shell-words",
  "tempfile",
