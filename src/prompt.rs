@@ -15,9 +15,18 @@ impl Prompter for TuiPrompter {
     }
 
     fn confirm(&self, question: &str) -> anyhow::Result<bool> {
-        let _ = question;
-        todo!("lane: tui")
+        use std::io::Write;
+        eprint!("{question} [y/N] ");
+        std::io::stderr().flush()?;
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line)?;
+        Ok(parse_yes(&line))
     }
+}
+
+/// True only for `y` / `yes`, case-insensitive, surrounding whitespace ignored.
+pub fn parse_yes(answer: &str) -> bool {
+    matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
 /// Non-interactive `--yes`: selects every option and confirms everything.
@@ -30,5 +39,27 @@ impl Prompter for AssumeYes {
 
     fn confirm(&self, _question: &str) -> anyhow::Result<bool> {
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_yes_accepts_only_y_and_yes() {
+        for yes in ["y", "Y", "yes", "YES", " Yes\n"] {
+            assert!(parse_yes(yes), "{yes:?}");
+        }
+        for no in ["", "\n", "n", "no", "yep", "ye s", "yess"] {
+            assert!(!parse_yes(no), "{no:?}");
+        }
+    }
+
+    #[test]
+    fn assume_yes_selects_all_and_confirms() {
+        let opts = vec!["a".to_string(), "b".to_string()];
+        assert_eq!(AssumeYes.multi_select("t", &opts).unwrap(), vec![0, 1]);
+        assert!(AssumeYes.confirm("q").unwrap());
     }
 }
