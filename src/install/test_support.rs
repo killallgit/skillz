@@ -144,7 +144,9 @@ pub fn project_with(f: impl Fn(&Path)) -> Fixture {
     }
 }
 
+/// A request run from `fx`'s project dir.
 pub fn req(
+    fx: &Fixture,
     source: &str,
     agents: &[Agent],
     scope: Scope,
@@ -152,6 +154,7 @@ pub fn req(
 ) -> InstallRequest {
     InstallRequest {
         source: source.into(),
+        cwd: fx.env.project.clone(),
         agents: agents.to_vec(),
         scope,
         selection,

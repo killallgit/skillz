@@ -432,6 +432,42 @@ fn install_local_source_runs_npx_skills_with_matches() {
 }
 
 #[test]
+fn install_relative_source_resolves_against_cwd_not_project_dir() {
+    let w = world();
+    write(
+        &w.project.join("src-repo/skills/tdd/SKILL.md"),
+        "---\nname: tdd\ndescription: d\n---\n",
+    );
+    let other = w.project.parent().unwrap().join("other");
+    fs::create_dir_all(&other).unwrap();
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let cmd = Command::Install {
+        source: "./src-repo".into(),
+        global: false,
+        agents: vec![Agent::Codex],
+        all: true,
+        skill: vec![],
+        project: Some("../other".into()),
+        yes: true,
+    };
+    run(cmd, &deps(&w, &r, &p), &mut Vec::new()).unwrap();
+    let calls = r.0.borrow();
+    assert_eq!(calls.len(), 1);
+    let (program, args) = &calls[0];
+    assert_eq!(program, "npx");
+    assert_eq!(
+        Path::new(&args[3]).canonicalize().unwrap(),
+        w.project.join("src-repo").canonicalize().unwrap()
+    );
+}
+
+#[test]
 fn yes_refuses_non_exact_single_match() {
     let w = world();
     let (r, p) = (

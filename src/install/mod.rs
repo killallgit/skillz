@@ -7,7 +7,7 @@ mod source;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::env::Env;
 use crate::model::{Agent, Scope};
@@ -29,6 +29,8 @@ pub enum SkillSelection {
 pub struct InstallRequest {
     /// `org/repo`, a git URL, or a local path.
     pub source: String,
+    /// What a relative local `source` is relative to: the real cwd, not the `-C` project.
+    pub cwd: PathBuf,
     pub agents: Vec<Agent>,
     pub scope: Scope,
     pub selection: SkillSelection,
@@ -42,7 +44,7 @@ pub fn install(
     runner: &dyn CommandRunner,
     prompter: &dyn Prompter,
 ) -> anyhow::Result<()> {
-    source::with_source(&req.source, env, runner, |src, source| {
+    source::with_source(&req.source, &req.cwd, env, runner, |src, source| {
         install_from(req, src, source, env, runner, prompter)
     })
 }
@@ -95,6 +97,7 @@ mod tests {
         let fx = project_with(skills_fixture);
         let runner = FakeRunner::new(|_| {});
         let r = req(
+            &fx,
             "repo",
             &[Agent::Claude],
             Scope::Project,
@@ -129,6 +132,7 @@ mod tests {
         let fx = project_with(|_| {});
         let runner = FakeRunner::new(skills_fixture);
         let r = req(
+            &fx,
             "org/repo",
             &[Agent::Codex],
             Scope::Global,
@@ -156,6 +160,7 @@ mod tests {
         let fx = project_with(marketplace_fixture);
         let runner = FakeRunner::new(|_| {});
         let r = req(
+            &fx,
             "repo",
             &[Agent::Claude, Agent::Codex],
             Scope::Global,
@@ -183,7 +188,7 @@ mod tests {
         ] {
             let fx = project_with(marketplace_fixture);
             let runner = FakeRunner::new(|_| {});
-            let r = req("repo", &agents, Scope::Project, sel);
+            let r = req(&fx, "repo", &agents, Scope::Project, sel);
             install(&r, &fx.env, &runner, &ScriptedPrompter::new(&[0], true)).unwrap();
             let calls = runner.calls();
             assert_eq!(calls.len(), 1);

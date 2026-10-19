@@ -204,6 +204,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
             let (env, _) = resolve(deps, project.as_deref(), global)?;
             let req = InstallRequest {
                 source,
+                cwd: deps.cwd.clone(),
                 agents: if agents.is_empty() {
                     vec![Agent::Claude, Agent::Codex, Agent::Cursor]
                 } else {
