@@ -69,11 +69,20 @@ fn augmentation(
     suffix: bool,
 ) -> Augmentation {
     let name = entries[0].name.clone();
-    // npx keys its lock by the dir name in its store, so only a skill directly there has one.
+    // npx keys its lock by the dir name in its store. With `--copy` it writes real dirs into
+    // agent skill dirs instead; those own the entry only when the store has no such skill.
     let store = canonical_or(&npx_skills::store_dir(env, scope));
-    let locked = (canonical.parent() == Some(store.as_path()))
-        .then(|| canonical.file_name()?.to_str())
-        .flatten()
+    let parent = canonical.parent();
+    let copied = |n: &str| {
+        !store.join(n).exists()
+            && dirs
+                .iter()
+                .any(|d| d.scope == scope && parent == Some(canonical_or(&d.path).as_path()))
+    };
+    let locked = canonical
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| parent == Some(store.as_path()) || copied(n))
         .and_then(|n| Some((n.to_owned(), lock.get(n)?.clone())));
     let source = locked.as_ref().map(|(_, s)| s.clone());
     let agents: Vec<Agent> = entries
@@ -334,6 +343,24 @@ mod tests {
         let local = augs.iter().find(|a| a.id == id(&mine)).unwrap();
         assert_eq!(local.source, None);
         assert_eq!(local.removal, vec![rm(mine.clone())]);
+    }
+
+    #[test]
+    fn npx_copy_install_without_store_copy_keeps_its_lock() {
+        let f = fixture();
+        let dir = f.env.home.join(".claude/skills/find-skills");
+        skill(&dir);
+        let lock = f.env.home.join(".agents/.skill-lock.json");
+        write_lock(&lock, r#"{"skills":{"find-skills":{"source":"o/r"}}}"#);
+
+        let augs = discover(&f.env, &global_dirs(&f.env)).unwrap();
+
+        assert_eq!(augs.len(), 1);
+        assert_eq!(augs[0].source.as_deref(), Some("o/r"));
+        assert_eq!(
+            augs[0].removal,
+            vec![rm(dir), lock_edit(lock, "find-skills")]
+        );
     }
 
     #[test]
