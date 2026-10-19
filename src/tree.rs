@@ -10,9 +10,17 @@ pub struct Node {
 }
 
 impl Node {
+    /// Leaves are display-only detail (often long shell commands), so cap their width.
     fn leaf(label: impl Into<String>) -> Self {
+        const MAX: usize = 100;
+        let label: String = label.into();
+        let label = if label.chars().count() > MAX {
+            label.chars().take(MAX - 1).chain(['…']).collect()
+        } else {
+            label
+        };
         Node {
-            label: label.into(),
+            label,
             children: vec![],
         }
     }
@@ -166,6 +174,13 @@ mod tests {
         assert_ne!(nodes[0].label, "mp");
         assert_eq!(nodes[0].children.len(), 1);
         assert!(nodes[0].children[0].label.starts_with("p@mp"));
+    }
+
+    #[test]
+    fn long_leaves_are_capped() {
+        let long = "x".repeat(500);
+        assert!(Node::leaf(long.as_str()).label.chars().count() < 500);
+        assert_eq!(Node::leaf("short").label, "short");
     }
 
     #[test]
