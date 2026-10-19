@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::Context;
@@ -15,6 +15,14 @@ pub enum Action {
     RemovePath(RemovalTarget),
     /// Rewrite a config file in place. Missing files are skipped.
     Edit { file: PathBuf, edit: Edit },
+    /// `RemovePath`, but only when, after every edit is written, the JSON `file` (missing =
+    /// empty) has nothing at `key` (e.g. `["plugins", "x@y"]`): a shared resource goes with
+    /// its last reference, whichever selected items dropped it.
+    RemovePathIfJsonAbsent {
+        target: RemovalTarget,
+        file: PathBuf,
+        key: Vec<String>,
+    },
 }
 
 /// A pure transformation of a config file's text.
@@ -145,7 +153,7 @@ fn remove_array_items(doc: &mut Value, path: &[String], fields: &[(String, Value
 }
 
 /// True when every `fields` key of `item` holds exactly the paired value.
-pub fn fields_match(item: &Value, fields: &[(String, Value)]) -> bool {
+fn fields_match(item: &Value, fields: &[(String, Value)]) -> bool {
     fields.iter().all(|(k, v)| item.get(k) == Some(v))
 }
 
@@ -166,8 +174,12 @@ fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result<String> {
     })
 }
 
+/// `Some((original, planned))` text of one file, or `None` when the file is missing.
+type Plan = Option<(String, String)>;
+
 /// Dedupe, then plan every edit in memory (any failure returns before the filesystem is
-/// touched), then write all edited files or none, then remove paths in their original order.
+/// touched), then write all edited files or none, then remove paths in their original order
+/// (checking each `RemovePathIfJsonAbsent` condition against the written files).
 pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
     let mut unique: Vec<&Action> = Vec::new();
     for action in actions {
@@ -176,20 +188,21 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
         }
     }
 
-    // Per file: `Some((original, planned))`, or `None` when the file is missing.
-    let mut plans: Vec<(&PathBuf, Option<(String, String)>)> = Vec::new();
+    // Per real file (symlinks resolved, as `stage` writes there), the first path naming it.
+    let mut plans: Vec<(PathBuf, &PathBuf, Plan)> = Vec::new();
     for action in &unique {
         let Action::Edit { file, edit } = action else {
             continue;
         };
-        let i = match plans.iter().position(|(f, _)| *f == file) {
+        let real = fs::canonicalize(file).unwrap_or_else(|_| file.clone());
+        let i = match plans.iter().position(|(r, _, _)| *r == real) {
             Some(i) => i,
             None => {
-                plans.push((file, read_existing(file)?.map(|s| (s.clone(), s))));
+                plans.push((real, file, read_existing(file)?.map(|s| (s.clone(), s))));
                 plans.len() - 1
             }
         };
-        let Some((_, current)) = &mut plans[i].1 else {
+        let Some((_, current)) = &mut plans[i].2 else {
             continue;
         };
         let after =
@@ -202,7 +215,7 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
 
     let mut report = Report::default();
     let mut staged = Vec::new();
-    for (file, plan) in plans {
+    for (_, file, plan) in plans {
         if let Some((before, after)) = plan
             && before != after
         {
@@ -218,15 +231,40 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
     }
     commit(&staged)?;
     for action in unique {
-        if let Action::RemovePath(target) = action {
-            let removed = remove_path(target)
-                .with_context(|| format!("already removed: {:?}", report.removed))?;
-            if removed {
-                report.removed.push(target.path.clone());
+        let (target, wanted) = match action {
+            Action::Edit { .. } => continue,
+            Action::RemovePath(target) => (target, Ok(true)),
+            Action::RemovePathIfJsonAbsent { target, file, key } => {
+                (target, json_has(file, key).map(|has| !has))
             }
+        };
+        let removed = wanted
+            .and_then(|wanted| {
+                if wanted {
+                    remove_path(target)
+                } else {
+                    Ok(false)
+                }
+            })
+            .with_context(|| format!("already removed: {:?}", report.removed))?;
+        if removed {
+            report.removed.push(target.path.clone());
         }
     }
     Ok(report)
+}
+
+/// True when the JSON `file` holds a value at `key`; a missing file holds nothing.
+fn json_has(file: &Path, key: &[String]) -> anyhow::Result<bool> {
+    let Some(text) = read_existing(file)? else {
+        return Ok(false);
+    };
+    let doc: Value =
+        serde_json::from_str(&text).with_context(|| format!("parse {}", file.display()))?;
+    Ok(key
+        .iter()
+        .try_fold(&doc, |v, k| v.get(k.as_str()))
+        .is_some())
 }
 
 /// Removes a symlink itself (never its target), a file, or a whole directory tree. Returns
@@ -270,7 +308,8 @@ struct Staged {
 }
 
 /// Temp file in the real file's directory, so a symlinked config (dotfiles) stays a symlink
-/// and readers never see a half-written file. Keeps the original permissions.
+/// and readers never see a half-written file. The temp is created fresh with the original
+/// mode (never wider, even briefly), then given exactly the original permissions.
 fn stage(file: &Path, original: String, contents: &str) -> anyhow::Result<Staged> {
     let target = fs::canonicalize(file)?;
     let name = target
@@ -279,7 +318,19 @@ fn stage(file: &Path, original: String, contents: &str) -> anyhow::Result<Staged
         .to_string_lossy();
     let tmp = target.with_file_name(format!(".{name}.skillz-tmp"));
     let perms = fs::metadata(&target)?.permissions();
-    let result = fs::write(&tmp, contents).and_then(|()| fs::set_permissions(&tmp, perms));
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        opts.mode(perms.mode());
+    }
+    // A leftover from a crashed run would block `create_new`.
+    let _ = fs::remove_file(&tmp);
+    let result = opts
+        .open(&tmp)
+        .and_then(|mut f| f.write_all(contents.as_bytes()))
+        .and_then(|()| fs::set_permissions(&tmp, perms));
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
     }
@@ -645,6 +696,41 @@ enabled = false
     }
 
     #[test]
+    fn execute_removes_conditional_path_only_once_key_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let index = dir.path().join("index.json");
+        write(&index, r#"{"plugins": {"a@m": [1], "b@m": [2]}}"#);
+        let dirs = ["a", "b", "c"].map(|d| {
+            fs::create_dir(dir.path().join(d)).unwrap();
+            dir.path().join(d)
+        });
+        let unless = |path: &Path, file: &Path, id: &str| Action::RemovePathIfJsonAbsent {
+            target: RemovalTarget::new(path.parent().unwrap(), [path.file_name().unwrap()])
+                .unwrap(),
+            file: file.to_path_buf(),
+            key: strings(&["plugins", id]),
+        };
+        let report = execute(&[
+            unless(&dirs[0], &index, "a@m"),
+            unless(&dirs[1], &index, "b@m"),
+            unless(&dirs[2], &dir.path().join("missing.json"), "c@m"),
+            Action::Edit {
+                file: index.clone(),
+                edit: Edit::JsonRemoveKey {
+                    path: strings(&["plugins", "a@m"]),
+                },
+            },
+        ])
+        .unwrap();
+        assert_eq!(report.removed, vec![dirs[0].clone(), dirs[2].clone()]);
+        assert!(!dirs[0].exists() && dirs[1].exists() && !dirs[2].exists());
+
+        write(&index, "{");
+        assert!(execute(&[unless(&dirs[1], &index, "b@m")]).is_err());
+        assert!(dirs[1].exists());
+    }
+
+    #[test]
     fn commit_failure_restores_renamed_files() {
         let dir = tempfile::tempdir().unwrap();
         let (a, b) = (dir.path().join("a.json"), dir.path().join("b.json"));
@@ -796,6 +882,49 @@ enabled = false
         assert_eq!(json, json!({"b": 2}));
         let mode = fs::metadata(&real).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stage_creates_fresh_temp_with_original_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config.toml");
+        let victim = dir.path().join("victim");
+        write(&file, "a = 1\n");
+        write(&victim, "keep");
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+        // A stale temp left as a link must be replaced, not written through.
+        std::os::unix::fs::symlink(&victim, dir.path().join(".config.toml.skillz-tmp")).unwrap();
+
+        let staged = stage(&file, "a = 1\n".into(), "b = 2\n").unwrap();
+        let meta = fs::symlink_metadata(&staged.tmp).unwrap();
+        assert!(meta.is_file());
+        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        assert_eq!(fs::read_to_string(&staged.tmp).unwrap(), "b = 2\n");
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "keep");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_merges_edits_to_one_file_through_a_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("a.json");
+        let alias = dir.path().join("b.json");
+        write(&real, r#"{"x": 1, "y": 2, "z": 3}"#);
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        let remove = |file: &Path, key: &str| Action::Edit {
+            file: file.to_path_buf(),
+            edit: Edit::JsonRemoveKey {
+                path: strings(&[key]),
+            },
+        };
+
+        execute(&[remove(&real, "x"), remove(&alias, "y")]).unwrap();
+        let json: Value = serde_json::from_str(&fs::read_to_string(&real).unwrap()).unwrap();
+        assert_eq!(json, json!({"z": 3}));
+        assert!(fs::symlink_metadata(&alias).unwrap().is_symlink());
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
     }
 
