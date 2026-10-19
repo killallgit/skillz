@@ -326,8 +326,9 @@ fn uninstall(
     if candidates.is_empty() {
         bail!("nothing installed matches");
     }
-    // `--yes` selects every candidate, so it must never fan out to an ambiguous match.
-    if yes && (query.is_none() || candidates.len() > 1) {
+    // `--yes` selects every candidate, so it only acts on exactly one exact-name match.
+    let exact = |c: &&Augmentation| query.is_some_and(|q| c.name.eq_ignore_ascii_case(q.trim()));
+    if yes && (candidates.len() > 1 || !candidates.iter().all(exact)) {
         bail!(
             "{} items match; refine the query or run without --yes to pick",
             candidates.len()

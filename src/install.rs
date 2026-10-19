@@ -44,6 +44,10 @@ pub fn install(
     runner: &dyn CommandRunner,
     prompter: &dyn Prompter,
 ) -> anyhow::Result<()> {
+    // Sources are passed as positional args to git/npx/claude; a leading `-` would be an option.
+    if req.source.starts_with('-') {
+        anyhow::bail!("invalid source: {}", req.source);
+    }
     let local = env.project.join(&req.source);
     if local.exists() {
         let source = local.to_string_lossy().into_owned();

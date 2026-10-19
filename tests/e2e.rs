@@ -387,3 +387,45 @@ fn install_local_source_runs_npx_skills_with_matches() {
     assert!(!skills.iter().any(|s| *s == "tdd"));
     assert!(args.contains(&"-g".to_string()));
 }
+
+#[test]
+fn yes_refuses_non_exact_single_match() {
+    let w = world();
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let res = run(
+        uninstall("tdd-old", Filter::default(), true),
+        &deps(&w, &r, &p),
+        &mut Vec::new(),
+    );
+    assert!(res.is_err());
+    assert!(w.home.join(".agents/skills/tdd/SKILL.md").exists());
+}
+
+#[test]
+fn install_rejects_option_like_source() {
+    let w = world();
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let cmd = Command::Install {
+        source: "--upload-pack=touch /tmp/x".into(),
+        global: false,
+        agents: vec![],
+        all: true,
+        skill: vec![],
+        project: None,
+        yes: true,
+    };
+    assert!(run(cmd, &deps(&w, &r, &p), &mut Vec::new()).is_err());
+    assert!(r.0.borrow().is_empty());
+}
