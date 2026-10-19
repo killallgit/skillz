@@ -154,24 +154,54 @@ fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result<String> {
     })
 }
 
-/// Run actions in order. Duplicate actions run once; edits are validated before writing.
+/// Dedupe, then plan every edit in memory (any failure returns before the filesystem is
+/// touched), then write edited files atomically, then remove paths in their original order.
 pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
-    let mut report = Report::default();
-    for (i, action) in actions.iter().enumerate() {
-        if actions[..i].contains(action) {
-            continue;
+    let mut unique: Vec<&Action> = Vec::new();
+    for action in actions {
+        if !unique.contains(&action) {
+            unique.push(action);
         }
-        match action {
-            Action::RemovePath(path) => {
-                if remove_path(path)? {
-                    report.removed.push(path.clone());
-                }
+    }
+
+    // Per file: `Some((original, planned))`, or `None` when the file is missing.
+    let mut plans: Vec<(&PathBuf, Option<(String, String)>)> = Vec::new();
+    for action in &unique {
+        let Action::Edit { file, edit } = action else {
+            continue;
+        };
+        let i = match plans.iter().position(|(f, _)| *f == file) {
+            Some(i) => i,
+            None => {
+                plans.push((file, read_existing(file)?.map(|s| (s.clone(), s))));
+                plans.len() - 1
             }
-            Action::Edit { file, edit } => {
-                if edit_file(file, edit)? && !report.edited.contains(file) {
-                    report.edited.push(file.clone());
-                }
-            }
+        };
+        let Some((_, current)) = &mut plans[i].1 else {
+            continue;
+        };
+        let after =
+            apply_edit(edit, current).with_context(|| format!("edit {}", file.display()))?;
+        if after != *current {
+            validate(file, &after).with_context(|| format!("validate {}", file.display()))?;
+            *current = after;
+        }
+    }
+
+    let mut report = Report::default();
+    for (file, plan) in plans {
+        if let Some((before, after)) = plan
+            && before != after
+        {
+            write_atomic(file, &after).with_context(|| format!("write {}", file.display()))?;
+            report.edited.push(file.clone());
+        }
+    }
+    for action in unique {
+        if let Action::RemovePath(path) = action
+            && remove_path(path)?
+        {
+            report.removed.push(path.clone());
         }
     }
     Ok(report)
@@ -192,18 +222,32 @@ fn remove_path(path: &Path) -> anyhow::Result<bool> {
     Ok(true)
 }
 
-fn edit_file(file: &Path, edit: &Edit) -> anyhow::Result<bool> {
-    let before = match fs::read_to_string(file) {
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
-        other => other.with_context(|| format!("read {}", file.display()))?,
-    };
-    let after = apply_edit(edit, &before).with_context(|| format!("edit {}", file.display()))?;
-    if after == before {
-        return Ok(false);
+fn read_existing(file: &Path) -> anyhow::Result<Option<String>> {
+    match fs::read_to_string(file) {
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+        other => Ok(Some(
+            other.with_context(|| format!("read {}", file.display()))?,
+        )),
     }
-    validate(file, &after).with_context(|| format!("validate {}", file.display()))?;
-    fs::write(file, after).with_context(|| format!("write {}", file.display()))?;
-    Ok(true)
+}
+
+/// Temp file + rename in the real file's directory, so a symlinked config (dotfiles) stays a
+/// symlink and readers never see a half-written file. Keeps the original permissions.
+fn write_atomic(file: &Path, contents: &str) -> anyhow::Result<()> {
+    let target = fs::canonicalize(file)?;
+    let name = target
+        .file_name()
+        .context("no file name")?
+        .to_string_lossy();
+    let tmp = target.with_file_name(format!(".{name}.skillz-tmp"));
+    let perms = fs::metadata(&target)?.permissions();
+    let result = fs::write(&tmp, contents)
+        .and_then(|()| fs::set_permissions(&tmp, perms))
+        .and_then(|()| fs::rename(&tmp, &target));
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    Ok(result?)
 }
 
 fn validate(file: &Path, contents: &str) -> anyhow::Result<()> {
@@ -591,6 +635,67 @@ enabled = false
         assert!(result.is_err());
         assert!(later.exists());
         assert_eq!(fs::read_to_string(&bad).unwrap(), "{");
+    }
+
+    #[test]
+    fn execute_late_edit_failure_touches_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let doomed = dir.path().join("doomed");
+        let good = dir.path().join("good.json");
+        let bad = dir.path().join("bad.json");
+        let src = r#"{"a": 1, "b": 2}"#;
+        write(&doomed, "x");
+        write(&good, src);
+        write(&bad, "{");
+        let result = execute(&[
+            Action::RemovePath(doomed.clone()),
+            Action::Edit {
+                file: good.clone(),
+                edit: Edit::JsonRemoveKey {
+                    path: strings(&["a"]),
+                },
+            },
+            Action::Edit {
+                file: bad.clone(),
+                edit: hook("a", "b"),
+            },
+        ]);
+        assert!(result.is_err());
+        assert!(doomed.exists());
+        assert_eq!(fs::read_to_string(&good).unwrap(), src);
+        assert_eq!(fs::read_to_string(&bad).unwrap(), "{");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_writes_through_symlink_and_keeps_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("dotfiles-settings.json");
+        let link = dir.path().join("settings.json");
+        write(&real, r#"{"a": 1, "b": 2}"#);
+        fs::set_permissions(&real, fs::Permissions::from_mode(0o600)).unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let report = execute(&[Action::Edit {
+            file: link.clone(),
+            edit: Edit::JsonRemoveKey {
+                path: strings(&["a"]),
+            },
+        }])
+        .unwrap();
+        assert_eq!(report.edited, vec![link.clone()]);
+        assert!(
+            fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let json: Value = serde_json::from_str(&fs::read_to_string(&real).unwrap()).unwrap();
+        assert_eq!(json, json!({"b": 2}));
+        let mode = fs::metadata(&real).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
     }
 
     #[test]
