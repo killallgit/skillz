@@ -81,6 +81,8 @@ fn scan_available(root: &Path) -> anyhow::Result<Vec<String>> {
 fn walk(dir: &Path, found: &mut Vec<String>) -> anyhow::Result<()> {
     if let Ok(md) = std::fs::read_to_string(dir.join("SKILL.md"))
         && let Some(name) = frontmatter_name(&md)
+        // Names become `--skill <name>` args; npx would parse `-g` as a flag.
+        && !name.starts_with('-')
     {
         found.push(name.to_string());
     }
@@ -288,6 +290,16 @@ mod tests {
         skill_md(root, "no-name", "---\ndescription: d\n---\n");
         skill_md(root, "no-fence", "name: n\ndescription: d\n");
         skill_md(root, "body-only", "---\n---\nname: b\ndescription: d\n");
+        skill(root, "ok");
+        assert_eq!(scan_available(root).unwrap(), s(&["ok"]));
+    }
+
+    #[test]
+    fn scan_available_skips_option_like_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        skill_md(root, "g", "---\nname: -g\ndescription: d\n---\n");
+        skill(root, "-y");
         skill(root, "ok");
         assert_eq!(scan_available(root).unwrap(), s(&["ok"]));
     }

@@ -17,7 +17,8 @@ pub(super) struct Marketplace {
     pub plugins: Vec<String>,
 }
 
-/// `None` when `src` has no marketplace; malformed JSON is an error.
+/// `None` when `src` has no marketplace; malformed JSON is an error. Option-like (`-x`)
+/// names are dropped since they end up as `claude` args.
 pub(super) fn read(src: &Path) -> anyhow::Result<Option<Marketplace>> {
     let path = src.join(".claude-plugin/marketplace.json");
     let Ok(text) = std::fs::read_to_string(&path) else {
@@ -25,14 +26,17 @@ pub(super) fn read(src: &Path) -> anyhow::Result<Option<Marketplace>> {
     };
     let json: serde_json::Value =
         serde_json::from_str(&text).with_context(|| format!("invalid {}", path.display()))?;
-    let Some(name) = json["name"].as_str() else {
+    fn arg(v: &serde_json::Value) -> Option<&str> {
+        v.as_str().filter(|s| !s.starts_with('-'))
+    }
+    let Some(name) = arg(&json["name"]) else {
         return Ok(None);
     };
     let plugins = json["plugins"]
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|p| p["name"].as_str().map(String::from))
+        .filter_map(|p| arg(&p["name"]).map(String::from))
         .collect();
     Ok(Some(Marketplace {
         name: name.into(),
@@ -113,6 +117,20 @@ mod tests {
             fs::write(root.join(".claude-plugin/marketplace.json"), "{nope").unwrap();
         });
         assert!(read(&fx.env.project.join("repo")).is_err());
+    }
+
+    #[test]
+    fn read_skips_option_like_names() {
+        let write = |json: &str| {
+            project_with(move |root| {
+                fs::create_dir_all(root.join(".claude-plugin")).unwrap();
+                fs::write(root.join(".claude-plugin/marketplace.json"), json).unwrap();
+            })
+        };
+        let fx = write(r#"{"name":"mp","plugins":[{"name":"-g"},{"name":"p1"},{"name":"p2"}]}"#);
+        assert_eq!(read(&fx.env.project.join("repo")).unwrap(), Some(mp()));
+        let fx = write(r#"{"name":"-mp","plugins":[{"name":"p1"}]}"#);
+        assert_eq!(read(&fx.env.project.join("repo")).unwrap(), None);
     }
 
     #[test]
