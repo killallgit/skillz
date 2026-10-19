@@ -4,7 +4,7 @@ use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::Context;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::hooks::{self, Format};
 
@@ -25,12 +25,11 @@ pub enum Edit {
     RemoveHook { event: String, command: String },
     /// Remove the object key at `path` (e.g. `["enabledPlugins", "x@y"]`). No-op if absent.
     JsonRemoveKey { path: Vec<String> },
-    /// Claude `installed_plugins.json`: drop entries of `plugins[id]` for one scope.
-    /// `project: None` drops `"scope": "user"` entries; `Some(p)` drops entries whose
-    /// `projectPath` equals `p`. Removes `plugins[id]` when it becomes empty.
-    JsonRemovePluginInstall {
-        id: String,
-        project: Option<PathBuf>,
+    /// Remove every element of the array at `path` that `fields_match` `fields`. Removes the
+    /// key at `path` when that empties the array. No-op if absent or not an array.
+    JsonRemoveArrayItems {
+        path: Vec<String>,
+        fields: Vec<(String, Value)>,
     },
     /// Remove the TOML key/table at `path` (e.g. `["plugins", "x@y"]`), keeping formatting.
     TomlRemoveKey { path: Vec<String> },
@@ -95,9 +94,9 @@ pub fn apply_edit(file: &Path, edit: &Edit, contents: &str) -> anyhow::Result<St
             hooks::remove_hook(contents, Format::of(file), event, command)
         }
         Edit::JsonRemoveKey { path } => edit_json(contents, |doc| remove_json_key(doc, path)),
-        Edit::JsonRemovePluginInstall { id, project } => edit_json(contents, |doc| {
-            remove_plugin_install(doc, id, project.as_deref())
-        }),
+        Edit::JsonRemoveArrayItems { path, fields } => {
+            edit_json(contents, |doc| remove_array_items(doc, path, fields))
+        }
     }
 }
 
@@ -113,43 +112,41 @@ pub(crate) fn edit_json(contents: &str, mutate: impl FnOnce(&mut Value)) -> anyh
     Ok(serde_json::to_string_pretty(&doc)? + "\n")
 }
 
-fn remove_json_key(doc: &mut Value, path: &[String]) {
-    let Some((last, parents)) = path.split_last() else {
-        return;
-    };
+/// The object holding the last key of `path`, and that key.
+fn json_parent<'a>(
+    doc: &'a mut Value,
+    path: &'a [String],
+) -> Option<(&'a mut Map<String, Value>, &'a str)> {
+    let (last, parents) = path.split_last()?;
     let parent = parents
         .iter()
-        .try_fold(doc, |v, key| v.get_mut(key.as_str()));
-    if let Some(obj) = parent.and_then(Value::as_object_mut) {
+        .try_fold(doc, |v, key| v.get_mut(key.as_str()))?;
+    Some((parent.as_object_mut()?, last))
+}
+
+fn remove_json_key(doc: &mut Value, path: &[String]) {
+    if let Some((obj, last)) = json_parent(doc, path) {
         obj.shift_remove(last);
     }
 }
 
-fn remove_plugin_install(doc: &mut Value, id: &str, project: Option<&Path>) {
-    let Some(plugins) = doc.get_mut("plugins").and_then(Value::as_object_mut) else {
+fn remove_array_items(doc: &mut Value, path: &[String], fields: &[(String, Value)]) {
+    let Some((obj, last)) = json_parent(doc, path) else {
         return;
     };
-    let Some(installs) = plugins.get_mut(id).and_then(Value::as_array_mut) else {
+    let Some(items) = obj.get_mut(last).and_then(Value::as_array_mut) else {
         return;
     };
-    let before = installs.len();
-    installs.retain(|install| !install_matches(install, project));
-    if installs.is_empty() && before > 0 {
-        plugins.shift_remove(id);
+    let before = items.len();
+    items.retain(|item| !fields_match(item, fields));
+    if items.is_empty() && before > 0 {
+        obj.shift_remove(last);
     }
 }
 
-fn install_matches(install: &Value, project: Option<&Path>) -> bool {
-    match project {
-        None => install.get("scope").and_then(Value::as_str) == Some("user"),
-        Some(p) => {
-            install
-                .get("projectPath")
-                .and_then(Value::as_str)
-                .map(Path::new)
-                == Some(p)
-        }
-    }
+/// True when every `fields` key of `item` holds exactly the paired value.
+pub fn fields_match(item: &Value, fields: &[(String, Value)]) -> bool {
+    fields.iter().all(|(k, v)| item.get(k) == Some(v))
 }
 
 fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result<String> {
@@ -378,9 +375,13 @@ mod tests {
                 path: strings(&["nope", "deeper"]),
             },
             Edit::JsonRemoveKey { path: vec![] },
-            Edit::JsonRemovePluginInstall {
-                id: "p@m".into(),
-                project: None,
+            Edit::JsonRemoveArrayItems {
+                path: strings(&["plugins", "p@m"]),
+                fields: vec![("scope".into(), json!("user"))],
+            },
+            Edit::JsonRemoveArrayItems {
+                path: vec![],
+                fields: vec![],
             },
         ];
         for edit in noops {
@@ -436,44 +437,44 @@ mod tests {
     }
 
     #[test]
-    fn remove_plugin_install_by_scope() {
-        let doc = json!({"version": 2, "plugins": {
-            "p@m": [
-                {"scope": "user", "installPath": "/c"},
-                {"scope": "project", "projectPath": "/proj"},
-                {"scope": "local", "projectPath": "/other"}
-            ],
-            "q@m": [{"scope": "user"}]
+    fn remove_array_items_matching_all_fields() {
+        let doc = json!({"a": {
+            "xs": [{"k": "1", "n": 2}, {"k": "1", "n": 3}, {"k": "2", "n": 2}, "scalar"],
+            "one": [{"k": "1"}]
         }});
-        let user = Edit::JsonRemovePluginInstall {
-            id: "p@m".into(),
-            project: None,
+        let remove = |path: &[&str], fields: &[(&str, Value)]| Edit::JsonRemoveArrayItems {
+            path: strings(path),
+            fields: fields
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect(),
         };
+        let both = remove(&["a", "xs"], &[("k", json!("1")), ("n", json!(2))]);
         assert_eq!(
-            json_after(&user, &doc)["plugins"]["p@m"],
-            json!([
-                {"scope": "project", "projectPath": "/proj"},
-                {"scope": "local", "projectPath": "/other"}
-            ])
+            json_after(&both, &doc)["a"]["xs"],
+            json!([{"k": "1", "n": 3}, {"k": "2", "n": 2}, "scalar"])
         );
-        let proj = Edit::JsonRemovePluginInstall {
-            id: "p@m".into(),
-            project: Some("/proj".into()),
-        };
+        let k1 = remove(&["a", "xs"], &[("k", json!("1"))]);
         assert_eq!(
-            json_after(&proj, &doc)["plugins"]["p@m"],
-            json!([
-                {"scope": "user", "installPath": "/c"},
-                {"scope": "local", "projectPath": "/other"}
-            ])
+            json_after(&k1, &doc)["a"]["xs"],
+            json!([{"k": "2", "n": 2}, "scalar"])
         );
-        let last = Edit::JsonRemovePluginInstall {
-            id: "q@m".into(),
-            project: None,
-        };
-        let after = json_after(&last, &doc);
-        assert!(after["plugins"].get("q@m").is_none());
-        assert!(after["plugins"].get("p@m").is_some());
+        let emptied = json_after(&remove(&["a", "one"], &[("k", json!("1"))]), &doc);
+        assert!(emptied["a"].get("one").is_none());
+        assert!(emptied["a"].get("xs").is_some());
+        let src = r#"{"a":{"xs":[],"s":"x"}}"#;
+        for edit in [
+            remove(&["a", "xs"], &[]),
+            remove(&["a", "s"], &[]),
+            remove(&["a", "xs", "deeper"], &[]),
+            remove(&["missing", "xs"], &[]),
+        ] {
+            assert_eq!(
+                apply_edit(Path::new(JSON), &edit, src).unwrap(),
+                src,
+                "{edit:?}"
+            );
+        }
     }
 
     const CODEX: &str = r#"# top comment

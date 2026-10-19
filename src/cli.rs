@@ -462,7 +462,11 @@ fn describe(step: &Action) -> String {
             let what = match edit {
                 Edit::RemoveHook { event, command } => format!("hook {event}: {command}"),
                 Edit::JsonRemoveKey { path } | Edit::TomlRemoveKey { path } => path.join("."),
-                Edit::JsonRemovePluginInstall { id, .. } => format!("install record {id}"),
+                Edit::JsonRemoveArrayItems { path, fields } => {
+                    let when: Vec<String> =
+                        fields.iter().map(|(k, v)| format!("{k}={v}")).collect();
+                    format!("{}[{}]", path.join("."), when.join(","))
+                }
             };
             format!("edit {} (remove {what})", file.display())
         }

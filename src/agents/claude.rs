@@ -7,7 +7,7 @@ use anyhow::Context;
 use serde_json::Value;
 
 use super::AgentAdapter;
-use crate::action::{Action, Edit, RemovalTarget};
+use crate::action::{Action, Edit, RemovalTarget, fields_match};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 
@@ -46,6 +46,8 @@ struct Install {
     install_path: Option<PathBuf>,
     /// Raw entry count of `plugins[id]`, including entries we could not parse.
     records: usize,
+    /// The raw entry, for matching against `record_fields`.
+    record: Value,
 }
 
 /// One entry of `known_marketplaces.json`.
@@ -105,6 +107,7 @@ fn installs_from(json: &Value) -> Vec<Install> {
                     project,
                     install_path: str_at(e, "installPath").map(PathBuf::from),
                     records: entries.len(),
+                    record: e.clone(),
                 })
             })
         })
@@ -182,12 +185,21 @@ fn plugin_removal(home: &Path, install: &Install) -> Vec<Action> {
         })
         .chain(std::iter::once(Action::Edit {
             file: installed_file(home),
-            edit: Edit::JsonRemovePluginInstall {
-                id: install.id.clone(),
-                project: install.project.clone(),
+            edit: Edit::JsonRemoveArrayItems {
+                path: vec!["plugins".into(), install.id.clone()],
+                fields: record_fields(install),
             },
         }))
         .collect()
+}
+
+/// Selects the `plugins[id]` records that removing `install` drops: user scope is the global
+/// install; any other scope is keyed by its project.
+fn record_fields(install: &Install) -> Vec<(String, Value)> {
+    match &install.project {
+        None => vec![("scope".into(), "user".into())],
+        Some(p) => vec![("projectPath".into(), p.to_string_lossy().into())],
+    }
 }
 
 /// True when `removed` matches every record of `id`, so nothing else still uses the plugin.
@@ -212,8 +224,8 @@ fn plugin_dirs(home: &Path, id: &str) -> Vec<Action> {
 /// `plugin_removal` plus the plugin's dirs when this was its last install record.
 fn full_plugin_removal(home: &Path, installs: &[Install], install: &Install) -> Vec<Action> {
     let mut out = plugin_removal(home, install);
-    // Mirrors `install_matches`: removal drops records whose project equals this one exactly.
-    if covers_all(installs, &install.id, |j| j.project == install.project) {
+    let fields = record_fields(install);
+    if covers_all(installs, &install.id, |j| fields_match(&j.record, &fields)) {
         out.extend(plugin_dirs(home, &install.id));
     }
     out
@@ -312,6 +324,7 @@ fn marketplace(home: &Path, m: &Marketplace, installs: &[Install]) -> Augmentati
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::action::apply_edit;
     use serde_json::json;
     use tempfile::TempDir;
 
@@ -349,9 +362,12 @@ mod tests {
     fn remove_install(file: &Path, id: &str, project: Option<&Path>) -> Action {
         edit(
             file,
-            Edit::JsonRemovePluginInstall {
-                id: id.into(),
-                project: project.map(Path::to_path_buf),
+            Edit::JsonRemoveArrayItems {
+                path: vec!["plugins".into(), id.into()],
+                fields: vec![match project {
+                    None => ("scope".into(), json!("user")),
+                    Some(p) => ("projectPath".into(), json!(p)),
+                }],
             },
         )
     }
@@ -615,6 +631,49 @@ mod tests {
             full_plugin_removal(home, &installs, dup),
             plugin_removal(home, dup)
         );
+    }
+
+    #[test]
+    fn install_record_edit_drops_one_scope() {
+        let doc = json!({"version": 2, "plugins": {
+            "p@m": [
+                {"scope": "user", "installPath": "/c"},
+                {"scope": "project", "projectPath": "/proj"},
+                {"scope": "local", "projectPath": "/other"}
+            ],
+            "q@m": [{"scope": "user"}]
+        }});
+        let installs = installs_from(&doc);
+        let after = |id: &str, project: Option<&str>| {
+            let install = installs
+                .iter()
+                .find(|i| i.id == id && i.project.as_deref() == project.map(Path::new))
+                .unwrap();
+            let Some(Action::Edit { file, edit }) = plugin_removal(Path::new("/h"), install).pop()
+            else {
+                panic!("no install record edit");
+            };
+            assert_eq!(file, installed_file(Path::new("/h")));
+            let out = apply_edit(&file, &edit, &doc.to_string()).unwrap();
+            serde_json::from_str::<Value>(&out).unwrap()["plugins"].clone()
+        };
+        assert_eq!(
+            after("p@m", None)["p@m"],
+            json!([
+                {"scope": "project", "projectPath": "/proj"},
+                {"scope": "local", "projectPath": "/other"}
+            ])
+        );
+        assert_eq!(
+            after("p@m", Some("/proj"))["p@m"],
+            json!([
+                {"scope": "user", "installPath": "/c"},
+                {"scope": "local", "projectPath": "/other"}
+            ])
+        );
+        let last = after("q@m", None);
+        assert!(last.get("q@m").is_none());
+        assert!(last.get("p@m").is_some());
     }
 
     #[test]
