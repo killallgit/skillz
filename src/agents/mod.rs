@@ -5,10 +5,13 @@ pub mod claude;
 pub mod codex;
 pub mod cursor;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::env::Env;
+use crate::hooks;
 use crate::model::{Agent, Augmentation, Scope};
+use crate::skills::{self, SkillDir};
 
 pub trait AgentAdapter {
     fn agent(&self) -> Agent;
@@ -39,6 +42,41 @@ pub struct Inventory {
 /// Combine every adapter's discovery and the shared skill discovery for `scopes`.
 /// Items are deduplicated by id; a failing source becomes a warning, not an error.
 pub fn inventory(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]) -> Inventory {
-    let _ = (adapters, env, scopes);
-    todo!("lane: cli")
+    let mut inv = Inventory::default();
+    for &scope in scopes {
+        let dirs: Vec<SkillDir> = adapters
+            .iter()
+            .flat_map(|a| {
+                a.skill_dirs(env, scope)
+                    .into_iter()
+                    .map(move |path| SkillDir {
+                        agent: a.agent(),
+                        scope,
+                        path,
+                    })
+            })
+            .collect();
+        inv.absorb("skills", skills::discover(env, &dirs));
+        for a in adapters {
+            for file in a.hook_files(env, scope) {
+                inv.absorb(
+                    &file.display().to_string(),
+                    hooks::discover(&file, a.agent(), scope),
+                );
+            }
+            inv.absorb(&a.agent().to_string(), a.discover(env, scope));
+        }
+    }
+    let mut seen = HashSet::new();
+    inv.items.retain(|item| seen.insert(item.id.clone()));
+    inv
+}
+
+impl Inventory {
+    fn absorb(&mut self, source: &str, found: anyhow::Result<Vec<Augmentation>>) {
+        match found {
+            Ok(items) => self.items.extend(items),
+            Err(err) => self.warnings.push(format!("{source}: {err:#}")),
+        }
+    }
 }

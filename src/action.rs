@@ -21,7 +21,10 @@ pub enum Edit {
     /// Claude `installed_plugins.json`: drop entries of `plugins[id]` for one scope.
     /// `project: None` drops `"scope": "user"` entries; `Some(p)` drops entries whose
     /// `projectPath` equals `p`. Removes `plugins[id]` when it becomes empty.
-    JsonRemovePluginInstall { id: String, project: Option<PathBuf> },
+    JsonRemovePluginInstall {
+        id: String,
+        project: Option<PathBuf>,
+    },
     /// Remove the TOML key/table at `path` (e.g. `["plugins", "x@y"]`), keeping formatting.
     TomlRemoveKey { path: Vec<String> },
 }
