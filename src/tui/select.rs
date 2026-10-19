@@ -45,7 +45,10 @@ impl SelectState {
         }
         if self.filtering {
             match filter_key(&mut self.filter, key.code) {
-                FilterKey::Edited => self.refilter(),
+                FilterKey::Edited => {
+                    self.cursor = 0;
+                    self.refilter();
+                }
                 FilterKey::Left => {
                     self.filtering = false;
                     self.refilter();
@@ -106,7 +109,7 @@ impl SelectState {
 
     fn refilter(&mut self) {
         self.visible = fuzzy_rank(&self.filter, &self.options);
-        self.cursor = 0;
+        self.cursor = self.cursor.min(self.visible.len().saturating_sub(1));
     }
 
     fn draw(&self, title: &str, frame: &mut Frame) {
@@ -235,6 +238,15 @@ mod tests {
         s.handle(key(KeyCode::Enter));
         feed(&mut s, keys("a"));
         assert_eq!(s.selected, BTreeSet::from([0, 2]));
+    }
+
+    #[test]
+    fn leaving_filter_keeps_cursor_item() {
+        let mut s = state(&["git-commit", "tdd", "caveman-commit"]);
+        feed(&mut s, keys("/commit"));
+        s.handle(key(KeyCode::Down));
+        s.handle(key(KeyCode::Enter));
+        assert_eq!(s.handle(key(KeyCode::Enter)), Outcome::Accept(vec![2]));
     }
 
     #[test]
