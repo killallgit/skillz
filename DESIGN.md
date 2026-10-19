@@ -99,7 +99,9 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
 - **Skill**: remove every agent-dir entry (symlink or dir) that resolves to the canonical
   dir, then the canonical dir **only if it lives inside a known skill dir** (never delete a
   symlink target outside skill dirs — that is the user's source checkout), then
-  `JsonRemoveKey ["skills", name]` on the scope's lock file.
+  `JsonRemoveKey ["skills", name]` on the scope's lock file. Only a canonical dir exactly one
+  segment under the scope's `.agents/skills` store has a lock entry (source and edit), keyed
+  by that segment, not by an agent-dir entry's name.
 - **Hook group**: one `RemoveHook { event, command }` per handler; `apply_edit` hands it to
   `hooks::remove_hook` with the format from the file's extension (`.toml` keeps formatting,
   JSON keeps key order). Empty groups/events are pruned.

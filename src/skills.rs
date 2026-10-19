@@ -69,7 +69,13 @@ fn augmentation(
     suffix: bool,
 ) -> Augmentation {
     let name = entries[0].name.clone();
-    let source = lock.get(&name).cloned();
+    // npx keys its lock by the dir name in its store, so only a skill directly there has one.
+    let store = canonical_or(&npx_skills::store_dir(env, scope));
+    let locked = (canonical.parent() == Some(store.as_path()))
+        .then(|| canonical.file_name()?.to_str())
+        .flatten()
+        .and_then(|n| Some((n.to_owned(), lock.get(n)?.clone())));
+    let source = locked.as_ref().map(|(_, s)| s.clone());
     let agents: Vec<Agent> = entries
         .iter()
         .map(|e| e.agent)
@@ -84,9 +90,7 @@ fn augmentation(
         entries,
         canonical,
         &owned_roots(env, dirs, scope),
-        source
-            .as_ref()
-            .map(|_| (npx_skills::lock_path(env, scope), name.clone())),
+        locked.map(|(n, _)| (npx_skills::lock_path(env, scope), n)),
     );
     Augmentation {
         id,
@@ -303,6 +307,33 @@ mod tests {
                 lock_edit(lock, "tdd"),
             ]
         );
+    }
+
+    #[test]
+    fn lock_entry_belongs_to_the_store_dir_not_the_entry_name() {
+        let f = fixture();
+        let h = &f.env.home;
+        let canon = h.join(".agents/skills/tdd");
+        skill(&canon);
+        let renamed = h.join(".claude/skills/my-tdd");
+        link(&canon, &renamed);
+        let mine = h.join(".codex/skills/tdd");
+        skill(&mine);
+        let lock = h.join(".agents/.skill-lock.json");
+        write_lock(&lock, r#"{"skills":{"tdd":{"source":"o/r"}}}"#);
+
+        let augs = discover(&f.env, &global_dirs(&f.env)).unwrap();
+
+        let id = |p: &Path| format!("skill:{}", p.display());
+        let npx = augs.iter().find(|a| a.id == id(&canon)).unwrap();
+        assert_eq!(npx.source.as_deref(), Some("o/r"));
+        assert_eq!(
+            npx.removal,
+            vec![rm(renamed), rm(canon.clone()), lock_edit(lock, "tdd")]
+        );
+        let local = augs.iter().find(|a| a.id == id(&mine)).unwrap();
+        assert_eq!(local.source, None);
+        assert_eq!(local.removal, vec![rm(mine.clone())]);
     }
 
     #[test]
