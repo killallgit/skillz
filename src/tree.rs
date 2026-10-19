@@ -69,15 +69,8 @@ fn group_node(group: &str, members: Vec<&Augmentation>) -> Node {
 }
 
 fn item_node(item: &Augmentation) -> Node {
-    let agents: Vec<String> = item.agents.iter().map(ToString::to_string).collect();
     Node {
-        label: format!(
-            "{}  ({} · {} · {})",
-            item.name,
-            item.kind,
-            agents.join(","),
-            item.scope
-        ),
+        label: item.label(false),
         children: item.children.iter().map(Node::leaf).collect(),
     }
 }

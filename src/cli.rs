@@ -331,22 +331,12 @@ fn list(
     Ok(())
 }
 
-/// Picker label for one item.
-pub fn label(item: &Augmentation) -> String {
-    let agents: Vec<String> = item.agents.iter().map(Agent::to_string).collect();
-    let source = item
-        .source
-        .as_deref()
-        .filter(|s| *s != item.name)
-        .map(|s| format!(" [{s}]"))
-        .unwrap_or_default();
-    format!(
-        "{}{source}  ({} · {} · {})",
-        item.name,
-        item.kind,
-        agents.join(","),
-        item.scope
-    )
+/// Items named exactly `query` (case-insensitive, surrounding whitespace ignored).
+fn named<'a>(items: &'a [Augmentation], query: &str) -> Vec<&'a Augmentation> {
+    items
+        .iter()
+        .filter(|i| i.name.eq_ignore_ascii_case(query.trim()))
+        .collect()
 }
 
 /// Items matching `query`: exact (case-insensitive) name matches win over fuzzy ones.
@@ -354,10 +344,7 @@ pub fn matches<'a>(items: &'a [Augmentation], query: Option<&str>) -> Vec<&'a Au
     let Some(query) = query.filter(|q| !q.trim().is_empty()) else {
         return items.iter().collect();
     };
-    let exact: Vec<&Augmentation> = items
-        .iter()
-        .filter(|i| i.name.eq_ignore_ascii_case(query.trim()))
-        .collect();
+    let exact = named(items, query);
     if !exact.is_empty() {
         return exact;
     }
@@ -395,14 +382,13 @@ fn uninstall(
         bail!("nothing installed matches");
     }
     // `--yes` selects every candidate, so it only acts on exactly one exact-name match.
-    let exact = |c: &&Augmentation| query.is_some_and(|q| c.name.eq_ignore_ascii_case(q.trim()));
-    if yes && (candidates.len() > 1 || !candidates.iter().all(exact)) {
+    if yes && query.map_or(0, |q| named(&items, q).len()) != 1 {
         bail!(
             "{} items match; refine the query or run without --yes to pick",
             candidates.len()
         );
     }
-    let labels: Vec<String> = candidates.iter().map(|c| label(c)).collect();
+    let labels: Vec<String> = candidates.iter().map(|c| c.label(true)).collect();
     // A dry run changes nothing, so show every candidate's plan without asking.
     let picked = if dry_run {
         (0..candidates.len()).collect()
@@ -422,7 +408,7 @@ fn uninstall(
     let plan: Vec<Action> = chosen.iter().flat_map(|c| c.removal.clone()).collect();
     writeln!(out, "Removing:")?;
     for c in &chosen {
-        writeln!(out, "  {}", label(c))?;
+        writeln!(out, "  {}", c.label(true))?;
         // Removal is always complete, so say when `-a` narrows the view but not the effect.
         let others: Vec<String> = c
             .agents
