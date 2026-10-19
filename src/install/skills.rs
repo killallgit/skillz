@@ -103,26 +103,38 @@ fn walk(dir: &Path, found: &mut Vec<String>) -> anyhow::Result<()> {
 
 /// `name:` from the leading `---` frontmatter block; `None` (npx skips the skill) unless both
 /// `name` and `description` are set.
-/// shortcut: top-level `key: value` lines only (no YAML block scalars); add a YAML parser if
-/// skills with multi-line `description:` values go missing.
+/// A `description:` with no inline value (`>`, `|`, or nothing) counts once an indented line
+/// follows it, as in YAML.
+/// shortcut: top-level keys only, no full YAML; add a parser if real skills still go missing.
 fn frontmatter_name(md: &str) -> Option<&str> {
     let mut lines = md.lines();
     if lines.next()? != "---" {
         return None;
     }
-    let (mut name, mut description) = ("", "");
+    let (mut name, mut description, mut continued) = ("", "", false);
     for line in lines {
         if line == "---" {
             return (!name.is_empty() && !description.is_empty()).then_some(name);
         }
+        if continued && line.starts_with([' ', '\t']) && !line.trim().is_empty() {
+            description = line.trim();
+        }
+        continued = false;
         match line.split_once(':') {
             Some(("name", v)) => name = unquote(v),
-            Some(("description", v)) => description = unquote(v),
+            Some(("description", v)) => {
+                description = unquote(v);
+                if description.is_empty() || BLOCK.contains(&description) {
+                    (description, continued) = ("", true);
+                }
+            }
             _ => {}
         }
     }
     None
 }
+
+const BLOCK: [&str; 6] = [">", "|", ">-", "|-", ">+", "|+"];
 
 fn unquote(v: &str) -> &str {
     let v = v.trim();
@@ -275,9 +287,19 @@ mod tests {
             "single",
             "---\nname: 'single-q'\ndescription: 'x'\n---\nbody",
         );
+        skill_md(
+            root,
+            "folded",
+            "---\nname: folded\ndescription: >\n  long\n  text\nlicense: MIT\n---\n",
+        );
+        skill_md(
+            root,
+            "plain",
+            "---\nname: plain\ndescription:\n  text\n---\n",
+        );
         assert_eq!(
             scan_available(root).unwrap(),
-            s(&["q-name", "real-name", "single-q"])
+            s(&["folded", "plain", "q-name", "real-name", "single-q"])
         );
     }
 
@@ -290,6 +312,11 @@ mod tests {
         skill_md(root, "no-name", "---\ndescription: d\n---\n");
         skill_md(root, "no-fence", "name: n\ndescription: d\n");
         skill_md(root, "body-only", "---\n---\nname: b\ndescription: d\n");
+        skill_md(
+            root,
+            "empty-block",
+            "---\nname: eb\ndescription: |\nlicense: MIT\n---\n",
+        );
         skill(root, "ok");
         assert_eq!(scan_available(root).unwrap(), s(&["ok"]));
     }
