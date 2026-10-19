@@ -225,8 +225,8 @@ fn full_plugin_removal(home: &Path, installs: &[Install], install: &Install) -> 
 fn owned_location(home: &Path, loc: &Path) -> bool {
     loc.strip_prefix(home.join(".claude/plugins/marketplaces"))
         .is_ok_and(|rest| {
-            rest.components().next().is_some()
-                && rest.components().all(|c| matches!(c, Component::Normal(_)))
+            let mut parts = rest.components();
+            matches!(parts.next(), Some(Component::Normal(_))) && parts.next().is_none()
         })
 }
 

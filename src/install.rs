@@ -45,7 +45,7 @@ pub fn install(
     prompter: &dyn Prompter,
 ) -> anyhow::Result<()> {
     // Sources are passed as positional args to git/npx/claude; a leading `-` would be an option.
-    if req.source.starts_with('-') {
+    if req.source.trim().is_empty() || req.source.starts_with('-') {
         anyhow::bail!("invalid source: {}", req.source);
     }
     let local = env.project.join(&req.source);
@@ -257,13 +257,24 @@ fn unique_name() -> String {
     format!("skillz-install-{}-{nanos}", std::process::id())
 }
 
+/// Hide `user:token@` credentials in URLs before echoing a command.
+fn redact(arg: &str) -> String {
+    match (arg.find("://"), arg.find('@')) {
+        (Some(scheme), Some(at)) if at > scheme && !arg[scheme + 3..at].contains('/') => {
+            format!("{}://***{}", &arg[..scheme], &arg[at..])
+        }
+        _ => arg.to_string(),
+    }
+}
+
 fn run_checked(
     runner: &dyn CommandRunner,
     program: &str,
     args: &[String],
     cwd: &Path,
 ) -> anyhow::Result<()> {
-    eprintln!("$ {program} {}", args.join(" "));
+    let shown: Vec<String> = args.iter().map(|a| redact(a)).collect();
+    eprintln!("$ {program} {}", shown.join(" "));
     let out = runner.run(program, args, cwd)?;
     anyhow::ensure!(
         out.success,
@@ -847,5 +858,16 @@ mod tests {
         let found = scan_available(&dir.path().join("solo")).unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].name, "solo");
+    }
+
+    #[test]
+    fn redact_hides_url_credentials_only() {
+        assert!(!redact("https://u:tok@github.com/o/r.git").contains("tok"));
+        assert_eq!(
+            redact("https://github.com/o/r.git"),
+            "https://github.com/o/r.git"
+        );
+        assert_eq!(redact("git@github.com:o/r.git"), "git@github.com:o/r.git");
+        assert_eq!(redact("https://github.com/a@b"), "https://github.com/a@b");
     }
 }
