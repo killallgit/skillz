@@ -2,11 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
-
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Kind, Scope};
+use crate::npx_skills;
 
 /// A directory an agent loads skills from (each skill is a subdir with `SKILL.md`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,9 +42,9 @@ pub fn discover(env: &Env, dirs: &[SkillDir]) -> anyhow::Result<Vec<Augmentation
         .filter(|(s, _)| *s == Scope::Global)
         .map(|(_, c)| c)
         .collect();
-    let locks: BTreeMap<Scope, Value> = [Scope::Global, Scope::Project]
+    let locks: BTreeMap<Scope, BTreeMap<String, String>> = [Scope::Global, Scope::Project]
         .into_iter()
-        .map(|s| (s, read_lock(&lock_path(env, s))))
+        .map(|s| (s, npx_skills::read_lock(env, s)))
         .collect();
 
     let mut out: Vec<Augmentation> = groups
@@ -66,11 +65,11 @@ fn augmentation(
     scope: Scope,
     canonical: &Path,
     entries: &[Entry],
-    lock: &Value,
+    lock: &BTreeMap<String, String>,
     suffix: bool,
 ) -> Augmentation {
     let name = entries[0].name.clone();
-    let source = lock_source(lock, &name);
+    let source = lock.get(&name).cloned();
     let agents: Vec<Agent> = entries
         .iter()
         .map(|e| e.agent)
@@ -87,7 +86,7 @@ fn augmentation(
         &owned_roots(env, dirs, scope),
         source
             .as_ref()
-            .map(|_| (lock_path(env, scope), name.clone())),
+            .map(|_| (npx_skills::lock_path(env, scope), name.clone())),
     );
     Augmentation {
         id,
@@ -127,7 +126,7 @@ fn removal(
     actions.extend(lock.map(|(file, name)| Action::Edit {
         file,
         edit: Edit::JsonRemoveKey {
-            path: vec!["skills".into(), name],
+            path: npx_skills::lock_key(&name),
         },
     }));
     actions
@@ -139,7 +138,7 @@ fn owned_roots(env: &Env, dirs: &[SkillDir], scope: Scope) -> Vec<PathBuf> {
     dirs.iter()
         .filter(|d| d.scope == scope)
         .map(|d| d.path.clone())
-        .chain([env.root(scope).join(".agents/skills")])
+        .chain([npx_skills::store_dir(env, scope)])
         .map(|p| canonical_or(&p))
         .collect()
 }
@@ -184,29 +183,6 @@ fn is_broken_link(p: &Path) -> bool {
 
 fn canonical_or(p: &Path) -> PathBuf {
     fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
-}
-
-fn lock_path(env: &Env, scope: Scope) -> PathBuf {
-    match scope {
-        Scope::Global => env.home.join(".agents/.skill-lock.json"),
-        Scope::Project => env.project.join("skills-lock.json"),
-    }
-}
-
-/// Missing or corrupt lock files read as empty so skills are still discovered.
-fn read_lock(path: &Path) -> Value {
-    fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or(Value::Null)
-}
-
-fn lock_source(lock: &Value, name: &str) -> Option<String> {
-    lock.get("skills")?
-        .get(name)?
-        .get("source")?
-        .as_str()
-        .map(str::to_owned)
 }
 
 #[cfg(test)]
