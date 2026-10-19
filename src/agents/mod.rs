@@ -14,7 +14,10 @@ pub trait AgentAdapter {
     fn agent(&self) -> Agent;
     /// Directories this agent loads loose skills from, for `scope`.
     fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf>;
-    /// Hooks, plugins and marketplaces for `scope` (loose skills come from `skill_dirs`).
+    /// Hook config files this agent reads for `scope` (parsed by `hooks::discover`).
+    fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf>;
+    /// Plugins and marketplaces for `scope`. Loose skills and hooks are discovered by the
+    /// shared `skills`/`hooks` modules from `skill_dirs`/`hook_files`.
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>>;
 }
 

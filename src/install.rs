@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use crate::env::Env;
 use crate::model::{Agent, Scope};
 use crate::prompt::Prompter;
@@ -30,5 +32,18 @@ pub fn install(
     prompter: &dyn Prompter,
 ) -> anyhow::Result<()> {
     let _ = (req, env, runner, prompter);
+    todo!("lane: install")
+}
+
+/// A skill found in a source tree (offered as an install choice).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvailableSkill {
+    pub name: String,
+    pub path: PathBuf,
+}
+
+/// Every skill (dir containing `SKILL.md`) under `root`, recursively, sorted by name.
+pub fn scan_available(root: &Path) -> anyhow::Result<Vec<AvailableSkill>> {
+    let _ = root;
     todo!("lane: install")
 }

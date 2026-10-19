@@ -16,6 +16,11 @@ impl AgentAdapter for Claude {
         todo!("lane: claude")
     }
 
+    fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
+        let _ = (env, scope);
+        todo!("lane: claude")
+    }
+
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
         let _ = (env, scope);
         todo!("lane: claude")

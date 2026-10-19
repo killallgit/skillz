@@ -16,6 +16,11 @@ impl AgentAdapter for Codex {
         todo!("lane: codex-cursor")
     }
 
+    fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
+        let _ = (env, scope);
+        todo!("lane: codex-cursor")
+    }
+
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
         let _ = (env, scope);
         todo!("lane: codex-cursor")

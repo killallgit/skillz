@@ -26,14 +26,14 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
 | `env` | `Env { home, project }` |
 | `action` | `Action`, `Edit`, `apply_edit` (pure), `execute` (effects) |
 | `hooks` | parse hook JSON, `hook_group`, `discover(file)` |
-| `skills` | shared loose-skill discovery (npx `skills` aware), `scan_available` |
+| `skills` | shared loose-skill discovery (npx `skills` aware) |
 | `matcher` | `fuzzy_rank`, `pattern_matches` (glob) |
-| `agents/*` | per-agent discovery of hooks/plugins/marketplaces + skill dirs |
+| `agents/*` | per-agent plugin/marketplace discovery + `skill_dirs` + `hook_files` |
 | `tree` | display tree build + text render |
 | `tui/*` | multi-select list, collapsible tree, `/` filter |
 | `prompt` | `Prompter` trait, `TuiPrompter`, `AssumeYes` |
 | `runner` | `CommandRunner` trait, `SystemRunner` |
-| `install` | install flow |
+| `install` | install flow, `scan_available` |
 | `cli` | clap definitions, wiring, list/uninstall/install commands |
 
 ## On-disk formats (observed on a real machine)
