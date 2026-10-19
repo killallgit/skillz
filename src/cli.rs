@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::io::{IsTerminal, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
@@ -32,7 +32,7 @@ pub enum Command {
     /// Show installed augmentations as a tree (groups collapsed unless queried or --all)
     #[command(visible_alias = "ls")]
     List {
-        /// Fuzzy query to expand, or a project directory to limit the listing to
+        /// Fuzzy query to expand, or a project path (`.`, `./dir`, `/abs`) to limit the listing to
         target: Option<String>,
         /// Project directory (default: cwd + global)
         #[arg(short = 'C', long)]
@@ -164,7 +164,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
             filter,
             interactive,
         } => {
-            let (path, query) = split_target(&deps.cwd, project, target);
+            let (path, query) = split_target(project, target);
             let (env, scopes) = resolve(deps, path.as_deref(), filter.global)?;
             let view = ListView {
                 query: query.as_deref(),
@@ -255,15 +255,21 @@ fn gather(deps: &Deps, env: &Env, scopes: &[Scope], filter: &Filter) -> Vec<Augm
     inv.items.into_iter().filter(|i| filter.keeps(i)).collect()
 }
 
-/// `list TARGET`: an existing directory is the project (as in `list --hooks .`), anything
-/// else is a query. With `-C`, TARGET is always a query.
+/// `list TARGET`: a path starting with `.`, `..` or `/` is the project (as in
+/// `list --hooks .`); anything else, even a word naming a directory, is a query. With `-C`,
+/// TARGET is always a query.
 fn split_target(
-    cwd: &Path,
     project: Option<PathBuf>,
     target: Option<String>,
 ) -> (Option<PathBuf>, Option<String>) {
+    let path_like = |t: &str| {
+        matches!(
+            Path::new(t).components().next(),
+            Some(Component::CurDir | Component::ParentDir | Component::RootDir)
+        )
+    };
     match (project, target) {
-        (None, Some(t)) if cwd.join(&t).is_dir() => (Some(PathBuf::from(t)), None),
+        (None, Some(t)) if path_like(&t) => (Some(PathBuf::from(t)), None),
         other => other,
     }
 }
@@ -496,5 +502,27 @@ mod tests {
         assert_eq!(scopes(&deps, None, false), [Scope::Global]);
         assert_eq!(scopes(&deps, Some("."), false), [Scope::Global]);
         assert_eq!(scopes(&deps, Some("."), true), [Scope::Global]);
+    }
+
+    fn split(project: Option<&str>, target: &str) -> (Option<PathBuf>, Option<String>) {
+        split_target(project.map(PathBuf::from), Some(target.into()))
+    }
+
+    #[test]
+    fn split_target_path_like_is_project() {
+        for t in [".", "..", "./sub", "../sib", "/abs/dir"] {
+            assert_eq!(split(None, t), (Some(PathBuf::from(t)), None), "{t}");
+        }
+    }
+
+    #[test]
+    fn split_target_word_is_query() {
+        for t in ["caveman", "org/repo", ".hidden"] {
+            assert_eq!(split(None, t), (None, Some(t.into())), "{t}");
+        }
+        assert_eq!(
+            split(Some("p"), "."),
+            (Some(PathBuf::from("p")), Some(".".into()))
+        );
     }
 }

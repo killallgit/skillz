@@ -29,7 +29,8 @@ skillz install killallgit/killall-skills               # has a marketplace: pick
 ```
 
 Scope: a `PATH` (or `-C PATH`) means that project only, `-g` means global only, neither
-means both (project = cwd).
+means both (project = cwd). A `list` PATH must start with `.`, `..` or `/` (`./sub`, not
+`sub`); any other word is a query.
 
 Pickers: `↑↓/jk` move, `space` toggle, `a` toggle all, `/` filter, `enter` accept, `esc` cancel.
 
