@@ -59,7 +59,12 @@ mod tests {
 
     #[test]
     fn substring_matches_shadow_fuzzy_ones() {
-        let c = s(&["knowledge-work", "hooks", "speckit-plan", "setup-pre-commit skills"]);
+        let c = s(&[
+            "knowledge-work",
+            "hooks",
+            "speckit-plan",
+            "setup-pre-commit skills",
+        ]);
         assert_eq!(fuzzy_rank("hook", &c), vec![1]);
         assert_eq!(fuzzy_rank("speckit", &c), vec![2]);
         assert_eq!(fuzzy_rank("spkpln", &c), vec![2]);
