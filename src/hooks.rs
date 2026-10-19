@@ -201,14 +201,19 @@ const SHARED_DIRS: &[&str] = &["claude", "codex", "cursor", "agents", "config", 
 /// Name of the tool a hook command belongs to, so related hooks group together.
 /// e.g. `bd prime --hook-json` -> `bd`, `bash '/x/.claude/hooks/herdr-agent-state.sh' s` -> `herdr-agent-state`.
 pub fn hook_group(command: &str) -> String {
-    let tokens = shell_words::split(command)
-        .unwrap_or_else(|_| command.split_whitespace().map(str::to_string).collect());
+    let tokens = words(command);
     match tokens.iter().find(|t| !is_skippable(t)) {
-        // `bash -c "rtk hook"`: the program is inside the quoted script.
-        Some(t) if t.contains(char::is_whitespace) => hook_group(t),
+        // `bash -c "rtk hook"`: the program is inside the quoted script. Recurse only when
+        // that splits further, or a space shell_words keeps (U+00A0) would loop forever.
+        Some(t) if words(t).len() > 1 => hook_group(t),
         Some(t) => program_group(t),
         None => tokens.first().cloned().unwrap_or_default(),
     }
+}
+
+fn words(command: &str) -> Vec<String> {
+    shell_words::split(command)
+        .unwrap_or_else(|_| command.split_whitespace().map(str::to_string).collect())
 }
 
 fn is_skippable(token: &str) -> bool {
@@ -358,6 +363,7 @@ mod tests {
         assert_eq!(hook_group("bd 'unterminated"), "bd");
         assert_eq!(hook_group("bash"), "bash");
         assert_eq!(hook_group(""), "");
+        assert!(!hook_group("rtk\u{a0}hook").is_empty());
         assert_eq!(hook_group("=x ok"), "=x");
     }
 
