@@ -102,20 +102,24 @@ fn augmentation(
 }
 
 /// Links first, then the canonical dir if we own it, then the lock entry. No duplicates.
+/// Every `RemovePath` is under an `owned` root.
 fn removal(
     entries: &[Entry],
     canonical: &Path,
     owned: &[PathBuf],
     lock: Option<(PathBuf, String)>,
 ) -> Vec<Action> {
-    let owned = owned
+    let store = owned
         .iter()
         .find_map(|r| RemovalTarget::new(r, canonical.strip_prefix(r).ok()?));
     let targets = entries
         .iter()
         .filter(|e| e.link != canonical)
-        .filter_map(|e| RemovalTarget::new(e.link.parent()?, [&e.name]))
-        .chain(owned);
+        .filter_map(|e| {
+            let dir = e.link.parent().filter(|d| owned.iter().any(|r| r == d))?;
+            RemovalTarget::new(dir, [&e.name])
+        })
+        .chain(store);
     let mut actions: Vec<Action> = Vec::new();
     for t in targets {
         let a = Action::RemovePath(t);
@@ -133,13 +137,16 @@ fn removal(
 }
 
 /// Dirs whose contents skillz may delete for `scope`: that scope's skill dirs and its
-/// `.agents/skills` store. Anything outside (e.g. a user's checkout) is never removed.
+/// `.agents/skills` store. Anything outside (e.g. a user's checkout) is never removed, nor
+/// is a project dir that resolves outside the project (e.g. symlinked into `~`).
 fn owned_roots(env: &Env, dirs: &[SkillDir], scope: Scope) -> Vec<PathBuf> {
+    let project = canonical_or(&env.project);
     dirs.iter()
         .filter(|d| d.scope == scope)
         .map(|d| d.path.clone())
         .chain([npx_skills::store_dir(env, scope)])
         .map(|p| canonical_or(&p))
+        .filter(|r| scope == Scope::Global || r.starts_with(&project))
         .collect()
 }
 
@@ -441,6 +448,27 @@ mod tests {
         assert_eq!(project.id, format!("skill:{}:project", canon.display()));
         assert_eq!(project.group, "local");
         assert_eq!(project.removal, vec![rm(proj_link)]);
+    }
+
+    #[test]
+    fn project_dirs_symlinked_into_home_never_delete_global_files() {
+        let f = fixture();
+        let (h, p) = (&f.env.home, &f.env.project);
+        let canon = h.join(".agents/skills/tdd");
+        skill(&canon);
+        link(&canon, &h.join(".claude/skills/tdd"));
+        link(&h.join(".agents/skills"), &p.join(".agents/skills"));
+        link(&h.join(".claude/skills"), &p.join(".claude/skills"));
+        let dirs = vec![
+            sd(Agent::Claude, Scope::Project, p.join(".claude/skills")),
+            sd(Agent::Codex, Scope::Project, p.join(".agents/skills")),
+        ];
+
+        let augs = discover(&f.env, &dirs).unwrap();
+
+        assert_eq!(augs.len(), 1);
+        assert_eq!(augs[0].scope, Scope::Project);
+        assert_eq!(augs[0].removal, vec![]);
     }
 
     #[test]

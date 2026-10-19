@@ -130,7 +130,8 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
   in as separate segments, so `a/b` is rejected rather than split. Roots: Claude
   `plugins/cache`, `plugins/data`, `plugins/marketplaces`; Codex `plugins/cache`; skills the
   agent skill dir holding the link, and the owned skill dir of the same scope holding the
-  canonical dir.
+  canonical dir (a project skill dir whose canonical path is outside the project is not
+  owned, so a project item never deletes through a dir symlinked into `~`).
 - `execute` writes all edits or none (a failed rename restores files already replaced, best
   effort), then runs `RemovePath`s in plan order; a failed removal errors naming the paths
   already removed (no rollback). Before deleting it re-checks the target is strictly inside
