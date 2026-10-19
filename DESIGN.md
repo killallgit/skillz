@@ -115,6 +115,10 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
   `RemovePath(~/.codex/plugins/cache/<mp>)`.
 - Codex `RemovePath`s (global only) are emitted only when every name joined into the path is
   a single plain segment (non-empty, not `.`/`..`, no `/` or `\`); the TOML edits still run.
+- `execute` writes all edits or none (a failed rename restores files already replaced, best
+  effort), then runs `RemovePath`s; a failed removal errors naming the paths already removed
+  (no rollback). A `RemovePath` whose parent or grandparent is a symlink is skipped, never
+  deleted through the link.
 - `execute` validates every edited file re-parses before writing; after uninstall the CLI
   re-runs discovery and reports any selected id that is still present.
 

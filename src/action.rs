@@ -218,7 +218,7 @@ fn retain_tables(
 }
 
 /// Dedupe, then plan every edit in memory (any failure returns before the filesystem is
-/// touched), then write edited files atomically, then remove paths in their original order.
+/// touched), then write all edited files or none, then remove paths in their original order.
 pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
     let mut unique: Vec<&Action> = Vec::new();
     for action in actions {
@@ -252,26 +252,43 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
     }
 
     let mut report = Report::default();
+    let mut staged = Vec::new();
     for (file, plan) in plans {
         if let Some((before, after)) = plan
             && before != after
         {
-            write_atomic(file, &after).with_context(|| format!("write {}", file.display()))?;
+            match stage(file, before, &after) {
+                Ok(s) => staged.push(s),
+                Err(e) => {
+                    discard(&staged);
+                    return Err(e.context(format!("write {}", file.display())));
+                }
+            }
             report.edited.push(file.clone());
         }
     }
+    commit(&staged)?;
     for action in unique {
-        if let Action::RemovePath(path) = action
-            && remove_path(path)?
-        {
-            report.removed.push(path.clone());
+        if let Action::RemovePath(path) = action {
+            let removed = remove_path(path)
+                .with_context(|| format!("already removed: {:?}", report.removed))?;
+            if removed {
+                report.removed.push(path.clone());
+            }
         }
     }
     Ok(report)
 }
 
-/// Removes a symlink itself (never its target), a file, or a whole directory tree.
+/// Removes a symlink itself (never its target), a file, or a whole directory tree. Returns
+/// false (removes nothing) when an ancestor is a symlink, as deleting would reach into its target.
 fn remove_path(path: &Path) -> anyhow::Result<bool> {
+    // Rule: only the two nearest ancestors (managed root..target, e.g. cache/<mp>/<name>), so
+    // system links (macOS /var) and a symlinked ~/.claude don't block removal.
+    let linked = |a: &Path| fs::symlink_metadata(a).is_ok_and(|m| m.file_type().is_symlink());
+    if path.ancestors().skip(1).take(2).any(linked) {
+        return Ok(false);
+    }
     let meta = match fs::symlink_metadata(path) {
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
         other => other.with_context(|| format!("stat {}", path.display()))?,
@@ -294,9 +311,16 @@ fn read_existing(file: &Path) -> anyhow::Result<Option<String>> {
     }
 }
 
-/// Temp file + rename in the real file's directory, so a symlinked config (dotfiles) stays a
-/// symlink and readers never see a half-written file. Keeps the original permissions.
-fn write_atomic(file: &Path, contents: &str) -> anyhow::Result<()> {
+/// An edit written to a temp file beside the real file, ready to rename over it.
+struct Staged {
+    target: PathBuf,
+    tmp: PathBuf,
+    original: String,
+}
+
+/// Temp file in the real file's directory, so a symlinked config (dotfiles) stays a symlink
+/// and readers never see a half-written file. Keeps the original permissions.
+fn stage(file: &Path, original: String, contents: &str) -> anyhow::Result<Staged> {
     let target = fs::canonicalize(file)?;
     let name = target
         .file_name()
@@ -304,13 +328,37 @@ fn write_atomic(file: &Path, contents: &str) -> anyhow::Result<()> {
         .to_string_lossy();
     let tmp = target.with_file_name(format!(".{name}.skillz-tmp"));
     let perms = fs::metadata(&target)?.permissions();
-    let result = fs::write(&tmp, contents)
-        .and_then(|()| fs::set_permissions(&tmp, perms))
-        .and_then(|()| fs::rename(&tmp, &target));
+    let result = fs::write(&tmp, contents).and_then(|()| fs::set_permissions(&tmp, perms));
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
     }
-    Ok(result?)
+    result?;
+    Ok(Staged {
+        target,
+        tmp,
+        original,
+    })
+}
+
+/// Renames every temp file into place; if one fails, restores those already renamed (best
+/// effort) and drops the rest.
+fn commit(staged: &[Staged]) -> anyhow::Result<()> {
+    for (i, s) in staged.iter().enumerate() {
+        if let Err(e) = fs::rename(&s.tmp, &s.target) {
+            for done in &staged[..i] {
+                let _ = fs::write(&done.target, &done.original);
+            }
+            discard(&staged[i..]);
+            return Err(e).with_context(|| format!("write {}", s.target.display()));
+        }
+    }
+    Ok(())
+}
+
+fn discard(staged: &[Staged]) {
+    for s in staged {
+        let _ = fs::remove_file(&s.tmp);
+    }
 }
 
 fn validate(file: &Path, contents: &str) -> anyhow::Result<()> {
@@ -701,6 +749,38 @@ enabled = false
         assert!(fs::symlink_metadata(&link).is_err());
         assert!(fs::symlink_metadata(&dangling).is_err());
         assert!(target.join("SKILL.md").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_skips_path_under_symlinked_ancestor() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("checkout");
+        fs::create_dir_all(real.join("name")).unwrap();
+        write(&real.join("name/SKILL.md"), "x");
+        fs::create_dir(dir.path().join("cache")).unwrap();
+        std::os::unix::fs::symlink(&real, dir.path().join("cache/mp")).unwrap();
+
+        let report = execute(&[Action::RemovePath(dir.path().join("cache/mp/name"))]).unwrap();
+        assert!(report.removed.is_empty());
+        assert!(real.join("name/SKILL.md").exists());
+    }
+
+    #[test]
+    fn commit_failure_restores_renamed_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = (dir.path().join("a.json"), dir.path().join("b.json"));
+        write(&a, "{}");
+        write(&b, "[]");
+        let staged = [
+            stage(&a, "{}".into(), "{\"a\":1}").unwrap(),
+            stage(&b, "[]".into(), "[1]").unwrap(),
+        ];
+        fs::remove_file(&staged[1].tmp).unwrap();
+        assert!(commit(&staged).is_err());
+        assert_eq!(fs::read_to_string(&a).unwrap(), "{}");
+        assert_eq!(fs::read_to_string(&b).unwrap(), "[]");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
     }
 
     #[test]
