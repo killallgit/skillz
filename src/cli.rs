@@ -339,7 +339,8 @@ fn uninstall(
     let picked = if dry_run {
         (0..candidates.len()).collect()
     } else {
-        deps.prompter.multi_select("Select items to remove", &labels)?
+        deps.prompter
+            .multi_select("Select items to remove", &labels)?
     };
     let chosen: Vec<&Augmentation> = picked
         .into_iter()
