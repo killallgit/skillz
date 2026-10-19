@@ -88,7 +88,9 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
 
 ## Ids and grouping
 
-- Skill: `skill:<canonical path>`; group = lock `source` or `"local"`; source = same.
+- Skill: `skill:<canonical path>` (plus `:project` for a project item whose canonical dir a
+  global item shares, e.g. a project link into `~/.agents/skills`); group = lock `source` or
+  `"local"`; source = same.
 - Hook group: `hook:<file>:<group>`; name = `hook_group(cmd)`; group = `"hooks"`;
   children = `"<Event> [<matcher>]: <command>"` (display only).
 - Plugin: `plugin:<agent>:<scope>:<name@mp>`; name = `name@mp`; group = `mp`.
@@ -99,7 +101,9 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
 - **Skill**: remove every agent-dir entry (symlink or dir) that resolves to the canonical
   dir, then the canonical dir **only if it lives inside a known skill dir** (never delete a
   symlink target outside skill dirs — that is the user's source checkout), then
-  `JsonRemoveKey ["skills", name]` on the scope's lock file.
+  `JsonRemoveKey ["skills", name]` on the scope's lock file. Only a canonical dir exactly one
+  segment under the scope's `.agents/skills` store has a lock entry (source and edit), keyed
+  by that segment, not by an agent-dir entry's name.
 - **Hook group**: one `RemoveHook { event, command }` per handler; `apply_edit` hands it to
   `hooks::remove_hook` with the format from the file's extension (`.toml` keeps formatting,
   JSON keeps key order). Empty groups/events are pruned.
@@ -130,7 +134,8 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
   in as separate segments, so `a/b` is rejected rather than split. Roots: Claude
   `plugins/cache`, `plugins/data`, `plugins/marketplaces`; Codex `plugins/cache`; skills the
   agent skill dir holding the link, and the owned skill dir of the same scope holding the
-  canonical dir.
+  canonical dir (a project skill dir whose canonical path is outside the project is not
+  owned, so a project item never deletes through a dir symlinked into `~`).
 - `execute` writes all edits or none (a failed rename restores files already replaced, best
   effort), then runs `RemovePath`s in plan order; a failed removal errors naming the paths
   already removed (no rollback). Before deleting it re-checks the target is strictly inside

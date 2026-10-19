@@ -69,7 +69,13 @@ fn augmentation(
     suffix: bool,
 ) -> Augmentation {
     let name = entries[0].name.clone();
-    let source = lock.get(&name).cloned();
+    // npx keys its lock by the dir name in its store, so only a skill directly there has one.
+    let store = canonical_or(&npx_skills::store_dir(env, scope));
+    let locked = (canonical.parent() == Some(store.as_path()))
+        .then(|| canonical.file_name()?.to_str())
+        .flatten()
+        .and_then(|n| Some((n.to_owned(), lock.get(n)?.clone())));
+    let source = locked.as_ref().map(|(_, s)| s.clone());
     let agents: Vec<Agent> = entries
         .iter()
         .map(|e| e.agent)
@@ -84,9 +90,7 @@ fn augmentation(
         entries,
         canonical,
         &owned_roots(env, dirs, scope),
-        source
-            .as_ref()
-            .map(|_| (npx_skills::lock_path(env, scope), name.clone())),
+        locked.map(|(n, _)| (npx_skills::lock_path(env, scope), n)),
     );
     Augmentation {
         id,
@@ -102,20 +106,24 @@ fn augmentation(
 }
 
 /// Links first, then the canonical dir if we own it, then the lock entry. No duplicates.
+/// Every `RemovePath` is under an `owned` root.
 fn removal(
     entries: &[Entry],
     canonical: &Path,
     owned: &[PathBuf],
     lock: Option<(PathBuf, String)>,
 ) -> Vec<Action> {
-    let owned = owned
+    let store = owned
         .iter()
         .find_map(|r| RemovalTarget::new(r, canonical.strip_prefix(r).ok()?));
     let targets = entries
         .iter()
         .filter(|e| e.link != canonical)
-        .filter_map(|e| RemovalTarget::new(e.link.parent()?, [&e.name]))
-        .chain(owned);
+        .filter_map(|e| {
+            let dir = e.link.parent().filter(|d| owned.iter().any(|r| r == d))?;
+            RemovalTarget::new(dir, [&e.name])
+        })
+        .chain(store);
     let mut actions: Vec<Action> = Vec::new();
     for t in targets {
         let a = Action::RemovePath(t);
@@ -133,13 +141,16 @@ fn removal(
 }
 
 /// Dirs whose contents skillz may delete for `scope`: that scope's skill dirs and its
-/// `.agents/skills` store. Anything outside (e.g. a user's checkout) is never removed.
+/// `.agents/skills` store. Anything outside (e.g. a user's checkout) is never removed, nor
+/// is a project dir that resolves outside the project (e.g. symlinked into `~`).
 fn owned_roots(env: &Env, dirs: &[SkillDir], scope: Scope) -> Vec<PathBuf> {
+    let project = canonical_or(&env.project);
     dirs.iter()
         .filter(|d| d.scope == scope)
         .map(|d| d.path.clone())
         .chain([npx_skills::store_dir(env, scope)])
         .map(|p| canonical_or(&p))
+        .filter(|r| scope == Scope::Global || r.starts_with(&project))
         .collect()
 }
 
@@ -299,6 +310,33 @@ mod tests {
     }
 
     #[test]
+    fn lock_entry_belongs_to_the_store_dir_not_the_entry_name() {
+        let f = fixture();
+        let h = &f.env.home;
+        let canon = h.join(".agents/skills/tdd");
+        skill(&canon);
+        let renamed = h.join(".claude/skills/my-tdd");
+        link(&canon, &renamed);
+        let mine = h.join(".codex/skills/tdd");
+        skill(&mine);
+        let lock = h.join(".agents/.skill-lock.json");
+        write_lock(&lock, r#"{"skills":{"tdd":{"source":"o/r"}}}"#);
+
+        let augs = discover(&f.env, &global_dirs(&f.env)).unwrap();
+
+        let id = |p: &Path| format!("skill:{}", p.display());
+        let npx = augs.iter().find(|a| a.id == id(&canon)).unwrap();
+        assert_eq!(npx.source.as_deref(), Some("o/r"));
+        assert_eq!(
+            npx.removal,
+            vec![rm(renamed), rm(canon.clone()), lock_edit(lock, "tdd")]
+        );
+        let local = augs.iter().find(|a| a.id == id(&mine)).unwrap();
+        assert_eq!(local.source, None);
+        assert_eq!(local.removal, vec![rm(mine.clone())]);
+    }
+
+    #[test]
     fn copied_skill_without_lock_is_local() {
         let f = fixture();
         let dir = f.env.home.join(".claude/skills/mine");
@@ -441,6 +479,27 @@ mod tests {
         assert_eq!(project.id, format!("skill:{}:project", canon.display()));
         assert_eq!(project.group, "local");
         assert_eq!(project.removal, vec![rm(proj_link)]);
+    }
+
+    #[test]
+    fn project_dirs_symlinked_into_home_never_delete_global_files() {
+        let f = fixture();
+        let (h, p) = (&f.env.home, &f.env.project);
+        let canon = h.join(".agents/skills/tdd");
+        skill(&canon);
+        link(&canon, &h.join(".claude/skills/tdd"));
+        link(&h.join(".agents/skills"), &p.join(".agents/skills"));
+        link(&h.join(".claude/skills"), &p.join(".claude/skills"));
+        let dirs = vec![
+            sd(Agent::Claude, Scope::Project, p.join(".claude/skills")),
+            sd(Agent::Codex, Scope::Project, p.join(".agents/skills")),
+        ];
+
+        let augs = discover(&f.env, &dirs).unwrap();
+
+        assert_eq!(augs.len(), 1);
+        assert_eq!(augs[0].scope, Scope::Project);
+        assert_eq!(augs[0].removal, vec![]);
     }
 
     #[test]
