@@ -355,6 +355,16 @@ fn uninstall(
     writeln!(out, "Removing:")?;
     for c in &chosen {
         writeln!(out, "  {}", label(c))?;
+        // Removal is always complete, so say when `-a` narrows the view but not the effect.
+        let others: Vec<String> = c
+            .agents
+            .iter()
+            .filter(|a| !filter.agents.is_empty() && !filter.agents.contains(a))
+            .map(Agent::to_string)
+            .collect();
+        if !others.is_empty() {
+            writeln!(out, "    also removes it for: {}", others.join(", "))?;
+        }
     }
     writeln!(out, "Plan:")?;
     for step in &plan {
