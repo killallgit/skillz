@@ -46,7 +46,7 @@ impl AgentAdapter for Codex {
                     .iter()
                     .any(|m| m.bundled && m.name == split_id(id).1)
             })
-            .map(|id| plugin(&id, scope, &config, &cache, &marketplaces))
+            .map(|id| plugin(&id, scope, &config, &cache, &marketplaces, &doc))
             .collect();
         let mps = marketplaces
             .iter()
@@ -108,11 +108,34 @@ fn display_source(source: &str) -> String {
     }
 }
 
+// Ids without `@mp` are not a shape Codex installs; skip rather than guess a cache path.
 fn plugin_ids(doc: &DocumentMut) -> Vec<String> {
     table_keys(doc, "plugins")
         .into_iter()
         .map(|(id, _)| id.to_string())
+        .filter(|id| id.contains('@'))
         .collect()
+}
+
+/// `[hooks.state."<id>:..."]` trust entries Codex keeps for a plugin's hooks.
+fn hook_state_keys(doc: &DocumentMut, id: &str) -> Vec<String> {
+    let prefix = format!("{id}:");
+    doc.get("hooks")
+        .and_then(|h| h.get("state"))
+        .and_then(Item::as_table_like)
+        .map(|t| {
+            t.iter()
+                .map(|(k, _)| k)
+                .filter(|k| k.starts_with(&prefix))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A TOML key is safe to join onto a cache dir only as a single plain path segment.
+fn safe_segment(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\'])
 }
 
 /// `name@mp` -> (`name`, `mp`).
@@ -126,11 +149,17 @@ fn plugin(
     config: &Path,
     cache: &Path,
     marketplaces: &[Marketplace],
+    doc: &DocumentMut,
 ) -> Augmentation {
     let (name, mp) = split_id(id);
     let plugin_cache = cache.join(mp).join(name);
-    let mut removal = vec![toml_remove(config, "plugins", id)];
-    if scope == Scope::Global {
+    let mut removal = vec![toml_remove(config, &["plugins", id])];
+    removal.extend(
+        hook_state_keys(doc, id)
+            .iter()
+            .map(|k| toml_remove(config, &["hooks", "state", k])),
+    );
+    if scope == Scope::Global && safe_segment(name) && safe_segment(mp) {
         removal.push(Action::RemovePath(plugin_cache.clone()));
     }
     Augmentation {
@@ -158,8 +187,8 @@ fn marketplace(
 ) -> Augmentation {
     let own: Vec<&Augmentation> = plugins.iter().filter(|p| p.group == m.name).collect();
     let mut removal: Vec<Action> = own.iter().flat_map(|p| p.removal.clone()).collect();
-    removal.push(toml_remove(config, "marketplaces", &m.name));
-    if scope == Scope::Global {
+    removal.push(toml_remove(config, &["marketplaces", &m.name]));
+    if scope == Scope::Global && safe_segment(&m.name) {
         removal.push(Action::RemovePath(cache.join(&m.name)));
     }
     Augmentation {
@@ -175,11 +204,11 @@ fn marketplace(
     }
 }
 
-fn toml_remove(config: &Path, table: &str, key: &str) -> Action {
+fn toml_remove(config: &Path, path: &[&str]) -> Action {
     Action::Edit {
         file: config.to_path_buf(),
         edit: Edit::TomlRemoveKey {
-            path: vec![table.to_string(), key.to_string()],
+            path: path.iter().map(|k| k.to_string()).collect(),
         },
     }
 }
@@ -241,6 +270,16 @@ enabled = true
 
 [plugins."commit@killall"]
 enabled = false
+
+[hooks.state."review@killall:hooks/hooks.json:session_start:0:0"]
+trusted_hash = "abc"
+enabled = true
+
+[hooks.state."review@killall:hooks/hooks.json:stop:0:0"]
+enabled = false
+
+[hooks.state."review@killall-old:hooks/hooks.json:stop:0:0"]
+enabled = true
 "#;
 
     fn write(path: &Path, text: &str) {
@@ -267,6 +306,18 @@ enabled = false
     fn find<'a>(items: &'a [Augmentation], id: &str) -> &'a Augmentation {
         items.iter().find(|a| a.id == id).unwrap()
     }
+
+    fn rm_state(file: &Path, key: &str) -> Action {
+        Action::Edit {
+            file: file.to_path_buf(),
+            edit: Edit::TomlRemoveKey {
+                path: vec!["hooks".into(), "state".into(), key.into()],
+            },
+        }
+    }
+
+    const REVIEW_START: &str = "review@killall:hooks/hooks.json:session_start:0:0";
+    const REVIEW_STOP: &str = "review@killall:hooks/hooks.json:stop:0:0";
 
     fn rm_key(file: &Path, table: &str, key: &str) -> Action {
         Action::Edit {
@@ -344,6 +395,8 @@ enabled = false
             review.removal,
             vec![
                 rm_key(&config, "plugins", "review@killall"),
+                rm_state(&config, REVIEW_START),
+                rm_state(&config, REVIEW_STOP),
                 Action::RemovePath(cache.join("review")),
             ]
         );
@@ -369,6 +422,8 @@ enabled = false
             mp.removal,
             vec![
                 rm_key(&config, "plugins", "review@killall"),
+                rm_state(&config, REVIEW_START),
+                rm_state(&config, REVIEW_STOP),
                 Action::RemovePath(cache.join("killall/review")),
                 rm_key(&config, "plugins", "commit@killall"),
                 Action::RemovePath(cache.join("killall/commit")),
@@ -386,6 +441,82 @@ enabled = false
                 rm_key(&config, "marketplaces", "localdev"),
                 Action::RemovePath(cache.join("localdev")),
             ]
+        );
+    }
+
+    #[test]
+    fn hook_state_keys_match_plugin_prefix_only() {
+        let key = "ponytail@ponytail:hooks/claude-codex-hooks.json:session_start:0:0";
+        let doc: DocumentMut = format!(
+            "[hooks.state.\"{key}\"]\ntrusted_hash = \"h\"\nenabled = true\n\
+             [hooks.state.\"ponytail@other:hooks/x.json:stop:0:0\"]\nenabled = true\n"
+        )
+        .parse()
+        .unwrap();
+        assert_eq!(hook_state_keys(&doc, "ponytail@ponytail"), vec![key]);
+        assert!(hook_state_keys(&doc, "ponytail").is_empty());
+        assert!(hook_state_keys(&"x = 1".parse().unwrap(), "a@b").is_empty());
+    }
+
+    #[test]
+    fn unsafe_names_never_become_paths() {
+        let (_d, env) = setup();
+        let config = env.home.join(".codex/config.toml");
+        write(
+            &config,
+            r#"
+[marketplaces.".."]
+source_type = "local"
+source = "x"
+
+[marketplaces."a/b"]
+source_type = "local"
+source = "y"
+
+[plugins.killall]
+enabled = true
+
+[plugins."x@.."]
+enabled = true
+
+[plugins.'..\evil@ok']
+enabled = true
+
+[plugins."p@"]
+enabled = true
+"#,
+        );
+        let items = Codex.discover(&env, Scope::Global).unwrap();
+        let mut ids: Vec<&str> = items.iter().map(|a| a.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(
+            ids,
+            vec![
+                "marketplace:codex:global:..",
+                "marketplace:codex:global:a/b",
+                r"plugin:codex:global:..\evil@ok",
+                "plugin:codex:global:p@",
+                "plugin:codex:global:x@..",
+            ]
+        );
+        assert_eq!(
+            find(&items, "marketplace:codex:global:..").removal,
+            vec![
+                rm_key(&config, "plugins", "x@.."),
+                rm_key(&config, "marketplaces", ".."),
+            ]
+        );
+        assert_eq!(
+            find(&items, "marketplace:codex:global:a/b").removal,
+            vec![rm_key(&config, "marketplaces", "a/b")]
+        );
+        assert_eq!(
+            find(&items, r"plugin:codex:global:..\evil@ok").removal,
+            vec![rm_key(&config, "plugins", r"..\evil@ok")]
+        );
+        assert_eq!(
+            find(&items, "plugin:codex:global:p@").removal,
+            vec![rm_key(&config, "plugins", "p@")]
         );
     }
 

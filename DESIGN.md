@@ -98,9 +98,13 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
 - **Claude marketplace** (global only): its plugins' removals, `JsonRemoveKey [mp]` in
   `known_marketplaces.json`, `JsonRemoveKey ["extraKnownMarketplaces", mp]` in settings,
   `RemovePath(installLocation)`.
-- **Codex plugin**: `TomlRemoveKey ["plugins", id]` + `RemovePath(cache/<mp>/<name>)`.
+- **Codex plugin** (ids without `@` are skipped): `TomlRemoveKey ["plugins", id]` +
+  `TomlRemoveKey ["hooks", "state", key]` for every `hooks.state` key starting `"<id>:"` +
+  `RemovePath(cache/<mp>/<name>)`.
 - **Codex marketplace**: its plugins' removals + `TomlRemoveKey ["marketplaces", mp]` +
   `RemovePath(~/.codex/plugins/cache/<mp>)`.
+- Codex `RemovePath`s (global only) are emitted only when every name joined into the path is
+  a single plain segment (non-empty, not `.`/`..`, no `/` or `\`); the TOML edits still run.
 - `execute` validates every edited file re-parses before writing; after uninstall the CLI
   re-runs discovery and reports any selected id that is still present.
 
