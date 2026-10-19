@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use toml_edit::{DocumentMut, Item};
 
-use super::AgentAdapter;
+use super::{AgentAdapter, safe_segment};
 use crate::action::{Action, Edit};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Kind, Scope};
@@ -132,11 +132,6 @@ fn hook_state_keys(doc: &DocumentMut, id: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-/// A TOML key is safe to join onto a cache dir only as a single plain path segment.
-fn safe_segment(name: &str) -> bool {
-    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\'])
 }
 
 /// `name@mp` -> (`name`, `mp`).

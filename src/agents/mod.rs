@@ -24,6 +24,11 @@ pub trait AgentAdapter {
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>>;
 }
 
+/// A config-supplied name is safe to join onto a dir we delete only as one plain segment.
+fn safe_segment(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\'])
+}
+
 pub fn registry() -> Vec<Box<dyn AgentAdapter>> {
     vec![
         Box::new(claude::Claude),

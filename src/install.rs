@@ -273,14 +273,13 @@ fn run_checked(
     args: &[String],
     cwd: &Path,
 ) -> anyhow::Result<()> {
-    let shown: Vec<String> = args.iter().map(|a| redact(a)).collect();
-    eprintln!("$ {program} {}", shown.join(" "));
+    let shown = args.iter().map(|a| redact(a)).collect::<Vec<_>>().join(" ");
+    eprintln!("$ {program} {shown}");
     let out = runner.run(program, args, cwd)?;
     anyhow::ensure!(
         out.success,
-        "`{program} {}` failed: {}",
-        args.join(" "),
-        out.stderr.trim()
+        "`{program} {shown}` failed: {}",
+        redact(out.stderr.trim())
     );
     Ok(())
 }
@@ -580,6 +579,20 @@ mod tests {
         );
         assert!(install(&r, &fx.env, &runner, &ScriptedPrompter::new(&[], true)).is_err());
         assert_eq!(runner.calls().len(), 1);
+    }
+
+    #[test]
+    fn clone_failure_error_hides_url_credentials() {
+        let fx = project_with(|_| {});
+        let runner = FakeRunner::new(skills_fixture).failing("git");
+        let r = req(
+            "https://u:s3cret@x.dev/o/r.git",
+            &[Agent::Claude],
+            Scope::Project,
+            SkillSelection::All,
+        );
+        let err = install(&r, &fx.env, &runner, &ScriptedPrompter::new(&[], true)).unwrap_err();
+        assert!(!format!("{err:#}").contains("s3cret"));
     }
 
     #[test]

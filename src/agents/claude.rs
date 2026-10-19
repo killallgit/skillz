@@ -6,7 +6,7 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::Context;
 use serde_json::Value;
 
-use super::AgentAdapter;
+use super::{AgentAdapter, safe_segment};
 use crate::action::{Action, Edit};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Kind, Scope};
@@ -198,9 +198,8 @@ fn covers_all(installs: &[Install], id: &str, removed: impl Fn(&Install) -> bool
 
 /// `RemovePath` for the plugin's cache and data dirs; none unless `name@mp` are safe segments.
 fn plugin_dirs(home: &Path, id: &str) -> Vec<Action> {
-    let safe = |s: &str| !s.is_empty() && !s.contains('/') && !s.contains("..");
     match id.rsplit_once('@') {
-        Some((name, mp)) if safe(name) && safe(mp) => {
+        Some((name, mp)) if safe_segment(name) && safe_segment(mp) => {
             let dir = home.join(".claude/plugins");
             vec![
                 Action::RemovePath(dir.join("cache").join(mp).join(name)),
@@ -624,10 +623,20 @@ mod tests {
     #[test]
     fn plugin_dirs_rejects_unsafe_ids() {
         for id in [
-            "bare", "@acme", "x@", "a/b@acme", "x@a/b", "..@acme", "x@..",
+            "bare",
+            "@acme",
+            "x@",
+            "a/b@acme",
+            "x@a/b",
+            "..@acme",
+            "x@..",
+            ".@acme",
+            "x@.",
+            "a\\b@acme",
         ] {
             assert_eq!(plugin_dirs(Path::new("/h"), id), [], "{id}");
         }
+        assert_eq!(plugin_dirs(Path::new("/h"), "a..b@acme").len(), 2);
     }
 
     #[test]
