@@ -460,8 +460,7 @@ fn describe(step: &Action) -> String {
         Action::RemovePath(p) => format!("rm {}", p.display()),
         Action::Edit { file, edit } => {
             let what = match edit {
-                Edit::JsonRemoveHook { event, command }
-                | Edit::TomlRemoveHook { event, command } => format!("hook {event}: {command}"),
+                Edit::RemoveHook { event, command } => format!("hook {event}: {command}"),
                 Edit::JsonRemoveKey { path } | Edit::TomlRemoveKey { path } => path.join("."),
                 Edit::JsonRemovePluginInstall { id, .. } => format!("install record {id}"),
             };

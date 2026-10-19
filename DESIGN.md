@@ -24,8 +24,8 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
 | --- | --- |
 | `model` | `Agent`, `Kind`, `Scope`, `Augmentation` |
 | `env` | `Env { home, project }` |
-| `action` | `Action`, `Edit`, `apply_edit` (pure), `execute` (effects) |
-| `hooks` | parse hook JSON/TOML, `hook_group`, `discover(file)` |
+| `action` | `Action`, `Edit`, `apply_edit` (pure), `execute` (effects: dedupe, plan, all-or-nothing commit, path removal) |
+| `hooks` | every hook layout, both ways: `Format::of(file)`, `parse` and `remove_hook` (pure, one walker per format), `hook_group`, `discover(file)` |
 | `skills` | shared loose-skill discovery (npx `skills` aware) |
 | `matcher` | `fuzzy_rank`, `pattern_matches` (glob) |
 | `agents/*` | per-agent plugin/marketplace discovery + `skill_dirs` + `hook_files` |
@@ -95,8 +95,9 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
   dir, then the canonical dir **only if it lives inside a known skill dir** (never delete a
   symlink target outside skill dirs — that is the user's source checkout), then
   `JsonRemoveKey ["skills", name]` on the scope's lock file.
-- **Hook group**: one `JsonRemoveHook` per handler (`TomlRemoveHook` for `.toml` files,
-  formatting preserved). Empty groups/events are pruned.
+- **Hook group**: one `RemoveHook { event, command }` per handler; `apply_edit` hands it to
+  `hooks::remove_hook` with the format from the file's extension (`.toml` keeps formatting,
+  JSON keeps key order). Empty groups/events are pruned.
 - **Claude plugin**: `JsonRemoveKey ["enabledPlugins", id]` in the scope's settings
   (project scope: both `settings.json` and `settings.local.json`) and
   `JsonRemovePluginInstall` in `installed_plugins.json`. When that drops the id's last

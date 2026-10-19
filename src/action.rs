@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use serde_json::Value;
 
+use crate::hooks::{self, Format};
+
 /// A single side effect needed to remove an augmentation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
@@ -17,10 +19,9 @@ pub enum Action {
 /// A pure transformation of a config file's text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Edit {
-    /// Remove every hook handler under `event` whose command equals `command`.
-    /// Handles the nested layout (`hooks.<Event>[].hooks[].command`, Claude/Codex) and the
-    /// flat layout (`hooks.<event>[].command`, Cursor). Prunes emptied groups and events.
-    JsonRemoveHook { event: String, command: String },
+    /// Remove every hook handler under `event` whose command equals `command`, in whichever
+    /// layout the file uses (`hooks::remove_hook`). Prunes emptied groups and events.
+    RemoveHook { event: String, command: String },
     /// Remove the object key at `path` (e.g. `["enabledPlugins", "x@y"]`). No-op if absent.
     JsonRemoveKey { path: Vec<String> },
     /// Claude `installed_plugins.json`: drop entries of `plugins[id]` for one scope.
@@ -32,10 +33,6 @@ pub enum Edit {
     },
     /// Remove the TOML key/table at `path` (e.g. `["plugins", "x@y"]`), keeping formatting.
     TomlRemoveKey { path: Vec<String> },
-    /// Codex `config.toml`: remove every handler under `hooks.<event>` whose command equals
-    /// `command` (`[[hooks.E]]`/`[[hooks.E.hooks]]` or inline arrays), keeping formatting.
-    /// Prunes emptied groups and events. No-op if absent.
-    TomlRemoveHook { event: String, command: String },
 }
 
 /// What `execute` actually changed.
@@ -45,13 +42,13 @@ pub struct Report {
     pub edited: Vec<PathBuf>,
 }
 
-/// Apply `edit` to `contents`. The result is guaranteed to parse in the same format.
-pub fn apply_edit(edit: &Edit, contents: &str) -> anyhow::Result<String> {
+/// Apply `edit` to `contents` of `file` (whose extension picks the format where the edit
+/// depends on it). The result is guaranteed to parse in the same format.
+pub fn apply_edit(file: &Path, edit: &Edit, contents: &str) -> anyhow::Result<String> {
     match edit {
         Edit::TomlRemoveKey { path } => toml_remove_key(contents, path),
-        Edit::TomlRemoveHook { event, command } => toml_remove_hook(contents, event, command),
-        Edit::JsonRemoveHook { event, command } => {
-            edit_json(contents, |doc| remove_hook(doc, event, command))
+        Edit::RemoveHook { event, command } => {
+            hooks::remove_hook(contents, Format::of(file), event, command)
         }
         Edit::JsonRemoveKey { path } => edit_json(contents, |doc| remove_json_key(doc, path)),
         Edit::JsonRemovePluginInstall { id, project } => edit_json(contents, |doc| {
@@ -62,7 +59,7 @@ pub fn apply_edit(edit: &Edit, contents: &str) -> anyhow::Result<String> {
 
 /// Parse, mutate, re-serialize. An edit that changes nothing returns `contents` verbatim so
 /// callers can detect no-ops by comparing text.
-fn edit_json(contents: &str, mutate: impl FnOnce(&mut Value)) -> anyhow::Result<String> {
+pub(crate) fn edit_json(contents: &str, mutate: impl FnOnce(&mut Value)) -> anyhow::Result<String> {
     let original: Value = serde_json::from_str(contents).context("invalid JSON")?;
     let mut doc = original.clone();
     mutate(&mut doc);
@@ -82,37 +79,6 @@ fn remove_json_key(doc: &mut Value, path: &[String]) {
     if let Some(obj) = parent.and_then(Value::as_object_mut) {
         obj.shift_remove(last);
     }
-}
-
-fn remove_hook(doc: &mut Value, event: &str, command: &str) {
-    let Some(events) = doc.get_mut("hooks").and_then(Value::as_object_mut) else {
-        return;
-    };
-    let Some(groups) = events.get_mut(event).and_then(Value::as_array_mut) else {
-        return;
-    };
-    let before = groups.len();
-    groups.retain_mut(|group| keep_hook_group(group, command));
-    if groups.is_empty() && before > 0 {
-        events.shift_remove(event);
-    }
-}
-
-/// Nested groups (`{"hooks": [...]}`) lose matching handlers and are dropped once emptied;
-/// flat entries (`{"command": ...}`) are dropped when they match.
-fn keep_hook_group(group: &mut Value, command: &str) -> bool {
-    match group.get_mut("hooks").and_then(Value::as_array_mut) {
-        Some(handlers) => {
-            let before = handlers.len();
-            handlers.retain(|h| !has_command(h, command));
-            !handlers.is_empty() || before == 0
-        }
-        None => !has_command(group, command),
-    }
-}
-
-fn has_command(handler: &Value, command: &str) -> bool {
-    handler.get("command").and_then(Value::as_str) == Some(command)
 }
 
 fn remove_plugin_install(doc: &mut Value, id: &str, project: Option<&Path>) {
@@ -159,64 +125,6 @@ fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result<String> {
     })
 }
 
-fn toml_remove_hook(contents: &str, event: &str, command: &str) -> anyhow::Result<String> {
-    let mut doc: toml_edit::DocumentMut = contents.parse().context("invalid TOML")?;
-    let Some(events) = doc
-        .get_mut("hooks")
-        .and_then(toml_edit::Item::as_table_like_mut)
-    else {
-        return Ok(contents.to_string());
-    };
-    let Some(groups) = events.get_mut(event) else {
-        return Ok(contents.to_string());
-    };
-    let mut changed = false;
-    let (before, after) = retain_tables(groups, |group| {
-        let Some(handlers) = group.get_mut("hooks") else {
-            return true;
-        };
-        let (b, a) = retain_tables(handlers, |h| {
-            h.get("command").and_then(toml_edit::Item::as_str) != Some(command)
-        });
-        changed |= a != b;
-        a > 0 || b == 0
-    });
-    if after == 0 && before > 0 {
-        events.remove(event);
-    }
-    Ok(if changed {
-        doc.to_string()
-    } else {
-        contents.to_string()
-    })
-}
-
-/// Keep the tables of `[[x]]` or `x = [{..}, ..]` that `keep` approves (it may also edit
-/// them); other values stay. Returns the table count before and after.
-fn retain_tables(
-    item: &mut toml_edit::Item,
-    mut keep: impl FnMut(&mut dyn toml_edit::TableLike) -> bool,
-) -> (usize, usize) {
-    let keeps: Vec<bool> = match item {
-        toml_edit::Item::ArrayOfTables(a) => a.iter_mut().map(|t| keep(t)).collect(),
-        toml_edit::Item::Value(toml_edit::Value::Array(a)) => a
-            .iter_mut()
-            .filter_map(toml_edit::Value::as_inline_table_mut)
-            .map(|t| keep(t))
-            .collect(),
-        _ => return (0, 0),
-    };
-    let mut next = keeps.iter().copied();
-    match item {
-        toml_edit::Item::ArrayOfTables(a) => a.retain(|_| next.next().unwrap_or(true)),
-        toml_edit::Item::Value(toml_edit::Value::Array(a)) => {
-            a.retain(|v| !v.is_inline_table() || next.next().unwrap_or(true))
-        }
-        _ => {}
-    }
-    (keeps.len(), keeps.iter().filter(|k| **k).count())
-}
-
 /// Dedupe, then plan every edit in memory (any failure returns before the filesystem is
 /// touched), then write all edited files or none, then remove paths in their original order.
 pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
@@ -244,7 +152,7 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
             continue;
         };
         let after =
-            apply_edit(edit, current).with_context(|| format!("edit {}", file.display()))?;
+            apply_edit(file, edit, current).with_context(|| format!("edit {}", file.display()))?;
         if after != *current {
             validate(file, &after).with_context(|| format!("validate {}", file.display()))?;
             *current = after;
@@ -362,7 +270,7 @@ fn discard(staged: &[Staged]) {
 }
 
 fn validate(file: &Path, contents: &str) -> anyhow::Result<()> {
-    if file.extension().is_some_and(|e| e == "toml") {
+    if Format::of(file) == Format::Toml {
         contents.parse::<toml_edit::DocumentMut>()?;
     } else {
         serde_json::from_str::<Value>(contents)?;
@@ -379,144 +287,40 @@ mod tests {
         v.iter().map(|s| s.to_string()).collect()
     }
 
+    const JSON: &str = "x.json";
+    const TOML: &str = "x.toml";
+
     fn json_after(edit: &Edit, doc: &Value) -> Value {
-        let out = apply_edit(edit, &serde_json::to_string_pretty(doc).unwrap()).unwrap();
-        serde_json::from_str(&out).unwrap()
+        let src = serde_json::to_string_pretty(doc).unwrap();
+        serde_json::from_str(&apply_edit(Path::new(JSON), edit, &src).unwrap()).unwrap()
     }
 
     fn toml_after(edit: &Edit, src: &str) -> toml_edit::DocumentMut {
-        apply_edit(edit, src).unwrap().parse().unwrap()
+        apply_edit(Path::new(TOML), edit, src)
+            .unwrap()
+            .parse()
+            .unwrap()
     }
 
     fn hook(event: &str, command: &str) -> Edit {
-        Edit::JsonRemoveHook {
+        Edit::RemoveHook {
             event: event.into(),
             command: command.into(),
         }
     }
 
-    fn toml_hook(event: &str, command: &str) -> Edit {
-        Edit::TomlRemoveHook {
-            event: event.into(),
-            command: command.into(),
-        }
-    }
-
-    const HOOKS_TOML: &str = r#"[features]
-x = 1
-
-# start hooks
-[[hooks.SessionStart]]
-matcher = "startup"
-[[hooks.SessionStart.hooks]]
-command = "rtk"
-[[hooks.SessionStart.hooks]]
-command = "keep" # keep me
-
-[[hooks.SessionStart]]
-[[hooks.SessionStart.hooks]]
-command = "rtk"
-
-[hooks]
-Stop = [{ hooks = [{ command = "rtk" }] }, { hooks = [] }, "odd"]
-
-[hooks.state."a@b:x"]
-trusted = true
-
-[plugins."a@b"]
-enabled = true
-"#;
-
     #[test]
-    fn toml_remove_hook_prunes_groups_and_events() {
-        let out = apply_edit(&toml_hook("SessionStart", "rtk"), HOOKS_TOML).unwrap();
-        assert!(out.contains("# start hooks\n") && out.contains("# keep me"));
-        let doc: toml_edit::DocumentMut = out.parse().unwrap();
-        let groups = doc["hooks"]["SessionStart"].as_array_of_tables().unwrap();
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups.get(0).unwrap()["matcher"].as_str(), Some("startup"));
-        let handlers = groups.get(0).unwrap()["hooks"]
-            .as_array_of_tables()
-            .unwrap();
-        let commands: Vec<_> = handlers.iter().map(|h| h["command"].as_str()).collect();
-        assert_eq!(commands, [Some("keep")]);
-
-        let doc = toml_after(&toml_hook("SessionStart", "keep"), &out);
-        assert!(doc["hooks"].get("SessionStart").is_none());
-        assert_eq!(doc["features"]["x"].as_integer(), Some(1));
-        assert_eq!(doc["plugins"]["a@b"]["enabled"].as_bool(), Some(true));
+    fn remove_hook_format_follows_extension() {
+        let json = r#"{"hooks": {"a": [{"command": "x"}]}}"#;
+        let toml = "[[hooks.a]]\n[[hooks.a.hooks]]\ncommand = \"x\"\n";
         assert_eq!(
-            doc["hooks"]["state"]["a@b:x"]["trusted"].as_bool(),
-            Some(true)
+            json_after(&hook("a", "x"), &serde_json::from_str(json).unwrap()),
+            json!({"hooks": {}})
         );
-    }
-
-    #[test]
-    fn toml_remove_hook_inline_keeps_empty_and_odd_entries() {
-        let doc = toml_after(&toml_hook("Stop", "rtk"), HOOKS_TOML);
-        let stop = doc["hooks"]["Stop"].as_array().unwrap();
-        assert_eq!(stop.len(), 2);
-        assert_eq!(stop.get(1).and_then(|v| v.as_str()), Some("odd"));
-    }
-
-    #[test]
-    fn toml_remove_hook_absent_is_verbatim() {
-        for edit in [
-            toml_hook("Nope", "rtk"),
-            toml_hook("SessionStart", "nope"),
-            toml_hook("state", "rtk"),
-        ] {
-            assert_eq!(apply_edit(&edit, HOOKS_TOML).unwrap(), HOOKS_TOML);
-        }
-        assert_eq!(
-            apply_edit(&toml_hook("E", "c"), "a = 1\n").unwrap(),
-            "a = 1\n"
-        );
-        assert!(apply_edit(&toml_hook("E", "c"), "[nope").is_err());
-    }
-
-    #[test]
-    fn remove_hook_nested_prunes_groups_and_events() {
-        let doc = json!({"other": 1, "hooks": {
-            "PreToolUse": [
-                {"matcher": "Bash", "hooks": [{"command": "rtk"}, {"command": "keep"}]},
-                {"matcher": "Edit", "hooks": [{"command": "rtk"}]}
-            ],
-            "SessionStart": [{"hooks": [{"command": "rtk"}]}],
-            "Stop": [{"hooks": []}]
-        }});
-        let after = json_after(&hook("PreToolUse", "rtk"), &doc);
-        assert_eq!(
-            after["hooks"]["PreToolUse"],
-            json!([{"matcher": "Bash", "hooks": [{"command": "keep"}]}])
-        );
-        let after = json_after(&hook("SessionStart", "rtk"), &after);
-        assert_eq!(
-            after,
-            json!({"other": 1, "hooks": {
-                "PreToolUse": [{"matcher": "Bash", "hooks": [{"command": "keep"}]}],
-                "Stop": [{"hooks": []}]
-            }})
-        );
-    }
-
-    #[test]
-    fn remove_hook_flat_and_keeps_empty_hooks_object() {
-        let doc = json!({"version": 1, "hooks": {"stop": [{"command": "bd"}, {"command": "bd"}]}});
-        assert_eq!(
-            json_after(&hook("stop", "bd"), &doc),
-            json!({"version": 1, "hooks": {}})
-        );
-    }
-
-    #[test]
-    fn remove_hook_preserves_key_order() {
-        let src =
-            r#"{"z": 1, "hooks": {"b": [{"command": "x"}], "a": [{"command": "y"}]}, "m": 2}"#;
-        let out: Value = serde_json::from_str(&apply_edit(&hook("b", "x"), src).unwrap()).unwrap();
-        let keys: Vec<_> = out.as_object().unwrap().keys().cloned().collect();
-        assert_eq!(keys, ["z", "hooks", "m"]);
-        assert_eq!(out["hooks"], json!({"a": [{"command": "y"}]}));
+        let doc = toml_after(&hook("a", "x"), toml);
+        assert!(doc.get("hooks").and_then(|h| h.get("a")).is_none());
+        assert!(apply_edit(Path::new(TOML), &hook("a", "x"), json).is_err());
+        assert!(apply_edit(Path::new(JSON), &hook("a", "x"), toml).is_err());
     }
 
     #[test]
@@ -524,7 +328,6 @@ enabled = true
         let src = "{\"hooks\":{\"a\":[{\"command\":\"x\"}]},\"plugins\":{}}";
         let noops = [
             hook("missing", "x"),
-            hook("a", "other"),
             Edit::JsonRemoveKey {
                 path: strings(&["nope", "deeper"]),
             },
@@ -535,34 +338,24 @@ enabled = true
             },
         ];
         for edit in noops {
-            assert_eq!(apply_edit(&edit, src).unwrap(), src, "{edit:?}");
+            assert_eq!(
+                apply_edit(Path::new(JSON), &edit, src).unwrap(),
+                src,
+                "{edit:?}"
+            );
         }
-        assert_eq!(apply_edit(&hook("a", "x"), "{}").unwrap(), "{}");
-        let not_object = r#"{"hooks": 3}"#;
-        assert_eq!(apply_edit(&hook("a", "x"), not_object).unwrap(), not_object);
     }
 
     #[test]
     fn invalid_input_errors() {
-        assert!(apply_edit(&hook("a", "x"), "{oops").is_err());
-        assert!(
-            apply_edit(
-                &Edit::JsonRemoveKey {
-                    path: strings(&["a"])
-                },
-                ""
-            )
-            .is_err()
-        );
-        assert!(
-            apply_edit(
-                &Edit::TomlRemoveKey {
-                    path: strings(&["a"])
-                },
-                "a = "
-            )
-            .is_err()
-        );
+        let key = Edit::JsonRemoveKey {
+            path: strings(&["a"]),
+        };
+        assert!(apply_edit(Path::new(JSON), &key, "").is_err());
+        let key = Edit::TomlRemoveKey {
+            path: strings(&["a"]),
+        };
+        assert!(apply_edit(Path::new(TOML), &key, "a = ").is_err());
     }
 
     #[test]
@@ -589,7 +382,7 @@ enabled = true
         let edit = Edit::JsonRemoveKey {
             path: strings(&["a"]),
         };
-        let out = apply_edit(&edit, r#"{"a":1,"b":2}"#).unwrap();
+        let out = apply_edit(Path::new(JSON), &edit, r#"{"a":1,"b":2}"#).unwrap();
         assert_eq!(
             out,
             serde_json::to_string_pretty(&json!({"b": 2})).unwrap() + "\n"
@@ -657,7 +450,7 @@ enabled = false
         let edit = Edit::TomlRemoveKey {
             path: strings(&["plugins", "x@mp"]),
         };
-        let out = apply_edit(&edit, CODEX).unwrap();
+        let out = apply_edit(Path::new(TOML), &edit, CODEX).unwrap();
         let doc: toml_edit::DocumentMut = out.parse().unwrap();
         assert!(doc["plugins"].get("x@mp").is_none());
         assert_eq!(doc["plugins"]["keep@mp"]["enabled"].as_bool(), Some(false));
@@ -696,7 +489,7 @@ enabled = false
             vec![],
         ] {
             assert_eq!(
-                apply_edit(&Edit::TomlRemoveKey { path }, CODEX).unwrap(),
+                apply_edit(Path::new(TOML), &Edit::TomlRemoveKey { path }, CODEX).unwrap(),
                 CODEX
             );
         }
