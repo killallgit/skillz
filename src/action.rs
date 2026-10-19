@@ -32,6 +32,10 @@ pub enum Edit {
     },
     /// Remove the TOML key/table at `path` (e.g. `["plugins", "x@y"]`), keeping formatting.
     TomlRemoveKey { path: Vec<String> },
+    /// Codex `config.toml`: remove every handler under `hooks.<event>` whose command equals
+    /// `command` (`[[hooks.E]]`/`[[hooks.E.hooks]]` or inline arrays), keeping formatting.
+    /// Prunes emptied groups and events. No-op if absent.
+    TomlRemoveHook { event: String, command: String },
 }
 
 /// What `execute` actually changed.
@@ -45,6 +49,7 @@ pub struct Report {
 pub fn apply_edit(edit: &Edit, contents: &str) -> anyhow::Result<String> {
     match edit {
         Edit::TomlRemoveKey { path } => toml_remove_key(contents, path),
+        Edit::TomlRemoveHook { event, command } => toml_remove_hook(contents, event, command),
         Edit::JsonRemoveHook { event, command } => {
             edit_json(contents, |doc| remove_hook(doc, event, command))
         }
@@ -152,6 +157,64 @@ fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result<String> {
         Some(_) => doc.to_string(),
         None => contents.to_string(),
     })
+}
+
+fn toml_remove_hook(contents: &str, event: &str, command: &str) -> anyhow::Result<String> {
+    let mut doc: toml_edit::DocumentMut = contents.parse().context("invalid TOML")?;
+    let Some(events) = doc
+        .get_mut("hooks")
+        .and_then(toml_edit::Item::as_table_like_mut)
+    else {
+        return Ok(contents.to_string());
+    };
+    let Some(groups) = events.get_mut(event) else {
+        return Ok(contents.to_string());
+    };
+    let mut changed = false;
+    let (before, after) = retain_tables(groups, |group| {
+        let Some(handlers) = group.get_mut("hooks") else {
+            return true;
+        };
+        let (b, a) = retain_tables(handlers, |h| {
+            h.get("command").and_then(toml_edit::Item::as_str) != Some(command)
+        });
+        changed |= a != b;
+        a > 0 || b == 0
+    });
+    if after == 0 && before > 0 {
+        events.remove(event);
+    }
+    Ok(if changed {
+        doc.to_string()
+    } else {
+        contents.to_string()
+    })
+}
+
+/// Keep the tables of `[[x]]` or `x = [{..}, ..]` that `keep` approves (it may also edit
+/// them); other values stay. Returns the table count before and after.
+fn retain_tables(
+    item: &mut toml_edit::Item,
+    mut keep: impl FnMut(&mut dyn toml_edit::TableLike) -> bool,
+) -> (usize, usize) {
+    let keeps: Vec<bool> = match item {
+        toml_edit::Item::ArrayOfTables(a) => a.iter_mut().map(|t| keep(t)).collect(),
+        toml_edit::Item::Value(toml_edit::Value::Array(a)) => a
+            .iter_mut()
+            .filter_map(toml_edit::Value::as_inline_table_mut)
+            .map(|t| keep(t))
+            .collect(),
+        _ => return (0, 0),
+    };
+    let mut next = keeps.iter().copied();
+    match item {
+        toml_edit::Item::ArrayOfTables(a) => a.retain(|_| next.next().unwrap_or(true)),
+        toml_edit::Item::Value(toml_edit::Value::Array(a)) => {
+            a.retain(|v| !v.is_inline_table() || next.next().unwrap_or(true))
+        }
+        _ => {}
+    }
+    (keeps.len(), keeps.iter().filter(|k| **k).count())
 }
 
 /// Dedupe, then plan every edit in memory (any failure returns before the filesystem is
@@ -282,6 +345,86 @@ mod tests {
             event: event.into(),
             command: command.into(),
         }
+    }
+
+    fn toml_hook(event: &str, command: &str) -> Edit {
+        Edit::TomlRemoveHook {
+            event: event.into(),
+            command: command.into(),
+        }
+    }
+
+    const HOOKS_TOML: &str = r#"[features]
+x = 1
+
+# start hooks
+[[hooks.SessionStart]]
+matcher = "startup"
+[[hooks.SessionStart.hooks]]
+command = "rtk"
+[[hooks.SessionStart.hooks]]
+command = "keep" # keep me
+
+[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+command = "rtk"
+
+[hooks]
+Stop = [{ hooks = [{ command = "rtk" }] }, { hooks = [] }, "odd"]
+
+[hooks.state."a@b:x"]
+trusted = true
+
+[plugins."a@b"]
+enabled = true
+"#;
+
+    #[test]
+    fn toml_remove_hook_prunes_groups_and_events() {
+        let out = apply_edit(&toml_hook("SessionStart", "rtk"), HOOKS_TOML).unwrap();
+        assert!(out.contains("# start hooks\n") && out.contains("# keep me"));
+        let doc: toml_edit::DocumentMut = out.parse().unwrap();
+        let groups = doc["hooks"]["SessionStart"].as_array_of_tables().unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups.get(0).unwrap()["matcher"].as_str(), Some("startup"));
+        let handlers = groups.get(0).unwrap()["hooks"]
+            .as_array_of_tables()
+            .unwrap();
+        let commands: Vec<_> = handlers.iter().map(|h| h["command"].as_str()).collect();
+        assert_eq!(commands, [Some("keep")]);
+
+        let doc = toml_after(&toml_hook("SessionStart", "keep"), &out);
+        assert!(doc["hooks"].get("SessionStart").is_none());
+        assert_eq!(doc["features"]["x"].as_integer(), Some(1));
+        assert_eq!(doc["plugins"]["a@b"]["enabled"].as_bool(), Some(true));
+        assert_eq!(
+            doc["hooks"]["state"]["a@b:x"]["trusted"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn toml_remove_hook_inline_keeps_empty_and_odd_entries() {
+        let doc = toml_after(&toml_hook("Stop", "rtk"), HOOKS_TOML);
+        let stop = doc["hooks"]["Stop"].as_array().unwrap();
+        assert_eq!(stop.len(), 2);
+        assert_eq!(stop.get(1).and_then(|v| v.as_str()), Some("odd"));
+    }
+
+    #[test]
+    fn toml_remove_hook_absent_is_verbatim() {
+        for edit in [
+            toml_hook("Nope", "rtk"),
+            toml_hook("SessionStart", "nope"),
+            toml_hook("state", "rtk"),
+        ] {
+            assert_eq!(apply_edit(&edit, HOOKS_TOML).unwrap(), HOOKS_TOML);
+        }
+        assert_eq!(
+            apply_edit(&toml_hook("E", "c"), "a = 1\n").unwrap(),
+            "a = 1\n"
+        );
+        assert!(apply_edit(&toml_hook("E", "c"), "[nope").is_err());
     }
 
     #[test]

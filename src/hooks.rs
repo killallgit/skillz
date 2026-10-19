@@ -36,6 +36,50 @@ pub fn parse_hooks(json: &str) -> anyhow::Result<Vec<HookEntry>> {
         .collect())
 }
 
+/// Parse the inline hooks of a Codex `config.toml` (`[[hooks.<Event>]]` with
+/// `[[hooks.<Event>.hooks]]`, or the inline-array equivalent). Non-array values under
+/// `hooks` (e.g. the `hooks.state` trust table) are not events.
+pub fn parse_toml_hooks(toml: &str) -> anyhow::Result<Vec<HookEntry>> {
+    let doc: toml_edit::DocumentMut = toml.parse().context("invalid hooks TOML")?;
+    let Some(events) = doc.get("hooks").and_then(toml_edit::Item::as_table_like) else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::new();
+    for (event, groups) in events.iter() {
+        for group in tables(groups) {
+            let matcher = group
+                .get("matcher")
+                .and_then(toml_edit::Item::as_str)
+                .filter(|m| !m.is_empty());
+            let handlers = group.get("hooks").map(tables).unwrap_or_default();
+            out.extend(
+                handlers
+                    .into_iter()
+                    .filter_map(|h| h.get("command").and_then(toml_edit::Item::as_str))
+                    .map(|command| HookEntry {
+                        event: event.to_string(),
+                        matcher: matcher.map(str::to_string),
+                        command: command.to_string(),
+                    }),
+            );
+        }
+    }
+    Ok(out)
+}
+
+/// The tables of `[[x]]` or `x = [{..}, ..]`; anything else has none.
+fn tables(item: &toml_edit::Item) -> Vec<&dyn toml_edit::TableLike> {
+    match item {
+        toml_edit::Item::ArrayOfTables(a) => a.iter().map(|t| t as _).collect(),
+        toml_edit::Item::Value(toml_edit::Value::Array(a)) => a
+            .iter()
+            .filter_map(|v| v.as_inline_table())
+            .map(|t| t as _)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// Handlers of one event entry: a nested group's `hooks[]`, or the flat entry itself.
 fn group_entries(event: &str, group: &Value) -> Vec<HookEntry> {
     let matcher = group
@@ -122,11 +166,17 @@ fn tool_dir(path: &Path) -> Option<String> {
 /// Hooks in one config file, one `Augmentation` per `hook_group`, each with its removal plan.
 /// A missing file yields an empty list.
 pub fn discover(file: &Path, agent: Agent, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
-    let json = match std::fs::read_to_string(file) {
+    let text = match std::fs::read_to_string(file) {
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
         other => other.with_context(|| format!("read {}", file.display()))?,
     };
-    let entries = parse_hooks(&json).with_context(|| format!("parse {}", file.display()))?;
+    let toml = file.extension().is_some_and(|e| e == "toml");
+    let entries = if toml {
+        parse_toml_hooks(&text)
+    } else {
+        parse_hooks(&text)
+    }
+    .with_context(|| format!("parse {}", file.display()))?;
     let mut groups: BTreeMap<String, Vec<HookEntry>> = BTreeMap::new();
     for entry in entries {
         groups
@@ -136,12 +186,13 @@ pub fn discover(file: &Path, agent: Agent, scope: Scope) -> anyhow::Result<Vec<A
     }
     Ok(groups
         .into_iter()
-        .map(|(name, entries)| augmentation(file, agent, scope, name, &entries))
+        .map(|(name, entries)| augmentation(file, toml, agent, scope, name, &entries))
         .collect())
 }
 
 fn augmentation(
     file: &Path,
+    toml: bool,
     agent: Agent,
     scope: Scope,
     name: String,
@@ -149,12 +200,15 @@ fn augmentation(
 ) -> Augmentation {
     let mut removal: Vec<Action> = Vec::new();
     for e in entries {
+        let (event, command) = (e.event.clone(), e.command.clone());
+        let edit = if toml {
+            Edit::TomlRemoveHook { event, command }
+        } else {
+            Edit::JsonRemoveHook { event, command }
+        };
         let action = Action::Edit {
             file: file.to_path_buf(),
-            edit: Edit::JsonRemoveHook {
-                event: e.event.clone(),
-                command: e.command.clone(),
-            },
+            edit,
         };
         if !removal.contains(&action) {
             removal.push(action);
@@ -343,5 +397,90 @@ mod tests {
         crate::action::execute(&plan).unwrap();
         let after: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(after, json!({"version": 1, "hooks": {}}));
+    }
+
+    const CODEX_TOML: &str = r#"# my config
+[features]
+codex_hooks = true
+
+[[hooks.SessionStart]]
+matcher = "startup|resume"
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "bd codex-hook SessionStart"
+statusMessage = "loading"
+
+[hooks]
+Stop = [{ hooks = [{ type = "command", command = "rtk hook codex" }, { type = "command", command = "bd codex-hook Stop" }] }]
+
+[hooks.state."x@y:hooks.json:0"]
+trusted = true
+
+[plugins."x@y"]
+enabled = true
+"#;
+
+    #[test]
+    fn parses_toml_layouts_and_skips_state() {
+        assert_eq!(
+            parse_toml_hooks(CODEX_TOML).unwrap(),
+            vec![
+                entry(
+                    "SessionStart",
+                    Some("startup|resume"),
+                    "bd codex-hook SessionStart"
+                ),
+                entry("Stop", None, "rtk hook codex"),
+                entry("Stop", None, "bd codex-hook Stop"),
+            ]
+        );
+        assert!(parse_toml_hooks("[features]\nx = 1\n").unwrap().is_empty());
+        assert!(parse_toml_hooks("hooks = 1\n").unwrap().is_empty());
+        assert!(parse_toml_hooks("[nope").is_err());
+    }
+
+    #[test]
+    fn discover_toml_plans_and_removes() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config.toml");
+        std::fs::write(&file, CODEX_TOML).unwrap();
+        let found = discover(&file, Agent::Codex, Scope::Global).unwrap();
+        let names: Vec<_> = found.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["bd", "rtk"]);
+        let remove = |event: &str, command: &str| Action::Edit {
+            file: file.clone(),
+            edit: Edit::TomlRemoveHook {
+                event: event.into(),
+                command: command.into(),
+            },
+        };
+        assert_eq!(
+            found[0].removal,
+            vec![
+                remove("SessionStart", "bd codex-hook SessionStart"),
+                remove("Stop", "bd codex-hook Stop"),
+            ]
+        );
+        assert_eq!(found[1].removal, vec![remove("Stop", "rtk hook codex")]);
+
+        let plan: Vec<Action> = found.into_iter().flat_map(|a| a.removal).collect();
+        crate::action::execute(&plan).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(parse_toml_hooks(&text).unwrap().is_empty());
+        assert!(text.starts_with("# my config\n"));
+        let doc: toml_edit::DocumentMut = text.parse().unwrap();
+        assert_eq!(doc["features"]["codex_hooks"].as_bool(), Some(true));
+        assert_eq!(doc["plugins"]["x@y"]["enabled"].as_bool(), Some(true));
+        assert_eq!(
+            doc["hooks"]["state"]["x@y:hooks.json:0"]["trusted"].as_bool(),
+            Some(true)
+        );
+        let hooks: Vec<_> = doc["hooks"]
+            .as_table_like()
+            .unwrap()
+            .iter()
+            .map(|(k, _)| k)
+            .collect();
+        assert_eq!(hooks, ["state"]);
     }
 }
