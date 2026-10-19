@@ -58,9 +58,16 @@ fn install_from(
     runner: &dyn CommandRunner,
     prompter: &dyn Prompter,
 ) -> anyhow::Result<()> {
-    let skills = |selection: &SkillSelection, agents: &[Agent]| {
+    let skills = |agents: &[Agent]| {
         skills::install(
-            selection, agents, req.scope, src, source, env, runner, prompter,
+            &req.selection,
+            agents,
+            req.scope,
+            src,
+            source,
+            env,
+            runner,
+            prompter,
         )
     };
     let mp = match marketplace::read(src)? {
@@ -70,7 +77,7 @@ fn install_from(
         {
             mp
         }
-        _ => return skills(&req.selection, &req.agents),
+        _ => return skills(&req.agents),
     };
     if !marketplace::install(&mp, source, req.scope, env, runner, prompter)? {
         return Ok(());
@@ -84,7 +91,7 @@ fn install_from(
     if others.is_empty() {
         return Ok(());
     }
-    skills(&SkillSelection::All, &others)
+    skills(&others)
 }
 
 #[cfg(test)]
@@ -156,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn marketplace_with_other_agents_also_installs_all_skills_for_them() {
+    fn marketplace_with_other_agents_offers_them_the_skill_picker() {
         let fx = project_with(marketplace_fixture);
         let runner = FakeRunner::new(|_| {});
         let r = req(
@@ -166,7 +173,9 @@ mod tests {
             Scope::Global,
             SkillSelection::Interactive,
         );
-        install(&r, &fx.env, &runner, &ScriptedPrompter::new(&[1], true)).unwrap();
+        let prompter = ScriptedPrompter::new(&[1], true);
+        install(&r, &fx.env, &runner, &prompter).unwrap();
+        assert_eq!(prompter.offered.borrow()[1], s(&["alpha", "beta"]));
         let calls = runner.calls();
         assert_eq!(
             calls[1].1,
@@ -175,7 +184,7 @@ mod tests {
         let src = fx.env.project.join("repo").to_string_lossy().into_owned();
         assert_eq!(
             calls[2].1,
-            npx(&src, &["--skill", "alpha", "-a", "codex", "-g", "-y"])
+            npx(&src, &["--skill", "beta", "-a", "codex", "-g", "-y"])
         );
         assert_eq!(calls.len(), 3);
     }

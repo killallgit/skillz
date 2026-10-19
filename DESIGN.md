@@ -171,7 +171,8 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill a,b
   (what npx `--skill` matches); as in npx, skills without `name`/`description` are skipped,
   as are `.git`, `node_modules`, `dist`, `build` and `__pycache__` dirs. `--all`/`--skill` or no marketplace -> npx skills path
   with pattern matching + confirm; otherwise marketplace path for Claude
-  (`claude plugin marketplace add <src>`, `claude plugin install <p>@<mp> --scope user|project`).
+  (`claude plugin marketplace add <src>`, `claude plugin install <p>@<mp> --scope user|project`),
+  then the skill picker for the other selected agents.
 
 ## TUI
 

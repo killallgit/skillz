@@ -114,6 +114,7 @@ pub fn skills_fixture(root: &Path) {
 
 pub fn marketplace_fixture(root: &Path) {
     skill(root, "plugins/p1/skills/alpha");
+    skill(root, "plugins/p2/skills/beta");
     fs::create_dir_all(root.join(".claude-plugin")).unwrap();
     fs::write(
         root.join(".claude-plugin/marketplace.json"),
