@@ -152,7 +152,8 @@ pub fn main() -> anyhow::Result<()> {
         adapters: agents::registry(),
         runner: &SystemRunner,
         prompter,
-        interactive: std::io::stdout().is_terminal(),
+        // Pickers and the browser read keys from stdin and draw on stdout.
+        interactive: std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
     };
     run(cli.command, &deps, &mut std::io::stdout())
 }
@@ -379,8 +380,8 @@ fn list(
         return Ok(());
     }
     // A query spanning several groups opens the browser so the user can narrow it down.
-    let groups: BTreeSet<&str> = items.iter().map(|i| i.group.as_str()).collect();
-    if deps.interactive && (view.interactive || (view.query.is_some() && groups.len() > 1)) {
+    let several_groups = items.iter().any(|i| i.group != items[0].group);
+    if deps.interactive && (view.interactive || (view.query.is_some() && several_groups)) {
         return browse(deps, env, scopes, filter, &items, out);
     }
     let nodes = tree::build(&items);

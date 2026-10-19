@@ -30,7 +30,7 @@ pub enum Choice {
 
 /// A `browse` selection: whole groups (indices into its `groups`) plus single items
 /// (`Node::item` indices) outside them.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Picked {
     pub groups: Vec<usize>,
     pub items: Vec<usize>,
