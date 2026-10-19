@@ -166,6 +166,9 @@ fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result<String> {
     })
 }
 
+/// `Some((original, planned))` text of one file, or `None` when the file is missing.
+type Plan = Option<(String, String)>;
+
 /// Dedupe, then plan every edit in memory (any failure returns before the filesystem is
 /// touched), then write all edited files or none, then remove paths in their original order.
 pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
@@ -176,20 +179,21 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
         }
     }
 
-    // Per file: `Some((original, planned))`, or `None` when the file is missing.
-    let mut plans: Vec<(&PathBuf, Option<(String, String)>)> = Vec::new();
+    // Per real file (symlinks resolved, as `stage` writes there), the first path naming it.
+    let mut plans: Vec<(PathBuf, &PathBuf, Plan)> = Vec::new();
     for action in &unique {
         let Action::Edit { file, edit } = action else {
             continue;
         };
-        let i = match plans.iter().position(|(f, _)| *f == file) {
+        let real = fs::canonicalize(file).unwrap_or_else(|_| file.clone());
+        let i = match plans.iter().position(|(r, _, _)| *r == real) {
             Some(i) => i,
             None => {
-                plans.push((file, read_existing(file)?.map(|s| (s.clone(), s))));
+                plans.push((real, file, read_existing(file)?.map(|s| (s.clone(), s))));
                 plans.len() - 1
             }
         };
-        let Some((_, current)) = &mut plans[i].1 else {
+        let Some((_, current)) = &mut plans[i].2 else {
             continue;
         };
         let after =
@@ -202,7 +206,7 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
 
     let mut report = Report::default();
     let mut staged = Vec::new();
-    for (file, plan) in plans {
+    for (_, file, plan) in plans {
         if let Some((before, after)) = plan
             && before != after
         {
@@ -796,6 +800,28 @@ enabled = false
         assert_eq!(json, json!({"b": 2}));
         let mode = fs::metadata(&real).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_merges_edits_to_one_file_through_a_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("a.json");
+        let alias = dir.path().join("b.json");
+        write(&real, r#"{"x": 1, "y": 2, "z": 3}"#);
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        let remove = |file: &Path, key: &str| Action::Edit {
+            file: file.to_path_buf(),
+            edit: Edit::JsonRemoveKey {
+                path: strings(&[key]),
+            },
+        };
+
+        execute(&[remove(&real, "x"), remove(&alias, "y")]).unwrap();
+        let json: Value = serde_json::from_str(&fs::read_to_string(&real).unwrap()).unwrap();
+        assert_eq!(json, json!({"z": 3}));
+        assert!(fs::symlink_metadata(&alias).unwrap().is_symlink());
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
     }
 

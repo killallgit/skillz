@@ -132,7 +132,7 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
   agent skill dir holding the link, and the owned skill dir of the same scope holding the
   canonical dir.
 - `execute` writes all edits or none (a failed rename restores files already replaced, best
-  effort), then runs `RemovePath`s in plan order; a failed removal errors naming the paths
+  effort; edits naming one file through different paths, e.g. a symlink, are merged), then runs `RemovePath`s in plan order; a failed removal errors naming the paths
   already removed (no rollback). Before deleting it re-checks the target is strictly inside
   its root and skips (never errors) a target that is not, or whose parent or grandparent is a
   symlink, so nothing is deleted through a link.
