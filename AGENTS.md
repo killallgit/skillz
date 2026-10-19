@@ -125,3 +125,20 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+## Build & Test
+
+```bash
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo llvm-cov --summary-only   # keep line coverage > 75%
+```
+
+## Architecture Overview
+
+Rust CLI (clap + ratatui). See DESIGN.md: discovery builds `Augmentation`s with a planned
+`removal: Vec<Action>`; `action::execute` applies them. One adapter per agent in `src/agents/`.
+
+## Conventions & Patterns
+
+- Functional core, effects at the edges; inject `Env`, `CommandRunner`, `Prompter`.
+- Tests never assert on user-facing strings (messages, errors, rendered labels).
