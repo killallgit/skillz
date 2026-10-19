@@ -468,6 +468,43 @@ fn install_relative_source_resolves_against_cwd_not_project_dir() {
 }
 
 #[test]
+fn install_from_home_is_global() {
+    let w = world();
+    let src = w.project.join("src-repo");
+    write(
+        &src.join("skills/tdd/SKILL.md"),
+        "---\nname: tdd\ndescription: d\n---\n",
+    );
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    for project in [None, Some(w.home.clone())] {
+        let cmd = Command::Install {
+            source: src.display().to_string(),
+            global: false,
+            agents: vec![Agent::Codex],
+            all: true,
+            skill: vec![],
+            project,
+            yes: true,
+        };
+        let from_home = Deps {
+            cwd: w.home.clone(),
+            ..deps(&w, &r, &p)
+        };
+        run(cmd, &from_home, &mut Vec::new()).unwrap();
+        let calls = r.0.borrow();
+        let (program, args) = calls.last().unwrap();
+        assert_eq!(program, "npx");
+        assert!(args.contains(&"-g".to_string()));
+    }
+}
+
+#[test]
 fn yes_refuses_non_exact_single_match() {
     let w = world();
     let (r, p) = (
