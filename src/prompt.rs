@@ -6,11 +6,34 @@ pub trait Prompter {
     /// An empty result means the user cancelled or picked nothing.
     fn multi_select(&self, title: &str, options: &[String]) -> anyhow::Result<Vec<usize>>;
     fn confirm(&self, question: &str) -> anyhow::Result<bool>;
-    /// Pick among top-level `groups` (browsable trees); returns chosen indices.
-    fn pick_groups(&self, title: &str, groups: &[Node]) -> anyhow::Result<Vec<usize>> {
+    /// Browse `groups` (trees from `tree::build`), mark groups or items and pick an action.
+    /// `None` when the user quits. Without a tree UI: pick groups, then show them.
+    fn browse(&self, title: &str, groups: &[Node]) -> anyhow::Result<Option<(Choice, Picked)>> {
         let labels: Vec<String> = groups.iter().map(|g| g.label.clone()).collect();
-        self.multi_select(title, &labels)
+        let groups = self.multi_select(title, &labels)?;
+        Ok((!groups.is_empty()).then(|| {
+            let picked = Picked {
+                groups,
+                items: vec![],
+            };
+            (Choice::Show, picked)
+        }))
     }
+}
+
+/// What to do with the items picked in `Prompter::browse`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Choice {
+    Show,
+    Remove,
+}
+
+/// A `browse` selection: whole groups (indices into its `groups`) plus single items
+/// (`Node::item` indices) outside them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Picked {
+    pub groups: Vec<usize>,
+    pub items: Vec<usize>,
 }
 
 /// Interactive terminal prompter backed by `tui::select` and a y/n line prompt.
@@ -21,8 +44,8 @@ impl Prompter for TuiPrompter {
         crate::tui::select::run(title, options)
     }
 
-    fn pick_groups(&self, title: &str, groups: &[Node]) -> anyhow::Result<Vec<usize>> {
-        crate::tui::tree_view::pick(title, groups)
+    fn browse(&self, title: &str, groups: &[Node]) -> anyhow::Result<Option<(Choice, Picked)>> {
+        crate::tui::tree_view::browse(title, groups)
     }
 
     fn confirm(&self, question: &str) -> anyhow::Result<bool> {

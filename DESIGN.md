@@ -172,11 +172,12 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,
 - Kind flags filter (singular aliases `--skill/--hook/--plugin/--marketplace` on list and
   uninstall). No kind flag = all kinds. `-a` filters by agent.
 - `list` prints group headers with item counts; when QUERY matches span several groups on a terminal it
-  first asks which groups to show (`--json`, `-i` and pipes take all matches); a QUERY (fuzzy, as in uninstall; a matched
+  opens the browser (`--json` and pipes take all matches); a QUERY (fuzzy, as in uninstall; a matched
   marketplace pulls in its whole group) or `--all` prints the expanded tree. A positional
   starting with `.`, `..` or `/` (`.`, `./sub`, `/abs`) is the project path; any other word is
   a query, even if a directory has that name; `-C` forces query mode. `-i` opens the
-  collapsible tree TUI.
+  browser on everything listed. Browser selections either print (Show) or go through the
+  same `remove` step as `uninstall` (Remove).
 - `uninstall`: filter -> fuzzy match QUERY over `name group source` -> multi-select picker
   -> show plan -> confirm -> execute -> re-discover and verify.
 - `install`: project scope unless `-g` or the project is the home dir (then global). Resolve
@@ -195,6 +196,8 @@ ratatui + crossterm. Widgets are pure state machines tested without a terminal:
 - `tui::select`: list with `[x]` checkboxes; `↑↓/jk` move, `space` toggle, `a` toggle all
   visible, `/` enters filter (typed text fuzzy-filters; `esc` leaves filter), `enter` accept,
   `esc`/`q` cancel.
-- `tui::tree_view`: collapsible tree; `↑↓/jk` move, `→/l/enter/space` expand/toggle,
-  `←/h` collapse (or jump to parent), `/` filter keeps matching nodes and their ancestors,
-  `q/esc` quit.
+- `tui::tree_view`: the browser. Collapsible tree, starts collapsed; `↑↓/jk` move,
+  `space` expand/collapse, `→/l` expand, `←/h` collapse (or jump to parent), `x`/`tab` mark
+  a group (all its items) or one item, `enter` opens the Show / Remove… / Cancel menu for the
+  marks (or the row under the cursor), `/` filter keeps matching nodes and their ancestors,
+  `q/esc` quit. Rows map back to items through `tree::Node::item`.

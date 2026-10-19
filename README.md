@@ -12,12 +12,12 @@ task install                     # release build, symlinked to ~/.local/bin/skil
 
 ```sh
 skillz list                      # global + current project, groups collapsed
-skillz list matt                 # matches in several groups: browse them (space expands, x marks, enter shows)
+skillz list matt                 # matches in several groups: open the browser
 skillz list ponytail             # expand what matches (a marketplace brings its group)
 skillz list --all                # expand everything
 skillz list --hooks .            # project hooks only
 skillz list -g --skills -a claude
-skillz list -i                   # collapsible tree browser (/ to filter)
+skillz list -i                   # browser: space expands, x marks, enter -> Show / Remove…
 skillz list --json | jq '.[].name'  # machine-readable: items + removal plans
 
 skillz rm tdd                    # fuzzy match -> pick -> confirm -> remove
@@ -35,6 +35,8 @@ means both (project = cwd). A `list` PATH must start with `.`, `..` or `/` (`./s
 `sub`); any other word is a query.
 
 Pickers: `↑↓/jk` move, `space` toggle, `a` toggle all, `/` filter, `enter` accept, `esc` cancel.
+Browser (`list -i`, multi-group queries): `space`/`→←` expand, `x`/`tab` mark a group or item,
+`enter` opens Show / Remove… (same plan and `[y/N]` as `rm`), `/` filter, `q` quit.
 
 ## What "remove" means
 

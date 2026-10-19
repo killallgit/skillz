@@ -11,10 +11,9 @@ use crate::env::Env;
 use crate::install::{self, InstallRequest, SkillSelection};
 use crate::matcher;
 use crate::model::{Agent, Augmentation, Kind, Scope};
-use crate::prompt::{AssumeYes, Prompter, TuiPrompter};
+use crate::prompt::{AssumeYes, Choice, Prompter, TuiPrompter};
 use crate::runner::{CommandRunner, SystemRunner};
 use crate::tree;
-use crate::tui;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -311,39 +310,55 @@ fn queried(items: &[Augmentation], hits: &[&Augmentation]) -> Vec<Augmentation> 
         .collect()
 }
 
-/// The matches `list QUERY` shows: all of them for `--json`, `-i`, no terminal, or when they
-/// all sit in one group; otherwise those in the groups the user picks.
-fn pick_matches<'a>(
+/// Browse `items` in the tree UI, then show or remove whatever the user marks.
+fn browse(
     deps: &Deps,
-    hits: Vec<&'a Augmentation>,
-    view: &ListView,
-) -> anyhow::Result<Vec<&'a Augmentation>> {
-    let groups: BTreeSet<&str> = hits.iter().map(|h| h.group.as_str()).collect();
-    if groups.len() < 2 || view.json || view.interactive || !deps.interactive {
-        return Ok(hits);
-    }
-    // Same order as `tree::build`: one node per group, sorted by group.
-    let owned: Vec<Augmentation> = hits.iter().map(|&h| h.clone()).collect();
-    let nodes: Vec<tree::Node> = tree::build(&owned)
+    env: &Env,
+    scopes: &[Scope],
+    filter: &Filter,
+    items: &[Augmentation],
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let nodes: Vec<tree::Node> = tree::build(items)
         .into_iter()
-        .zip(&groups)
-        .map(|(mut node, g)| {
-            let n = hits.iter().filter(|h| h.group == *g).count();
-            node.label = format!("{}  ({n} matching)", node.label);
+        .map(|mut node| {
+            node.label = format!("{}  ({})", node.label, node.children.len());
             node
         })
         .collect();
-    let groups: Vec<&str> = groups.into_iter().collect();
-    let picked: Vec<&str> = deps
-        .prompter
-        .pick_groups("Show which group?", &nodes)?
+    let Some((choice, picked)) = deps.prompter.browse("skillz", &nodes)? else {
+        return Ok(());
+    };
+    // `tree::build` makes one node per group, sorted by group.
+    let groups: Vec<&str> = items
+        .iter()
+        .map(|i| i.group.as_str())
+        .collect::<BTreeSet<_>>()
         .into_iter()
-        .filter_map(|i| groups.get(i).copied())
         .collect();
-    Ok(hits
-        .into_iter()
-        .filter(|h| picked.contains(&h.group.as_str()))
-        .collect())
+    let chosen: Vec<&Augmentation> = items
+        .iter()
+        .enumerate()
+        .filter(|(i, item)| {
+            picked.items.contains(i)
+                || picked
+                    .groups
+                    .iter()
+                    .any(|&g| groups.get(g) == Some(&item.group.as_str()))
+        })
+        .map(|(_, item)| item)
+        .collect();
+    match choice {
+        Choice::Show => {
+            write!(
+                out,
+                "{}",
+                tree::render(&tree::build(&queried(items, &chosen)))
+            )?;
+            Ok(())
+        }
+        Choice::Remove => remove(deps, env, scopes, filter, &chosen, false, out),
+    }
 }
 
 fn list(
@@ -356,18 +371,19 @@ fn list(
 ) -> anyhow::Result<()> {
     let mut items = gather(deps, env, scopes, filter);
     if let Some(q) = view.query {
-        let hits = pick_matches(deps, matches(&items, Some(q)), &view)?;
-        items = queried(&items, &hits);
+        items = queried(&items, &matches(&items, Some(q)));
     }
     if view.json {
         serde_json::to_writer_pretty(&mut *out, &items)?;
         writeln!(out)?;
         return Ok(());
     }
-    let nodes = tree::build(&items);
-    if view.interactive && deps.interactive {
-        return tui::tree_view::run("skillz", &nodes);
+    // A query spanning several groups opens the browser so the user can narrow it down.
+    let groups: BTreeSet<&str> = items.iter().map(|i| i.group.as_str()).collect();
+    if deps.interactive && (view.interactive || (view.query.is_some() && groups.len() > 1)) {
+        return browse(deps, env, scopes, filter, &items, out);
     }
+    let nodes = tree::build(&items);
     if items.is_empty() {
         let msg = if view.query.is_some() {
             "nothing installed matches"
@@ -451,6 +467,19 @@ fn uninstall(
         .into_iter()
         .filter_map(|i| candidates.get(i).copied())
         .collect();
+    remove(deps, env, scopes, filter, &chosen, dry_run, out)
+}
+
+/// Print the removal plan for `chosen`, confirm, execute, then verify they are gone.
+fn remove(
+    deps: &Deps,
+    env: &Env,
+    scopes: &[Scope],
+    filter: &Filter,
+    chosen: &[&Augmentation],
+    dry_run: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
     if chosen.is_empty() {
         writeln!(out, "nothing selected")?;
         return Ok(());
@@ -458,7 +487,7 @@ fn uninstall(
 
     let plan: Vec<Action> = chosen.iter().flat_map(|c| c.removal.clone()).collect();
     writeln!(out, "Removing:")?;
-    for c in &chosen {
+    for c in chosen {
         writeln!(out, "  {}", c.label(true))?;
         // Removal is always complete, so say when `-a` narrows the view but not the effect.
         let others: Vec<String> = c

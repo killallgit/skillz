@@ -7,6 +7,8 @@ use crate::model::{Augmentation, Kind};
 pub struct Node {
     pub label: String,
     pub children: Vec<Node>,
+    /// Index into `build`'s input for item rows; `None` for group headers and detail leaves.
+    pub item: Option<usize>,
 }
 
 impl Node {
@@ -22,15 +24,16 @@ impl Node {
         Node {
             label,
             children: vec![],
+            item: None,
         }
     }
 }
 
 /// Group augmentations for display: group -> item -> item.children. Sorted, deterministic.
 pub fn build(items: &[Augmentation]) -> Vec<Node> {
-    let mut groups: BTreeMap<&str, Vec<&Augmentation>> = BTreeMap::new();
-    for item in items {
-        groups.entry(&item.group).or_default().push(item);
+    let mut groups: BTreeMap<&str, Vec<(usize, &Augmentation)>> = BTreeMap::new();
+    for (i, item) in items.iter().enumerate() {
+        groups.entry(&item.group).or_default().push((i, item));
     }
     groups
         .into_iter()
@@ -38,17 +41,17 @@ pub fn build(items: &[Augmentation]) -> Vec<Node> {
         .collect()
 }
 
-fn group_node(group: &str, members: Vec<&Augmentation>) -> Node {
-    let (marketplaces, mut rest): (Vec<&Augmentation>, Vec<&Augmentation>) = members
+fn group_node(group: &str, members: Vec<(usize, &Augmentation)>) -> Node {
+    let (marketplaces, mut rest): (Vec<_>, Vec<_>) = members
         .iter()
         .copied()
-        .partition(|a| a.kind == Kind::Marketplace && a.name == group);
-    rest.sort_by(|a, b| (a.kind, &a.name).cmp(&(b.kind, &b.name)));
+        .partition(|(_, a)| a.kind == Kind::Marketplace && a.name == group);
+    rest.sort_by(|(_, a), (_, b)| (a.kind, &a.name).cmp(&(b.kind, &b.name)));
 
     let mut label = group.to_string();
     if let Some(src) = members
         .iter()
-        .filter_map(|a| a.source.as_deref())
+        .filter_map(|(_, a)| a.source.as_deref())
         .find(|s| *s != group)
     {
         label.push_str(&format!(" [{src}]"));
@@ -58,20 +61,25 @@ fn group_node(group: &str, members: Vec<&Augmentation>) -> Node {
     }
 
     let children = if rest.is_empty() {
-        let mut leaves: Vec<&String> = marketplaces.iter().flat_map(|m| &m.children).collect();
+        let mut leaves: Vec<&String> = marketplaces.iter().flat_map(|(_, m)| &m.children).collect();
         leaves.sort();
         leaves.dedup();
         leaves.into_iter().map(Node::leaf).collect()
     } else {
-        rest.into_iter().map(item_node).collect()
+        rest.into_iter().map(|(i, a)| item_node(i, a)).collect()
     };
-    Node { label, children }
+    Node {
+        label,
+        children,
+        item: None,
+    }
 }
 
-fn item_node(item: &Augmentation) -> Node {
+fn item_node(index: usize, item: &Augmentation) -> Node {
     Node {
         label: item.label(false),
         children: item.children.iter().map(Node::leaf).collect(),
+        item: Some(index),
     }
 }
 
@@ -82,6 +90,7 @@ pub fn collapse(nodes: Vec<Node>) -> Vec<Node> {
         .map(|n| Node {
             label: format!("{}  ({})", n.label, n.children.len()),
             children: vec![],
+            item: None,
         })
         .collect()
 }
@@ -155,9 +164,13 @@ mod tests {
         assert!(local[0].label.starts_with("beta"));
         assert!(local[1].label.starts_with("alpha"));
         assert!(local[2].label.starts_with("zeta"));
+        let items: Vec<Option<usize>> = local.iter().map(|n| n.item).collect();
+        assert_eq!(items, [Some(4), Some(2), Some(0)]);
+        assert_eq!(nodes[1].item, None);
 
         assert_eq!(nodes[2].children[0].children.len(), 2);
         assert!(nodes[2].children[0].children[0].children.is_empty());
+        assert_eq!(nodes[2].children[0].children[0].item, None);
     }
 
     #[test]

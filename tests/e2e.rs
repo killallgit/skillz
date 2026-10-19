@@ -9,7 +9,7 @@ use skillz::action::{Action, execute};
 use skillz::agents;
 use skillz::cli::{Command, Deps, Filter, run};
 use skillz::model::{Agent, Augmentation, Kind, Scope};
-use skillz::prompt::Prompter;
+use skillz::prompt::{Choice, Picked, Prompter};
 use skillz::runner::{CommandRunner, Output};
 
 struct Scripted {
@@ -682,4 +682,55 @@ fn list_query_matching_several_groups_shows_only_the_picked_groups() {
     assert_eq!(first + second, both);
     assert_eq!(list_items_picking(&w, "s", Some(vec![]), false), 0);
     assert_eq!(list_items_picking(&w, "s", Some(vec![]), true), both);
+}
+
+/// Browser that removes the given group indices (sorted group order, as `tree::build`).
+struct RemoveGroups(Vec<usize>);
+
+impl Prompter for RemoveGroups {
+    fn multi_select(&self, _title: &str, _options: &[String]) -> anyhow::Result<Vec<usize>> {
+        unreachable!("browse is used instead")
+    }
+    fn confirm(&self, _q: &str) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+    fn browse(
+        &self,
+        _title: &str,
+        _groups: &[skillz::tree::Node],
+    ) -> anyhow::Result<Option<(Choice, Picked)>> {
+        let picked = Picked {
+            groups: self.0.clone(),
+            items: vec![],
+        };
+        Ok(Some((Choice::Remove, picked)))
+    }
+}
+
+#[test]
+fn browser_remove_deletes_only_the_marked_group() {
+    let w = world();
+    let r = Recorder::default();
+    let p = RemoveGroups(vec![1]); // groups: "hooks", "mattpocock/skills"
+    let d = Deps {
+        home: w.home.clone(),
+        cwd: w.project.clone(),
+        adapters: agents::registry(),
+        runner: &r,
+        prompter: &p,
+        interactive: true,
+    };
+    let cmd = Command::List {
+        target: None,
+        project: None,
+        all: false,
+        json: false,
+        filter: Filter::default(),
+        interactive: true,
+    };
+    run(cmd, &d, &mut Vec::new()).unwrap();
+    assert!(!w.home.join(".agents/skills/tdd").exists());
+    assert!(!w.home.join(".claude/skills/tdd").exists());
+    let hooks = read_json(&w.home.join(".claude/settings.json"));
+    assert!(!hooks["hooks"].as_object().unwrap().is_empty());
 }

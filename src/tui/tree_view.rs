@@ -2,21 +2,28 @@ use std::collections::BTreeSet;
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Flex, Layout};
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, List, ListState, Paragraph};
+use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 
 use super::{FilterKey, event_loop, filter_key, is_ctrl_c, step_cursor};
 use crate::matcher::fuzzy_rank;
+use crate::prompt::{Choice, Picked};
 use crate::tree::Node;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     Continue,
     Quit,
-    /// Picker only: ordinals of the chosen top-level nodes, ascending.
-    Accept(Vec<usize>),
+    Accept(Choice, Picked),
 }
+
+/// Menu entries shown on Enter; `None` closes the menu.
+const MENU: [(&str, Option<Choice>); 3] = [
+    ("Show", Some(Choice::Show)),
+    ("Remove…", Some(Choice::Remove)),
+    ("Cancel", None),
+];
 
 /// One node of the flattened (preorder) tree.
 #[derive(Debug, Clone)]
@@ -25,6 +32,7 @@ struct Row {
     depth: usize,
     parent: Option<usize>,
     has_children: bool,
+    item: Option<usize>,
 }
 
 fn flatten(nodes: &[Node], depth: usize, parent: Option<usize>, rows: &mut Vec<Row>) {
@@ -35,78 +43,51 @@ fn flatten(nodes: &[Node], depth: usize, parent: Option<usize>, rows: &mut Vec<R
             depth,
             parent,
             has_children: !node.children.is_empty(),
+            item: node.item,
         });
         flatten(&node.children, depth + 1, Some(id), rows);
     }
 }
 
-/// Collapsible tree state. `cursor` indexes `visible`, which holds row ids in preorder.
+/// Collapsible, markable tree. `cursor` indexes `visible`, which holds row ids in preorder.
+/// Groups (top-level rows) and item rows can be marked; Enter opens the action menu.
 #[derive(Debug, Clone)]
 pub struct TreeState {
     rows: Vec<Row>,
     expanded: BTreeSet<usize>,
+    marks: BTreeSet<usize>,
     cursor: usize,
     filter: String,
     filtering: bool,
     visible: Vec<usize>,
-    /// `Some` in picker mode: marked top-level row ids.
-    marks: Option<BTreeSet<usize>>,
+    /// Cursor into `MENU` while the action menu is open.
+    menu: Option<usize>,
 }
 
 impl TreeState {
     pub fn new(nodes: &[Node]) -> Self {
         let mut rows = Vec::new();
         flatten(nodes, 0, None, &mut rows);
-        let expanded = if nodes.len() <= 3 {
-            (0..rows.len()).filter(|&i| rows[i].depth == 0).collect()
-        } else {
-            BTreeSet::new()
-        };
         let mut state = TreeState {
             rows,
-            expanded,
+            expanded: BTreeSet::new(),
+            marks: BTreeSet::new(),
             cursor: 0,
             filter: String::new(),
             filtering: false,
             visible: vec![],
-            marks: None,
+            menu: None,
         };
         state.refresh();
         state
-    }
-
-    /// Pick top-level nodes: starts collapsed; space expands, x/tab marks, enter accepts.
-    pub fn picker(nodes: &[Node]) -> Self {
-        let mut state = TreeState::new(nodes);
-        state.expanded.clear();
-        state.marks = Some(BTreeSet::new());
-        state.refresh();
-        state
-    }
-
-    /// Top-level row id that `id` sits under.
-    fn top(&self, mut id: usize) -> usize {
-        while let Some(p) = self.rows[id].parent {
-            id = p;
-        }
-        id
-    }
-
-    /// Picker result: marked groups, else the one under the cursor; as top-level ordinals.
-    fn accepted(&self, marks: &BTreeSet<usize>) -> Vec<usize> {
-        let ids: BTreeSet<usize> = match self.current() {
-            Some(id) if marks.is_empty() => [self.top(id)].into(),
-            _ => marks.clone(),
-        };
-        let tops = (0..self.rows.len()).filter(|&i| self.rows[i].depth == 0);
-        tops.enumerate()
-            .filter_map(|(ordinal, id)| ids.contains(&id).then_some(ordinal))
-            .collect()
     }
 
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
         if is_ctrl_c(key) {
             return Outcome::Quit;
+        }
+        if let Some(at) = self.menu {
+            return self.handle_menu(at, key.code);
         }
         if self.filtering {
             match filter_key(&mut self.filter, key.code) {
@@ -122,28 +103,34 @@ impl TreeState {
             }
             return Outcome::Continue;
         }
-        if let (Some(id), Some(marks)) = (self.current(), &self.marks) {
-            match key.code {
-                KeyCode::Enter => return Outcome::Accept(self.accepted(marks)),
-                KeyCode::Char('x') | KeyCode::Tab => {
-                    let top = self.top(id);
-                    let marks = self.marks.as_mut().expect("picker mode");
-                    if !marks.remove(&top) {
-                        marks.insert(top);
-                    }
-                    return Outcome::Continue;
-                }
-                _ => {}
-            }
-        }
         match key.code {
             KeyCode::Char('/') => self.filtering = true,
+            KeyCode::Char('x') | KeyCode::Tab => self.toggle_mark(),
+            KeyCode::Enter if self.current().is_some() || !self.marks.is_empty() => {
+                self.menu = Some(0)
+            }
             KeyCode::Esc if !self.filter.is_empty() => {
                 self.filter.clear();
                 self.refresh();
             }
             KeyCode::Esc | KeyCode::Char('q') => return Outcome::Quit,
             code => self.navigate(code),
+        }
+        Outcome::Continue
+    }
+
+    fn handle_menu(&mut self, at: usize, code: KeyCode) -> Outcome {
+        match code {
+            KeyCode::Up | KeyCode::Char('k') => self.menu = Some(step_cursor(at, MENU.len(), true)),
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.menu = Some(step_cursor(at, MENU.len(), false))
+            }
+            KeyCode::Enter => match MENU[at].1 {
+                Some(choice) => return Outcome::Accept(choice, self.picked()),
+                None => self.menu = None,
+            },
+            KeyCode::Esc | KeyCode::Char('q') => self.menu = None,
+            _ => {}
         }
         Outcome::Continue
     }
@@ -160,7 +147,7 @@ impl TreeState {
             KeyCode::Right | KeyCode::Char('l') if self.rows[id].has_children => {
                 self.expanded.insert(id);
             }
-            KeyCode::Enter | KeyCode::Char(' ') if self.rows[id].has_children => {
+            KeyCode::Char(' ') if self.rows[id].has_children => {
                 if !self.expanded.remove(&id) {
                     self.expanded.insert(id);
                 }
@@ -179,6 +166,84 @@ impl TreeState {
 
     fn current(&self) -> Option<usize> {
         self.visible.get(self.cursor).copied()
+    }
+
+    /// The markable row `id` belongs to: itself, its item, or its group.
+    fn target(&self, mut id: usize) -> usize {
+        while self.rows[id].depth > 0 && self.rows[id].item.is_none() {
+            id = self.rows[id].parent.expect("non-top rows have a parent");
+        }
+        id
+    }
+
+    fn group_of(&self, mut id: usize) -> usize {
+        while let Some(p) = self.rows[id].parent {
+            id = p;
+        }
+        id
+    }
+
+    fn items_in(&self, group: usize) -> Vec<usize> {
+        (0..self.rows.len())
+            .filter(|&i| self.rows[i].item.is_some() && self.group_of(i) == group)
+            .collect()
+    }
+
+    /// x on a group marks or unmarks all its items; on an item, just that item.
+    fn toggle_mark(&mut self) {
+        let Some(id) = self.current() else { return };
+        let id = self.target(id);
+        let on = !self.marks.contains(&id);
+        if self.rows[id].depth == 0 {
+            for i in self.items_in(id).into_iter().chain([id]) {
+                if on {
+                    self.marks.insert(i);
+                } else {
+                    self.marks.remove(&i);
+                }
+            }
+        } else if on {
+            self.marks.insert(id);
+        } else {
+            self.marks.remove(&id);
+            self.marks.remove(&self.group_of(id));
+        }
+    }
+
+    /// Marked groups (as top-level ordinals) and items outside them; with no marks, whatever
+    /// the cursor is on.
+    fn picked(&self) -> Picked {
+        let marks: BTreeSet<usize> = match self.current() {
+            Some(id) if self.marks.is_empty() => [self.target(id)].into(),
+            _ => self.marks.clone(),
+        };
+        let tops: Vec<usize> = (0..self.rows.len())
+            .filter(|&i| self.rows[i].depth == 0)
+            .collect();
+        Picked {
+            groups: (0..tops.len())
+                .filter(|&o| marks.contains(&tops[o]))
+                .collect(),
+            items: marks
+                .iter()
+                .filter(|&&i| !marks.contains(&self.group_of(i)))
+                .filter_map(|&i| self.rows[i].item)
+                .collect(),
+        }
+    }
+
+    fn mark_box(&self, id: usize) -> &'static str {
+        let row = &self.rows[id];
+        if row.depth > 0 && row.item.is_none() {
+            return "    ";
+        }
+        if self.marks.contains(&id) {
+            "[x] "
+        } else if row.depth == 0 && self.items_in(id).iter().any(|i| self.marks.contains(i)) {
+            "[~] "
+        } else {
+            "[ ] "
+        }
     }
 
     fn is_open(&self, id: usize) -> bool {
@@ -220,11 +285,12 @@ impl TreeState {
                 (true, true) => "▾",
                 (true, false) => "▸",
             };
-            let mark = match &self.marks {
-                Some(m) if row.depth == 0 => ["[ ] ", "[x] "][usize::from(m.contains(&id))],
-                _ => "",
-            };
-            format!("{}{mark}{marker} {}", "  ".repeat(row.depth), row.label)
+            format!(
+                "{}{}{marker} {}",
+                "  ".repeat(row.depth),
+                self.mark_box(id),
+                row.label
+            )
         });
         let list = List::new(items)
             .block(Block::bordered().title(title.to_string()))
@@ -233,37 +299,44 @@ impl TreeState {
         frame.render_stateful_widget(list, body, &mut list_state);
         let help = if self.filtering {
             format!("/{}", self.filter)
-        } else if self.marks.is_some() {
-            "↑↓/jk move · space/→← expand · x/tab mark · enter show · / filter · esc cancel".into()
         } else {
             format!(
-                "↑↓/jk move · →/l expand · ←/h collapse · enter/space toggle · / filter · q quit  {}",
+                "↑↓/jk move · space/→← expand · x/tab mark · enter actions · / filter · q quit  {}",
                 self.filter
             )
         };
         frame.render_widget(Paragraph::new(help), footer);
+
+        if let Some(at) = self.menu {
+            let [area] = Layout::vertical([Constraint::Length(MENU.len() as u16 + 2)])
+                .flex(Flex::Center)
+                .areas(body);
+            let [area] = Layout::horizontal([Constraint::Length(24)])
+                .flex(Flex::Center)
+                .areas(area);
+            let menu = List::new(MENU.iter().map(|(label, _)| *label))
+                .block(Block::bordered().title("Do what?"))
+                .highlight_style(Style::new().add_modifier(Modifier::REVERSED));
+            frame.render_widget(Clear, area);
+            frame.render_stateful_widget(
+                menu,
+                area,
+                &mut ListState::default().with_selected(Some(at)),
+            );
+        }
     }
 }
 
-/// Pick top-level `nodes` in a collapsible tree; returns their indices (empty = cancelled).
-pub fn pick(title: &str, nodes: &[Node]) -> anyhow::Result<Vec<usize>> {
-    event_loop(
-        &mut TreeState::picker(nodes),
-        |s, f| s.draw(title, f),
-        |s, k| match s.handle(k) {
-            Outcome::Continue => None,
-            Outcome::Quit => Some(vec![]),
-            Outcome::Accept(picked) => Some(picked),
-        },
-    )
-}
-
-/// Run the interactive collapsible tree browser until the user quits.
-pub fn run(title: &str, nodes: &[Node]) -> anyhow::Result<()> {
+/// Browse `nodes`, mark groups or items, and pick an action; `None` when the user quits.
+pub fn browse(title: &str, nodes: &[Node]) -> anyhow::Result<Option<(Choice, Picked)>> {
     event_loop(
         &mut TreeState::new(nodes),
         |s, f| s.draw(title, f),
-        |s, k| (s.handle(k) == Outcome::Quit).then_some(()),
+        |s, k| match s.handle(k) {
+            Outcome::Continue => None,
+            Outcome::Quit => Some(None),
+            Outcome::Accept(choice, picked) => Some(Some((choice, picked))),
+        },
     )
 }
 
@@ -274,24 +347,30 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    fn n(label: &str, children: Vec<Node>) -> Node {
+    fn n(label: &str, item: Option<usize>, children: Vec<Node>) -> Node {
         Node {
             label: label.into(),
             children,
+            item,
         }
     }
 
-    /// g0 { a { a1, a2 }, b }, g1 { c }
+    /// g0 { a#0 { a1, a2 }, b#1 }, g1 { c#2 }
     fn sample() -> Vec<Node> {
         vec![
             n(
                 "g0",
+                None,
                 vec![
-                    n("a", vec![n("a1", vec![]), n("a2", vec![])]),
-                    n("b", vec![]),
+                    n(
+                        "a",
+                        Some(0),
+                        vec![n("a1", None, vec![]), n("a2", None, vec![])],
+                    ),
+                    n("b", Some(1), vec![]),
                 ],
             ),
-            n("g1", vec![n("c", vec![])]),
+            n("g1", None, vec![n("c", Some(2), vec![])]),
         ]
     }
 
@@ -307,50 +386,88 @@ mod tests {
             .for_each(|k| assert_eq!(s.handle(k), Outcome::Continue));
     }
 
-    #[test]
-    fn few_groups_start_expanded_many_start_collapsed() {
-        let s = TreeState::new(&sample());
-        assert_eq!(labels(&s), ["g0", "a", "b", "g1", "c"]);
-        let many: Vec<Node> = (0..4)
-            .map(|i| n(&format!("g{i}"), vec![n("x", vec![])]))
-            .collect();
-        assert_eq!(TreeState::new(&many).visible.len(), 4);
+    /// Enter, then the `n`th menu entry.
+    fn choose(s: &mut TreeState, n: usize) -> Outcome {
+        feed(s, [key(KeyCode::Enter)]);
+        feed(s, (0..n).map(|_| key(KeyCode::Down)));
+        s.handle(key(KeyCode::Enter))
+    }
+
+    fn picked(groups: &[usize], items: &[usize]) -> Picked {
+        Picked {
+            groups: groups.to_vec(),
+            items: items.to_vec(),
+        }
     }
 
     #[test]
-    fn expand_toggle_and_collapse() {
+    fn starts_collapsed_and_space_or_arrows_expand() {
         let mut s = TreeState::new(&sample());
-        feed(&mut s, keys("jl"));
-        assert_eq!(labels(&s), ["g0", "a", "a1", "a2", "b", "g1", "c"]);
-        feed(&mut s, [key(KeyCode::Enter)]);
-        assert_eq!(s.visible.len(), 5);
+        assert_eq!(labels(&s), ["g0", "g1"]);
         feed(&mut s, keys(" "));
-        assert_eq!(s.visible.len(), 7);
+        assert_eq!(labels(&s), ["g0", "a", "b", "g1"]);
+        feed(&mut s, keys("jl"));
+        assert_eq!(labels(&s), ["g0", "a", "a1", "a2", "b", "g1"]);
         feed(&mut s, [key(KeyCode::Left)]);
-        assert_eq!(s.visible.len(), 5);
-        assert_eq!(s.cursor, 1);
+        assert_eq!(s.visible.len(), 4);
+        feed(&mut s, keys("h"));
+        assert_eq!(labels(&s)[s.cursor], "g0");
+        feed(&mut s, keys(" "));
+        assert_eq!(labels(&s), ["g0", "g1"]);
     }
 
     #[test]
-    fn left_on_leaf_jumps_to_parent_then_collapses() {
+    fn enter_without_marks_acts_on_the_cursor_group_or_item() {
         let mut s = TreeState::new(&sample());
-        feed(&mut s, keys("jjjj"));
+        assert_eq!(
+            choose(&mut s, 0),
+            Outcome::Accept(Choice::Show, picked(&[0], &[]))
+        );
+        let mut s = TreeState::new(&sample());
+        feed(&mut s, keys(" jljj"));
+        assert_eq!(labels(&s)[s.cursor], "a2");
+        assert_eq!(
+            choose(&mut s, 1),
+            Outcome::Accept(Choice::Remove, picked(&[], &[0]))
+        );
+    }
+
+    #[test]
+    fn group_mark_covers_its_items_and_unmarking_one_drops_the_group() {
+        let mut s = TreeState::new(&sample());
+        feed(&mut s, keys("x jx"));
+        // g0 marked, then `a` unmarked: only `b` remains, as a single item.
+        assert_eq!(
+            choose(&mut s, 0),
+            Outcome::Accept(Choice::Show, picked(&[], &[1]))
+        );
+        let mut s = TreeState::new(&sample());
+        feed(&mut s, keys("jx"));
+        feed(&mut s, [key(KeyCode::Tab)]);
+        feed(&mut s, keys("x"));
+        assert_eq!(
+            choose(&mut s, 1),
+            Outcome::Accept(Choice::Remove, picked(&[1], &[]))
+        );
+    }
+
+    #[test]
+    fn menu_cancel_and_esc_return_to_the_tree() {
+        let mut s = TreeState::new(&sample());
+        assert_eq!(choose(&mut s, 2), Outcome::Continue);
+        assert!(s.menu.is_none());
+        feed(&mut s, [key(KeyCode::Enter), key(KeyCode::Esc)]);
+        assert!(s.menu.is_none());
+        assert_eq!(s.handle(key(KeyCode::Esc)), Outcome::Quit);
+    }
+
+    #[test]
+    fn left_on_leaf_jumps_to_parent_and_cursor_clamps() {
+        let mut s = TreeState::new(&sample());
+        feed(&mut s, keys("j jjjjjj"));
         assert_eq!(labels(&s)[s.cursor], "c");
         feed(&mut s, keys("h"));
         assert_eq!(labels(&s)[s.cursor], "g1");
-        feed(&mut s, keys("h"));
-        assert_eq!(labels(&s), ["g0", "a", "b", "g1"]);
-        feed(&mut s, keys("h"));
-        assert_eq!(s.cursor, 3);
-    }
-
-    #[test]
-    fn leaf_toggles_are_noops_and_cursor_clamps() {
-        let mut s = TreeState::new(&sample());
-        feed(&mut s, keys("jjl "));
-        assert_eq!(s.visible.len(), 5);
-        feed(&mut s, keys("jjjjjj"));
-        assert_eq!(s.cursor, 4);
         feed(&mut s, keys("kkkkkkkk"));
         assert_eq!(s.cursor, 0);
     }
@@ -365,63 +482,25 @@ mod tests {
         assert!(!s.filtering);
         assert_eq!(s.visible.len(), 3);
         feed(&mut s, [key(KeyCode::Esc)]);
-        assert_eq!(labels(&s), ["g0", "a", "b", "g1", "c"]);
-        assert_eq!(s.handle(key(KeyCode::Esc)), Outcome::Quit);
-    }
-
-    #[test]
-    fn filter_mode_esc_clears_and_letters_are_text() {
-        let mut s = TreeState::new(&sample());
-        feed(&mut s, keys("/qzz"));
-        assert!(s.visible.is_empty());
-        feed(
-            &mut s,
-            [
-                key(KeyCode::Down),
-                key(KeyCode::Backspace),
-                key(KeyCode::Esc),
-            ],
-        );
-        assert!(!s.filtering && s.filter.is_empty());
-        assert_eq!(s.visible.len(), 5);
-        assert_eq!(s.handle(key(KeyCode::Char('q'))), Outcome::Quit);
-    }
-
-    #[test]
-    fn picker_starts_collapsed_space_expands_and_enter_takes_the_current_group() {
-        let mut s = TreeState::picker(&sample());
         assert_eq!(labels(&s), ["g0", "g1"]);
-        feed(&mut s, keys(" "));
-        assert_eq!(labels(&s), ["g0", "a", "b", "g1"]);
-        feed(&mut s, keys("jjj"));
-        assert_eq!(s.handle(key(KeyCode::Enter)), Outcome::Accept(vec![1]));
-    }
-
-    #[test]
-    fn picker_marks_groups_even_from_a_child_row() {
-        let mut s = TreeState::picker(&sample());
-        feed(&mut s, keys(" jx"));
-        feed(&mut s, [key(KeyCode::Tab)]);
-        feed(&mut s, keys("jjx"));
-        assert_eq!(s.handle(key(KeyCode::Enter)), Outcome::Accept(vec![1]));
-        feed(&mut s, keys("kkkx"));
-        assert_eq!(s.handle(key(KeyCode::Enter)), Outcome::Accept(vec![0, 1]));
-        assert_eq!(s.handle(key(KeyCode::Esc)), Outcome::Quit);
+        assert_eq!(s.handle(key(KeyCode::Char('q'))), Outcome::Quit);
     }
 
     #[test]
     fn empty_tree_is_safe() {
         let mut s = TreeState::new(&[]);
-        feed(&mut s, keys("jkhl /x"));
-        assert!(s.visible.is_empty());
+        feed(&mut s, keys("jkhlx /x"));
+        feed(&mut s, [key(KeyCode::Esc), key(KeyCode::Enter)]);
+        assert!(s.visible.is_empty() && s.menu.is_none());
     }
 
     #[test]
-    fn renders_without_panicking() {
+    fn renders_tree_and_menu_without_panicking() {
         let mut s = TreeState::new(&sample());
         let mut term = Terminal::new(TestBackend::new(40, 8)).unwrap();
+        feed(&mut s, keys(" x"));
         term.draw(|f| s.draw("t", f)).unwrap();
-        feed(&mut s, keys("/a"));
+        feed(&mut s, [key(KeyCode::Enter)]);
         term.draw(|f| s.draw("t", f)).unwrap();
     }
 }
