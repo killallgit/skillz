@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::Context;
 use serde_json::Value;
@@ -44,6 +44,8 @@ struct Install {
     /// `None` for `"scope": "user"` (global) entries, else the entry's `projectPath`.
     project: Option<PathBuf>,
     install_path: Option<PathBuf>,
+    /// Raw entry count of `plugins[id]`, including entries we could not parse.
+    records: usize,
 }
 
 /// One entry of `known_marketplaces.json`.
@@ -92,21 +94,19 @@ fn installs_from(json: &Value) -> Vec<Install> {
     plugins
         .iter()
         .flat_map(|(id, entries)| {
-            entries
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(move |e| {
-                    let project = match str_at(e, "scope") {
-                        Some("user") => None,
-                        _ => Some(PathBuf::from(str_at(e, "projectPath")?)),
-                    };
-                    Some(Install {
-                        id: id.clone(),
-                        project,
-                        install_path: str_at(e, "installPath").map(PathBuf::from),
-                    })
+            let entries = entries.as_array().map(Vec::as_slice).unwrap_or_default();
+            entries.iter().filter_map(move |e| {
+                let project = match str_at(e, "scope") {
+                    Some("user") => None,
+                    _ => Some(PathBuf::from(str_at(e, "projectPath")?)),
+                };
+                Some(Install {
+                    id: id.clone(),
+                    project,
+                    install_path: str_at(e, "installPath").map(PathBuf::from),
+                    records: entries.len(),
                 })
+            })
         })
         .collect()
 }
@@ -190,6 +190,46 @@ fn plugin_removal(home: &Path, install: &Install) -> Vec<Action> {
         .collect()
 }
 
+/// True when `removed` matches every record of `id`, so nothing else still uses the plugin.
+fn covers_all(installs: &[Install], id: &str, removed: impl Fn(&Install) -> bool) -> bool {
+    let mine: Vec<&Install> = installs.iter().filter(|i| i.id == id).collect();
+    mine.first().is_some_and(|i| i.records == mine.len()) && mine.into_iter().all(removed)
+}
+
+/// `RemovePath` for the plugin's cache and data dirs; none unless `name@mp` are safe segments.
+fn plugin_dirs(home: &Path, id: &str) -> Vec<Action> {
+    let safe = |s: &str| !s.is_empty() && !s.contains('/') && !s.contains("..");
+    match id.rsplit_once('@') {
+        Some((name, mp)) if safe(name) && safe(mp) => {
+            let dir = home.join(".claude/plugins");
+            vec![
+                Action::RemovePath(dir.join("cache").join(mp).join(name)),
+                Action::RemovePath(dir.join("data").join(format!("{name}-{mp}"))),
+            ]
+        }
+        _ => vec![],
+    }
+}
+
+/// `plugin_removal` plus the plugin's dirs when this was its last install record.
+fn full_plugin_removal(home: &Path, installs: &[Install], install: &Install) -> Vec<Action> {
+    let mut out = plugin_removal(home, install);
+    // Mirrors `install_matches`: removal drops records whose project equals this one exactly.
+    if covers_all(installs, &install.id, |j| j.project == install.project) {
+        out.extend(plugin_dirs(home, &install.id));
+    }
+    out
+}
+
+/// Only marketplace clones Claude made; a `directory` source's location is the user's checkout.
+fn owned_location(home: &Path, loc: &Path) -> bool {
+    loc.strip_prefix(home.join(".claude/plugins/marketplaces"))
+        .is_ok_and(|rest| {
+            rest.components().next().is_some()
+                && rest.components().all(|c| matches!(c, Component::Normal(_)))
+        })
+}
+
 /// One plugin augmentation per id among the installs belonging to `scope`.
 fn plugins(
     env: &Env,
@@ -225,7 +265,7 @@ fn plugins(
                     .as_deref()
                     .map(plugin_children)
                     .unwrap_or_default(),
-                removal: plugin_removal(&env.home, i),
+                removal: full_plugin_removal(&env.home, installs, i),
             }
         })
         .collect()
@@ -237,8 +277,12 @@ fn marketplace(home: &Path, m: &Marketplace, installs: &[Install]) -> Augmentati
         .iter()
         .map(|i| i.id.rsplit_once('@').map_or(&*i.id, |(n, _)| n).to_string())
         .collect();
+    let dirs = own
+        .iter()
+        .filter(|i| covers_all(installs, &i.id, |_| true))
+        .flat_map(|i| plugin_dirs(home, &i.id));
     let mut removal: Vec<Action> = Vec::new();
-    for a in own.iter().flat_map(|i| plugin_removal(home, i)) {
+    for a in own.iter().flat_map(|i| plugin_removal(home, i)).chain(dirs) {
         if !removal.contains(&a) {
             removal.push(a);
         }
@@ -255,7 +299,7 @@ fn marketplace(home: &Path, m: &Marketplace, installs: &[Install]) -> Augmentati
             path: vec!["extraKnownMarketplaces".into(), m.name.clone()],
         },
     });
-    if !m.install_location.is_empty() {
+    if owned_location(home, Path::new(&m.install_location)) {
         removal.push(Action::RemovePath(PathBuf::from(&m.install_location)));
     }
     Augmentation {
@@ -526,6 +570,10 @@ mod tests {
                     &["enabledPlugins", "solo@acme"]
                 ),
                 remove_install(&installed, "solo@acme", Some(&other)),
+                Action::RemovePath(home.join(".claude/plugins/cache/acme/tools")),
+                Action::RemovePath(home.join(".claude/plugins/data/tools-acme")),
+                Action::RemovePath(home.join(".claude/plugins/cache/acme/solo")),
+                Action::RemovePath(home.join(".claude/plugins/data/solo-acme")),
                 remove_key(&known, &["acme"]),
                 remove_key(&global_settings, &["extraKnownMarketplaces", "acme"]),
                 Action::RemovePath(f.mp_dir.clone()),
@@ -543,6 +591,72 @@ mod tests {
                 remove_key(&global_settings, &["extraKnownMarketplaces", "other"]),
             ]
         );
+    }
+
+    #[test]
+    fn last_install_removes_plugin_dirs() {
+        let home = Path::new("/h");
+        let installed = installed_file(home);
+        let installs = installs_from(&json!({"plugins": {
+            "solo@acme": [{"scope": "user"}],
+            "dup@acme": [{"scope": "user"}, {"scope": "project", "projectPath": "/p"}],
+        }}));
+        let solo = installs.iter().find(|i| i.id == "solo@acme").unwrap();
+        assert_eq!(
+            full_plugin_removal(home, &installs, solo),
+            [
+                remove_key(
+                    &home.join(".claude/settings.json"),
+                    &["enabledPlugins", "solo@acme"]
+                ),
+                remove_install(&installed, "solo@acme", None),
+                Action::RemovePath("/h/.claude/plugins/cache/acme/solo".into()),
+                Action::RemovePath("/h/.claude/plugins/data/solo-acme".into()),
+            ]
+        );
+        let dup = installs.iter().find(|i| i.id == "dup@acme").unwrap();
+        assert_eq!(
+            full_plugin_removal(home, &installs, dup),
+            plugin_removal(home, dup)
+        );
+    }
+
+    #[test]
+    fn plugin_dirs_rejects_unsafe_ids() {
+        for id in [
+            "bare", "@acme", "x@", "a/b@acme", "x@a/b", "..@acme", "x@..",
+        ] {
+            assert_eq!(plugin_dirs(Path::new("/h"), id), [], "{id}");
+        }
+    }
+
+    #[test]
+    fn marketplace_keeps_locations_outside_its_dir() {
+        let home = Path::new("/h");
+        for loc in [
+            "/Users/x/Code/repo",
+            "/h/.claude/plugins/marketplaces",
+            "/h/.claude/plugins/marketplaces/../../..",
+            "/h/.claude/plugins/marketplaces/a/../../x",
+            "",
+        ] {
+            let m = Marketplace {
+                name: "local".into(),
+                source: Some("/Users/x/Code/repo".into()),
+                install_location: loc.into(),
+            };
+            assert_eq!(
+                marketplace(home, &m, &[]).removal,
+                [
+                    remove_key(&marketplaces_file(home), &["local"]),
+                    remove_key(
+                        &home.join(".claude/settings.json"),
+                        &["extraKnownMarketplaces", "local"]
+                    ),
+                ],
+                "{loc}"
+            );
+        }
     }
 
     #[test]
