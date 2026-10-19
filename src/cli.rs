@@ -238,15 +238,12 @@ fn resolve(deps: &Deps, path: Option<&Path>, global: bool) -> anyhow::Result<(En
         .home
         .canonicalize()
         .unwrap_or_else(|_| deps.home.clone());
-    let mut scopes = match (path.is_some(), global) {
-        (true, false) => vec![Scope::Project],
-        (false, true) => vec![Scope::Global],
+    // In the home dir "project" files are the global ones, so that project is global scope.
+    let scopes = match (project == home, path.is_some(), global) {
+        (true, _, _) | (false, false, true) => vec![Scope::Global],
+        (false, true, false) => vec![Scope::Project],
         _ => vec![Scope::Global, Scope::Project],
     };
-    // In the home dir "project" files are the global ones; don't list them twice.
-    if project == home {
-        scopes.retain(|s| *s == Scope::Global);
-    }
     Ok((Env { home, project }, scopes))
 }
 
@@ -470,5 +467,34 @@ fn describe(step: &Action) -> String {
             };
             format!("edit {} (remove {what})", file.display())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn deps_at(home: &Path, cwd: &Path) -> Deps<'static> {
+        Deps {
+            home: home.to_path_buf(),
+            cwd: cwd.to_path_buf(),
+            adapters: vec![],
+            runner: &SystemRunner,
+            prompter: &AssumeYes,
+            interactive: false,
+        }
+    }
+
+    fn scopes(deps: &Deps, path: Option<&str>, global: bool) -> Vec<Scope> {
+        resolve(deps, path.map(Path::new), global).unwrap().1
+    }
+
+    #[test]
+    fn resolve_home_as_project_is_global() {
+        let home = tempfile::tempdir().unwrap();
+        let deps = deps_at(home.path(), home.path());
+        assert_eq!(scopes(&deps, None, false), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("."), false), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("."), true), [Scope::Global]);
     }
 }

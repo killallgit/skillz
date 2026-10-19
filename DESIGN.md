@@ -158,6 +158,7 @@ skillz uninstall|rm|delete [QUERY] [same filters] [-y]
 skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill a,b,*commit]... [-y]
 ```
 - Scope: `PATH` only -> project at PATH; `-g` only -> global; neither -> both (project = cwd).
+  A project that is the home dir is global only.
 - Kind flags filter (singular aliases `--skill/--hook/--plugin/--marketplace` on list and
   uninstall). No kind flag = all kinds. `-a` filters by agent.
 - `list` prints group headers with item counts; a QUERY (fuzzy, as in uninstall; a matched
