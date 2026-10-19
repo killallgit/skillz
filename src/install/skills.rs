@@ -68,8 +68,8 @@ fn select_skills(names: &[String], selection: &SkillSelection) -> Vec<String> {
     }
 }
 
-/// Names of every skill (dir containing `SKILL.md`) under `root`, recursively, sorted.
-/// Skips `.git` and `node_modules`.
+/// Frontmatter names of every skill (dir containing `SKILL.md`) under `root`, recursively,
+/// sorted: the names npx `skills --skill` matches. Skips the dirs npx skips.
 fn scan_available(root: &Path) -> anyhow::Result<Vec<String>> {
     let mut found = Vec::new();
     walk(root, &mut found)?;
@@ -79,21 +79,55 @@ fn scan_available(root: &Path) -> anyhow::Result<Vec<String>> {
 }
 
 fn walk(dir: &Path, found: &mut Vec<String>) -> anyhow::Result<()> {
-    if dir.join("SKILL.md").is_file()
-        && let Some(name) = dir.file_name()
+    if let Ok(md) = std::fs::read_to_string(dir.join("SKILL.md"))
+        && let Some(name) = frontmatter_name(&md)
     {
-        found.push(name.to_string_lossy().into_owned());
+        found.push(name.to_string());
     }
     let entries = std::fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))?;
     for entry in entries {
         let entry = entry?;
-        let skip = matches!(entry.file_name().to_str(), Some(".git" | "node_modules"));
+        let skip = matches!(
+            entry.file_name().to_str(),
+            Some(".git" | "node_modules" | "dist" | "build" | "__pycache__")
+        );
         // file_type() does not follow symlinks, so symlink loops can't recurse forever.
         if !skip && entry.file_type()?.is_dir() {
             walk(&entry.path(), found)?;
         }
     }
     Ok(())
+}
+
+/// `name:` from the leading `---` frontmatter block; `None` (npx skips the skill) unless both
+/// `name` and `description` are set.
+/// shortcut: top-level `key: value` lines only (no YAML block scalars); add a YAML parser if
+/// skills with multi-line `description:` values go missing.
+fn frontmatter_name(md: &str) -> Option<&str> {
+    let mut lines = md.lines();
+    if lines.next()? != "---" {
+        return None;
+    }
+    let (mut name, mut description) = ("", "");
+    for line in lines {
+        if line == "---" {
+            return (!name.is_empty() && !description.is_empty()).then_some(name);
+        }
+        match line.split_once(':') {
+            Some(("name", v)) => name = unquote(v),
+            Some(("description", v)) => description = unquote(v),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn unquote(v: &str) -> &str {
+    let v = v.trim();
+    ['"', '\'']
+        .iter()
+        .find_map(|q| v.strip_prefix(*q)?.strip_suffix(*q))
+        .unwrap_or(v)
 }
 
 #[cfg(test)]
@@ -214,7 +248,48 @@ mod tests {
         skill(root, "z/alpha");
         skill(root, ".git/hidden");
         skill(root, "node_modules/pkg/dep");
+        for build_dir in ["dist", "build", "__pycache__"] {
+            skill(root, &format!("{build_dir}/gen"));
+        }
         assert_eq!(scan_available(root).unwrap(), s(&["alpha", "beta"]));
+    }
+
+    #[test]
+    fn scan_available_names_skills_by_frontmatter() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        skill_md(
+            root,
+            "folder",
+            "---\nname: real-name\ndescription: d\n---\n",
+        );
+        skill_md(
+            root,
+            "quoted",
+            "---\r\ndescription: d\r\nname: \"q-name\"\r\n---\r\n",
+        );
+        skill_md(
+            root,
+            "single",
+            "---\nname: 'single-q'\ndescription: 'x'\n---\nbody",
+        );
+        assert_eq!(
+            scan_available(root).unwrap(),
+            s(&["q-name", "real-name", "single-q"])
+        );
+    }
+
+    #[test]
+    fn scan_available_skips_skills_missing_name_or_description() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        skill_md(root, "no-desc", "---\nname: no-desc\n---\n");
+        skill_md(root, "empty-desc", "---\nname: e\ndescription: \"\"\n---\n");
+        skill_md(root, "no-name", "---\ndescription: d\n---\n");
+        skill_md(root, "no-fence", "name: n\ndescription: d\n");
+        skill_md(root, "body-only", "---\n---\nname: b\ndescription: d\n");
+        skill(root, "ok");
+        assert_eq!(scan_available(root).unwrap(), s(&["ok"]));
     }
 
     #[test]

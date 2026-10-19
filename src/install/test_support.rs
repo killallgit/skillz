@@ -86,10 +86,20 @@ pub fn s(v: &[&str]) -> Vec<String> {
     v.iter().map(|x| x.to_string()).collect()
 }
 
-pub fn skill(root: &Path, rel: &str) {
+pub fn skill_md(root: &Path, rel: &str, md: &str) {
     let dir = root.join(rel);
     fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("SKILL.md"), "---\nname: x\n---\n").unwrap();
+    fs::write(dir.join("SKILL.md"), md).unwrap();
+}
+
+/// A skill dir whose frontmatter `name:` is its folder name.
+pub fn skill(root: &Path, rel: &str) {
+    let name = Path::new(rel).file_name().unwrap().to_string_lossy();
+    skill_md(
+        root,
+        rel,
+        &format!("---\nname: {name}\ndescription: d\n---\n"),
+    );
 }
 
 pub fn skills_fixture(root: &Path) {

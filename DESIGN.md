@@ -167,7 +167,9 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill a,b
 - `uninstall`: filter -> fuzzy match QUERY over `name group source` -> multi-select picker
   -> show plan -> confirm -> execute -> re-discover and verify.
 - `install`: resolve source (local path, else `git clone --depth 1`), scan skills and
-  `.claude-plugin/marketplace.json`. `--all`/`--skill` or no marketplace -> npx skills path
+  `.claude-plugin/marketplace.json`. Skills are named by their `SKILL.md` frontmatter `name:`
+  (what npx `--skill` matches); as in npx, skills without `name`/`description` are skipped,
+  as are `.git`, `node_modules`, `dist`, `build` and `__pycache__` dirs. `--all`/`--skill` or no marketplace -> npx skills path
   with pattern matching + confirm; otherwise marketplace path for Claude
   (`claude plugin marketplace add <src>`, `claude plugin install <p>@<mp> --scope user|project`).
 

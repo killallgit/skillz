@@ -394,9 +394,12 @@ fn dry_run_changes_nothing() {
 fn install_local_source_runs_npx_skills_with_matches() {
     let w = world();
     let src = w.project.join("src-repo");
-    write(&src.join("skills/git-commit/SKILL.md"), "x");
-    write(&src.join("skills/caveman-commit/SKILL.md"), "x");
-    write(&src.join("skills/tdd/SKILL.md"), "x");
+    for name in ["git-commit", "caveman-commit", "tdd"] {
+        write(
+            &src.join(format!("skills/{name}/SKILL.md")),
+            &format!("---\nname: {name}\ndescription: d\n---\n"),
+        );
+    }
     let (r, p) = (
         Recorder::default(),
         Scripted {
