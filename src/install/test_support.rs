@@ -50,7 +50,6 @@ impl CommandRunner for FakeRunner {
         }
         Ok(Output {
             success,
-            stdout: String::new(),
             stderr: "boom".into(),
         })
     }
