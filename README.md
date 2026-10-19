@@ -23,13 +23,14 @@ skillz rm --hook bd -a cursor    # every hook that runs `bd`, for Cursor
 skillz rm caveman@caveman -y     # non-interactive: needs one exact name match
 skillz rm speckit --dry-run      # print the removal plan only
 
-skillz install mattpocock/skills --skill tdd,*commit   # glob match, confirm, npx skills add
+skillz install mattpocock/skills --skill 'tdd,*commit' # glob match, confirm, npx skills add
 skillz install mattpocock/skills --all -g
 skillz install killallgit/killall-skills               # has a marketplace: pick Claude plugins
 ```
 
 Scope: a `PATH` (or `-C PATH`) means that project only, `-g` means global only, neither
-means both (project = cwd).
+means both (project = cwd). A `list` PATH must start with `.`, `..` or `/` (`./sub`, not
+`sub`); any other word is a query.
 
 Pickers: `↑↓/jk` move, `space` toggle, `a` toggle all, `/` filter, `enter` accept, `esc` cancel.
 

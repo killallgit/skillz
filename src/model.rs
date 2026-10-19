@@ -49,6 +49,27 @@ pub struct Augmentation {
     pub removal: Vec<Action>,
 }
 
+impl Augmentation {
+    /// `name [source]  (kind · agents · scope)`. Tree items pass `false`: their group
+    /// header already shows the source.
+    pub fn label(&self, with_source: bool) -> String {
+        let agents: Vec<String> = self.agents.iter().map(Agent::to_string).collect();
+        let source = self
+            .source
+            .as_deref()
+            .filter(|s| with_source && *s != self.name)
+            .map(|s| format!(" [{s}]"))
+            .unwrap_or_default();
+        format!(
+            "{}{source}  ({} · {} · {})",
+            self.name,
+            self.kind,
+            agents.join(","),
+            self.scope
+        )
+    }
+}
+
 impl fmt::Display for Agent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -76,5 +97,34 @@ impl fmt::Display for Scope {
             Scope::Global => "global",
             Scope::Project => "project",
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(source: Option<&str>) -> Augmentation {
+        Augmentation {
+            id: "skill:a".into(),
+            name: "a".into(),
+            kind: Kind::Skill,
+            agents: vec![Agent::Claude],
+            scope: Scope::Global,
+            group: "g".into(),
+            source: source.map(Into::into),
+            children: vec![],
+            removal: vec![],
+        }
+    }
+
+    #[test]
+    fn label_shows_source_only_when_asked_and_it_differs_from_name() {
+        let other = item(Some("org/repo"));
+        assert_ne!(other.label(true), other.label(false));
+        assert!(other.label(true).contains("org/repo"));
+        for same in [item(None), item(Some("a"))] {
+            assert_eq!(same.label(true), same.label(false));
+        }
     }
 }

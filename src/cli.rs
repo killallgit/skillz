@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::io::{IsTerminal, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
@@ -32,7 +32,7 @@ pub enum Command {
     /// Show installed augmentations as a tree (groups collapsed unless queried or --all)
     #[command(visible_alias = "ls")]
     List {
-        /// Fuzzy query to expand, or a project directory to limit the listing to
+        /// Fuzzy query to expand, or a project path (`.`, `./dir`, `/abs`) to limit the listing to
         target: Option<String>,
         /// Project directory (default: cwd + global)
         #[arg(short = 'C', long)]
@@ -139,11 +139,11 @@ pub struct Deps<'a> {
 
 pub fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let yes = matches!(
-        cli.command,
-        Command::Uninstall { yes: true, .. } | Command::Install { yes: true, .. }
-    );
-    let prompter: &dyn Prompter = if yes { &AssumeYes } else { &TuiPrompter };
+    let prompter: &dyn Prompter = if wants_auto_yes(&cli.command) {
+        &AssumeYes
+    } else {
+        &TuiPrompter
+    };
     let deps = Deps {
         home: std::env::home_dir().context("cannot find home directory")?,
         cwd: std::env::current_dir()?,
@@ -155,6 +155,14 @@ pub fn main() -> anyhow::Result<()> {
     run(cli.command, &deps, &mut std::io::stdout())
 }
 
+/// `--yes` swaps the interactive prompter for one that picks and confirms everything.
+fn wants_auto_yes(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Uninstall { yes: true, .. } | Command::Install { yes: true, .. }
+    )
+}
+
 pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
     match command {
         Command::List {
@@ -164,7 +172,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
             filter,
             interactive,
         } => {
-            let (path, query) = split_target(&deps.cwd, project, target);
+            let (path, query) = split_target(project, target);
             let (env, scopes) = resolve(deps, path.as_deref(), filter.global)?;
             let view = ListView {
                 query: query.as_deref(),
@@ -238,15 +246,12 @@ fn resolve(deps: &Deps, path: Option<&Path>, global: bool) -> anyhow::Result<(En
         .home
         .canonicalize()
         .unwrap_or_else(|_| deps.home.clone());
-    let mut scopes = match (path.is_some(), global) {
-        (true, false) => vec![Scope::Project],
-        (false, true) => vec![Scope::Global],
+    // In the home dir "project" files are the global ones, so that project is global scope.
+    let scopes = match (project == home, path.is_some(), global) {
+        (true, _, _) | (false, false, true) => vec![Scope::Global],
+        (false, true, false) => vec![Scope::Project],
         _ => vec![Scope::Global, Scope::Project],
     };
-    // In the home dir "project" files are the global ones; don't list them twice.
-    if project == home {
-        scopes.retain(|s| *s == Scope::Global);
-    }
     Ok((Env { home, project }, scopes))
 }
 
@@ -258,15 +263,21 @@ fn gather(deps: &Deps, env: &Env, scopes: &[Scope], filter: &Filter) -> Vec<Augm
     inv.items.into_iter().filter(|i| filter.keeps(i)).collect()
 }
 
-/// `list TARGET`: an existing directory is the project (as in `list --hooks .`), anything
-/// else is a query. With `-C`, TARGET is always a query.
+/// `list TARGET`: a path starting with `.`, `..` or `/` is the project (as in
+/// `list --hooks .`); anything else, even a word naming a directory, is a query. With `-C`,
+/// TARGET is always a query.
 fn split_target(
-    cwd: &Path,
     project: Option<PathBuf>,
     target: Option<String>,
 ) -> (Option<PathBuf>, Option<String>) {
+    let path_like = |t: &str| {
+        matches!(
+            Path::new(t).components().next(),
+            Some(Component::CurDir | Component::ParentDir | Component::RootDir)
+        )
+    };
     match (project, target) {
-        (None, Some(t)) if cwd.join(&t).is_dir() => (Some(PathBuf::from(t)), None),
+        (None, Some(t)) if path_like(&t) => (Some(PathBuf::from(t)), None),
         other => other,
     }
 }
@@ -320,22 +331,12 @@ fn list(
     Ok(())
 }
 
-/// Picker label for one item.
-pub fn label(item: &Augmentation) -> String {
-    let agents: Vec<String> = item.agents.iter().map(Agent::to_string).collect();
-    let source = item
-        .source
-        .as_deref()
-        .filter(|s| *s != item.name)
-        .map(|s| format!(" [{s}]"))
-        .unwrap_or_default();
-    format!(
-        "{}{source}  ({} · {} · {})",
-        item.name,
-        item.kind,
-        agents.join(","),
-        item.scope
-    )
+/// Items named exactly `query` (case-insensitive, surrounding whitespace ignored).
+fn named<'a>(items: &'a [Augmentation], query: &str) -> Vec<&'a Augmentation> {
+    items
+        .iter()
+        .filter(|i| i.name.eq_ignore_ascii_case(query.trim()))
+        .collect()
 }
 
 /// Items matching `query`: exact (case-insensitive) name matches win over fuzzy ones.
@@ -343,10 +344,7 @@ pub fn matches<'a>(items: &'a [Augmentation], query: Option<&str>) -> Vec<&'a Au
     let Some(query) = query.filter(|q| !q.trim().is_empty()) else {
         return items.iter().collect();
     };
-    let exact: Vec<&Augmentation> = items
-        .iter()
-        .filter(|i| i.name.eq_ignore_ascii_case(query.trim()))
-        .collect();
+    let exact = named(items, query);
     if !exact.is_empty() {
         return exact;
     }
@@ -384,14 +382,13 @@ fn uninstall(
         bail!("nothing installed matches");
     }
     // `--yes` selects every candidate, so it only acts on exactly one exact-name match.
-    let exact = |c: &&Augmentation| query.is_some_and(|q| c.name.eq_ignore_ascii_case(q.trim()));
-    if yes && (candidates.len() > 1 || !candidates.iter().all(exact)) {
+    if yes && query.map_or(0, |q| named(&items, q).len()) != 1 {
         bail!(
             "{} items match; refine the query or run without --yes to pick",
             candidates.len()
         );
     }
-    let labels: Vec<String> = candidates.iter().map(|c| label(c)).collect();
+    let labels: Vec<String> = candidates.iter().map(|c| c.label(true)).collect();
     // A dry run changes nothing, so show every candidate's plan without asking.
     let picked = if dry_run {
         (0..candidates.len()).collect()
@@ -411,7 +408,7 @@ fn uninstall(
     let plan: Vec<Action> = chosen.iter().flat_map(|c| c.removal.clone()).collect();
     writeln!(out, "Removing:")?;
     for c in &chosen {
-        writeln!(out, "  {}", label(c))?;
+        writeln!(out, "  {}", c.label(true))?;
         // Removal is always complete, so say when `-a` narrows the view but not the effect.
         let others: Vec<String> = c
             .agents
@@ -470,5 +467,85 @@ fn describe(step: &Action) -> String {
             };
             format!("edit {} (remove {what})", file.display())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn deps_at(home: &Path, cwd: &Path) -> Deps<'static> {
+        Deps {
+            home: home.to_path_buf(),
+            cwd: cwd.to_path_buf(),
+            adapters: vec![],
+            runner: &SystemRunner,
+            prompter: &AssumeYes,
+            interactive: false,
+        }
+    }
+
+    fn scopes(deps: &Deps, path: Option<&str>, global: bool) -> Vec<Scope> {
+        resolve(deps, path.map(Path::new), global).unwrap().1
+    }
+
+    #[test]
+    fn resolve_home_as_project_is_global() {
+        let home = tempfile::tempdir().unwrap();
+        let deps = deps_at(home.path(), home.path());
+        assert_eq!(scopes(&deps, None, false), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("."), false), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("."), true), [Scope::Global]);
+    }
+
+    #[test]
+    fn resolve_scope_rule_outside_home() {
+        let (home, cwd) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        std::fs::create_dir(cwd.path().join("sub")).unwrap();
+        let deps = deps_at(home.path(), cwd.path());
+        let both = [Scope::Global, Scope::Project];
+        assert_eq!(scopes(&deps, None, false), both);
+        assert_eq!(scopes(&deps, None, true), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("sub"), false), [Scope::Project]);
+        assert_eq!(scopes(&deps, Some("sub"), true), both);
+        let (env, _) = resolve(&deps, Some(Path::new("sub")), false).unwrap();
+        assert_eq!(env.project, cwd.path().join("sub").canonicalize().unwrap());
+        assert!(resolve(&deps, Some(Path::new("missing")), false).is_err());
+    }
+
+    #[test]
+    fn auto_yes_only_for_yes_flag_on_uninstall_and_install() {
+        let parse = |args: &[&str]| {
+            Cli::try_parse_from([&["skillz"], args].concat())
+                .unwrap()
+                .command
+        };
+        assert!(wants_auto_yes(&parse(&["rm", "x", "-y"])));
+        assert!(!wants_auto_yes(&parse(&["rm", "x"])));
+        assert!(wants_auto_yes(&parse(&["install", "o/r", "--yes"])));
+        assert!(!wants_auto_yes(&parse(&["install", "o/r"])));
+        assert!(!wants_auto_yes(&parse(&["list"])));
+    }
+
+    fn split(project: Option<&str>, target: &str) -> (Option<PathBuf>, Option<String>) {
+        split_target(project.map(PathBuf::from), Some(target.into()))
+    }
+
+    #[test]
+    fn split_target_path_like_is_project() {
+        for t in [".", "..", "./sub", "../sib", "/abs/dir"] {
+            assert_eq!(split(None, t), (Some(PathBuf::from(t)), None), "{t}");
+        }
+    }
+
+    #[test]
+    fn split_target_word_is_query() {
+        for t in ["caveman", "org/repo", ".hidden"] {
+            assert_eq!(split(None, t), (None, Some(t.into())), "{t}");
+        }
+        assert_eq!(
+            split(Some("p"), "."),
+            (Some(PathBuf::from("p")), Some(".".into()))
+        );
     }
 }
