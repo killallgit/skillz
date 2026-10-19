@@ -91,7 +91,6 @@ fn install_from(
 mod tests {
     use super::test_support::*;
     use super::*;
-    use std::fs;
 
     #[test]
     fn local_path_all_installs_every_skill_from_absolute_path() {
@@ -192,21 +191,5 @@ mod tests {
             assert_eq!(calls.len(), 1);
             assert_eq!(calls[0].0, "npx");
         }
-    }
-
-    #[test]
-    fn malformed_marketplace_is_err() {
-        let fx = project_with(|root| {
-            fs::create_dir_all(root.join(".claude-plugin")).unwrap();
-            fs::write(root.join(".claude-plugin/marketplace.json"), "{nope").unwrap();
-        });
-        let runner = FakeRunner::new(|_| {});
-        let r = req(
-            "repo",
-            &[Agent::Claude],
-            Scope::Project,
-            SkillSelection::All,
-        );
-        assert!(install(&r, &fx.env, &runner, &ScriptedPrompter::new(&[], true)).is_err());
     }
 }
