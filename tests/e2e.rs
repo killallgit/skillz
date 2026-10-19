@@ -636,3 +636,45 @@ fn list_json_dumps_every_item_with_its_removal_plan() {
     assert_eq!(list_json(&w, Some("tdd")).len(), 1);
     assert!(list_json(&w, Some("zzzz-no-such-thing")).is_empty());
 }
+
+fn list_items_picking(w: &World, query: &str, pick: Option<Vec<usize>>, json: bool) -> usize {
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick,
+            confirm: true,
+        },
+    );
+    let mut d = deps(w, &r, &p);
+    d.interactive = true;
+    let mut out = Vec::new();
+    let cmd = Command::List {
+        target: Some(query.into()),
+        project: None,
+        all: false,
+        json,
+        filter: Filter::default(),
+        interactive: false,
+    };
+    run(cmd, &d, &mut out).unwrap();
+    let text = String::from_utf8(out).unwrap();
+    if json {
+        return serde_json::from_str::<Value>(&text)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len();
+    }
+    // Items are the depth-1 tree lines; their children are indented under `│` or spaces.
+    text.lines().filter(|l| l.starts_with(['├', '└'])).count()
+}
+
+#[test]
+fn list_query_with_several_matches_shows_only_the_picked_ones() {
+    let w = world();
+    // `bd` names three hook groups: Claude, Cursor (global) and Codex (project).
+    assert_eq!(list_items_picking(&w, "bd", Some(vec![1]), false), 1);
+    assert_eq!(list_items_picking(&w, "bd", Some(vec![]), false), 0);
+    assert_eq!(list_items_picking(&w, "bd", Some(vec![0]), true), 3);
+    assert_eq!(list_items_picking(&w, "tdd", Some(vec![]), false), 1);
+}

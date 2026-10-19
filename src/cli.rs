@@ -297,16 +297,36 @@ struct ListView<'a> {
 }
 
 /// Items `list QUERY` shows: the matches, plus the whole group of any matched marketplace.
-fn queried(mut items: Vec<Augmentation>, query: &str) -> Vec<Augmentation> {
-    let hits = matches(&items, Some(query));
+fn queried(items: &[Augmentation], hits: &[&Augmentation]) -> Vec<Augmentation> {
     let ids: HashSet<String> = hits.iter().map(|i| i.id.clone()).collect();
     let groups: HashSet<String> = hits
         .iter()
         .filter(|i| i.kind == Kind::Marketplace)
         .map(|i| i.group.clone())
         .collect();
-    items.retain(|i| ids.contains(&i.id) || groups.contains(&i.group));
     items
+        .iter()
+        .filter(|i| ids.contains(&i.id) || groups.contains(&i.group))
+        .cloned()
+        .collect()
+}
+
+/// The matches `list QUERY` shows: all of them for `--json`, `-i` or no terminal; otherwise,
+/// when there are several, the ones the user picks.
+fn pick_matches<'a>(
+    deps: &Deps,
+    hits: Vec<&'a Augmentation>,
+    view: &ListView,
+) -> anyhow::Result<Vec<&'a Augmentation>> {
+    if hits.len() < 2 || view.json || view.interactive || !deps.interactive {
+        return Ok(hits);
+    }
+    let labels: Vec<String> = hits.iter().map(|h| h.label(true)).collect();
+    let picked = deps.prompter.multi_select("Show which?", &labels)?;
+    Ok(picked
+        .into_iter()
+        .filter_map(|i| hits.get(i).copied())
+        .collect())
 }
 
 fn list(
@@ -319,7 +339,8 @@ fn list(
 ) -> anyhow::Result<()> {
     let mut items = gather(deps, env, scopes, filter);
     if let Some(q) = view.query {
-        items = queried(items, q);
+        let hits = pick_matches(deps, matches(&items, Some(q)), &view)?;
+        items = queried(&items, &hits);
     }
     if view.json {
         serde_json::to_writer_pretty(&mut *out, &items)?;

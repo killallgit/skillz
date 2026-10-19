@@ -12,6 +12,7 @@ task install                     # release build, symlinked to ~/.local/bin/skil
 
 ```sh
 skillz list                      # global + current project, groups collapsed
+skillz list matt                 # several matches: pick which, then show them in full
 skillz list ponytail             # expand what matches (a marketplace brings its group)
 skillz list --all                # expand everything
 skillz list --hooks .            # project hooks only

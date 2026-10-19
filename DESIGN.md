@@ -171,7 +171,8 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,
   A project that is the home dir is global only.
 - Kind flags filter (singular aliases `--skill/--hook/--plugin/--marketplace` on list and
   uninstall). No kind flag = all kinds. `-a` filters by agent.
-- `list` prints group headers with item counts; a QUERY (fuzzy, as in uninstall; a matched
+- `list` prints group headers with item counts; with several QUERY matches on a terminal it
+  first asks which to show (`--json`, `-i` and pipes take all matches); a QUERY (fuzzy, as in uninstall; a matched
   marketplace pulls in its whole group) or `--all` prints the expanded tree. A positional
   starting with `.`, `..` or `/` (`.`, `./sub`, `/abs`) is the project path; any other word is
   a query, even if a directory has that name; `-C` forces query mode. `-i` opens the
