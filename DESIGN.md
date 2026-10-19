@@ -106,14 +106,14 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
 - **Claude plugin**: `JsonRemoveKey ["enabledPlugins", id]` in the scope's settings
   (project scope: both `settings.json` and `settings.local.json`) and
   `JsonRemoveArrayItems ["plugins", id]` in `installed_plugins.json`, dropping records with
-  `scope: "user"` (global) or `projectPath: <project>` (project). Those fields come from
-  `claude::record_fields` alone; the adapter matches them against parsed records with the
-  same `action::fields_match` the edit uses. When that drops the id's last
-  install record (no other scope/project still has one), also `RemovePath` of
-  `~/.claude/plugins/cache/<mp>/<name>` and `~/.claude/plugins/data/<name>-<mp>` (both or
-  neither, per the segment rule below).
-- **Claude marketplace** (global only): its plugins' removals (plus each plugin's cache/data
-  dirs when every record is removed), `JsonRemoveKey [mp]` in `known_marketplaces.json`,
+  `scope: "user"` (global) or `projectPath: <project>` (project), as `claude::record_fields`
+  selects. Always also `RemovePathIfJsonAbsent` of `~/.claude/plugins/cache/<mp>/<name>` and
+  `~/.claude/plugins/data/<name>-<mp>` (both or neither, per the segment rule below) on
+  `installed_plugins.json` `["plugins", id]`: the dirs go only once the committed edits leave
+  no install record, so selecting every scope of a plugin removes them and selecting one of
+  several keeps them.
+- **Claude marketplace** (global only): its plugins' removals (their cache/data dirs under the
+  same condition), `JsonRemoveKey [mp]` in `known_marketplaces.json`,
   `JsonRemoveKey ["extraKnownMarketplaces", mp]` in settings, and `RemovePath(installLocation)`
   **only if it is exactly one segment under `~/.claude/plugins/marketplaces/`** — a
   `directory` source's location is the user's own checkout and is never deleted.
@@ -132,8 +132,10 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
   agent skill dir holding the link, and the owned skill dir of the same scope holding the
   canonical dir.
 - `execute` writes all edits or none (a failed rename restores files already replaced, best
-  effort; edits naming one file through different paths, e.g. a symlink, are merged), then runs `RemovePath`s in plan order; a failed removal errors naming the paths
-  already removed (no rollback). Before deleting it re-checks the target is strictly inside
+  effort; edits naming one file through different paths, e.g. a symlink, are merged), then
+  runs `RemovePath`s in plan order, checking each `RemovePathIfJsonAbsent` condition against
+  the files as written (missing file = absent, unparsable = error); a failed removal errors
+  naming the paths already removed (no rollback). Before deleting it re-checks the target is strictly inside
   its root and skips (never errors) a target that is not, or whose parent or grandparent is a
   symlink, so nothing is deleted through a link.
 - `execute` validates every edited file re-parses before writing; after uninstall the CLI

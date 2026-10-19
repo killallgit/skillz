@@ -458,6 +458,12 @@ fn uninstall(
 fn describe(step: &Action) -> String {
     match step {
         Action::RemovePath(t) => format!("rm {}", t.path().display()),
+        Action::RemovePathIfJsonAbsent { target, file, key } => format!(
+            "rm {} (if {} then has no {})",
+            target.path().display(),
+            file.display(),
+            key.join(".")
+        ),
         Action::Edit { file, edit } => {
             let what = match edit {
                 Edit::RemoveHook { event, command } => format!("hook {event}: {command}"),

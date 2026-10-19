@@ -7,7 +7,7 @@ use anyhow::Context;
 use serde_json::Value;
 
 use super::AgentAdapter;
-use crate::action::{Action, Edit, RemovalTarget, fields_match};
+use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 
@@ -44,10 +44,6 @@ struct Install {
     /// `None` for `"scope": "user"` (global) entries, else the entry's `projectPath`.
     project: Option<PathBuf>,
     install_path: Option<PathBuf>,
-    /// Raw entry count of `plugins[id]`, including entries we could not parse.
-    records: usize,
-    /// The raw entry, for matching against `record_fields`.
-    record: Value,
 }
 
 /// One entry of `known_marketplaces.json`.
@@ -106,8 +102,6 @@ fn installs_from(json: &Value) -> Vec<Install> {
                     id: id.clone(),
                     project,
                     install_path: str_at(e, "installPath").map(PathBuf::from),
-                    records: entries.len(),
-                    record: e.clone(),
                 })
             })
         })
@@ -190,6 +184,7 @@ fn plugin_removal(home: &Path, install: &Install) -> Vec<Action> {
                 fields: record_fields(install),
             },
         }))
+        .chain(plugin_dirs(home, &install.id))
         .collect()
 }
 
@@ -202,13 +197,9 @@ fn record_fields(install: &Install) -> Vec<(String, Value)> {
     }
 }
 
-/// True when `removed` matches every record of `id`, so nothing else still uses the plugin.
-fn covers_all(installs: &[Install], id: &str, removed: impl Fn(&Install) -> bool) -> bool {
-    let mine: Vec<&Install> = installs.iter().filter(|i| i.id == id).collect();
-    mine.first().is_some_and(|i| i.records == mine.len()) && mine.into_iter().all(removed)
-}
-
-/// `RemovePath` for the plugin's cache and data dirs; none unless both are valid targets.
+/// The plugin's cache and data dirs, removed once `plugins[id]` is gone after the edits, so
+/// whichever selected items drop its last install record take them; none unless both are
+/// valid targets.
 fn plugin_dirs(home: &Path, id: &str) -> Vec<Action> {
     let Some((name, mp)) = id.rsplit_once('@') else {
         return vec![];
@@ -216,19 +207,14 @@ fn plugin_dirs(home: &Path, id: &str) -> Vec<Action> {
     let dir = home.join(".claude/plugins");
     let cache = RemovalTarget::new(&dir.join("cache"), [mp, name]);
     let data = RemovalTarget::new(&dir.join("data"), [format!("{name}-{mp}")]);
-    cache.zip(data).map_or(vec![], |(c, d)| {
-        vec![Action::RemovePath(c), Action::RemovePath(d)]
-    })
-}
-
-/// `plugin_removal` plus the plugin's dirs when this was its last install record.
-fn full_plugin_removal(home: &Path, installs: &[Install], install: &Install) -> Vec<Action> {
-    let mut out = plugin_removal(home, install);
-    let fields = record_fields(install);
-    if covers_all(installs, &install.id, |j| fields_match(&j.record, &fields)) {
-        out.extend(plugin_dirs(home, &install.id));
-    }
-    out
+    let unused = |target| Action::RemovePathIfJsonAbsent {
+        target,
+        file: installed_file(home),
+        key: vec!["plugins".into(), id.into()],
+    };
+    cache
+        .zip(data)
+        .map_or(vec![], |(c, d)| vec![unused(c), unused(d)])
 }
 
 /// One plugin augmentation per id among the installs belonging to `scope`.
@@ -266,7 +252,7 @@ fn plugins(
                     .as_deref()
                     .map(plugin_children)
                     .unwrap_or_default(),
-                removal: full_plugin_removal(&env.home, installs, i),
+                removal: plugin_removal(&env.home, i),
             }
         })
         .collect()
@@ -278,12 +264,8 @@ fn marketplace(home: &Path, m: &Marketplace, installs: &[Install]) -> Augmentati
         .iter()
         .map(|i| i.id.rsplit_once('@').map_or(&*i.id, |(n, _)| n).to_string())
         .collect();
-    let dirs = own
-        .iter()
-        .filter(|i| covers_all(installs, &i.id, |_| true))
-        .flat_map(|i| plugin_dirs(home, &i.id));
     let mut removal: Vec<Action> = Vec::new();
-    for a in own.iter().flat_map(|i| plugin_removal(home, i)).chain(dirs) {
+    for a in own.iter().flat_map(|i| plugin_removal(home, i)) {
         if !removal.contains(&a) {
             removal.push(a);
         }
@@ -357,6 +339,20 @@ mod tests {
                 path: path.iter().map(|s| s.to_string()).collect(),
             },
         )
+    }
+
+    /// `name@mp`'s cache and data dir removals, each waiting for `plugins[id]` to be gone.
+    fn dirs(home: &Path, name: &str, mp: &str) -> Vec<Action> {
+        let plugins = home.join(".claude/plugins");
+        let unused = |root: &str, segments: &[&str]| Action::RemovePathIfJsonAbsent {
+            target: RemovalTarget::new(&plugins.join(root), segments).unwrap(),
+            file: installed_file(home),
+            key: vec!["plugins".into(), format!("{name}@{mp}")],
+        };
+        vec![
+            unused("cache", &[mp, name]),
+            unused("data", &[&format!("{name}-{mp}")]),
+        ]
     }
 
     fn remove_install(file: &Path, id: &str, project: Option<&Path>) -> Action {
@@ -483,12 +479,16 @@ mod tests {
         assert_eq!(
             tools.removal,
             [
-                remove_key(
-                    &f.env.home.join(".claude/settings.json"),
-                    &["enabledPlugins", "tools@acme"]
-                ),
-                remove_install(&installed, "tools@acme", None),
+                vec![
+                    remove_key(
+                        &f.env.home.join(".claude/settings.json"),
+                        &["enabledPlugins", "tools@acme"]
+                    ),
+                    remove_install(&installed, "tools@acme", None),
+                ],
+                dirs(&f.env.home, "tools", "acme"),
             ]
+            .concat()
         );
 
         let lint = by_id(&items, "plugin:claude:global:lint@other");
@@ -514,16 +514,20 @@ mod tests {
         assert_eq!(
             tools.removal,
             [
-                remove_key(
-                    &p.join(".claude/settings.json"),
-                    &["enabledPlugins", "tools@acme"]
-                ),
-                remove_key(
-                    &p.join(".claude/settings.local.json"),
-                    &["enabledPlugins", "tools@acme"]
-                ),
-                remove_install(&installed_file(&f.env.home), "tools@acme", Some(p)),
+                vec![
+                    remove_key(
+                        &p.join(".claude/settings.json"),
+                        &["enabledPlugins", "tools@acme"]
+                    ),
+                    remove_key(
+                        &p.join(".claude/settings.local.json"),
+                        &["enabledPlugins", "tools@acme"]
+                    ),
+                    remove_install(&installed_file(&f.env.home), "tools@acme", Some(p)),
+                ],
+                dirs(&f.env.home, "tools", "acme"),
             ]
+            .concat()
         );
     }
 
@@ -562,34 +566,39 @@ mod tests {
         assert_eq!(
             acme.removal,
             [
-                remove_key(&global_settings, &["enabledPlugins", "tools@acme"]),
-                remove_install(&installed, "tools@acme", None),
-                remove_key(
-                    &p.join(".claude/settings.json"),
-                    &["enabledPlugins", "tools@acme"]
-                ),
-                remove_key(
-                    &p.join(".claude/settings.local.json"),
-                    &["enabledPlugins", "tools@acme"]
-                ),
-                remove_install(&installed, "tools@acme", Some(p)),
-                remove_key(
-                    &other.join(".claude/settings.json"),
-                    &["enabledPlugins", "solo@acme"]
-                ),
-                remove_key(
-                    &other.join(".claude/settings.local.json"),
-                    &["enabledPlugins", "solo@acme"]
-                ),
-                remove_install(&installed, "solo@acme", Some(&other)),
-                rm(&home.join(".claude/plugins/cache"), &["acme", "tools"]),
-                rm(&home.join(".claude/plugins/data"), &["tools-acme"]),
-                rm(&home.join(".claude/plugins/cache"), &["acme", "solo"]),
-                rm(&home.join(".claude/plugins/data"), &["solo-acme"]),
-                remove_key(&known, &["acme"]),
-                remove_key(&global_settings, &["extraKnownMarketplaces", "acme"]),
-                rm(&home.join(".claude/plugins/marketplaces"), &["acme"]),
+                vec![
+                    remove_key(&global_settings, &["enabledPlugins", "tools@acme"]),
+                    remove_install(&installed, "tools@acme", None),
+                ],
+                dirs(home, "tools", "acme"),
+                vec![
+                    remove_key(
+                        &p.join(".claude/settings.json"),
+                        &["enabledPlugins", "tools@acme"]
+                    ),
+                    remove_key(
+                        &p.join(".claude/settings.local.json"),
+                        &["enabledPlugins", "tools@acme"]
+                    ),
+                    remove_install(&installed, "tools@acme", Some(p)),
+                    remove_key(
+                        &other.join(".claude/settings.json"),
+                        &["enabledPlugins", "solo@acme"]
+                    ),
+                    remove_key(
+                        &other.join(".claude/settings.local.json"),
+                        &["enabledPlugins", "solo@acme"]
+                    ),
+                    remove_install(&installed, "solo@acme", Some(&other)),
+                ],
+                dirs(home, "solo", "acme"),
+                vec![
+                    remove_key(&known, &["acme"]),
+                    remove_key(&global_settings, &["extraKnownMarketplaces", "acme"]),
+                    rm(&home.join(".claude/plugins/marketplaces"), &["acme"]),
+                ],
             ]
+            .concat()
         );
 
         let other_mp = by_id(&items, "marketplace:claude:other");
@@ -597,40 +606,40 @@ mod tests {
         assert_eq!(
             other_mp.removal,
             [
-                remove_key(&global_settings, &["enabledPlugins", "lint@other"]),
-                remove_install(&installed, "lint@other", None),
-                remove_key(&known, &["other"]),
-                remove_key(&global_settings, &["extraKnownMarketplaces", "other"]),
+                vec![
+                    remove_key(&global_settings, &["enabledPlugins", "lint@other"]),
+                    remove_install(&installed, "lint@other", None),
+                ],
+                dirs(home, "lint", "other"),
+                vec![
+                    remove_key(&known, &["other"]),
+                    remove_key(&global_settings, &["extraKnownMarketplaces", "other"]),
+                ],
             ]
+            .concat()
         );
     }
 
     #[test]
-    fn last_install_removes_plugin_dirs() {
-        let home = Path::new("/h");
-        let installed = installed_file(home);
-        let installs = installs_from(&json!({"plugins": {
-            "solo@acme": [{"scope": "user"}],
-            "dup@acme": [{"scope": "user"}, {"scope": "project", "projectPath": "/p"}],
-        }}));
-        let solo = installs.iter().find(|i| i.id == "solo@acme").unwrap();
-        assert_eq!(
-            full_plugin_removal(home, &installs, solo),
-            [
-                remove_key(
-                    &home.join(".claude/settings.json"),
-                    &["enabledPlugins", "solo@acme"]
-                ),
-                remove_install(&installed, "solo@acme", None),
-                rm(Path::new("/h/.claude/plugins/cache"), &["acme", "solo"]),
-                rm(Path::new("/h/.claude/plugins/data"), &["solo-acme"]),
-            ]
-        );
-        let dup = installs.iter().find(|i| i.id == "dup@acme").unwrap();
-        assert_eq!(
-            full_plugin_removal(home, &installs, dup),
-            plugin_removal(home, dup)
-        );
+    fn plugin_dirs_go_once_the_last_selected_scope_drops_the_id() {
+        let run = |scopes: &[Scope]| {
+            let f = fixture();
+            let data = f.env.home.join(".claude/plugins/data/tools-acme");
+            fs::create_dir_all(&data).unwrap();
+            let plan: Vec<Action> = scopes
+                .iter()
+                .flat_map(|&s| Claude.discover(&f.env, s).unwrap())
+                .filter(|a| a.kind == Kind::Plugin && a.name == "tools@acme")
+                .flat_map(|a| a.removal)
+                .collect();
+            crate::action::execute(&plan).unwrap();
+            let installed = read_json(&installed_file(&f.env.home)).unwrap();
+            let kept = installed["plugins"].get("tools@acme").is_some();
+            (kept, f.cache.exists(), data.exists())
+        };
+        assert_eq!(run(&[Scope::Global]), (true, true, true));
+        assert_eq!(run(&[Scope::Project]), (true, true, true));
+        assert_eq!(run(&[Scope::Global, Scope::Project]), (false, false, false));
     }
 
     #[test]
@@ -649,8 +658,10 @@ mod tests {
                 .iter()
                 .find(|i| i.id == id && i.project.as_deref() == project.map(Path::new))
                 .unwrap();
-            let Some(Action::Edit { file, edit }) = plugin_removal(Path::new("/h"), install).pop()
-            else {
+            let record_edit = plugin_removal(Path::new("/h"), install)
+                .into_iter()
+                .find(|a| matches!(a, Action::Edit { file, .. } if file.ends_with("installed_plugins.json")));
+            let Some(Action::Edit { file, edit }) = record_edit else {
                 panic!("no install record edit");
             };
             assert_eq!(file, installed_file(Path::new("/h")));
