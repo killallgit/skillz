@@ -44,7 +44,8 @@ pub struct Augmentation {
     pub source: Option<String>,
     /// Display-only contents (a plugin's skills, a hook group's commands).
     pub children: Vec<String>,
-    /// Ordered steps that remove this item completely.
+    /// Steps that remove this item completely. `execute` commits every `Edit` first (all or
+    /// none), then runs each `RemovePath` in plan order.
     pub removal: Vec<Action>,
 }
 

@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use toml_edit::{DocumentMut, Item};
 
-use super::{AgentAdapter, safe_segment};
-use crate::action::{Action, Edit};
+use super::AgentAdapter;
+use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 
@@ -155,8 +155,8 @@ fn plugin(
             .iter()
             .map(|k| toml_remove(config, &["hooks", "state", k])),
     );
-    if scope == Scope::Global && safe_segment(name) && safe_segment(mp) {
-        removal.push(Action::RemovePath(plugin_cache.clone()));
+    if scope == Scope::Global {
+        removal.extend(RemovalTarget::new(cache, [mp, name]).map(Action::RemovePath));
     }
     Augmentation {
         id: format!("plugin:codex:{scope}:{id}"),
@@ -184,8 +184,8 @@ fn marketplace(
     let own: Vec<&Augmentation> = plugins.iter().filter(|p| p.group == m.name).collect();
     let mut removal: Vec<Action> = own.iter().flat_map(|p| p.removal.clone()).collect();
     removal.push(toml_remove(config, &["marketplaces", &m.name]));
-    if scope == Scope::Global && safe_segment(&m.name) {
-        removal.push(Action::RemovePath(cache.join(&m.name)));
+    if scope == Scope::Global {
+        removal.extend(RemovalTarget::new(cache, [&m.name]).map(Action::RemovePath));
     }
     Augmentation {
         id: format!("marketplace:codex:{scope}:{}", m.name),
@@ -315,6 +315,10 @@ enabled = true
     const REVIEW_START: &str = "review@killall:hooks/hooks.json:session_start:0:0";
     const REVIEW_STOP: &str = "review@killall:hooks/hooks.json:stop:0:0";
 
+    fn rm(root: &Path, segments: &[&str]) -> Action {
+        Action::RemovePath(RemovalTarget::new(root, segments).unwrap())
+    }
+
     fn rm_key(file: &Path, table: &str, key: &str) -> Action {
         Action::Edit {
             file: file.to_path_buf(),
@@ -399,7 +403,7 @@ enabled = true
                 rm_key(&config, "plugins", "review@killall"),
                 rm_state(&config, REVIEW_START),
                 rm_state(&config, REVIEW_STOP),
-                Action::RemovePath(cache.join("review")),
+                rm(cache.parent().unwrap(), &["killall", "review"]),
             ]
         );
 
@@ -426,11 +430,11 @@ enabled = true
                 rm_key(&config, "plugins", "review@killall"),
                 rm_state(&config, REVIEW_START),
                 rm_state(&config, REVIEW_STOP),
-                Action::RemovePath(cache.join("killall/review")),
+                rm(&cache, &["killall", "review"]),
                 rm_key(&config, "plugins", "commit@killall"),
-                Action::RemovePath(cache.join("killall/commit")),
+                rm(&cache, &["killall", "commit"]),
                 rm_key(&config, "marketplaces", "killall"),
-                Action::RemovePath(cache.join("killall")),
+                rm(&cache, &["killall"]),
             ]
         );
 
@@ -441,7 +445,7 @@ enabled = true
             local.removal,
             vec![
                 rm_key(&config, "marketplaces", "localdev"),
-                Action::RemovePath(cache.join("localdev")),
+                rm(&cache, &["localdev"]),
             ]
         );
     }

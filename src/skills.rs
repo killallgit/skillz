@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::action::{Action, Edit};
+use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 
@@ -109,17 +109,17 @@ fn removal(
     owned: &[PathBuf],
     lock: Option<(PathBuf, String)>,
 ) -> Vec<Action> {
-    let owns = owned
+    let owned = owned
         .iter()
-        .any(|r| canonical.starts_with(r) && canonical != r);
-    let paths = entries
+        .find_map(|r| RemovalTarget::new(r, canonical.strip_prefix(r).ok()?));
+    let targets = entries
         .iter()
-        .map(|e| e.link.clone())
-        .filter(|l| l != canonical)
-        .chain(owns.then(|| canonical.to_path_buf()));
+        .filter(|e| e.link != canonical)
+        .filter_map(|e| RemovalTarget::new(e.link.parent()?, [&e.name]))
+        .chain(owned);
     let mut actions: Vec<Action> = Vec::new();
-    for p in paths {
-        let a = Action::RemovePath(p);
+    for t in targets {
+        let a = Action::RemovePath(t);
         if !actions.contains(&a) {
             actions.push(a);
         }
@@ -257,7 +257,8 @@ mod tests {
     }
 
     fn rm(p: PathBuf) -> Action {
-        Action::RemovePath(p)
+        let target = RemovalTarget::new(p.parent().unwrap(), [p.file_name().unwrap()]);
+        Action::RemovePath(target.unwrap())
     }
 
     fn lock_edit(file: PathBuf, name: &str) -> Action {
