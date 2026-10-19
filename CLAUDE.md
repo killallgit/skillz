@@ -60,18 +60,18 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
-
 ```bash
-# Example:
-# npm install
-# npm test
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo llvm-cov --summary-only   # keep line coverage > 75%
 ```
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+Rust CLI (clap + ratatui). See DESIGN.md: discovery builds `Augmentation`s with a planned
+`removal: Vec<Action>`; `action::execute` applies them. One adapter per agent in `src/agents/`.
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- Functional core, effects at the edges; inject `Env`, `CommandRunner`, `Prompter`.
+- Tests never assert on user-facing strings (messages, errors, rendered labels).
