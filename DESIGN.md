@@ -94,21 +94,6 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
 - **Hook group**: one `JsonRemoveHook` per handler. Empty groups/events are pruned.
 - **Claude plugin**: `JsonRemoveKey ["enabledPlugins", id]` in the scope's settings
   (project scope: both `settings.json` and `settings.local.json`) and
-<<<<<<< HEAD
-  `JsonRemovePluginInstall` in `installed_plugins.json`. Cache dir is left (Claude sweeps it).
-- **Claude marketplace** (global only): its plugins' removals, `JsonRemoveKey [mp]` in
-  `known_marketplaces.json`, `JsonRemoveKey ["extraKnownMarketplaces", mp]` in settings,
-  `RemovePath(installLocation)`.
-- **Codex plugin** (ids without `@` are skipped): `TomlRemoveKey ["plugins", id]` +
-  `TomlRemoveKey ["hooks", "state", key]` for every `hooks.state` key starting `"<id>:"` +
-  `RemovePath(cache/<mp>/<name>)`.
-||||||| a57833b
-  `JsonRemovePluginInstall` in `installed_plugins.json`. Cache dir is left (Claude sweeps it).
-- **Claude marketplace** (global only): its plugins' removals, `JsonRemoveKey [mp]` in
-  `known_marketplaces.json`, `JsonRemoveKey ["extraKnownMarketplaces", mp]` in settings,
-  `RemovePath(installLocation)`.
-- **Codex plugin**: `TomlRemoveKey ["plugins", id]` + `RemovePath(cache/<mp>/<name>)`.
-=======
   `JsonRemovePluginInstall` in `installed_plugins.json`. When that drops the id's last
   install record (no other scope/project still has one), also `RemovePath` of
   `~/.claude/plugins/cache/<mp>/<name>` and `~/.claude/plugins/data/<name>-<mp>` (only if
@@ -118,8 +103,9 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
   `JsonRemoveKey ["extraKnownMarketplaces", mp]` in settings, and `RemovePath(installLocation)`
   **only if it is strictly inside `~/.claude/plugins/marketplaces/`** (no `..` components) —
   a `directory` source's location is the user's own checkout and is never deleted.
-- **Codex plugin**: `TomlRemoveKey ["plugins", id]` + `RemovePath(cache/<mp>/<name>)`.
->>>>>>> worktree-agent-ad79e36b16be68c92
+- **Codex plugin** (ids without `@` are skipped): `TomlRemoveKey ["plugins", id]` +
+  `TomlRemoveKey ["hooks", "state", key]` for every `hooks.state` key starting `"<id>:"` +
+  `RemovePath(cache/<mp>/<name>)`.
 - **Codex marketplace**: its plugins' removals + `TomlRemoveKey ["marketplaces", mp]` +
   `RemovePath(~/.codex/plugins/cache/<mp>)`.
 - Codex `RemovePath`s (global only) are emitted only when every name joined into the path is
