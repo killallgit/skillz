@@ -139,11 +139,11 @@ pub struct Deps<'a> {
 
 pub fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let yes = matches!(
-        cli.command,
-        Command::Uninstall { yes: true, .. } | Command::Install { yes: true, .. }
-    );
-    let prompter: &dyn Prompter = if yes { &AssumeYes } else { &TuiPrompter };
+    let prompter: &dyn Prompter = if wants_auto_yes(&cli.command) {
+        &AssumeYes
+    } else {
+        &TuiPrompter
+    };
     let deps = Deps {
         home: std::env::home_dir().context("cannot find home directory")?,
         cwd: std::env::current_dir()?,
@@ -153,6 +153,14 @@ pub fn main() -> anyhow::Result<()> {
         interactive: std::io::stdout().is_terminal(),
     };
     run(cli.command, &deps, &mut std::io::stdout())
+}
+
+/// `--yes` swaps the interactive prompter for one that picks and confirms everything.
+fn wants_auto_yes(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Uninstall { yes: true, .. } | Command::Install { yes: true, .. }
+    )
 }
 
 pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
@@ -502,6 +510,35 @@ mod tests {
         assert_eq!(scopes(&deps, None, false), [Scope::Global]);
         assert_eq!(scopes(&deps, Some("."), false), [Scope::Global]);
         assert_eq!(scopes(&deps, Some("."), true), [Scope::Global]);
+    }
+
+    #[test]
+    fn resolve_scope_rule_outside_home() {
+        let (home, cwd) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        std::fs::create_dir(cwd.path().join("sub")).unwrap();
+        let deps = deps_at(home.path(), cwd.path());
+        let both = [Scope::Global, Scope::Project];
+        assert_eq!(scopes(&deps, None, false), both);
+        assert_eq!(scopes(&deps, None, true), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("sub"), false), [Scope::Project]);
+        assert_eq!(scopes(&deps, Some("sub"), true), both);
+        let (env, _) = resolve(&deps, Some(Path::new("sub")), false).unwrap();
+        assert_eq!(env.project, cwd.path().join("sub").canonicalize().unwrap());
+        assert!(resolve(&deps, Some(Path::new("missing")), false).is_err());
+    }
+
+    #[test]
+    fn auto_yes_only_for_yes_flag_on_uninstall_and_install() {
+        let parse = |args: &[&str]| {
+            Cli::try_parse_from([&["skillz"], args].concat())
+                .unwrap()
+                .command
+        };
+        assert!(wants_auto_yes(&parse(&["rm", "x", "-y"])));
+        assert!(!wants_auto_yes(&parse(&["rm", "x"])));
+        assert!(wants_auto_yes(&parse(&["install", "o/r", "--yes"])));
+        assert!(!wants_auto_yes(&parse(&["install", "o/r"])));
+        assert!(!wants_auto_yes(&parse(&["list"])));
     }
 
     fn split(project: Option<&str>, target: &str) -> (Option<PathBuf>, Option<String>) {
