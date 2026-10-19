@@ -5,16 +5,14 @@ mod marketplace;
 mod skills;
 mod source;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::env::Env;
 use crate::model::{Agent, Scope};
 use crate::prompt::Prompter;
 use crate::runner::CommandRunner;
-
-pub use skills::{AvailableSkill, scan_available};
 
 /// Which skills to install from a multi-skill source.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +29,8 @@ pub enum SkillSelection {
 pub struct InstallRequest {
     /// `org/repo`, a git URL, or a local path.
     pub source: String,
+    /// What a relative local `source` is relative to: the real cwd, not the `-C` project.
+    pub cwd: PathBuf,
     pub agents: Vec<Agent>,
     pub scope: Scope,
     pub selection: SkillSelection,
@@ -44,7 +44,7 @@ pub fn install(
     runner: &dyn CommandRunner,
     prompter: &dyn Prompter,
 ) -> anyhow::Result<()> {
-    source::with_source(&req.source, env, runner, |src, source| {
+    source::with_source(&req.source, &req.cwd, env, runner, |src, source| {
         install_from(req, src, source, env, runner, prompter)
     })
 }
@@ -58,9 +58,16 @@ fn install_from(
     runner: &dyn CommandRunner,
     prompter: &dyn Prompter,
 ) -> anyhow::Result<()> {
-    let skills = |selection: &SkillSelection, agents: &[Agent]| {
+    let skills = |agents: &[Agent]| {
         skills::install(
-            selection, agents, req.scope, src, source, env, runner, prompter,
+            &req.selection,
+            agents,
+            req.scope,
+            src,
+            source,
+            env,
+            runner,
+            prompter,
         )
     };
     let mp = match marketplace::read(src)? {
@@ -70,7 +77,7 @@ fn install_from(
         {
             mp
         }
-        _ => return skills(&req.selection, &req.agents),
+        _ => return skills(&req.agents),
     };
     if !marketplace::install(&mp, source, req.scope, env, runner, prompter)? {
         return Ok(());
@@ -84,7 +91,7 @@ fn install_from(
     if others.is_empty() {
         return Ok(());
     }
-    skills(&SkillSelection::All, &others)
+    skills(&others)
 }
 
 #[cfg(test)]
@@ -97,6 +104,7 @@ mod tests {
         let fx = project_with(skills_fixture);
         let runner = FakeRunner::new(|_| {});
         let r = req(
+            &fx,
             "repo",
             &[Agent::Claude],
             Scope::Project,
@@ -131,6 +139,7 @@ mod tests {
         let fx = project_with(|_| {});
         let runner = FakeRunner::new(skills_fixture);
         let r = req(
+            &fx,
             "org/repo",
             &[Agent::Codex],
             Scope::Global,
@@ -154,16 +163,19 @@ mod tests {
     }
 
     #[test]
-    fn marketplace_with_other_agents_also_installs_all_skills_for_them() {
+    fn marketplace_with_other_agents_offers_them_the_skill_picker() {
         let fx = project_with(marketplace_fixture);
         let runner = FakeRunner::new(|_| {});
         let r = req(
+            &fx,
             "repo",
             &[Agent::Claude, Agent::Codex],
             Scope::Global,
             SkillSelection::Interactive,
         );
-        install(&r, &fx.env, &runner, &ScriptedPrompter::new(&[1], true)).unwrap();
+        let prompter = ScriptedPrompter::new(&[1], true);
+        install(&r, &fx.env, &runner, &prompter).unwrap();
+        assert_eq!(prompter.offered.borrow()[1], s(&["alpha", "beta"]));
         let calls = runner.calls();
         assert_eq!(
             calls[1].1,
@@ -172,7 +184,7 @@ mod tests {
         let src = fx.env.project.join("repo").to_string_lossy().into_owned();
         assert_eq!(
             calls[2].1,
-            npx(&src, &["--skill", "alpha", "-a", "codex", "-g", "-y"])
+            npx(&src, &["--skill", "beta", "-a", "codex", "-g", "-y"])
         );
         assert_eq!(calls.len(), 3);
     }
@@ -185,7 +197,7 @@ mod tests {
         ] {
             let fx = project_with(marketplace_fixture);
             let runner = FakeRunner::new(|_| {});
-            let r = req("repo", &agents, Scope::Project, sel);
+            let r = req(&fx, "repo", &agents, Scope::Project, sel);
             install(&r, &fx.env, &runner, &ScriptedPrompter::new(&[0], true)).unwrap();
             let calls = runner.calls();
             assert_eq!(calls.len(), 1);

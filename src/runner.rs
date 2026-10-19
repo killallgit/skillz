@@ -3,11 +3,10 @@ use std::process::{Command, Stdio};
 
 use anyhow::Context;
 
-/// Captured result of an external command.
+/// Result of an external command; stderr is captured for error messages.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Output {
     pub success: bool,
-    pub stdout: String,
     pub stderr: String,
 }
 
@@ -16,8 +15,8 @@ pub trait CommandRunner {
     fn run(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output>;
 }
 
-/// Spawns real processes in `cwd` with stdin inherited (for credential prompts) and
-/// stdout/stderr captured so callers can parse or report them.
+/// Spawns real processes in `cwd` with stdin and stdout inherited (npx and claude print
+/// prompts and errors to stdout) and stderr captured for the error message.
 pub struct SystemRunner;
 
 impl CommandRunner for SystemRunner {
@@ -26,11 +25,11 @@ impl CommandRunner for SystemRunner {
             .args(args)
             .current_dir(cwd)
             .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
             .output()
             .with_context(|| format!("failed to run `{program}` in {}", cwd.display()))?;
         Ok(Output {
             success: out.status.success(),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         })
     }
@@ -46,11 +45,15 @@ mod tests {
     }
 
     #[test]
-    fn captures_stdout_stderr_and_success() {
-        let out = sh("printf out; printf err >&2").unwrap();
-        assert!(out.success);
-        assert_eq!(out.stdout, "out");
-        assert_eq!(out.stderr, "err");
+    fn captures_stderr_and_success() {
+        let out = sh("printf err >&2").unwrap();
+        assert_eq!(
+            out,
+            Output {
+                success: true,
+                stderr: "err".into()
+            }
+        );
     }
 
     #[test]
@@ -62,8 +65,8 @@ mod tests {
     fn runs_in_cwd() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("marker"), "").unwrap();
-        let out = SystemRunner.run("ls", &[], dir.path()).unwrap();
-        assert_eq!(out.stdout.trim(), "marker");
+        let args = ["-c".into(), "test -f marker".into()];
+        assert!(SystemRunner.run("sh", &args, dir.path()).unwrap().success);
     }
 
     #[test]

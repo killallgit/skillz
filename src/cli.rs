@@ -209,15 +209,17 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
             project,
             yes: _,
         } => {
-            let (env, _) = resolve(deps, project.as_deref(), global)?;
+            let (env, scopes) = resolve(deps, project.as_deref(), global)?;
             let req = InstallRequest {
                 source,
+                cwd: deps.cwd.clone(),
                 agents: if agents.is_empty() {
                     vec![Agent::Claude, Agent::Codex, Agent::Cursor]
                 } else {
                     agents
                 },
-                scope: if global {
+                // In the home dir (no project scope left) the project is the global one.
+                scope: if global || !scopes.contains(&Scope::Project) {
                     Scope::Global
                 } else {
                     Scope::Project

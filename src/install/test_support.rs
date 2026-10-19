@@ -50,7 +50,6 @@ impl CommandRunner for FakeRunner {
         }
         Ok(Output {
             success,
-            stdout: String::new(),
             stderr: "boom".into(),
         })
     }
@@ -86,10 +85,20 @@ pub fn s(v: &[&str]) -> Vec<String> {
     v.iter().map(|x| x.to_string()).collect()
 }
 
-pub fn skill(root: &Path, rel: &str) {
+pub fn skill_md(root: &Path, rel: &str, md: &str) {
     let dir = root.join(rel);
     fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("SKILL.md"), "---\nname: x\n---\n").unwrap();
+    fs::write(dir.join("SKILL.md"), md).unwrap();
+}
+
+/// A skill dir whose frontmatter `name:` is its folder name.
+pub fn skill(root: &Path, rel: &str) {
+    let name = Path::new(rel).file_name().unwrap().to_string_lossy();
+    skill_md(
+        root,
+        rel,
+        &format!("---\nname: {name}\ndescription: d\n---\n"),
+    );
 }
 
 pub fn skills_fixture(root: &Path) {
@@ -105,6 +114,7 @@ pub fn skills_fixture(root: &Path) {
 
 pub fn marketplace_fixture(root: &Path) {
     skill(root, "plugins/p1/skills/alpha");
+    skill(root, "plugins/p2/skills/beta");
     fs::create_dir_all(root.join(".claude-plugin")).unwrap();
     fs::write(
         root.join(".claude-plugin/marketplace.json"),
@@ -135,7 +145,9 @@ pub fn project_with(f: impl Fn(&Path)) -> Fixture {
     }
 }
 
+/// A request run from `fx`'s project dir.
 pub fn req(
+    fx: &Fixture,
     source: &str,
     agents: &[Agent],
     scope: Scope,
@@ -143,6 +155,7 @@ pub fn req(
 ) -> InstallRequest {
     InstallRequest {
         source: source.into(),
+        cwd: fx.env.project.clone(),
         agents: agents.to_vec(),
         scope,
         selection,

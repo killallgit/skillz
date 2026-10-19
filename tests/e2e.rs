@@ -437,9 +437,12 @@ fn dry_run_changes_nothing() {
 fn install_local_source_runs_npx_skills_with_matches() {
     let w = world();
     let src = w.project.join("src-repo");
-    write(&src.join("skills/git-commit/SKILL.md"), "x");
-    write(&src.join("skills/caveman-commit/SKILL.md"), "x");
-    write(&src.join("skills/tdd/SKILL.md"), "x");
+    for name in ["git-commit", "caveman-commit", "tdd"] {
+        write(
+            &src.join(format!("skills/{name}/SKILL.md")),
+            &format!("---\nname: {name}\ndescription: d\n---\n"),
+        );
+    }
     let (r, p) = (
         Recorder::default(),
         Scripted {
@@ -469,6 +472,79 @@ fn install_local_source_runs_npx_skills_with_matches() {
     assert_eq!(skills.len(), 2);
     assert!(!skills.iter().any(|s| *s == "tdd"));
     assert!(args.contains(&"-g".to_string()));
+}
+
+#[test]
+fn install_relative_source_resolves_against_cwd_not_project_dir() {
+    let w = world();
+    write(
+        &w.project.join("src-repo/skills/tdd/SKILL.md"),
+        "---\nname: tdd\ndescription: d\n---\n",
+    );
+    let other = w.project.parent().unwrap().join("other");
+    fs::create_dir_all(&other).unwrap();
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let cmd = Command::Install {
+        source: "./src-repo".into(),
+        global: false,
+        agents: vec![Agent::Codex],
+        all: true,
+        skill: vec![],
+        project: Some("../other".into()),
+        yes: true,
+    };
+    run(cmd, &deps(&w, &r, &p), &mut Vec::new()).unwrap();
+    let calls = r.0.borrow();
+    assert_eq!(calls.len(), 1);
+    let (program, args) = &calls[0];
+    assert_eq!(program, "npx");
+    assert_eq!(
+        Path::new(&args[3]).canonicalize().unwrap(),
+        w.project.join("src-repo").canonicalize().unwrap()
+    );
+}
+
+#[test]
+fn install_from_home_is_global() {
+    let w = world();
+    let src = w.project.join("src-repo");
+    write(
+        &src.join("skills/tdd/SKILL.md"),
+        "---\nname: tdd\ndescription: d\n---\n",
+    );
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    for project in [None, Some(w.home.clone())] {
+        let cmd = Command::Install {
+            source: src.display().to_string(),
+            global: false,
+            agents: vec![Agent::Codex],
+            all: true,
+            skill: vec![],
+            project,
+            yes: true,
+        };
+        let from_home = Deps {
+            cwd: w.home.clone(),
+            ..deps(&w, &r, &p)
+        };
+        run(cmd, &from_home, &mut Vec::new()).unwrap();
+        let calls = r.0.borrow();
+        let (program, args) = calls.last().unwrap();
+        assert_eq!(program, "npx");
+        assert!(args.contains(&"-g".to_string()));
+    }
 }
 
 #[test]

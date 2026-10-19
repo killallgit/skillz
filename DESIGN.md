@@ -178,10 +178,15 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,
   collapsible tree TUI.
 - `uninstall`: filter -> fuzzy match QUERY over `name group source` -> multi-select picker
   -> show plan -> confirm -> execute -> re-discover and verify.
-- `install`: resolve source (local path, else `git clone --depth 1`), scan skills and
-  `.claude-plugin/marketplace.json`. `--all`/`--skill` or no marketplace -> npx skills path
-  with pattern matching + confirm; otherwise marketplace path for Claude
-  (`claude plugin marketplace add <src>`, `claude plugin install <p>@<mp> --scope user|project`).
+- `install`: project scope unless `-g` or the project is the home dir (then global). Resolve
+  source (local path relative to the cwd, not `-C`; else `git clone --depth 1`), scan skills and
+  `.claude-plugin/marketplace.json`. Skills are named by their `SKILL.md` frontmatter `name:`
+  (what npx `--skill` matches); as in npx, skills without `name`/`description` are skipped,
+  as are `.git`, `node_modules`, `dist`, `build` and `__pycache__` dirs, and option-like
+  (`-x`) skill/plugin/marketplace names. `--all`/`--skill` or no marketplace -> npx skills
+  path with pattern matching + confirm; otherwise marketplace path for Claude
+  (`claude plugin marketplace add <src>`, `claude plugin install <p>@<mp> --scope user|project`),
+  then the skill picker for the other selected agents.
 
 ## TUI
 

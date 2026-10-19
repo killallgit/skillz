@@ -74,10 +74,7 @@ pub fn add_command(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn s(v: &[&str]) -> Vec<String> {
-        v.iter().map(|x| x.to_string()).collect()
-    }
+    use crate::install::test_support::s;
 
     #[test]
     fn add_command_maps_agent_ids_and_global_flag() {

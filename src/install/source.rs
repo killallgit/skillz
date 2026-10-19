@@ -6,11 +6,12 @@ use crate::runner::CommandRunner;
 
 use super::Cmd;
 
-/// Run `f(tree, source)` on the install source: `<project>/<source>` when it exists, else a
+/// Run `f(tree, source)` on the install source: `<cwd>/<source>` when it exists, else a
 /// `git clone --depth 1` into a temp dir removed afterwards. `source` is what to hand to
 /// `npx`/`claude`: the absolute local path, or the source as given (never the tmp clone).
 pub(super) fn with_source(
     source: &str,
+    cwd: &Path,
     env: &Env,
     runner: &dyn CommandRunner,
     f: impl FnOnce(&Path, &str) -> anyhow::Result<()>,
@@ -19,7 +20,7 @@ pub(super) fn with_source(
     if source.trim().is_empty() || source.starts_with('-') {
         anyhow::bail!("invalid source: {source}");
     }
-    let local = env.project.join(source);
+    let local = cwd.join(source);
     if local.exists() {
         return f(&local, &local.to_string_lossy());
     }
@@ -96,7 +97,7 @@ mod tests {
         let fx = project_with(skills_fixture);
         let runner = FakeRunner::new(|_| {});
         let mut got = None;
-        with_source("repo", &fx.env, &runner, |tree, source| {
+        with_source("repo", &fx.env.project, &fx.env, &runner, |tree, source| {
             got = Some((tree.to_path_buf(), source.to_string()));
             Ok(())
         })
@@ -107,11 +108,31 @@ mod tests {
     }
 
     #[test]
+    fn local_source_resolves_against_cwd_not_project() {
+        let fx = project_with(skills_fixture);
+        let elsewhere = tempfile::tempdir().unwrap();
+        let env = Env {
+            project: elsewhere.path().into(),
+            ..fx.env.clone()
+        };
+        let runner = FakeRunner::new(|_| {});
+        let mut got = None;
+        with_source("repo", &fx.env.project, &env, &runner, |tree, _| {
+            got = Some(tree.to_path_buf());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(got, Some(fx.env.project.join("repo")));
+        assert!(runner.calls().is_empty());
+    }
+
+    #[test]
     fn option_like_or_empty_source_is_err_and_runs_nothing() {
         let fx = project_with(|_| {});
         let runner = FakeRunner::new(|_| {});
         for source in ["", "  ", "--upload-pack=x"] {
-            assert!(with_source(source, &fx.env, &runner, |_, _| Ok(())).is_err());
+            let res = with_source(source, &fx.env.project, &fx.env, &runner, |_, _| Ok(()));
+            assert!(res.is_err());
         }
         assert!(runner.calls().is_empty());
     }
@@ -121,7 +142,7 @@ mod tests {
         let fx = project_with(|_| {});
         let runner = FakeRunner::new(skills_fixture).failing("git");
         let called = Cell::new(false);
-        let res = with_source("org/repo", &fx.env, &runner, |_, _| {
+        let res = with_source("org/repo", &fx.env.project, &fx.env, &runner, |_, _| {
             called.set(true);
             Ok(())
         });
@@ -136,6 +157,7 @@ mod tests {
         let runner = FakeRunner::new(skills_fixture).failing("git");
         let err = with_source(
             "https://u:s3cret@x.dev/o/r.git",
+            &fx.env.project,
             &fx.env,
             &runner,
             |_, _| Ok(()),
