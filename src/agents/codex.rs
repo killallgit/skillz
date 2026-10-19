@@ -40,6 +40,12 @@ impl AgentAdapter for Codex {
             return Ok(vec![]);
         };
         let cache = env.home.join(".codex/plugins/cache");
+        let in_project = project_plugin_ids(env, &config);
+        let in_use = |pick: &dyn Fn(&str) -> bool| {
+            in_project
+                .as_ref()
+                .is_none_or(|ids| ids.iter().any(|id| pick(id)))
+        };
         let marketplaces = marketplaces(&doc);
         let plugins: Vec<Augmentation> = plugin_ids(&doc)
             .into_iter()
@@ -48,12 +54,18 @@ impl AgentAdapter for Codex {
                     .iter()
                     .any(|m| m.bundled && m.name == split_id(id).1)
             })
-            .map(|id| plugin(&id, scope, &config, &cache, &marketplaces, &doc))
+            .map(|id| {
+                let keep_cache = in_use(&|other| other == id);
+                plugin(&id, scope, &config, &cache, &marketplaces, &doc, keep_cache)
+            })
             .collect();
         let mps = marketplaces
             .iter()
             .filter(|m| !m.bundled)
-            .map(|m| marketplace(m, scope, &config, &cache, &plugins))
+            .map(|m| {
+                let keep_cache = in_use(&|other| split_id(other).1 == m.name);
+                marketplace(m, scope, &config, &cache, &plugins, keep_cache)
+            })
             .collect::<Vec<_>>();
         Ok(mps.into_iter().chain(plugins).collect())
     }
@@ -110,6 +122,20 @@ fn display_source(source: &str) -> String {
     }
 }
 
+/// Plugin ids the current project's config lists (enabled or not), so a global removal keeps
+/// the shared cache they load from; `None` (keep every cache) when it cannot be read. Empty
+/// when that config is `config` itself (project scope, or run from home).
+// shortcut: other projects' configs are not visible, so their use is not protected; upgrade
+// if Codex ever records which projects use a cached plugin.
+fn project_plugin_ids(env: &Env, config: &Path) -> Option<Vec<String>> {
+    let project = env.project.join(".codex/config.toml");
+    if std::fs::canonicalize(&project).ok() == std::fs::canonicalize(config).ok() {
+        return Some(vec![]);
+    }
+    let doc = read_config(&project).ok()?;
+    Some(doc.as_ref().map(plugin_ids).unwrap_or_default())
+}
+
 // Ids without `@mp` are not a shape Codex installs; skip rather than guess a cache path.
 fn plugin_ids(doc: &DocumentMut) -> Vec<String> {
     table_keys(doc, "plugins")
@@ -147,6 +173,7 @@ fn plugin(
     cache: &Path,
     marketplaces: &[Marketplace],
     doc: &DocumentMut,
+    keep_cache: bool,
 ) -> Augmentation {
     let (name, mp) = split_id(id);
     let plugin_cache = cache.join(mp).join(name);
@@ -156,7 +183,7 @@ fn plugin(
             .iter()
             .map(|k| toml_remove(config, &["hooks", "state", k])),
     );
-    if scope == Scope::Global {
+    if scope == Scope::Global && !keep_cache {
         removal.extend(RemovalTarget::new(cache, [mp, name]).map(Action::RemovePath));
     }
     Augmentation {
@@ -181,11 +208,12 @@ fn marketplace(
     config: &Path,
     cache: &Path,
     plugins: &[Augmentation],
+    keep_cache: bool,
 ) -> Augmentation {
     let own: Vec<&Augmentation> = plugins.iter().filter(|p| p.group == m.name).collect();
     let mut removal: Vec<Action> = own.iter().flat_map(|p| p.removal.clone()).collect();
     removal.push(toml_remove(config, &["marketplaces", &m.name]));
-    if scope == Scope::Global {
+    if scope == Scope::Global && !keep_cache {
         removal.extend(RemovalTarget::new(cache, [&m.name]).map(Action::RemovePath));
     }
     Augmentation {
@@ -448,6 +476,67 @@ enabled = true
                 rm_key(&config, "marketplaces", "localdev"),
                 rm(&cache, &["localdev"]),
             ]
+        );
+    }
+
+    #[test]
+    fn global_removal_keeps_cache_the_project_still_enables() {
+        let (_d, env) = setup();
+        let config = env.home.join(".codex/config.toml");
+        let cache = env.home.join(".codex/plugins/cache");
+        let project_config = env.project.join(".codex/config.toml");
+        write(
+            &project_config,
+            "[plugins.\"review@killall\"]\nenabled = true\n",
+        );
+        let review = vec![
+            rm_key(&config, "plugins", "review@killall"),
+            rm_state(&config, REVIEW_START),
+            rm_state(&config, REVIEW_STOP),
+        ];
+        let commit = vec![
+            rm_key(&config, "plugins", "commit@killall"),
+            rm(&cache, &["killall", "commit"]),
+        ];
+        let items = Codex.discover(&env, Scope::Global).unwrap();
+        assert_eq!(
+            find(&items, "plugin:codex:global:review@killall").removal,
+            review
+        );
+        assert_eq!(
+            find(&items, "plugin:codex:global:commit@killall").removal,
+            commit
+        );
+        assert_eq!(
+            find(&items, "marketplace:codex:global:killall").removal,
+            [
+                review,
+                commit,
+                vec![rm_key(&config, "marketplaces", "killall")]
+            ]
+            .concat()
+        );
+
+        // Unreadable project config: keep every cache rather than guess.
+        write(&project_config, "[plugins\n");
+        let items = Codex.discover(&env, Scope::Global).unwrap();
+        assert!(
+            items
+                .iter()
+                .flat_map(|a| &a.removal)
+                .all(|a| matches!(a, Action::Edit { .. }))
+        );
+
+        // Run from home: the "project" config is the global one and protects nothing.
+        let home = Env {
+            home: env.home.clone(),
+            project: env.home.clone(),
+        };
+        let items = Codex.discover(&home, Scope::Global).unwrap();
+        assert!(
+            find(&items, "plugin:codex:global:review@killall")
+                .removal
+                .contains(&rm(&cache, &["killall", "review"]))
         );
     }
 

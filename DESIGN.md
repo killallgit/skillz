@@ -122,7 +122,10 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
   `RemovePath(cache/<mp>/<name>)`.
 - **Codex marketplace**: its plugins' removals + `TomlRemoveKey ["marketplaces", mp]` +
   `RemovePath(~/.codex/plugins/cache/<mp>)`.
-- Codex `RemovePath`s are global only; the TOML edits still run when a path is rejected.
+- Codex `RemovePath`s are global only; the TOML edits still run when a path is rejected. A
+  global plugin keeps its cache while the current project's `config.toml` lists that id, and
+  a marketplace keeps `cache/<mp>` while it lists any `<name>@<mp>` (an unreadable project
+  config keeps every cache). Other projects' configs are not visible.
 - **Removal safety, one rule.** A `RemovePath` holds an `action::RemovalTarget`, whose only
   constructor `RemovalTarget::new(root, segments)` joins segments onto an owned root and
   returns `None` (the adapter plans no removal) unless there is at least one segment and each
