@@ -335,9 +335,13 @@ fn uninstall(
         );
     }
     let labels: Vec<String> = candidates.iter().map(|c| label(c)).collect();
-    let chosen: Vec<&Augmentation> = deps
-        .prompter
-        .multi_select("Select items to remove", &labels)?
+    // A dry run changes nothing, so show every candidate's plan without asking.
+    let picked = if dry_run {
+        (0..candidates.len()).collect()
+    } else {
+        deps.prompter.multi_select("Select items to remove", &labels)?
+    };
+    let chosen: Vec<&Augmentation> = picked
         .into_iter()
         .filter_map(|i| candidates.get(i).copied())
         .collect();
