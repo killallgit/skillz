@@ -1,17 +1,26 @@
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 
-/// Indices of `candidates` that fuzzy-match `query`, best match first.
+/// Indices of `candidates` that match `query`, best match first.
+/// Substring matches (case-insensitive) win; only when there are none do fuzzy matches count.
 /// An empty query matches everything in original order.
 pub fn fuzzy_rank(query: &str, candidates: &[String]) -> Vec<usize> {
-    if query.trim().is_empty() {
+    let query = query.trim();
+    if query.is_empty() {
         return (0..candidates.len()).collect();
     }
+    let needle = query.to_lowercase();
+    let substring: Vec<bool> = candidates
+        .iter()
+        .map(|c| c.to_lowercase().contains(&needle))
+        .collect();
+    let any_substring = substring.contains(&true);
     let matcher = SkimMatcherV2::default().ignore_case();
     let mut scored: Vec<(i64, usize)> = candidates
         .iter()
         .enumerate()
-        .filter_map(|(i, c)| matcher.fuzzy_match(c, query.trim()).map(|s| (s, i)))
+        .filter(|(i, _)| !any_substring || substring[*i])
+        .filter_map(|(i, c)| matcher.fuzzy_match(c, query).map(|s| (s, i)))
         .collect();
     // Stable on ties so equal scores keep input order.
     scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
@@ -46,6 +55,14 @@ mod tests {
         let r = fuzzy_rank("gitcom", &c);
         assert_eq!(r.first(), Some(&2));
         assert!(!r.contains(&1));
+    }
+
+    #[test]
+    fn substring_matches_shadow_fuzzy_ones() {
+        let c = s(&["knowledge-work", "hooks", "speckit-plan", "setup-pre-commit skills"]);
+        assert_eq!(fuzzy_rank("hook", &c), vec![1]);
+        assert_eq!(fuzzy_rank("speckit", &c), vec![2]);
+        assert_eq!(fuzzy_rank("spkpln", &c), vec![2]);
     }
 
     #[test]
