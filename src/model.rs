@@ -54,7 +54,17 @@ pub struct Augmentation {
     pub removal: Vec<Action>,
 }
 
+/// Prefix of a plugin child that names one of its skills (`skill: <name>`).
+pub const SKILL_CHILD: &str = "skill: ";
+
 impl Augmentation {
+    /// The skill names among a plugin's children.
+    pub fn plugin_skills(&self) -> impl Iterator<Item = &str> {
+        self.children
+            .iter()
+            .filter_map(|c| c.strip_prefix(SKILL_CHILD))
+    }
+
     /// `name [source]  (kind · agents · scope)`. Tree items pass `false`: their group
     /// header already shows the source.
     pub fn label(&self, with_source: bool) -> String {

@@ -6,7 +6,7 @@ use toml_edit::{DocumentMut, Item};
 use super::AgentAdapter;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Kind, Scope};
+use crate::model::{Agent, Augmentation, Kind, SKILL_CHILD, Scope};
 use crate::npx_skills;
 
 pub struct Codex;
@@ -249,7 +249,7 @@ fn plugin_children(plugin_cache: &Path) -> Vec<String> {
     let mut skills: Vec<String> = matches("*/skills/*/SKILL.md")
         .iter()
         .filter_map(|p| p.parent()?.file_name()?.to_str())
-        .map(|dir| format!("skill: {dir}"))
+        .map(|dir| format!("{SKILL_CHILD}{dir}"))
         .collect();
     skills.sort();
     skills.dedup();

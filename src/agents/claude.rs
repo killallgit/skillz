@@ -9,7 +9,7 @@ use serde_json::Value;
 use super::AgentAdapter;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Kind, Scope};
+use crate::model::{Agent, Augmentation, Kind, SKILL_CHILD, Scope};
 
 pub struct Claude;
 
@@ -147,7 +147,7 @@ fn plugin_children(root: &Path) -> Vec<String> {
     let mut out: Vec<String> = dir_entries(&root.join("skills"))
         .into_iter()
         .filter(|p| p.join("SKILL.md").is_file())
-        .filter_map(|p| Some(format!("skill: {}", p.file_name()?.to_str()?)))
+        .filter_map(|p| Some(format!("{SKILL_CHILD}{}", p.file_name()?.to_str()?)))
         .collect();
     for (dir, label) in [("agents", "agent"), ("commands", "command")] {
         out.extend(

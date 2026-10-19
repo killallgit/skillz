@@ -25,6 +25,10 @@ skillz rm --hook bd -a cursor    # every hook that runs `bd`, for Cursor
 skillz rm caveman@caveman -y     # non-interactive: needs one exact name match
 skillz rm speckit --dry-run      # print the removal plan only
 
+skillz doctor                    # duplicates + unused 7+ days -> pick -> confirm -> remove
+skillz doctor --dry-run          # findings and their removal plan only
+skillz doctor --force            # remove everything found, no questions
+
 skillz install mattpocock/skills --skill 'tdd,*commit' # glob match, confirm, npx skills add
 skillz install mattpocock/skills --all -g
 skillz install killallgit/killall-skills               # has a marketplace: pick Claude plugins

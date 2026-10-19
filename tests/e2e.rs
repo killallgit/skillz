@@ -734,3 +734,45 @@ fn browser_remove_deletes_only_the_marked_group() {
     let hooks = read_json(&w.home.join(".claude/settings.json"));
     assert!(!hooks["hooks"].as_object().unwrap().is_empty());
 }
+
+#[test]
+fn doctor_removes_duplicates_and_only_the_picked_unused_items() {
+    let w = world();
+    let cache = w.home.join(".claude/plugins/cache/mp/tools/1.0");
+    write(
+        &cache.join("skills/lint/SKILL.md"),
+        "---\nname: lint\n---\n",
+    );
+    write(
+        &w.home.join(".claude/plugins/installed_plugins.json"),
+        &json!({"version": 2, "plugins": {"tools@mp": [
+            {"scope": "user", "installPath": cache.to_string_lossy()}
+        ]}})
+        .to_string(),
+    );
+    write(
+        &w.home.join(".claude/skills/lint/SKILL.md"),
+        "---\nname: lint\n---\n",
+    );
+    let doctor = |dry_run| Command::Doctor {
+        project: None,
+        filter: Filter::default(),
+        dry_run,
+        force: false,
+    };
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: Some(vec![]),
+            confirm: true,
+        },
+    );
+
+    run(doctor(true), &deps(&w, &r, &p), &mut Vec::new()).unwrap();
+    assert!(w.home.join(".claude/skills/lint").exists());
+
+    run(doctor(false), &deps(&w, &r, &p), &mut Vec::new()).unwrap();
+    assert!(!w.home.join(".claude/skills/lint").exists());
+    assert!(w.home.join(".agents/skills/tdd").exists());
+    assert!(cache.exists());
+}

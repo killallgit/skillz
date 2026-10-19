@@ -38,6 +38,8 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
 | `install::source` | source fetch: reject empty/option-like sources, local path or `git clone --depth 1` into a temp dir, credential-redacted `run_checked` |
 | `install::skills` | npx `skills` installer: `scan_available`, selection/patterns, runs `npx_skills::add_command` |
 | `install::marketplace` | Claude marketplace installer: reads `.claude-plugin/marketplace.json`, runs `claude plugin marketplace add` + `plugin install` |
+| `usage` | last use per skill/plugin: Claude `~/.claude.json` `skillUsage`/`pluginUsage`, Codex session logs (tool calls reading a `SKILL.md`) |
+| `doctor` | pure checks: duplicate loose skills, never-used and 7+ days unused skills/plugins |
 | `cli` | clap definitions, wiring, list/uninstall/install commands |
 
 ## On-disk formats (observed on a real machine)
@@ -165,6 +167,7 @@ etc.). For the first remaining token:
 ```
 skillz list [QUERY|PATH] [-C PATH] [--all] [--json] [-g] [--skills] [--hooks] [--plugins] [--marketplaces] [-a <agent>]... [-i]
 skillz uninstall|rm|delete [QUERY] [same filters] [-y]
+skillz doctor [-C PATH] [same filters] [--dry-run | -f/--force]
 skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,b,*commit']... [-y]
 ```
 - Scope: `PATH` only -> project at PATH; `-g` only -> global; neither -> both (project = cwd).
@@ -180,6 +183,12 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,
   same `remove` step as `uninstall` (Remove).
 - `uninstall`: filter -> fuzzy match QUERY over `name group source` -> multi-select picker
   -> show plan -> confirm -> execute -> re-discover and verify.
+- `doctor`: report duplicates (a loose skill every one of whose agents also gets it from an
+  installed plugin: global, or the skill's own scope), never-used and 7+ days unused skills
+  and plugins (only items a usage source can see: not hooks, marketplaces, Cursor-only items
+  or Codex plugins without skills). Duplicates always go into the removal; unused items only
+  when picked. Then the same `remove` step as `uninstall`. `--force` picks and confirms
+  everything (the `AssumeYes` prompter).
 - `install`: project scope unless `-g` or the project is the home dir (then global). Resolve
   source (local path relative to the cwd, not `-C`; else `git clone --depth 1`), scan skills and
   `.claude-plugin/marketplace.json`. Skills are named by their `SKILL.md` frontmatter `name:`

@@ -6,6 +6,7 @@
 pub mod action;
 pub mod agents;
 pub mod cli;
+pub mod doctor;
 pub mod env;
 pub mod hooks;
 pub mod install;
@@ -17,3 +18,4 @@ pub mod runner;
 pub mod skills;
 pub mod tree;
 pub mod tui;
+pub mod usage;

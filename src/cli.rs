@@ -7,6 +7,7 @@ use clap::{Args, Parser, Subcommand};
 
 use crate::action::{self, Action, Edit};
 use crate::agents::{self, AgentAdapter};
+use crate::doctor;
 use crate::env::Env;
 use crate::install::{self, InstallRequest, SkillSelection};
 use crate::matcher;
@@ -14,6 +15,7 @@ use crate::model::{Agent, Augmentation, Kind, Scope};
 use crate::prompt::{AssumeYes, Choice, Prompter, TuiPrompter};
 use crate::runner::{CommandRunner, SystemRunner};
 use crate::tree;
+use crate::usage;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -64,6 +66,20 @@ pub enum Command {
         /// Print the removal plan without changing anything
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Find duplicate skills and skills/plugins unused for 7+ days, then remove the ones picked
+    Doctor {
+        /// Project directory (default: cwd)
+        #[arg(short = 'C', long)]
+        project: Option<PathBuf>,
+        #[command(flatten)]
+        filter: Filter,
+        /// Print the findings and their removal plan without changing anything
+        #[arg(long, conflicts_with = "force")]
+        dry_run: bool,
+        /// Remove everything found without asking
+        #[arg(short, long)]
+        force: bool,
     },
     /// Install skills (via `npx skills`) or a Claude plugin marketplace
     #[command(visible_alias = "add")]
@@ -158,11 +174,13 @@ pub fn main() -> anyhow::Result<()> {
     run(cli.command, &deps, &mut std::io::stdout())
 }
 
-/// `--yes` swaps the interactive prompter for one that picks and confirms everything.
+/// `--yes` (doctor: `--force`) swaps the interactive prompter for one that picks and confirms everything.
 fn wants_auto_yes(command: &Command) -> bool {
     matches!(
         command,
-        Command::Uninstall { yes: true, .. } | Command::Install { yes: true, .. }
+        Command::Uninstall { yes: true, .. }
+            | Command::Install { yes: true, .. }
+            | Command::Doctor { force: true, .. }
     )
 }
 
@@ -201,6 +219,24 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
                 &filter,
                 query.as_deref(),
                 yes,
+                dry_run,
+                out,
+            )
+        }
+        Command::Doctor {
+            project,
+            filter,
+            dry_run,
+            force: _,
+        } => {
+            let (env, scopes) = resolve(deps, project.as_deref(), filter.global)?;
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+            doctor(
+                deps,
+                &env,
+                &scopes,
+                &filter,
+                now.as_millis() as u64,
                 dry_run,
                 out,
             )
@@ -471,6 +507,67 @@ fn uninstall(
     remove(deps, env, scopes, filter, &chosen, dry_run, out)
 }
 
+/// Report findings; duplicates are always in the removal, unused items only when picked.
+fn doctor(
+    deps: &Deps,
+    env: &Env,
+    scopes: &[Scope],
+    filter: &Filter,
+    now_ms: u64,
+    dry_run: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let items = gather(deps, env, scopes, filter);
+    let usage = usage::read(env)?;
+    let found = doctor::check(&items, &usage, now_ms);
+    let unused: Vec<&Augmentation> = found
+        .never_used
+        .iter()
+        .copied()
+        .chain(found.unused.iter().map(|(i, _)| *i))
+        .collect();
+    if found.duplicates.is_empty() && unused.is_empty() {
+        writeln!(out, "nothing to clean up")?;
+        return Ok(());
+    }
+    let days_ago = |ms: u64| now_ms.saturating_sub(ms) / (24 * 60 * 60 * 1000);
+    let sections: [(&str, Vec<String>); 3] = [
+        (
+            "Duplicates (also provided by a plugin)",
+            found.duplicates.iter().map(|i| i.label(true)).collect(),
+        ),
+        (
+            "Never used",
+            found.never_used.iter().map(|i| i.label(true)).collect(),
+        ),
+        (
+            "Unused for 7+ days",
+            found
+                .unused
+                .iter()
+                .map(|(i, ms)| format!("{}  last used {}d ago", i.label(true), days_ago(*ms)))
+                .collect(),
+        ),
+    ];
+    for (title, lines) in sections.iter().filter(|(_, l)| !l.is_empty()) {
+        writeln!(out, "{title}:")?;
+        for line in lines {
+            writeln!(out, "  {line}")?;
+        }
+    }
+    let mut chosen = found.duplicates.clone();
+    if dry_run {
+        chosen.extend(&unused);
+    } else if !unused.is_empty() {
+        let labels: Vec<String> = unused.iter().map(|i| i.label(true)).collect();
+        let picked = deps
+            .prompter
+            .multi_select("Select unused items to remove", &labels)?;
+        chosen.extend(picked.into_iter().filter_map(|i| unused.get(i).copied()));
+    }
+    remove(deps, env, scopes, filter, &chosen, dry_run, out)
+}
+
 /// Print the removal plan for `chosen`, confirm, execute, then verify they are gone.
 fn remove(
     deps: &Deps,
@@ -601,7 +698,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_yes_only_for_yes_flag_on_uninstall_and_install() {
+    fn auto_yes_only_for_yes_and_force_flags() {
         let parse = |args: &[&str]| {
             Cli::try_parse_from([&["skillz"], args].concat())
                 .unwrap()
@@ -612,6 +709,8 @@ mod tests {
         assert!(wants_auto_yes(&parse(&["install", "o/r", "--yes"])));
         assert!(!wants_auto_yes(&parse(&["install", "o/r"])));
         assert!(!wants_auto_yes(&parse(&["list"])));
+        assert!(wants_auto_yes(&parse(&["doctor", "--force"])));
+        assert!(!wants_auto_yes(&parse(&["doctor"])));
     }
 
     fn split(project: Option<&str>, target: &str) -> (Option<PathBuf>, Option<String>) {
