@@ -1,9 +1,16 @@
+use crate::tree::Node;
+
 /// User interaction. Injected so flows are testable without a terminal.
 pub trait Prompter {
     /// Let the user pick any subset of `options`; returns chosen indices (ascending).
     /// An empty result means the user cancelled or picked nothing.
     fn multi_select(&self, title: &str, options: &[String]) -> anyhow::Result<Vec<usize>>;
     fn confirm(&self, question: &str) -> anyhow::Result<bool>;
+    /// Pick among top-level `groups` (browsable trees); returns chosen indices.
+    fn pick_groups(&self, title: &str, groups: &[Node]) -> anyhow::Result<Vec<usize>> {
+        let labels: Vec<String> = groups.iter().map(|g| g.label.clone()).collect();
+        self.multi_select(title, &labels)
+    }
 }
 
 /// Interactive terminal prompter backed by `tui::select` and a y/n line prompt.
@@ -12,6 +19,10 @@ pub struct TuiPrompter;
 impl Prompter for TuiPrompter {
     fn multi_select(&self, title: &str, options: &[String]) -> anyhow::Result<Vec<usize>> {
         crate::tui::select::run(title, options)
+    }
+
+    fn pick_groups(&self, title: &str, groups: &[Node]) -> anyhow::Result<Vec<usize>> {
+        crate::tui::tree_view::pick(title, groups)
     }
 
     fn confirm(&self, question: &str) -> anyhow::Result<bool> {

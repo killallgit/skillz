@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::io::{IsTerminal, Write};
 use std::path::{Component, Path, PathBuf};
 
@@ -318,27 +318,25 @@ fn pick_matches<'a>(
     hits: Vec<&'a Augmentation>,
     view: &ListView,
 ) -> anyhow::Result<Vec<&'a Augmentation>> {
-    let mut groups: Vec<&str> = Vec::new();
-    for h in &hits {
-        if !groups.contains(&h.group.as_str()) {
-            groups.push(&h.group);
-        }
-    }
+    let groups: BTreeSet<&str> = hits.iter().map(|h| h.group.as_str()).collect();
     if groups.len() < 2 || view.json || view.interactive || !deps.interactive {
         return Ok(hits);
     }
-    let labels: Vec<String> = groups
-        .iter()
-        .map(|g| {
-            format!(
-                "{g}  ({} matching)",
-                hits.iter().filter(|h| h.group == *g).count()
-            )
+    // Same order as `tree::build`: one node per group, sorted by group.
+    let owned: Vec<Augmentation> = hits.iter().map(|&h| h.clone()).collect();
+    let nodes: Vec<tree::Node> = tree::build(&owned)
+        .into_iter()
+        .zip(&groups)
+        .map(|(mut node, g)| {
+            let n = hits.iter().filter(|h| h.group == *g).count();
+            node.label = format!("{}  ({n} matching)", node.label);
+            node
         })
         .collect();
+    let groups: Vec<&str> = groups.into_iter().collect();
     let picked: Vec<&str> = deps
         .prompter
-        .multi_select("Show which group?", &labels)?
+        .pick_groups("Show which group?", &nodes)?
         .into_iter()
         .filter_map(|i| groups.get(i).copied())
         .collect();

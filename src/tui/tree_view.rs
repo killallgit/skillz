@@ -10,10 +10,12 @@ use super::{FilterKey, event_loop, filter_key, is_ctrl_c, step_cursor};
 use crate::matcher::fuzzy_rank;
 use crate::tree::Node;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     Continue,
     Quit,
+    /// Picker only: ordinals of the chosen top-level nodes, ascending.
+    Accept(Vec<usize>),
 }
 
 /// One node of the flattened (preorder) tree.
@@ -47,6 +49,8 @@ pub struct TreeState {
     filter: String,
     filtering: bool,
     visible: Vec<usize>,
+    /// `Some` in picker mode: marked top-level row ids.
+    marks: Option<BTreeSet<usize>>,
 }
 
 impl TreeState {
@@ -65,9 +69,39 @@ impl TreeState {
             filter: String::new(),
             filtering: false,
             visible: vec![],
+            marks: None,
         };
         state.refresh();
         state
+    }
+
+    /// Pick top-level nodes: starts collapsed; space expands, x/tab marks, enter accepts.
+    pub fn picker(nodes: &[Node]) -> Self {
+        let mut state = TreeState::new(nodes);
+        state.expanded.clear();
+        state.marks = Some(BTreeSet::new());
+        state.refresh();
+        state
+    }
+
+    /// Top-level row id that `id` sits under.
+    fn top(&self, mut id: usize) -> usize {
+        while let Some(p) = self.rows[id].parent {
+            id = p;
+        }
+        id
+    }
+
+    /// Picker result: marked groups, else the one under the cursor; as top-level ordinals.
+    fn accepted(&self, marks: &BTreeSet<usize>) -> Vec<usize> {
+        let ids: BTreeSet<usize> = match self.current() {
+            Some(id) if marks.is_empty() => [self.top(id)].into(),
+            _ => marks.clone(),
+        };
+        let tops = (0..self.rows.len()).filter(|&i| self.rows[i].depth == 0);
+        tops.enumerate()
+            .filter_map(|(ordinal, id)| ids.contains(&id).then_some(ordinal))
+            .collect()
     }
 
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
@@ -87,6 +121,20 @@ impl TreeState {
                 FilterKey::Other => self.navigate(key.code),
             }
             return Outcome::Continue;
+        }
+        if let (Some(id), Some(marks)) = (self.current(), &self.marks) {
+            match key.code {
+                KeyCode::Enter => return Outcome::Accept(self.accepted(marks)),
+                KeyCode::Char('x') | KeyCode::Tab => {
+                    let top = self.top(id);
+                    let marks = self.marks.as_mut().expect("picker mode");
+                    if !marks.remove(&top) {
+                        marks.insert(top);
+                    }
+                    return Outcome::Continue;
+                }
+                _ => {}
+            }
         }
         match key.code {
             KeyCode::Char('/') => self.filtering = true,
@@ -172,7 +220,11 @@ impl TreeState {
                 (true, true) => "▾",
                 (true, false) => "▸",
             };
-            format!("{}{marker} {}", "  ".repeat(row.depth), row.label)
+            let mark = match &self.marks {
+                Some(m) if row.depth == 0 => ["[ ] ", "[x] "][usize::from(m.contains(&id))],
+                _ => "",
+            };
+            format!("{}{mark}{marker} {}", "  ".repeat(row.depth), row.label)
         });
         let list = List::new(items)
             .block(Block::bordered().title(title.to_string()))
@@ -181,6 +233,8 @@ impl TreeState {
         frame.render_stateful_widget(list, body, &mut list_state);
         let help = if self.filtering {
             format!("/{}", self.filter)
+        } else if self.marks.is_some() {
+            "↑↓/jk move · space/→← expand · x/tab mark · enter show · / filter · esc cancel".into()
         } else {
             format!(
                 "↑↓/jk move · →/l expand · ←/h collapse · enter/space toggle · / filter · q quit  {}",
@@ -189,6 +243,19 @@ impl TreeState {
         };
         frame.render_widget(Paragraph::new(help), footer);
     }
+}
+
+/// Pick top-level `nodes` in a collapsible tree; returns their indices (empty = cancelled).
+pub fn pick(title: &str, nodes: &[Node]) -> anyhow::Result<Vec<usize>> {
+    event_loop(
+        &mut TreeState::picker(nodes),
+        |s, f| s.draw(title, f),
+        |s, k| match s.handle(k) {
+            Outcome::Continue => None,
+            Outcome::Quit => Some(vec![]),
+            Outcome::Accept(picked) => Some(picked),
+        },
+    )
 }
 
 /// Run the interactive collapsible tree browser until the user quits.
@@ -318,6 +385,28 @@ mod tests {
         assert!(!s.filtering && s.filter.is_empty());
         assert_eq!(s.visible.len(), 5);
         assert_eq!(s.handle(key(KeyCode::Char('q'))), Outcome::Quit);
+    }
+
+    #[test]
+    fn picker_starts_collapsed_space_expands_and_enter_takes_the_current_group() {
+        let mut s = TreeState::picker(&sample());
+        assert_eq!(labels(&s), ["g0", "g1"]);
+        feed(&mut s, keys(" "));
+        assert_eq!(labels(&s), ["g0", "a", "b", "g1"]);
+        feed(&mut s, keys("jjj"));
+        assert_eq!(s.handle(key(KeyCode::Enter)), Outcome::Accept(vec![1]));
+    }
+
+    #[test]
+    fn picker_marks_groups_even_from_a_child_row() {
+        let mut s = TreeState::picker(&sample());
+        feed(&mut s, keys(" jx"));
+        feed(&mut s, [key(KeyCode::Tab)]);
+        feed(&mut s, keys("jjx"));
+        assert_eq!(s.handle(key(KeyCode::Enter)), Outcome::Accept(vec![1]));
+        feed(&mut s, keys("kkkx"));
+        assert_eq!(s.handle(key(KeyCode::Enter)), Outcome::Accept(vec![0, 1]));
+        assert_eq!(s.handle(key(KeyCode::Esc)), Outcome::Quit);
     }
 
     #[test]
