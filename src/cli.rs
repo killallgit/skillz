@@ -311,21 +311,40 @@ fn queried(items: &[Augmentation], hits: &[&Augmentation]) -> Vec<Augmentation> 
         .collect()
 }
 
-/// The matches `list QUERY` shows: all of them for `--json`, `-i` or no terminal; otherwise,
-/// when there are several, the ones the user picks.
+/// The matches `list QUERY` shows: all of them for `--json`, `-i`, no terminal, or when they
+/// all sit in one group; otherwise those in the groups the user picks.
 fn pick_matches<'a>(
     deps: &Deps,
     hits: Vec<&'a Augmentation>,
     view: &ListView,
 ) -> anyhow::Result<Vec<&'a Augmentation>> {
-    if hits.len() < 2 || view.json || view.interactive || !deps.interactive {
+    let mut groups: Vec<&str> = Vec::new();
+    for h in &hits {
+        if !groups.contains(&h.group.as_str()) {
+            groups.push(&h.group);
+        }
+    }
+    if groups.len() < 2 || view.json || view.interactive || !deps.interactive {
         return Ok(hits);
     }
-    let labels: Vec<String> = hits.iter().map(|h| h.label(true)).collect();
-    let picked = deps.prompter.multi_select("Show which?", &labels)?;
-    Ok(picked
+    let labels: Vec<String> = groups
+        .iter()
+        .map(|g| {
+            format!(
+                "{g}  ({} matching)",
+                hits.iter().filter(|h| h.group == *g).count()
+            )
+        })
+        .collect();
+    let picked: Vec<&str> = deps
+        .prompter
+        .multi_select("Show which group?", &labels)?
         .into_iter()
-        .filter_map(|i| hits.get(i).copied())
+        .filter_map(|i| groups.get(i).copied())
+        .collect();
+    Ok(hits
+        .into_iter()
+        .filter(|h| picked.contains(&h.group.as_str()))
         .collect())
 }
 

@@ -670,11 +670,16 @@ fn list_items_picking(w: &World, query: &str, pick: Option<Vec<usize>>, json: bo
 }
 
 #[test]
-fn list_query_with_several_matches_shows_only_the_picked_ones() {
+fn list_query_matching_several_groups_shows_only_the_picked_groups() {
     let w = world();
-    // `bd` names three hook groups: Claude, Cursor (global) and Codex (project).
-    assert_eq!(list_items_picking(&w, "bd", Some(vec![1]), false), 1);
-    assert_eq!(list_items_picking(&w, "bd", Some(vec![]), false), 0);
-    assert_eq!(list_items_picking(&w, "bd", Some(vec![0]), true), 3);
-    assert_eq!(list_items_picking(&w, "tdd", Some(vec![]), false), 1);
+    // `bd` names three hooks (Claude, Cursor, Codex), all in the one "hooks" group: no picker.
+    assert_eq!(list_items_picking(&w, "bd", Some(vec![]), false), 3);
+    // `s` hits the hooks and the `mattpocock/skills` skill: two groups, so pick one.
+    let both = list_items_picking(&w, "s", Some(vec![0, 1]), false);
+    let first = list_items_picking(&w, "s", Some(vec![0]), false);
+    let second = list_items_picking(&w, "s", Some(vec![1]), false);
+    assert!(first > 0 && second > 0);
+    assert_eq!(first + second, both);
+    assert_eq!(list_items_picking(&w, "s", Some(vec![]), false), 0);
+    assert_eq!(list_items_picking(&w, "s", Some(vec![]), true), both);
 }
