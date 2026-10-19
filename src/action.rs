@@ -1,6 +1,7 @@
+use std::ffi::OsStr;
 use std::fs;
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::Context;
 use serde_json::Value;
@@ -9,7 +10,7 @@ use serde_json::Value;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// Delete a file, symlink, or directory tree. Missing paths are not an error.
-    RemovePath(PathBuf),
+    RemovePath(RemovalTarget),
     /// Rewrite a config file in place. Missing files are skipped.
     Edit { file: PathBuf, edit: Edit },
 }
@@ -36,6 +37,49 @@ pub enum Edit {
     /// `command` (`[[hooks.E]]`/`[[hooks.E.hooks]]` or inline arrays), keeping formatting.
     /// Prunes emptied groups and events. No-op if absent.
     TomlRemoveHook { event: String, command: String },
+}
+
+/// A path strictly inside an owned root, built from plain segments. The only way to get a
+/// `RemovePath`, so every deletion passes the same rule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemovalTarget {
+    root: PathBuf,
+    path: PathBuf,
+}
+
+impl RemovalTarget {
+    /// `root` joined with `segments`, or `None` unless there is at least one segment and each
+    /// is one plain UTF-8 name: non-empty, not `.`/`..`, no `/` or `\`. Config-supplied names
+    /// go in as separate segments; a `&Path` iterates as its components.
+    pub fn new<S: AsRef<OsStr>>(
+        root: &Path,
+        segments: impl IntoIterator<Item = S>,
+    ) -> Option<Self> {
+        let mut path = root.to_path_buf();
+        for seg in segments {
+            let seg = seg.as_ref().to_str()?;
+            if seg.is_empty() || seg == "." || seg == ".." || seg.contains(['/', '\\']) {
+                return None;
+            }
+            path.push(seg);
+        }
+        let target = Self {
+            root: root.to_path_buf(),
+            path,
+        };
+        target.inside().then_some(target)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn inside(&self) -> bool {
+        self.path.strip_prefix(&self.root).is_ok_and(|rest| {
+            rest.components().next().is_some()
+                && rest.components().all(|c| matches!(c, Component::Normal(_)))
+        })
+    }
 }
 
 /// What `execute` actually changed.
@@ -269,11 +313,11 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
     }
     commit(&staged)?;
     for action in unique {
-        if let Action::RemovePath(path) = action {
-            let removed = remove_path(path)
+        if let Action::RemovePath(target) = action {
+            let removed = remove_path(target)
                 .with_context(|| format!("already removed: {:?}", report.removed))?;
             if removed {
-                report.removed.push(path.clone());
+                report.removed.push(target.path.clone());
             }
         }
     }
@@ -281,12 +325,14 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
 }
 
 /// Removes a symlink itself (never its target), a file, or a whole directory tree. Returns
-/// false (removes nothing) when an ancestor is a symlink, as deleting would reach into its target.
-fn remove_path(path: &Path) -> anyhow::Result<bool> {
+/// false (removes nothing) when the target is not strictly inside its root, or an ancestor is
+/// a symlink, as deleting would reach into its target.
+fn remove_path(target: &RemovalTarget) -> anyhow::Result<bool> {
+    let path = &target.path;
     // Rule: only the two nearest ancestors (managed root..target, e.g. cache/<mp>/<name>), so
     // system links (macOS /var) and a symlinked ~/.claude don't block removal.
     let linked = |a: &Path| fs::symlink_metadata(a).is_ok_and(|m| m.file_type().is_symlink());
-    if path.ancestors().skip(1).take(2).any(linked) {
+    if !target.inside() || path.ancestors().skip(1).take(2).any(linked) {
         return Ok(false);
     }
     let meta = match fs::symlink_metadata(path) {
@@ -706,6 +752,54 @@ enabled = false
         fs::write(path, contents).unwrap();
     }
 
+    fn rm(path: &Path) -> Action {
+        let target = RemovalTarget::new(path.parent().unwrap(), [path.file_name().unwrap()]);
+        Action::RemovePath(target.unwrap())
+    }
+
+    #[test]
+    fn removal_target_accepts_only_plain_segments() {
+        let root = Path::new("/r");
+        for bad in ["", ".", "..", "a/b", "a\\b", "/abs"] {
+            assert!(RemovalTarget::new(root, [bad]).is_none(), "{bad}");
+            assert!(RemovalTarget::new(root, ["ok", bad]).is_none(), "{bad}");
+        }
+        assert!(RemovalTarget::new(root, Vec::<&str>::new()).is_none());
+        assert!(RemovalTarget::new(root, Path::new("a/../b")).is_none());
+        for good in ["a..b", ".hidden"] {
+            let target = RemovalTarget::new(root, [good]).unwrap();
+            assert_eq!(target.path(), root.join(good));
+        }
+        let nested = RemovalTarget::new(root, Path::new("a/b")).unwrap();
+        assert_eq!(nested.path(), Path::new("/r/a/b"));
+    }
+
+    #[test]
+    fn execute_skips_target_outside_its_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        let victim = dir.path().join("victim");
+        fs::create_dir(&root).unwrap();
+        write(&victim, "x");
+        let escaped = [
+            RemovalTarget {
+                root: root.clone(),
+                path: victim.clone(),
+            },
+            RemovalTarget {
+                root: root.clone(),
+                path: root.join("../victim"),
+            },
+            RemovalTarget {
+                root: root.clone(),
+                path: root.clone(),
+            },
+        ];
+        let report = execute(&escaped.map(Action::RemovePath)).unwrap();
+        assert!(report.removed.is_empty());
+        assert!(victim.exists() && root.exists());
+    }
+
     #[test]
     fn execute_removes_paths_and_skips_missing() {
         let dir = tempfile::tempdir().unwrap();
@@ -716,13 +810,7 @@ enabled = false
         write(&tree.join("a/b/c"), "x");
         let missing = dir.path().join("missing");
 
-        let report = execute(&[
-            Action::RemovePath(file.clone()),
-            Action::RemovePath(missing),
-            Action::RemovePath(tree.clone()),
-            Action::RemovePath(file.clone()),
-        ])
-        .unwrap();
+        let report = execute(&[rm(&file), rm(&missing), rm(&tree), rm(&file)]).unwrap();
         assert_eq!(report.removed, vec![file.clone(), tree.clone()]);
         assert!(report.edited.is_empty());
         assert!(!file.exists() && !tree.exists());
@@ -740,11 +828,7 @@ enabled = false
         let dangling = dir.path().join("dangling");
         std::os::unix::fs::symlink(dir.path().join("gone"), &dangling).unwrap();
 
-        let report = execute(&[
-            Action::RemovePath(link.clone()),
-            Action::RemovePath(dangling.clone()),
-        ])
-        .unwrap();
+        let report = execute(&[rm(&link), rm(&dangling)]).unwrap();
         assert_eq!(report.removed, vec![link.clone(), dangling.clone()]);
         assert!(fs::symlink_metadata(&link).is_err());
         assert!(fs::symlink_metadata(&dangling).is_err());
@@ -761,7 +845,7 @@ enabled = false
         fs::create_dir(dir.path().join("cache")).unwrap();
         std::os::unix::fs::symlink(&real, dir.path().join("cache/mp")).unwrap();
 
-        let report = execute(&[Action::RemovePath(dir.path().join("cache/mp/name"))]).unwrap();
+        let report = execute(&[rm(&dir.path().join("cache/mp/name"))]).unwrap();
         assert!(report.removed.is_empty());
         assert!(real.join("name/SKILL.md").exists());
     }
@@ -853,7 +937,7 @@ enabled = false
                 file: bad.clone(),
                 edit: hook("a", "b"),
             },
-            Action::RemovePath(later.clone()),
+            rm(&later),
         ]);
         assert!(result.is_err());
         assert!(later.exists());
@@ -871,7 +955,7 @@ enabled = false
         write(&good, src);
         write(&bad, "{");
         let result = execute(&[
-            Action::RemovePath(doomed.clone()),
+            rm(&doomed),
             Action::Edit {
                 file: good.clone(),
                 edit: Edit::JsonRemoveKey {

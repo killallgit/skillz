@@ -1,13 +1,13 @@
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::io::ErrorKind;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use serde_json::Value;
 
-use super::{AgentAdapter, safe_segment};
-use crate::action::{Action, Edit};
+use super::AgentAdapter;
+use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 
@@ -196,18 +196,17 @@ fn covers_all(installs: &[Install], id: &str, removed: impl Fn(&Install) -> bool
     mine.first().is_some_and(|i| i.records == mine.len()) && mine.into_iter().all(removed)
 }
 
-/// `RemovePath` for the plugin's cache and data dirs; none unless `name@mp` are safe segments.
+/// `RemovePath` for the plugin's cache and data dirs; none unless both are valid targets.
 fn plugin_dirs(home: &Path, id: &str) -> Vec<Action> {
-    match id.rsplit_once('@') {
-        Some((name, mp)) if safe_segment(name) && safe_segment(mp) => {
-            let dir = home.join(".claude/plugins");
-            vec![
-                Action::RemovePath(dir.join("cache").join(mp).join(name)),
-                Action::RemovePath(dir.join("data").join(format!("{name}-{mp}"))),
-            ]
-        }
-        _ => vec![],
-    }
+    let Some((name, mp)) = id.rsplit_once('@') else {
+        return vec![];
+    };
+    let dir = home.join(".claude/plugins");
+    let cache = RemovalTarget::new(&dir.join("cache"), [mp, name]);
+    let data = RemovalTarget::new(&dir.join("data"), [format!("{name}-{mp}")]);
+    cache.zip(data).map_or(vec![], |(c, d)| {
+        vec![Action::RemovePath(c), Action::RemovePath(d)]
+    })
 }
 
 /// `plugin_removal` plus the plugin's dirs when this was its last install record.
@@ -218,15 +217,6 @@ fn full_plugin_removal(home: &Path, installs: &[Install], install: &Install) -> 
         out.extend(plugin_dirs(home, &install.id));
     }
     out
-}
-
-/// Only marketplace clones Claude made; a `directory` source's location is the user's checkout.
-fn owned_location(home: &Path, loc: &Path) -> bool {
-    loc.strip_prefix(home.join(".claude/plugins/marketplaces"))
-        .is_ok_and(|rest| {
-            let mut parts = rest.components();
-            matches!(parts.next(), Some(Component::Normal(_))) && parts.next().is_none()
-        })
 }
 
 /// One plugin augmentation per id among the installs belonging to `scope`.
@@ -298,9 +288,14 @@ fn marketplace(home: &Path, m: &Marketplace, installs: &[Install]) -> Augmentati
             path: vec!["extraKnownMarketplaces".into(), m.name.clone()],
         },
     });
-    if owned_location(home, Path::new(&m.install_location)) {
-        removal.push(Action::RemovePath(PathBuf::from(&m.install_location)));
-    }
+    // Only a clone Claude made, as one segment under marketplaces/; a `directory` source's
+    // location is the user's checkout.
+    let clones = home.join(".claude/plugins/marketplaces");
+    let clone = Path::new(&m.install_location)
+        .strip_prefix(&clones)
+        .ok()
+        .and_then(|rest| RemovalTarget::new(&clones, [rest]));
+    removal.extend(clone.map(Action::RemovePath));
     Augmentation {
         id: format!("marketplace:claude:{}", m.name),
         name: m.name.clone(),
@@ -324,7 +319,6 @@ mod tests {
         _tmp: TempDir,
         env: Env,
         cache: PathBuf,
-        mp_dir: PathBuf,
     }
 
     fn write(path: &Path, text: &str) {
@@ -337,6 +331,10 @@ mod tests {
             file: file.to_path_buf(),
             edit,
         }
+    }
+
+    fn rm(root: &Path, segments: &[&str]) -> Action {
+        Action::RemovePath(RemovalTarget::new(root, segments).unwrap())
     }
 
     fn remove_key(file: &Path, path: &[&str]) -> Action {
@@ -402,7 +400,6 @@ mod tests {
             _tmp: tmp,
             env: Env { home, project },
             cache,
-            mp_dir,
         }
     }
 
@@ -569,13 +566,13 @@ mod tests {
                     &["enabledPlugins", "solo@acme"]
                 ),
                 remove_install(&installed, "solo@acme", Some(&other)),
-                Action::RemovePath(home.join(".claude/plugins/cache/acme/tools")),
-                Action::RemovePath(home.join(".claude/plugins/data/tools-acme")),
-                Action::RemovePath(home.join(".claude/plugins/cache/acme/solo")),
-                Action::RemovePath(home.join(".claude/plugins/data/solo-acme")),
+                rm(&home.join(".claude/plugins/cache"), &["acme", "tools"]),
+                rm(&home.join(".claude/plugins/data"), &["tools-acme"]),
+                rm(&home.join(".claude/plugins/cache"), &["acme", "solo"]),
+                rm(&home.join(".claude/plugins/data"), &["solo-acme"]),
                 remove_key(&known, &["acme"]),
                 remove_key(&global_settings, &["extraKnownMarketplaces", "acme"]),
-                Action::RemovePath(f.mp_dir.clone()),
+                rm(&home.join(".claude/plugins/marketplaces"), &["acme"]),
             ]
         );
 
@@ -609,8 +606,8 @@ mod tests {
                     &["enabledPlugins", "solo@acme"]
                 ),
                 remove_install(&installed, "solo@acme", None),
-                Action::RemovePath("/h/.claude/plugins/cache/acme/solo".into()),
-                Action::RemovePath("/h/.claude/plugins/data/solo-acme".into()),
+                rm(Path::new("/h/.claude/plugins/cache"), &["acme", "solo"]),
+                rm(Path::new("/h/.claude/plugins/data"), &["solo-acme"]),
             ]
         );
         let dup = installs.iter().find(|i| i.id == "dup@acme").unwrap();
@@ -621,22 +618,12 @@ mod tests {
     }
 
     #[test]
-    fn plugin_dirs_rejects_unsafe_ids() {
-        for id in [
-            "bare",
-            "@acme",
-            "x@",
-            "a/b@acme",
-            "x@a/b",
-            "..@acme",
-            "x@..",
-            ".@acme",
-            "x@.",
-            "a\\b@acme",
-        ] {
+    fn plugin_dirs_need_both_halves_of_the_id() {
+        // Segment rules are `RemovalTarget`'s; here the data dir must not outlive a bad cache dir.
+        for id in ["bare", "@acme", "x@", "x@.."] {
             assert_eq!(plugin_dirs(Path::new("/h"), id), [], "{id}");
         }
-        assert_eq!(plugin_dirs(Path::new("/h"), "a..b@acme").len(), 2);
+        assert_eq!(plugin_dirs(Path::new("/h"), "a@b@acme").len(), 2);
     }
 
     #[test]
@@ -647,6 +634,7 @@ mod tests {
             "/h/.claude/plugins/marketplaces",
             "/h/.claude/plugins/marketplaces/../../..",
             "/h/.claude/plugins/marketplaces/a/../../x",
+            "/h/.claude/plugins/marketplaces/a/b",
             "",
         ] {
             let m = Marketplace {

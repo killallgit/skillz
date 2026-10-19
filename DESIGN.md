@@ -101,24 +101,32 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
   (project scope: both `settings.json` and `settings.local.json`) and
   `JsonRemovePluginInstall` in `installed_plugins.json`. When that drops the id's last
   install record (no other scope/project still has one), also `RemovePath` of
-  `~/.claude/plugins/cache/<mp>/<name>` and `~/.claude/plugins/data/<name>-<mp>` (only if
-  `<name>`/`<mp>` are non-empty and contain no `/` or `..`).
+  `~/.claude/plugins/cache/<mp>/<name>` and `~/.claude/plugins/data/<name>-<mp>` (both or
+  neither, per the segment rule below).
 - **Claude marketplace** (global only): its plugins' removals (plus each plugin's cache/data
   dirs when every record is removed), `JsonRemoveKey [mp]` in `known_marketplaces.json`,
   `JsonRemoveKey ["extraKnownMarketplaces", mp]` in settings, and `RemovePath(installLocation)`
-  **only if it is strictly inside `~/.claude/plugins/marketplaces/`** (no `..` components) —
-  a `directory` source's location is the user's own checkout and is never deleted.
+  **only if it is exactly one segment under `~/.claude/plugins/marketplaces/`** — a
+  `directory` source's location is the user's own checkout and is never deleted.
 - **Codex plugin** (ids without `@` are skipped): `TomlRemoveKey ["plugins", id]` +
   `TomlRemoveKey ["hooks", "state", key]` for every `hooks.state` key starting `"<id>:"` +
   `RemovePath(cache/<mp>/<name>)`.
 - **Codex marketplace**: its plugins' removals + `TomlRemoveKey ["marketplaces", mp]` +
   `RemovePath(~/.codex/plugins/cache/<mp>)`.
-- Codex `RemovePath`s (global only) are emitted only when every name joined into the path is
-  a single plain segment (non-empty, not `.`/`..`, no `/` or `\`); the TOML edits still run.
+- Codex `RemovePath`s are global only; the TOML edits still run when a path is rejected.
+- **Removal safety, one rule.** A `RemovePath` holds an `action::RemovalTarget`, whose only
+  constructor `RemovalTarget::new(root, segments)` joins segments onto an owned root and
+  returns `None` (the adapter plans no removal) unless there is at least one segment and each
+  is one plain UTF-8 name: non-empty, not `.`/`..`, no `/` or `\`. Config-supplied names go
+  in as separate segments, so `a/b` is rejected rather than split. Roots: Claude
+  `plugins/cache`, `plugins/data`, `plugins/marketplaces`; Codex `plugins/cache`; skills the
+  agent skill dir holding the link, and the owned skill dir of the same scope holding the
+  canonical dir.
 - `execute` writes all edits or none (a failed rename restores files already replaced, best
-  effort), then runs `RemovePath`s; a failed removal errors naming the paths already removed
-  (no rollback). A `RemovePath` whose parent or grandparent is a symlink is skipped, never
-  deleted through the link.
+  effort), then runs `RemovePath`s in plan order; a failed removal errors naming the paths
+  already removed (no rollback). Before deleting it re-checks the target is strictly inside
+  its root and skips (never errors) a target that is not, or whose parent or grandparent is a
+  symlink, so nothing is deleted through a link.
 - `execute` validates every edited file re-parses before writing; after uninstall the CLI
   re-runs discovery and reports any selected id that is still present.
 
