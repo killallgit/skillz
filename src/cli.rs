@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
@@ -28,11 +29,17 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Show installed augmentations as a tree
+    /// Show installed augmentations as a tree (groups collapsed unless queried or --all)
     #[command(visible_alias = "ls")]
     List {
-        /// Project directory; limits the listing to that project (default: cwd + global)
-        path: Option<PathBuf>,
+        /// Fuzzy query to expand, or a project directory to limit the listing to
+        target: Option<String>,
+        /// Project directory (default: cwd + global)
+        #[arg(short = 'C', long)]
+        project: Option<PathBuf>,
+        /// Expand every group
+        #[arg(long)]
+        all: bool,
         #[command(flatten)]
         filter: Filter,
         /// Browse in a collapsible tree
@@ -151,12 +158,20 @@ pub fn main() -> anyhow::Result<()> {
 pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
     match command {
         Command::List {
-            path,
+            target,
+            project,
+            all,
             filter,
             interactive,
         } => {
+            let (path, query) = split_target(&deps.cwd, project, target);
             let (env, scopes) = resolve(deps, path.as_deref(), filter.global)?;
-            list(deps, &env, &scopes, &filter, interactive, out)
+            let view = ListView {
+                query: query.as_deref(),
+                all,
+                interactive,
+            };
+            list(deps, &env, &scopes, &filter, view, out)
         }
         Command::Uninstall {
             query,
@@ -243,22 +258,64 @@ fn gather(deps: &Deps, env: &Env, scopes: &[Scope], filter: &Filter) -> Vec<Augm
     inv.items.into_iter().filter(|i| filter.keeps(i)).collect()
 }
 
+/// `list TARGET`: an existing directory is the project (as in `list --hooks .`), anything
+/// else is a query. With `-C`, TARGET is always a query.
+fn split_target(
+    cwd: &Path,
+    project: Option<PathBuf>,
+    target: Option<String>,
+) -> (Option<PathBuf>, Option<String>) {
+    match (project, target) {
+        (None, Some(t)) if cwd.join(&t).is_dir() => (Some(PathBuf::from(t)), None),
+        other => other,
+    }
+}
+
+struct ListView<'a> {
+    query: Option<&'a str>,
+    all: bool,
+    interactive: bool,
+}
+
+/// Items `list QUERY` shows: the matches, plus the whole group of any matched marketplace.
+fn queried(mut items: Vec<Augmentation>, query: &str) -> Vec<Augmentation> {
+    let hits = matches(&items, Some(query));
+    let ids: HashSet<String> = hits.iter().map(|i| i.id.clone()).collect();
+    let groups: HashSet<String> = hits
+        .iter()
+        .filter(|i| i.kind == Kind::Marketplace)
+        .map(|i| i.group.clone())
+        .collect();
+    items.retain(|i| ids.contains(&i.id) || groups.contains(&i.group));
+    items
+}
+
 fn list(
     deps: &Deps,
     env: &Env,
     scopes: &[Scope],
     filter: &Filter,
-    interactive: bool,
+    view: ListView,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let items = gather(deps, env, scopes, filter);
+    let mut items = gather(deps, env, scopes, filter);
+    if let Some(q) = view.query {
+        items = queried(items, q);
+    }
     let nodes = tree::build(&items);
-    if interactive && deps.interactive {
+    if view.interactive && deps.interactive {
         return tui::tree_view::run("skillz", &nodes);
     }
     if items.is_empty() {
-        writeln!(out, "nothing installed")?;
+        let msg = if view.query.is_some() {
+            "nothing installed matches"
+        } else {
+            "nothing installed"
+        };
+        writeln!(out, "{msg}")?;
     }
+    let expand = view.all || view.query.is_some();
+    let nodes = if expand { nodes } else { tree::collapse(nodes) };
     write!(out, "{}", tree::render(&nodes))?;
     Ok(())
 }

@@ -82,6 +82,17 @@ fn item_node(item: &Augmentation) -> Node {
     }
 }
 
+/// Group headers only, each labelled with how many entries it hides.
+pub fn collapse(nodes: Vec<Node>) -> Vec<Node> {
+    nodes
+        .into_iter()
+        .map(|n| Node {
+            label: format!("{}  ({})", n.label, n.children.len()),
+            children: vec![],
+        })
+        .collect()
+}
+
 /// Render as a box-drawing text tree (`├──`, `└──`, `│`).
 pub fn render(nodes: &[Node]) -> String {
     let mut out = String::new();
@@ -192,6 +203,18 @@ mod tests {
         assert_eq!(nodes.len(), 1);
         let kids: Vec<&str> = nodes[0].children.iter().map(|n| n.label.as_str()).collect();
         assert_eq!(kids, ["a", "b"]);
+    }
+
+    #[test]
+    fn collapse_keeps_one_childless_node_per_group() {
+        let nodes = build(&[
+            aug("p@mp", Kind::Plugin, "mp", None, &["s1", "s2"]),
+            aug("rtk", Kind::Hook, "hooks", None, &["PreToolUse: rtk"]),
+        ]);
+        let collapsed = collapse(nodes.clone());
+        assert_eq!(collapsed.len(), nodes.len());
+        assert!(collapsed.iter().all(|n| n.children.is_empty()));
+        assert_eq!(render(&collapsed).lines().count(), 2);
     }
 
     #[test]

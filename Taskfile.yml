@@ -1,0 +1,13 @@
+version: '3'
+
+tasks:
+  dev:
+    desc: Build skillz (debug)
+    cmd: cargo build
+
+  install:
+    desc: Release build, symlinked into ~/.local/bin
+    cmds:
+      - cargo build --release
+      - mkdir -p "$HOME/.local/bin"
+      - ln -sf "{{.ROOT_DIR}}/target/release/skillz" "$HOME/.local/bin/skillz"

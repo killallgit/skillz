@@ -159,9 +159,7 @@ fn inventory_finds_everything_once() {
     assert!(hook_names.contains(&("bd", Agent::Codex, Scope::Project)));
 }
 
-#[test]
-fn list_renders_without_error() {
-    let w = world();
+fn list_lines(w: &World, target: Option<&str>, all: bool) -> Vec<String> {
     let (r, p) = (
         Recorder::default(),
         Scripted {
@@ -171,12 +169,54 @@ fn list_renders_without_error() {
     );
     let mut out = Vec::new();
     let cmd = Command::List {
-        path: None,
+        target: target.map(Into::into),
+        project: None,
+        all,
         filter: Filter::default(),
         interactive: false,
     };
-    run(cmd, &deps(&w, &r, &p), &mut out).unwrap();
-    assert!(!out.is_empty());
+    run(cmd, &deps(w, &r, &p), &mut out).unwrap();
+    String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(Into::into)
+        .collect()
+}
+
+fn is_top_level(line: &str) -> bool {
+    !line.starts_with(['├', '└', '│', ' '])
+}
+
+#[test]
+fn list_collapses_to_group_headers_unless_all() {
+    let w = world();
+    let collapsed = list_lines(&w, None, false);
+    let expanded = list_lines(&w, None, true);
+    assert!(!collapsed.is_empty());
+    assert!(collapsed.iter().all(|l| is_top_level(l)));
+    assert_eq!(
+        collapsed.len(),
+        expanded.iter().filter(|l| is_top_level(l)).count()
+    );
+    assert!(expanded.len() > collapsed.len());
+}
+
+#[test]
+fn list_query_expands_only_matches() {
+    let w = world();
+    let tdd = list_lines(&w, Some("tdd"), false);
+    assert_eq!(tdd.len(), 2);
+    assert!(is_top_level(&tdd[0]) && !is_top_level(&tdd[1]));
+    assert_eq!(list_lines(&w, Some("zzzz-no-such-thing"), false).len(), 1);
+}
+
+#[test]
+fn list_target_directory_is_the_project_not_a_query() {
+    let w = world();
+    let project_only = list_lines(&w, Some("."), false);
+    let both = list_lines(&w, None, false);
+    assert!(!project_only.is_empty());
+    assert!(project_only.len() < both.len());
 }
 
 #[test]

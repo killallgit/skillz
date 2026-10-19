@@ -128,6 +128,7 @@ bd prime                # Refresh Beads context
 ## Build & Test
 
 ```bash
+task dev                        # cargo build
 cargo test
 cargo clippy --all-targets -- -D warnings
 cargo llvm-cov --summary-only   # keep line coverage > 75%

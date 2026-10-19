@@ -61,6 +61,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 ## Build & Test
 
 ```bash
+task dev                        # cargo build
 cargo test
 cargo clippy --all-targets -- -D warnings
 cargo llvm-cov --summary-only   # keep line coverage > 75%

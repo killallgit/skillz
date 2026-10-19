@@ -4,13 +4,16 @@ List, install and completely remove skills, plugins, marketplaces and hooks for
 Claude Code, Codex and Cursor — globally or per project.
 
 ```sh
-cargo install --path .
+task install                     # release build, symlinked to ~/.local/bin/skillz
+# or: cargo install --path .
 ```
 
 ## Usage
 
 ```sh
-skillz list                      # global + current project, as a tree
+skillz list                      # global + current project, groups collapsed
+skillz list ponytail             # expand what matches (a marketplace brings its group)
+skillz list --all                # expand everything
 skillz list --hooks .            # project hooks only
 skillz list -g --skills -a claude
 skillz list -i                   # collapsible tree browser (/ to filter)
@@ -46,6 +49,7 @@ re-discovers to confirm the items are gone. No backups are made.
 ## Development
 
 ```sh
+task dev                        # cargo build
 cargo test
 cargo clippy --all-targets -- -D warnings
 cargo llvm-cov --summary-only   # coverage target > 75%

@@ -136,14 +136,17 @@ etc.). For the first remaining token:
 ## CLI
 
 ```
-skillz list [PATH] [-g] [--skills] [--hooks] [--plugins] [--marketplaces] [-a <agent>]... [-i]
+skillz list [QUERY|PATH] [-C PATH] [--all] [-g] [--skills] [--hooks] [--plugins] [--marketplaces] [-a <agent>]... [-i]
 skillz uninstall|rm|delete [QUERY] [same filters] [-y]
 skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill a,b,*commit]... [-y]
 ```
 - Scope: `PATH` only -> project at PATH; `-g` only -> global; neither -> both (project = cwd).
 - Kind flags filter (singular aliases `--skill/--hook/--plugin/--marketplace` on list and
   uninstall). No kind flag = all kinds. `-a` filters by agent.
-- `list` prints the tree; `-i` opens the collapsible tree TUI.
+- `list` prints group headers with item counts; a QUERY (fuzzy, as in uninstall; a matched
+  marketplace pulls in its whole group) or `--all` prints the expanded tree. A positional that
+  is an existing directory is the project path, not a query; `-C` forces query mode. `-i` opens
+  the collapsible tree TUI.
 - `uninstall`: filter -> fuzzy match QUERY over `name group source` -> multi-select picker
   -> show plan -> confirm -> execute -> re-discover and verify.
 - `install`: resolve source (local path, else `git clone --depth 1`), scan skills and
