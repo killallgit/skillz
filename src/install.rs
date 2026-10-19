@@ -263,6 +263,7 @@ fn run_checked(
     args: &[String],
     cwd: &Path,
 ) -> anyhow::Result<()> {
+    eprintln!("$ {program} {}", args.join(" "));
     let out = runner.run(program, args, cwd)?;
     anyhow::ensure!(
         out.success,
