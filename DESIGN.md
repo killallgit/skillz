@@ -100,7 +100,10 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
   JSON keeps key order). Empty groups/events are pruned.
 - **Claude plugin**: `JsonRemoveKey ["enabledPlugins", id]` in the scope's settings
   (project scope: both `settings.json` and `settings.local.json`) and
-  `JsonRemovePluginInstall` in `installed_plugins.json`. When that drops the id's last
+  `JsonRemoveArrayItems ["plugins", id]` in `installed_plugins.json`, dropping records with
+  `scope: "user"` (global) or `projectPath: <project>` (project). Those fields come from
+  `claude::record_fields` alone; the adapter matches them against parsed records with the
+  same `action::fields_match` the edit uses. When that drops the id's last
   install record (no other scope/project still has one), also `RemovePath` of
   `~/.claude/plugins/cache/<mp>/<name>` and `~/.claude/plugins/data/<name>-<mp>` (only if
   `<name>`/`<mp>` are non-empty and contain no `/` or `..`).
