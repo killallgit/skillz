@@ -29,7 +29,8 @@ impl AgentAdapter for Codex {
     }
 
     fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
-        vec![env.root(scope).join(".codex/hooks.json")]
+        let dir = env.root(scope).join(".codex");
+        vec![dir.join("hooks.json"), dir.join("config.toml")]
     }
 
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
@@ -351,11 +352,17 @@ enabled = true
         );
         assert_eq!(
             Codex.hook_files(&env, Scope::Global),
-            vec![PathBuf::from("/h/.codex/hooks.json")]
+            vec![
+                PathBuf::from("/h/.codex/hooks.json"),
+                PathBuf::from("/h/.codex/config.toml")
+            ]
         );
         assert_eq!(
             Codex.hook_files(&env, Scope::Project),
-            vec![PathBuf::from("/p/.codex/hooks.json")]
+            vec![
+                PathBuf::from("/p/.codex/hooks.json"),
+                PathBuf::from("/p/.codex/config.toml")
+            ]
         );
     }
 

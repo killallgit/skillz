@@ -25,7 +25,7 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
 | `model` | `Agent`, `Kind`, `Scope`, `Augmentation` |
 | `env` | `Env { home, project }` |
 | `action` | `Action`, `Edit`, `apply_edit` (pure), `execute` (effects) |
-| `hooks` | parse hook JSON, `hook_group`, `discover(file)` |
+| `hooks` | parse hook JSON/TOML, `hook_group`, `discover(file)` |
 | `skills` | shared loose-skill discovery (npx `skills` aware) |
 | `matcher` | `fuzzy_rank`, `pattern_matches` (glob) |
 | `agents/*` | per-agent plugin/marketplace discovery + `skill_dirs` + `hook_files` |
@@ -59,6 +59,10 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
   `[plugins."name@mp"] enabled = true`.
 - Plugin cache: `~/.codex/plugins/cache/<mp>/<name>/<version>/`.
 - Hooks: `~/.codex/hooks.json`, `<proj>/.codex/hooks.json` — same nested layout as Claude.
+  Also inline in `config.toml`: `[[hooks.SessionStart]] matcher = "startup|resume"` +
+  `[[hooks.SessionStart.hooks]] type = "command", command = "..."` (or inline arrays,
+  `SessionStart = [{ matcher = "x", hooks = [{ command = "y" }] }]`). Non-array values under
+  `hooks` (the `[hooks.state."<key>"]` trust tables) are not events.
 - Loose skills: `~/.codex/skills/` (skip the `.system` dir), `~/.agents/skills/`,
   `<proj>/.agents/skills/`, `<proj>/.codex/skills/`.
 
@@ -91,7 +95,8 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
   dir, then the canonical dir **only if it lives inside a known skill dir** (never delete a
   symlink target outside skill dirs — that is the user's source checkout), then
   `JsonRemoveKey ["skills", name]` on the scope's lock file.
-- **Hook group**: one `JsonRemoveHook` per handler. Empty groups/events are pruned.
+- **Hook group**: one `JsonRemoveHook` per handler (`TomlRemoveHook` for `.toml` files,
+  formatting preserved). Empty groups/events are pruned.
 - **Claude plugin**: `JsonRemoveKey ["enabledPlugins", id]` in the scope's settings
   (project scope: both `settings.json` and `settings.local.json`) and
   `JsonRemovePluginInstall` in `installed_plugins.json`. When that drops the id's last
