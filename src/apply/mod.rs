@@ -32,7 +32,7 @@ impl Applier<'_> {
         Ledger::key(self.env, self.scope)
     }
 
-    fn installed(&self) -> Vec<Augmentation> {
-        agents::inventory(self.adapters, self.env, &[self.scope]).items
+    fn installed(&self) -> anyhow::Result<Vec<Augmentation>> {
+        agents::inventory(self.adapters, self.env, &[self.scope]).complete()
     }
 }

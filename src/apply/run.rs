@@ -18,17 +18,10 @@ pub struct Done {
     pub added: Vec<Owned>,
 }
 
-/// The entries installed so far, and the error that stopped the rest.
-struct Installs {
-    loaded: Vec<Loaded>,
-    report: Report,
-    failure: Option<anyhow::Error>,
-}
-
 impl Applier<'_> {
     /// Remove the dropped entries' items, install the new entries one at a time, and record
-    /// what each added. A step that fails still records what landed before it, then returns the
-    /// error.
+    /// what each added. The ledger is rewritten after the removals and after every entry, so a
+    /// crash or a failing step loses nothing that already landed.
     pub fn run(
         &self,
         switch: &Switch,
@@ -36,27 +29,34 @@ impl Applier<'_> {
         on_step: &mut dyn FnMut(&Action),
     ) -> anyhow::Result<Done> {
         let (removed, leftover) = self.remove_dropped(switch, runner, on_step)?;
-        let installs = self.install_all(&switch.installs, runner, on_step);
-        let added: Vec<Owned> = installs
-            .loaded
-            .iter()
-            .flat_map(|l| l.items.clone())
-            .collect();
-
         let mut entries = switch.keep.clone();
         entries.extend(leftover);
-        entries.extend(installs.loaded);
-        let record = next_record(switch, entries, installs.failure.is_some());
-        self.ledger.put(&self.ledger_key(), record)?;
+        self.save(switch, &entries, false)?;
 
-        match installs.failure {
-            Some(e) => Err(e),
-            None => Ok(Done {
-                removed,
-                installed: installs.report,
-                added,
-            }),
+        let mut installed = Report::default();
+        let mut added = Vec::new();
+        for (entry, steps) in &switch.installs {
+            let (loaded, ran) = self.install_entry(entry, steps, runner, on_step);
+            if let Some(loaded) = loaded {
+                added.extend(loaded.items.clone());
+                entries.push(loaded);
+                self.save(switch, &entries, false)?;
+            }
+            let report = ran?;
+            installed.ran.extend(report.ran);
+            installed.skipped.extend(report.skipped);
         }
+        self.save(switch, &entries, true)?;
+        Ok(Done {
+            removed,
+            installed,
+            added,
+        })
+    }
+
+    fn save(&self, switch: &Switch, entries: &[Loaded], complete: bool) -> anyhow::Result<()> {
+        let record = next_record(switch, entries.to_vec(), complete);
+        self.ledger.put(&self.ledger_key(), record)
     }
 
     /// Run the removals; the dropped entries whose items are still installed stay recorded.
@@ -80,36 +80,9 @@ impl Applier<'_> {
         Ok((Some(outcome), leftover))
     }
 
-    fn install_all(
-        &self,
-        installs: &[(Entry, Vec<Action>)],
-        runner: &dyn CommandRunner,
-        on_step: &mut dyn FnMut(&Action),
-    ) -> Installs {
-        let mut done = Installs {
-            loaded: vec![],
-            report: Report::default(),
-            failure: None,
-        };
-        for (entry, steps) in installs {
-            let (loaded, ran) = self.install_entry(entry, steps, runner, on_step);
-            done.loaded.extend(loaded);
-            match ran {
-                Ok(report) => {
-                    done.report.ran.extend(report.ran);
-                    done.report.skipped.extend(report.skipped);
-                }
-                Err(e) => {
-                    done.failure = Some(e);
-                    break;
-                }
-            }
-        }
-        done
-    }
-
     /// Run one entry's steps and record what appeared. A failed run that still installed
-    /// something is recorded too, so it can be unloaded.
+    /// something is recorded too, so it can be unloaded. Nothing runs when the inventory
+    /// cannot be read, since what appeared could not be told from what was already there.
     fn install_entry(
         &self,
         entry: &Entry,
@@ -117,14 +90,19 @@ impl Applier<'_> {
         runner: &dyn CommandRunner,
         on_step: &mut dyn FnMut(&Action),
     ) -> (Option<Loaded>, anyhow::Result<Report>) {
-        let before: HashSet<String> = self.installed().into_iter().map(|i| i.id).collect();
+        let before: HashSet<String> = match self.installed() {
+            Ok(items) => items.into_iter().map(|i| i.id).collect(),
+            Err(e) => return (None, Err(e)),
+        };
         let ran = action::execute_with(steps, runner, on_step);
-        let items: Vec<Owned> = self
-            .installed()
-            .iter()
-            .filter(|i| !before.contains(&i.id))
-            .map(Owned::of)
-            .collect();
+        let items: Vec<Owned> = match self.installed() {
+            Ok(now) => now
+                .iter()
+                .filter(|i| !before.contains(&i.id))
+                .map(Owned::of)
+                .collect(),
+            Err(e) => return (None, Err(ran.err().unwrap_or(e))),
+        };
         let recorded = (ran.is_ok() || !items.is_empty()).then(|| Loaded {
             entry: entry.clone(),
             items,
@@ -141,7 +119,7 @@ fn still_installed(dropped: &[Loaded], outcome: &Outcome) -> Vec<Loaded> {
             let items: Vec<Owned> = l
                 .items
                 .iter()
-                .filter(|o| outcome.still_installed.contains(&o.name))
+                .filter(|o| outcome.still_installed.iter().any(|i| i.id == o.id))
                 .cloned()
                 .collect();
             (!items.is_empty()).then(|| Loaded {
@@ -152,13 +130,62 @@ fn still_installed(dropped: &[Loaded], outcome: &Outcome) -> Vec<Loaded> {
         .collect()
 }
 
-/// The ledger entry after a switch: none when nothing is loaded any more, or when the first
-/// install failed before anything landed.
-fn next_record(switch: &Switch, entries: Vec<Loaded>, failed: bool) -> Option<Record> {
-    let nothing = entries.is_empty() && (switch.to.is_none() || failed);
+/// The ledger entry after a switch step: none when nothing is loaded any more, or when the
+/// installs have not landed anything yet.
+fn next_record(switch: &Switch, entries: Vec<Loaded>, complete: bool) -> Option<Record> {
+    let nothing = entries.is_empty() && (switch.to.is_none() || !complete);
     let profile = switch.to.clone().or_else(|| switch.from.clone());
     match (profile, nothing) {
         (Some(profile), false) => Some(Record { profile, entries }),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::action::Report;
+    use crate::model::{Augmentation, Installer, Kind, Scope};
+
+    fn augmentation(id: &str, name: &str) -> Augmentation {
+        Augmentation {
+            hooks: vec![],
+            id: id.into(),
+            name: name.into(),
+            kind: Kind::Skill,
+            agents: vec![],
+            scope: Scope::Global,
+            group: "g".into(),
+            source: None,
+            installer: Installer::Local,
+            children: vec![],
+            removal: vec![],
+        }
+    }
+
+    #[test]
+    fn a_same_named_item_elsewhere_does_not_keep_the_owned_one_recorded() {
+        let owned = Owned {
+            id: "skill:a".into(),
+            name: "tdd".into(),
+            kind: Kind::Skill,
+        };
+        let dropped = [Loaded {
+            entry: Entry::Skill {
+                source: "o/r".into(),
+                names: vec!["tdd".into()],
+                agents: vec![],
+            },
+            items: vec![owned],
+        }];
+        let outcome = Outcome {
+            report: Report::default(),
+            still_installed: vec![augmentation("skill:b", "tdd")],
+        };
+
+        let left = still_installed(&dropped, &outcome);
+
+        // only the other, hand-installed "tdd" remains; the owned one is gone
+        assert!(left.is_empty());
     }
 }

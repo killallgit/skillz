@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use super::*;
+use crate::action::Action;
 use crate::agents::registry;
 use crate::model::Agent;
 use crate::profile::{Entry, Profile};
@@ -345,4 +346,71 @@ fn a_loaded_hook_lands_in_the_settings_and_unloading_takes_it_out_again() {
 
     assert!(loaded.contains("say done"));
     assert!(!unloaded.contains("say done"));
+}
+
+fn two_source_profile() -> Profile {
+    let mut p = profile("web", &["tdd"]);
+    p.entries.push(Entry::Skill {
+        source: "o/other".into(),
+        names: vec!["lint".into()],
+        agents: vec![],
+    });
+    p
+}
+
+#[test]
+fn each_entry_is_recorded_before_the_next_one_installs() {
+    let fx = Fx::new();
+    let runner = fx.npx();
+    let switch = fx.plan(Some(&two_source_profile()));
+    let mut owned_at_each_step = Vec::new();
+
+    fx.applier()
+        .run(&switch, &runner, &mut |_| {
+            owned_at_each_step.push(fx.owned_names());
+        })
+        .unwrap();
+
+    // the second install starts only after the first is in the ledger
+    assert_eq!(
+        owned_at_each_step,
+        [Vec::<String>::new(), vec!["tdd".to_string()]]
+    );
+}
+
+#[test]
+fn removals_reach_the_ledger_before_installs_begin() {
+    let fx = Fx::new();
+    let runner = fx.npx();
+    fx.switch_to(Some(&profile("a", &["old"])), &runner);
+    let switch = fx.plan(Some(&profile("b", &["new"])));
+    let mut owned_when_install_starts = None;
+
+    fx.applier()
+        .run(&switch, &runner, &mut |step| {
+            if matches!(step, Action::Run { .. }) {
+                owned_when_install_starts = Some(fx.owned_names());
+            }
+        })
+        .unwrap();
+
+    // by the time the install runs, the dropped skill is no longer claimed
+    assert_eq!(owned_when_install_starts, Some(vec![]));
+}
+
+#[test]
+fn an_unreadable_inventory_stops_the_install_instead_of_guessing() {
+    let fx = Fx::new();
+    let settings = fx.env.project.join(".claude/settings.local.json");
+    fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    fs::write(&settings, "{nope").unwrap();
+    let runner = fx.npx();
+    let switch = fx.plan(Some(&profile("web", &["tdd"])));
+
+    let result = fx.run(&switch, &runner);
+
+    // nothing may run when what was already there cannot be read
+    assert!(result.is_err());
+    assert_eq!(runner.count(), 0);
+    assert!(fx.record().is_none());
 }

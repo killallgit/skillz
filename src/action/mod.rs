@@ -15,6 +15,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::redact::{redact, redact_line, redact_text};
+
 pub use edit::apply_edit;
 pub use execute::{execute, execute_with};
 pub use removal_target::RemovalTarget;
@@ -88,12 +90,13 @@ impl Action {
     /// One line saying what this step does, for plans and the info modal.
     pub fn describe(&self) -> String {
         match self {
-            Action::Run { program, args, .. } => format!("run {program} {}", args.join(" ")),
+            Action::Run { program, args, .. } => format!("run {program} {}", redact_line(args)),
             Action::CopyAgents {
                 source, names, to, ..
             } => format!(
-                "copy {} from {source} into {}",
+                "copy {} from {} into {}",
                 names.join(","),
+                redact(source),
                 to.display()
             ),
             Action::RemovePath(t) => format!("rm {}", t.path().display()),
@@ -139,8 +142,12 @@ pub enum Edit {
 impl Edit {
     fn describe(&self) -> String {
         match self {
-            Edit::RemoveHook { event, command } => format!("remove hook {event}: {command}"),
-            Edit::AddHook { event, command, .. } => format!("add hook {event}: {command}"),
+            Edit::RemoveHook { event, command } => {
+                format!("remove hook {event}: {}", redact_text(command))
+            }
+            Edit::AddHook { event, command, .. } => {
+                format!("add hook {event}: {}", redact_text(command))
+            }
             Edit::JsonRemoveKey { path } | Edit::TomlRemoveKey { path } => {
                 format!("remove {}", path.join("."))
             }
@@ -168,6 +175,33 @@ pub struct Report {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn describe_and_failures_hide_credentials() {
+        let run = Action::Run {
+            program: "tool".into(),
+            args: vec![
+                "--token".into(),
+                "s3cret".into(),
+                "https://u:p4ss@h/x".into(),
+            ],
+            cwd: "/".into(),
+            fallback: false,
+        };
+        let failure = crate::action::execute(
+            std::slice::from_ref(&run),
+            &testutil::Recorder {
+                calls: Default::default(),
+                fail: true,
+            },
+        )
+        .unwrap_err();
+
+        // neither the plan line nor the failure message may carry the secrets
+        for text in [run.describe(), format!("{failure:#}")] {
+            assert!(!text.contains("s3cret") && !text.contains("p4ss"));
+        }
+    }
 
     #[test]
     fn native_refuses_empty_and_option_like_names() {

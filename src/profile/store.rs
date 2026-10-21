@@ -5,6 +5,7 @@ use anyhow::Context;
 
 use super::identity::overlay;
 use super::{Entry, Profile, check_name};
+use crate::atomic::write_atomic;
 use crate::env::Env;
 
 /// A directory of `<name>.toml` profiles.
@@ -29,14 +30,18 @@ impl Store {
 
     /// Profile names, sorted. A missing directory has none.
     pub fn names(&self) -> anyhow::Result<Vec<String>> {
-        let Ok(read) = fs::read_dir(&self.dir) else {
-            return Ok(vec![]);
+        let read = match fs::read_dir(&self.dir) {
+            Ok(read) => read,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(e) => return Err(e).with_context(|| format!("reading {}", self.dir.display())),
         };
-        let mut names: Vec<String> = read
-            .flatten()
-            .filter_map(|e| profile_name(&e.path()))
-            .filter(|n| check_name(n).is_ok())
-            .collect();
+        let mut names = Vec::new();
+        for entry in read {
+            let path = entry
+                .with_context(|| format!("reading {}", self.dir.display()))?
+                .path();
+            names.extend(profile_name(&path).filter(|n| check_name(n).is_ok()));
+        }
         names.sort();
         Ok(names)
     }
@@ -82,8 +87,7 @@ impl Store {
     pub fn save(&self, profile: &Profile) -> anyhow::Result<()> {
         profile.validate()?;
         let path = self.path(&profile.name)?;
-        fs::create_dir_all(&self.dir)?;
-        fs::write(&path, profile.to_text()?).with_context(|| format!("writing {}", path.display()))
+        write_atomic(&path, &profile.to_text()?)
     }
 
     /// Missing is fine.
@@ -125,6 +129,14 @@ mod tests {
 
         assert_eq!(store.names().unwrap(), ["a", "web"]);
         assert_eq!(store.load("web").unwrap(), web);
+    }
+
+    #[test]
+    fn an_unreadable_profile_directory_is_an_error_not_an_empty_list() {
+        let (dir, store) = store();
+        fs::write(dir.path().join("profiles"), "not a directory").unwrap();
+
+        assert!(store.names().is_err());
     }
 
     #[test]

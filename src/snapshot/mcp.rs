@@ -18,12 +18,12 @@ impl Collector for McpServers {
             return Accept::Pass;
         }
         match Server::from_item(item) {
-            Some(server) if server.secrets.is_empty() => {
+            Some(server) if server.secret_count() == 0 => {
                 merge_agents(self.0.entry(key(server)).or_default(), agents);
                 Accept::Taken
             }
             Some(server) => {
-                Accept::Skipped(Skipped::new(item, Reason::Secrets(server.secrets.len())))
+                Accept::Skipped(Skipped::new(item, Reason::Secrets(server.secret_count())))
             }
             None => Accept::Skipped(Skipped::new(item, Reason::Unreadable)),
         }

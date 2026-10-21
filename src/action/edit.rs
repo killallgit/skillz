@@ -46,11 +46,14 @@ fn validate(file: &Path, contents: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// The original and planned text of a file that exists.
+/// The original text of a file (`None` when a hook edit will create it) and the planned one.
 struct Texts {
-    before: String,
+    before: Option<String>,
     planned: String,
 }
+
+/// A hook can be added to a config that does not exist yet: it starts as an empty JSON object.
+const NEW_FILE: &str = "{}\n";
 
 /// Every edit to one real file, applied in memory. Symlinks are resolved, as `stage` writes
 /// to the real file; `file` is the first path that named it.
@@ -61,11 +64,19 @@ pub(super) struct FilePlan {
 }
 
 impl FilePlan {
-    fn open(file: &Path) -> anyhow::Result<Self> {
-        let texts = super::files::read_existing(file)?.map(|s| Texts {
-            before: s.clone(),
-            planned: s,
-        });
+    fn open(file: &Path, edit: &Edit) -> anyhow::Result<Self> {
+        let existing = super::files::read_existing(file)?;
+        let texts = match (existing, edit) {
+            (Some(text), _) => Some(Texts {
+                before: Some(text.clone()),
+                planned: text,
+            }),
+            (None, Edit::AddHook { .. }) => Some(Texts {
+                before: None,
+                planned: NEW_FILE.to_string(),
+            }),
+            (None, _) => None,
+        };
         Ok(Self {
             real: real_path(file),
             file: file.to_path_buf(),
@@ -88,9 +99,10 @@ impl FilePlan {
     }
 
     /// `(before, planned)` when the plan changes the file.
-    pub(super) fn change(&self) -> Option<(&str, &str)> {
+    pub(super) fn change(&self) -> Option<(Option<&str>, &str)> {
         let texts = self.texts.as_ref()?;
-        (texts.before != texts.planned).then_some((&texts.before, &texts.planned))
+        (texts.before.as_deref() != Some(texts.planned.as_str()))
+            .then_some((texts.before.as_deref(), &texts.planned))
     }
 }
 
@@ -110,17 +122,21 @@ pub(super) fn plan_edits(
             continue;
         };
         on_step(action);
-        plan_for(&mut plans, file)?.apply(file, edit)?;
+        plan_for(&mut plans, file, edit)?.apply(file, edit)?;
     }
     Ok(plans)
 }
 
-fn plan_for<'a>(plans: &'a mut Vec<FilePlan>, file: &Path) -> anyhow::Result<&'a mut FilePlan> {
+fn plan_for<'a>(
+    plans: &'a mut Vec<FilePlan>,
+    file: &Path,
+    edit: &Edit,
+) -> anyhow::Result<&'a mut FilePlan> {
     let real = real_path(file);
     let i = match plans.iter().position(|p| p.real == real) {
         Some(i) => i,
         None => {
-            plans.push(FilePlan::open(file)?);
+            plans.push(FilePlan::open(file, edit)?);
             plans.len() - 1
         }
     };

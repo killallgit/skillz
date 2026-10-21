@@ -16,6 +16,18 @@ pub struct Inventory {
 }
 
 impl Inventory {
+    /// The items, or an error naming every source that failed to read: for callers that act on
+    /// what is installed and must not guess from a partial scan.
+    pub fn complete(self) -> anyhow::Result<Vec<Augmentation>> {
+        if self.warnings.is_empty() {
+            return Ok(self.items);
+        }
+        anyhow::bail!(
+            "cannot read what is installed: {}",
+            self.warnings.join("; ")
+        )
+    }
+
     fn absorb(&mut self, source: &str, found: anyhow::Result<Vec<Augmentation>>) {
         match found {
             Ok(items) => self.items.extend(items),

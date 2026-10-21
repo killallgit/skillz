@@ -10,11 +10,13 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 
 use crate::action::{Action, Edit, RemovalTarget};
+use crate::atomic::write_atomic;
 use crate::env::Env;
 use crate::fswalk;
 use crate::install::{Cmd, with_tmp_clone};
 use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
 use crate::profile::Entry;
+use crate::redact::redact_text;
 use crate::runner::CommandRunner;
 
 const MANIFEST: &str = ".skillz-sources.json";
@@ -36,12 +38,17 @@ impl<'a> AgentDir<'a> {
 struct Manifest(BTreeMap<String, String>);
 
 impl Manifest {
-    fn read(dir: &Path) -> Self {
-        let sources = fs::read_to_string(dir.join(MANIFEST))
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_default();
-        Manifest(sources)
+    /// Empty when there is no manifest yet; a manifest that cannot be read or parsed is an
+    /// error, not an empty one, so writing back never discards what it recorded.
+    fn read(dir: &Path) -> anyhow::Result<Self> {
+        let path = dir.join(MANIFEST);
+        match fs::read_to_string(&path) {
+            Ok(text) => serde_json::from_str(&text)
+                .map(Manifest)
+                .with_context(|| format!("invalid {}", path.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Manifest::default()),
+            Err(e) => Err(e).with_context(|| format!("reading {}", path.display())),
+        }
     }
 
     fn get(&self, file: &str) -> Option<&str> {
@@ -53,8 +60,7 @@ impl Manifest {
     }
 
     fn write(&self, dir: &Path) -> anyhow::Result<()> {
-        fs::write(dir.join(MANIFEST), serde_json::to_string_pretty(&self.0)?)?;
-        Ok(())
+        write_atomic(&dir.join(MANIFEST), &serde_json::to_string_pretty(&self.0)?)
     }
 }
 
@@ -95,17 +101,17 @@ fn slug(s: &str) -> String {
 }
 
 /// The definitions in `dir`, each removable by deleting its file (and its manifest line).
-pub fn discover(dir: &AgentDir, agent: Agent, scope: Scope) -> Vec<Augmentation> {
+pub fn discover(dir: &AgentDir, agent: Agent, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
     let scan = Scan {
         dir,
-        manifest: Manifest::read(dir.path),
+        manifest: Manifest::read(dir.path)?,
         agent,
         scope,
     };
-    definition_files(dir)
+    Ok(definition_files(dir)
         .iter()
         .filter_map(|path| scan.augmentation(path))
-        .collect()
+        .collect())
 }
 
 /// The `ext` files directly in `dir`, sorted.
@@ -216,7 +222,7 @@ fn clone_quietly(
         out.success,
         "cloning {} failed: {}",
         req.source,
-        out.stderr.trim()
+        redact_text(out.stderr.trim())
     );
     Ok(())
 }
@@ -224,7 +230,7 @@ fn clone_quietly(
 fn copy_from(root: &Path, req: &CopyRequest) -> anyhow::Result<Vec<PathBuf>> {
     let chosen = pick_definitions(root, req)?;
     fs::create_dir_all(req.to)?;
-    let mut manifest = Manifest::read(req.to);
+    let mut manifest = Manifest::read(req.to)?;
     let mut written = vec![];
     for path in &chosen {
         written.push(copy_definition(path, req, &mut manifest)?);
@@ -364,10 +370,10 @@ mod tests {
         assert_eq!(written.len(), 2);
         assert!(to.path().join("engineering-frontend-developer.md").exists());
         assert!(!to.path().join("README.md").exists());
-        let sources = Manifest::read(to.path());
+        let sources = Manifest::read(to.path()).unwrap();
         assert_eq!(sources.get("ui-designer.md"), Some(folder.as_str()));
 
-        let found = discover(&md_dir(to.path()), Agent::Claude, Scope::Project);
+        let found = discover(&md_dir(to.path()), Agent::Claude, Scope::Project).unwrap();
         let mut got: Vec<(&str, Option<&str>)> = found
             .iter()
             .map(|a| (a.name.as_str(), a.source.as_deref()))
@@ -454,7 +460,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(written, [to.path().join("helper.md")]);
-        assert_eq!(Manifest::read(to.path()).get("helper.md"), Some("o/r"));
+        assert_eq!(
+            Manifest::read(to.path()).unwrap().get("helper.md"),
+            Some("o/r")
+        );
 
         struct Fails;
         impl CommandRunner for Fails {
@@ -479,11 +488,39 @@ mod tests {
     }
 
     #[test]
+    fn a_corrupt_manifest_is_an_error_and_is_left_alone() {
+        let (src, to) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        agent_file(src.path(), "helper.md", "helper");
+        fs::write(to.path().join(MANIFEST), "{nope").unwrap();
+        let wanted = names(&["helper"]);
+        let req = CopyRequest {
+            source: src.path().to_str().unwrap(),
+            cwd: src.path(),
+            names: &wanted,
+            ext: "md",
+            to: to.path(),
+        };
+
+        let copied = copy(&NoCommands, &req);
+        let found = discover(&md_dir(to.path()), Agent::Claude, Scope::Global);
+
+        // neither copying nor discovering may treat the broken manifest as empty
+        assert!(copied.is_err() && found.is_err());
+        assert_eq!(
+            fs::read_to_string(to.path().join(MANIFEST)).unwrap(),
+            "{nope"
+        );
+        assert!(!to.path().join("helper.md").exists());
+    }
+
+    #[test]
     fn removal_deletes_the_file_and_its_manifest_line() {
         let to = tempfile::tempdir().unwrap();
         agent_file(to.path(), "a.md", "A");
         fs::write(to.path().join(MANIFEST), r#"{"a.md": "o/r"}"#).unwrap();
-        let item = discover(&md_dir(to.path()), Agent::Claude, Scope::Global).remove(0);
+        let item = discover(&md_dir(to.path()), Agent::Claude, Scope::Global)
+            .unwrap()
+            .remove(0);
         crate::action::execute(&item.removal, &NoCommands).unwrap();
         assert!(!to.path().join("a.md").exists());
         assert!(
@@ -501,10 +538,15 @@ mod tests {
                 Agent::Claude,
                 Scope::Global
             )
+            .unwrap()
             .is_empty()
         );
         let to = tempfile::tempdir().unwrap();
         fs::write(to.path().join("x.txt"), "x").unwrap();
-        assert!(discover(&md_dir(to.path()), Agent::Claude, Scope::Global).is_empty());
+        assert!(
+            discover(&md_dir(to.path()), Agent::Claude, Scope::Global)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

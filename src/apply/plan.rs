@@ -15,7 +15,7 @@ impl Applier<'_> {
         let wanted = target.map(Profile::resolved).unwrap_or_default();
         let current = record.as_ref().map(|r| r.entries.as_slice());
         let Diff { keep, drop, add } = diff_entries(current.unwrap_or_default(), &wanted);
-        let removals = self.items_of(&drop);
+        let removals = self.items_of(&drop)?;
         let (installs, unsupported) = self.installs_for(&add);
         Ok(Switch {
             from: record.map(|r| r.profile),
@@ -29,15 +29,19 @@ impl Applier<'_> {
     }
 
     /// The installed items the entries added.
-    fn items_of(&self, entries: &[Loaded]) -> Vec<Augmentation> {
+    fn items_of(&self, entries: &[Loaded]) -> anyhow::Result<Vec<Augmentation>> {
+        if entries.is_empty() {
+            return Ok(vec![]);
+        }
         let ids: HashSet<&str> = entries
             .iter()
             .flat_map(|l| l.items.iter().map(|o| o.id.as_str()))
             .collect();
-        self.installed()
+        Ok(self
+            .installed()?
             .into_iter()
             .filter(|i| ids.contains(i.id.as_str()))
-            .collect()
+            .collect())
     }
 
     /// The install steps for each entry, and what some agent cannot take.

@@ -6,7 +6,8 @@ use super::edit::{FilePlan, plan_edits};
 use super::json::json_has;
 use super::removal_target::remove_path;
 use super::stage::{commit, discard, stage};
-use super::{Action, Edit, RemovalTarget, Report};
+use super::{Action, RemovalTarget, Report};
+use crate::redact::{redact_line, redact_text};
 use crate::runner::CommandRunner;
 
 /// Dedupe, run every `Run` in plan order (stopping at the first failure), then plan every
@@ -81,11 +82,7 @@ impl<'a> Command<'a> {
     }
 
     fn line(&self) -> String {
-        [self.program]
-            .into_iter()
-            .chain(self.args.iter().map(String::as_str))
-            .collect::<Vec<_>>()
-            .join(" ")
+        format!("{} {}", self.program, redact_line(self.args))
     }
 }
 
@@ -141,14 +138,13 @@ impl Execution<'_> {
             Err(e) => return Err(e.context(format!("already ran: {:?}", self.report.ran))),
         };
         if !out.success {
-            anyhow::bail!("`{line}` failed: {}", out.stderr.trim());
+            anyhow::bail!("`{line}` failed: {}", redact_text(out.stderr.trim()));
         }
         self.report.ran.push(line);
         Ok(())
     }
 
     fn edit_files(&mut self, actions: &[&Action]) -> anyhow::Result<()> {
-        create_missing_files(actions)?;
         let plans = plan_edits(actions, &mut *self.on_step)?;
         let edited = write_plans(&plans)?;
         self.report.edited.extend(edited);
@@ -180,7 +176,7 @@ fn write_plans(plans: &[FilePlan]) -> anyhow::Result<Vec<PathBuf>> {
         let Some((before, planned)) = plan.change() else {
             continue;
         };
-        match stage(&plan.file, before.to_string(), planned) {
+        match stage(&plan.file, before.map(String::from), planned) {
             Ok(s) => staged.push(s),
             Err(e) => {
                 discard(&staged);
@@ -191,26 +187,6 @@ fn write_plans(plans: &[FilePlan]) -> anyhow::Result<Vec<PathBuf>> {
     }
     commit(&staged)?;
     Ok(edited)
-}
-
-/// A hook can be added to a config that does not exist yet: start it as an empty JSON object.
-fn create_missing_files(actions: &[&Action]) -> anyhow::Result<()> {
-    for action in actions {
-        let Action::Edit {
-            file,
-            edit: Edit::AddHook { .. },
-        } = action
-        else {
-            continue;
-        };
-        if !file.exists() {
-            if let Some(dir) = file.parent() {
-                std::fs::create_dir_all(dir)?;
-            }
-            std::fs::write(file, "{}\n")?;
-        }
-    }
-    Ok(())
 }
 
 fn removal_target(action: &Action) -> Option<&RemovalTarget> {
@@ -325,6 +301,39 @@ mod tests {
         assert_eq!(json, json!({"enabledPlugins": {}, "hooks": {}}));
         let toml: toml_edit::DocumentMut = fs::read_to_string(&config).unwrap().parse().unwrap();
         assert!(toml["plugins"].get("x@mp").is_none());
+    }
+
+    fn add_hook(file: &Path) -> Action {
+        Action::Edit {
+            file: file.to_path_buf(),
+            edit: Edit::AddHook {
+                event: "Stop".into(),
+                matcher: None,
+                command: "say done".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn a_hook_edit_creates_a_missing_config_only_when_the_whole_plan_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = dir.path().join("new/settings.json");
+        let bad = dir.path().join("bad.json");
+        write(&bad, "{");
+        let broken = Action::Edit {
+            file: bad,
+            edit: hook("a", "b"),
+        };
+
+        let failed = execute(&[add_hook(&settings), broken], &NoCommands);
+        assert!(failed.is_err());
+        // the failed plan left neither the file nor its directory behind
+        assert!(!settings.exists() && !settings.parent().unwrap().exists());
+
+        let report = execute(&[add_hook(&settings)], &NoCommands).unwrap();
+        assert_eq!(report.edited, std::slice::from_ref(&settings));
+        let json: Value = serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
+        assert!(json["hooks"]["Stop"].is_array());
     }
 
     #[test]
