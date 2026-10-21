@@ -19,6 +19,16 @@ pub struct HookEntry {
     pub command: String,
 }
 
+impl HookEntry {
+    /// `Event [matcher]: command`, as shown under whatever owns the hook.
+    pub fn label(&self) -> String {
+        match &self.matcher {
+            Some(m) => format!("{} [{}]: {}", self.event, m, self.command),
+            None => format!("{}: {}", self.event, self.command),
+        }
+    }
+}
+
 /// Syntax of a config file, decided by its extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {

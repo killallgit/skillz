@@ -189,6 +189,7 @@ mod tests {
         assert_eq!(review.scope, Scope::Global);
         assert_eq!(review.source.as_deref(), Some("killallgit/killall-skills"));
         assert_eq!(review.children.len(), 3);
+        assert_eq!(review.hooks.len(), 1);
         assert_eq!(
             files(&review.removal),
             vec![

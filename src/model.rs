@@ -100,7 +100,8 @@ pub struct Augmentation {
     pub origin: Origin,
     /// Display-only contents (a plugin's skills, a hook group's commands).
     pub children: Vec<String>,
-    /// The handlers of a hook group as data; `children` only shows them.
+    /// The handlers of a hook group as data; `children` only shows them. A plugin lists the
+    /// hooks it declares here: they are the plugin's, never removable on their own.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hooks: Vec<HookEntry>,
     /// Steps that remove this item completely. `execute` commits every `Edit` first (all or
@@ -110,6 +111,9 @@ pub struct Augmentation {
 
 /// Prefix of a plugin child that names one of its skills (`skill: <name>`).
 pub const SKILL_CHILD: &str = "skill: ";
+
+/// Prefix of a plugin child that shows one of the hooks it declares.
+pub const HOOK_CHILD: &str = "hook: ";
 
 impl Augmentation {
     /// The skill names among a plugin's children.
