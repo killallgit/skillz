@@ -11,6 +11,9 @@ pub enum Scope {
     Workspace,
     Project,
     Library,
+    Profiles,
+    /// Choosing library items with checkboxes.
+    Picker,
     Tree,
     /// While a filter is being typed, so letters stay text.
     Filter,
@@ -23,6 +26,8 @@ impl Scope {
             Scope::Workspace => "Tabs",
             Scope::Project => "Project",
             Scope::Library => "Library",
+            Scope::Profiles => "Profiles",
+            Scope::Picker => "Choose items",
             Scope::Tree => "List",
             Scope::Filter => "Filter",
         }
@@ -58,6 +63,10 @@ pub enum Action {
     Add,
     Import,
     Delete,
+    NewProfile,
+    ApplyExact,
+    SaveCurrent,
+    Build,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -107,7 +116,7 @@ const fn bind(
 }
 
 use Action as A;
-use Scope::{Common, Filter, Library, Project, Tree, Workspace};
+use Scope::{Common, Filter, Library, Picker, Profiles, Project, Tree, Workspace};
 
 #[rustfmt::skip]
 pub const BINDINGS: &[Binding] = &[
@@ -144,7 +153,21 @@ pub const BINDINGS: &[Binding] = &[
     bind(Library, A::Select, &[plain(KeyCode::Enter)], "enter", "expand", 0),
     bind(Library, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
     bind(Library, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
-    bind(Tree, A::Mark, &[ch('x'), plain(KeyCode::Tab)], "x tab", "mark", 1),
+    bind(Profiles, A::ApplyProfile, &[plain(KeyCode::Enter), ch('a')], "enter a", "apply", 1),
+    bind(Profiles, A::NewProfile, &[ch('n')], "n", "new", 2),
+    bind(Profiles, A::Build, &[ch('b')], "b", "build", 3),
+    bind(Profiles, A::ApplyExact, &[ch('e')], "e", "apply exactly", 4),
+    bind(Profiles, A::SaveCurrent, &[ch('s')], "s", "save project", 5),
+    bind(Profiles, A::Delete, &[ch('x')], "x", "delete", 6),
+    bind(Profiles, A::Filter, &[ch('/')], "/", "filter", 7),
+    bind(Profiles, A::Toggle, &[ch(' ')], "space", "expand", 0),
+    bind(Profiles, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "switch pane", 0),
+    bind(Profiles, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
+    bind(Picker, A::Toggle, &[ch(' ')], "space", "check", 0),
+    bind(Picker, A::Select, &[plain(KeyCode::Enter)], "enter", "save selection", 0),
+    bind(Picker, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
+    bind(Picker, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
+    bind(Tree, A::Mark,&[ch('x'), plain(KeyCode::Tab)], "x tab", "mark", 1),
     bind(Tree, A::Select, &[plain(KeyCode::Enter)], "enter", "actions", 2),
     bind(Tree, A::Filter, &[ch('/')], "/", "filter", 3),
     bind(Tree, A::Info, &[ch('i')], "i", "info", 4),
@@ -325,6 +348,23 @@ mod tests {
             .filter(|b| b.action == Action::Select);
 
         assert_eq!(selects.count(), 1);
+    }
+
+    #[test]
+    fn each_profile_key_means_its_own_action() {
+        let keys = ['n', 'b', 'e', 's', 'x', 'a'].map(|c| press(Profiles, c));
+
+        assert_eq!(
+            keys,
+            [
+                Some(Action::NewProfile),
+                Some(Action::Build),
+                Some(Action::ApplyExact),
+                Some(Action::SaveCurrent),
+                Some(Action::Delete),
+                Some(Action::ApplyProfile)
+            ]
+        );
     }
 
     #[test]

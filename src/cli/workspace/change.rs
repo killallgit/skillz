@@ -21,6 +21,8 @@ use crate::review::{Next, Outcome, Verdict};
 pub(super) enum Change<'a> {
     /// Install what the profile has that the project lacks.
     Apply(&'a str),
+    /// Install what the profile has that the project lacks and remove everything else.
+    ApplyExact(&'a str),
     Install(&'a Entry),
     /// Remove the installed item with this id.
     Remove(&'a str),
@@ -29,7 +31,7 @@ pub(super) enum Change<'a> {
 impl Change<'_> {
     fn title(&self) -> &'static str {
         match self {
-            Change::Apply(_) => "Apply",
+            Change::Apply(_) | Change::ApplyExact(_) => "Apply",
             Change::Install(_) => "Install",
             Change::Remove(_) => "Remove",
         }
@@ -37,7 +39,7 @@ impl Change<'_> {
 
     fn done(&self, switch: &Switch) -> Notice {
         match self {
-            Change::Apply(_) => Notice::Applied(switch.to.clone()),
+            Change::Apply(_) | Change::ApplyExact(_) => Notice::Applied(switch.to.clone()),
             Change::Install(_) => Notice::Installed(switch.to.clone()),
             Change::Remove(_) => Notice::Removed(switch.to.clone()),
         }
@@ -86,13 +88,21 @@ impl Job<'_> {
 
     fn plan(&self, applier: &apply::Applier, what: &Change) -> anyhow::Result<Switch> {
         match what {
-            Change::Apply(name) => {
-                let wanted = profile::Store::in_env(&self.env).load_flat(name)?;
-                applier.plan(&wanted, false)
-            }
+            Change::Apply(name) => self.apply_plan(applier, name, false),
+            Change::ApplyExact(name) => self.apply_plan(applier, name, true),
             Change::Install(entry) => applier.plan(&profile_of(entry), false),
             Change::Remove(id) => self.removal(id),
         }
+    }
+
+    fn apply_plan(
+        &self,
+        applier: &apply::Applier,
+        name: &str,
+        exact: bool,
+    ) -> anyhow::Result<Switch> {
+        let wanted = profile::Store::in_env(&self.env).load_flat(name)?;
+        applier.plan(&wanted, exact)
     }
 
     /// A switch that only removes the installed item `id`.

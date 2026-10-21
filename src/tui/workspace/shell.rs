@@ -50,7 +50,7 @@ impl Workspace {
         Workspace::new(vec![
             Box::new(ProjectTab::new()),
             Box::new(LibraryTab::new()),
-            Box::new(ProfilesTab),
+            Box::new(ProfilesTab::new()),
         ])
     }
 

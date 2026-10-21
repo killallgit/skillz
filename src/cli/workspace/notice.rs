@@ -4,6 +4,7 @@ use std::fmt;
 
 use crate::snapshot::Skipped;
 
+#[derive(Debug)]
 pub(super) enum Notice {
     Failed(String),
     UpToDate,
@@ -19,6 +20,14 @@ pub(super) enum Notice {
         added: usize,
         skipped: Vec<Skipped>,
     },
+    Created(String),
+    /// A profile saved from the project, with the installed items it could not hold.
+    Saved {
+        name: String,
+        skipped: Vec<String>,
+    },
+    Updated(String),
+    Deleted(String),
 }
 
 impl fmt::Display for Notice {
@@ -33,6 +42,13 @@ impl fmt::Display for Notice {
             Notice::LibraryAdded(what) => write!(f, "added {what} to the library"),
             Notice::LibraryRemoved(what) => write!(f, "removed {what} from the library"),
             Notice::Imported { added, skipped } => write_imported(f, *added, skipped),
+            Notice::Created(name) => write!(f, "created {name}"),
+            Notice::Saved { name, skipped } if skipped.is_empty() => write!(f, "saved {name}"),
+            Notice::Saved { name, skipped } => {
+                write!(f, "saved {name}; not saved: {}", skipped.join(", "))
+            }
+            Notice::Updated(name) => write!(f, "updated {name}"),
+            Notice::Deleted(name) => write!(f, "deleted {name}"),
         }
     }
 }

@@ -23,6 +23,16 @@ impl ItemKind {
         }
     }
 
+    pub fn of_entry(entry: &Entry) -> ItemKind {
+        match entry {
+            Entry::Skill { .. } => ItemKind::Skill,
+            Entry::Plugin { .. } => ItemKind::Plugin,
+            Entry::Subagent { .. } => ItemKind::Subagent,
+            Entry::Mcp { .. } => ItemKind::Mcp,
+            Entry::Hook { .. } => ItemKind::Hook,
+        }
+    }
+
     /// The library kind of an installed item's kind; a marketplace is not an item of its own.
     pub fn of(kind: Kind) -> Option<ItemKind> {
         match kind {
@@ -92,13 +102,7 @@ impl LibraryItem {
     }
 
     pub fn kind(&self) -> ItemKind {
-        match self.entry {
-            Entry::Skill { .. } => ItemKind::Skill,
-            Entry::Plugin { .. } => ItemKind::Plugin,
-            Entry::Subagent { .. } => ItemKind::Subagent,
-            Entry::Mcp { .. } => ItemKind::Mcp,
-            Entry::Hook { .. } => ItemKind::Hook,
-        }
+        ItemKind::of_entry(&self.entry)
     }
 
     pub fn is_same_thing_as(&self, other: &LibraryItem) -> bool {
