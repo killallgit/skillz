@@ -25,20 +25,13 @@ pub(super) fn uninstall(
         dry_run,
     } = *request;
     let items = scene.gather();
-    let candidates = remove::candidates(&items, query, yes)?;
-    let picked = if dry_run {
-        (0..candidates.len()).collect()
-    } else {
-        let owned: Vec<Augmentation> = candidates.iter().map(|&c| c.clone()).collect();
-        scene.deps.prompter.select_items(
-            "Select items to remove",
-            &display_tree(scene.deps, scene.env, &owned),
-        )?
+    let pick = Pick {
+        title: "Select items to remove",
+        query,
+        yes,
+        dry_run,
     };
-    let chosen: Vec<&Augmentation> = picked
-        .into_iter()
-        .filter_map(|i| candidates.get(i).copied())
-        .collect();
+    let chosen = choose(scene, &items, &pick)?;
     confirm_and_remove(
         scene,
         &chosen,
@@ -48,6 +41,37 @@ pub(super) fn uninstall(
         },
         out,
     )
+}
+
+/// How a command picks among the items a query matches.
+pub(super) struct Pick<'a> {
+    pub title: &'a str,
+    pub query: Option<&'a str>,
+    pub yes: bool,
+    pub dry_run: bool,
+}
+
+/// The items to act on: the query's matches, all of them for a dry run, else the ones the user
+/// picks.
+pub(super) fn choose<'a>(
+    scene: &Scene,
+    items: &'a [Augmentation],
+    pick: &Pick,
+) -> anyhow::Result<Vec<&'a Augmentation>> {
+    let candidates = remove::candidates(items, pick.query, pick.yes)?;
+    let picked = if pick.dry_run {
+        (0..candidates.len()).collect()
+    } else {
+        let owned: Vec<Augmentation> = candidates.iter().map(|&c| c.clone()).collect();
+        scene
+            .deps
+            .prompter
+            .select_items(pick.title, &display_tree(scene.deps, scene.env, &owned))?
+    };
+    Ok(picked
+        .into_iter()
+        .filter_map(|i| candidates.get(i).copied())
+        .collect())
 }
 
 /// Remove everything the filters leave, except what `keep` names. Hooks belong to other tools
