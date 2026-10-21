@@ -140,3 +140,43 @@ fn report(out: &mut dyn Write, switch: &apply::Switch, done: &apply::Done) -> an
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agents::registry;
+    use crate::install::test_support::{FakeNpx, LOCKED_LINK, ScriptedPrompter};
+    use crate::profile::{Entry, Profile};
+
+    #[test]
+    fn using_a_profile_records_what_it_installed_in_the_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::new(dir.path().into(), dir.path().into());
+        let mut profile = Profile::new("web");
+        profile.agents = vec![crate::model::Agent::Claude];
+        profile.entries = vec![Entry::Skill {
+            source: "o/r".into(),
+            names: vec!["tdd".into()],
+            agents: vec![],
+        }];
+        profile::Store::in_env(&env).save(&profile).unwrap();
+        let (runner, prompter) = (FakeNpx::new(), ScriptedPrompter::new(&[], true));
+        let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+        let target = Target {
+            env: &env,
+            scope: Scope::Project,
+        };
+        let switching = Switching {
+            profile: "web",
+            exact: false,
+            dry_run: false,
+        };
+
+        use_profile(&deps, &target, &switching, &mut Vec::new()).unwrap();
+
+        // Assert the library holds the skill with the link npx locked.
+        let items = Store::in_env(&env).read().unwrap().items;
+        let provenance = items.items()[0].provenance.clone().unwrap();
+        assert_eq!(provenance.link.as_deref(), Some(LOCKED_LINK));
+    }
+}

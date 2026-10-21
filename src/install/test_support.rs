@@ -81,6 +81,42 @@ impl Prompter for ScriptedPrompter {
     }
 }
 
+pub const LOCKED_LINK: &str = "https://example.test/o/r.git";
+
+/// Stands in for `npx skills add` run in a project: leaves the `tdd` skill and a lock entry
+/// with a link and a hash behind, as npx does, and notes the arguments.
+pub struct FakeNpx {
+    pub calls: RefCell<Vec<Vec<String>>>,
+}
+
+impl FakeNpx {
+    pub fn new() -> Self {
+        FakeNpx {
+            calls: RefCell::default(),
+        }
+    }
+}
+
+impl CommandRunner for FakeNpx {
+    fn run(&self, _program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output> {
+        self.calls.borrow_mut().push(args.to_vec());
+        skill(cwd, ".agents/skills/tdd");
+        fs::create_dir_all(cwd.join(".claude/skills"))?;
+        let link = cwd.join(".claude/skills/tdd");
+        if !link.exists() {
+            std::os::unix::fs::symlink(cwd.join(".agents/skills/tdd"), link)?;
+        }
+        let lock = serde_json::json!({"skills": {"tdd": {
+            "source": "o/r", "sourceUrl": LOCKED_LINK, "computedHash": "abc123"
+        }}});
+        fs::write(cwd.join("skills-lock.json"), lock.to_string())?;
+        Ok(Output {
+            success: true,
+            stderr: String::new(),
+        })
+    }
+}
+
 pub fn s(v: &[&str]) -> Vec<String> {
     v.iter().map(|x| x.to_string()).collect()
 }
