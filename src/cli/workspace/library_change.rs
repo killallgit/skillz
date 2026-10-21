@@ -11,9 +11,8 @@ impl Session<'_, '_> {
     pub(super) fn library_add(&self, spec: &str) -> anyhow::Result<Option<Notice>> {
         let entry = Entry::parse_spec(spec)?;
         let mut catalog = self.library.load()?;
-        let item = LibraryItem::from_entry(entry);
-        let label = item.label.clone();
-        catalog.add(item);
+        let label = entry.to_string();
+        catalog.add_entry(entry);
         self.library.save(&catalog)?;
         Ok(Some(Notice::LibraryAdded(label)))
     }

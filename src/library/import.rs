@@ -1,5 +1,4 @@
 use super::catalog::Catalog;
-use super::item::LibraryItem;
 use crate::model::Augmentation;
 use crate::snapshot::{Skipped, snapshot};
 
@@ -7,9 +6,10 @@ use crate::snapshot::{Skipped, snapshot};
 /// (hand-made, or needing secrets) is returned and stays out.
 pub fn import_installed(catalog: &mut Catalog, items: &[Augmentation]) -> Vec<Skipped> {
     let snap = snapshot("library", items);
-    for entry in snap.profile.entries {
-        catalog.add(LibraryItem::from_entry(entry));
-    }
+    snap.profile
+        .entries
+        .into_iter()
+        .for_each(|entry| catalog.add_entry(entry));
     snap.skipped
 }
 

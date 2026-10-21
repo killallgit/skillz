@@ -56,6 +56,41 @@ impl LibraryItem {
         LibraryItem::new(entry.to_string(), entry)
     }
 
+    /// One item per thing `entry` names, so a skill listed with several names never overlaps a
+    /// later item that shares only some of them.
+    pub fn each_of(entry: Entry) -> Vec<LibraryItem> {
+        let single = |names: &Vec<String>| names.len() > 1;
+        match &entry {
+            Entry::Skill {
+                source,
+                names,
+                agents,
+            } if single(names) => names
+                .iter()
+                .map(|name| Entry::Skill {
+                    source: source.clone(),
+                    names: vec![name.clone()],
+                    agents: agents.clone(),
+                })
+                .map(LibraryItem::from_entry)
+                .collect(),
+            Entry::Subagent {
+                source,
+                names,
+                agents,
+            } if single(names) => names
+                .iter()
+                .map(|name| Entry::Subagent {
+                    source: source.clone(),
+                    names: vec![name.clone()],
+                    agents: agents.clone(),
+                })
+                .map(LibraryItem::from_entry)
+                .collect(),
+            _ => vec![LibraryItem::from_entry(entry)],
+        }
+    }
+
     pub fn kind(&self) -> ItemKind {
         match self.entry {
             Entry::Skill { .. } => ItemKind::Skill,

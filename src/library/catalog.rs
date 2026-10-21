@@ -1,4 +1,5 @@
 use super::item::{ItemKind, LibraryItem};
+use crate::profile::Entry;
 
 /// The items of a library, in the order they were first added.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -24,6 +25,13 @@ impl Catalog {
             Some(existing) => *existing = item,
             None => self.items.push(item),
         }
+    }
+
+    /// Add each thing `entry` names as an item of its own.
+    pub fn add_entry(&mut self, entry: Entry) {
+        LibraryItem::each_of(entry)
+            .into_iter()
+            .for_each(|item| self.add(item));
     }
 
     /// Remove the item that is the same thing as `item`; whether there was one.
@@ -87,5 +95,39 @@ mod tests {
             groups,
             [(ItemKind::Skill, vec![&a, &b]), (ItemKind::Hook, vec![&h])]
         );
+    }
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::*;
+    use crate::profile::Entry;
+
+    fn skills(names: &[&str]) -> Entry {
+        Entry::Skill {
+            source: "o/r".into(),
+            names: names.iter().map(|n| n.to_string()).collect(),
+            agents: vec![],
+        }
+    }
+
+    #[test]
+    fn an_entry_naming_several_things_becomes_one_item_each() {
+        let mut catalog = Catalog::default();
+
+        catalog.add_entry(skills(&["grill", "tdd"]));
+
+        assert_eq!(catalog.items().len(), 2);
+    }
+
+    #[test]
+    fn adding_part_of_what_is_there_keeps_the_rest() {
+        let mut catalog = Catalog::default();
+        catalog.add_entry(skills(&["grill", "tdd"]));
+
+        catalog.add_entry(skills(&["tdd"]));
+
+        // Assert nothing was lost: grill and tdd are still one item each.
+        assert_eq!(catalog.items().len(), 2);
     }
 }
