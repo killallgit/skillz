@@ -86,18 +86,18 @@ Directories:
 | `profile` | `Profile` (toml), `Entry` (skill, plugin, subagent, hook, mcp), `Store` of `<name>.toml` with `load_flat` for `extends`; `validate` (every value non-empty, not option-like), `spec` (the one-line typed form), `identity` (which entries are the same thing; `overlay`) |
 | `snapshot` | installed items -> a `Profile` through one collector per kind (`skills`, `plugins`, `subagents`, `hooks`, `mcp`); what cannot be reinstalled comes back as `Skipped` with a `Reason` |
 | `apply` | `standing` (pure: `compare` a profile's entries with the inventory into present / missing / extras; `loaded` picks the matching profile), `Applier::plan` (`Switch`: present, installs, and with `exact` the removals), `Applier::run` (remove via `remove`, then run the install steps) |
-| `cli` | `args` (clap), `deps` (`Deps`), `scope` (scope and target rules), `run` (dispatch), one module per command group (`list`, `removal` for uninstall and reset, `prune`, `use_profile`, `isolate` for `run`, `profile`); the workspace side: `workspace` (the loop), `switch` (plan, progress, result of one switch), `screen`, `detail`, `plan_view`, `notice`; `cli::main` wires real dependencies |
+| `cli` | `args` (clap), `deps` (`Deps`), `scope` (scope and target rules), `run` (dispatch), one module per command group (`list`, `removal` for uninstall and reset, `prune`, `use_profile`, `isolate` for `run`, `profile`); the workspace side, a directory `workspace` (`mod` the loop, `model` the snapshot the tabs show, `perform`, `change` (plan, progress, result of one change), `plan_view`, `notice`); `cli::main` wires real dependencies |
 | `tui` | below |
 
 `tui` (ratatui + crossterm): `theme` (semantic colour roles), `glyphs` (Unicode and ASCII sets),
 `keymap` (every binding, per scope), `help` (the `?` overlay), `filter`, `clipboard` (OSC 52),
 `hygiene` (panic hook, signals, mouse and title restore), `shell` (owns the terminal across
 screens), `app` (screen stack), `prompter` (`TuiPrompter`), `closure` and `dialogs` (small
-screens), `plan`, `progress` and `result` (the three screens of a switch), `tree_view` (the one
-list: `model`, `input`, `draw`, `marks`, `menu`), `home` (the workspace: `state` is a pure machine
-that returns an `Act`; `model`, `pane`, `rows`, `detail`, `header`, `layout`, `view`, `screen`,
-`popups`, `ask`, `mouse`, `welcome`), `widgets` (`panel`, `list`, `table`, `tabs`, `keybar`,
-`input`, `modal`, `confirm`, `toast`, `scroll`, `empty`).
+screens), `plan`, `progress` and `result` (the three screens of a switch), `tree_view` (the picker and
+browser list: `model`, `input`, `draw`, `marks`, `menu`), `workspace` (the tabbed workspace: `shell`
+is the `Workspace` around its tabs, `tab` the `Tab` trait, `model` and `act` the shared data and
+requests, one directory per tab: `project`, `library`, `profiles`), `widgets` (`outline`, `panel`,
+`list`, `tabs`, `keybar`, `input`, `modal`, `confirm`, `toast`, `scroll`, `empty`).
 
 ## On-disk formats (observed on a real machine)
 
@@ -207,9 +207,11 @@ subagents). Removal uses this to pick the tool's own uninstall.
   read nothing is planned.
 - **Isolation.** `skillz run` is an additive switch to scope `Global` of an `Env` whose `claude_config` and
   `codex_home` are `envs/<profile>/...`, followed by `CommandRunner::launch`.
-- **Workspace.** `Home::handle` (pure) returns an `Act`; `cli::workspace` performs it, using the
-  same planner (additive only). `switch` shows the plan screen, then progress, then the result
-  (retry replans). The current directory is the only project.
+- **Workspace.** `Workspace::handle` (pure) returns an `Act`; `cli::workspace` performs it as a
+  `Change` (install an entry, remove an installed item, apply a profile), each a `Switch` from the
+  same planner (additive only). `change` shows the plan screen, then progress, then the result
+  (retry replans). One directory (cwd or `skillz PATH`) is the only project and nothing is stored
+  for it: the Project tab is derived from the native config, the library and the profiles.
 
 ## Removal semantics (complete removal, no backups)
 
@@ -309,7 +311,7 @@ token:
 ## CLI
 
 ```
-skillz                                    # the workspace (needs a terminal)
+skillz [PATH]                            # the workspace for PATH or cwd (needs a terminal)
 skillz list [QUERY|PATH] [-p PATH] [--all] [--json] [-g] [kind flags] [-a <agent>]... [-i]
 skillz uninstall|rm|delete [QUERY] [-p PATH] [-g] [kind flags] [-a <agent>]... [-y] [--dry-run]
 skillz reset [PATH] [-g] [kind flags] [-a <agent>]... [--keep NAME]... [--dry-run | -f/--force]
@@ -371,14 +373,17 @@ ratatui + crossterm. Screens are built from `tui::widgets` and drawn with an inj
 out, so several screens in a row (workspace, plan, progress, result) do not flicker. Commands run
 by a switch have their output captured so they cannot draw over it.
 
-Keys live in one table, `keymap::BINDINGS`: each row has a scope (`Common`, `Home`, `Tree`,
-`Filter`), an `Action`, the chords, and how it reads on the key bar and in the `?` overlay.
+Keys live in one table, `keymap::BINDINGS`: each row has a scope (`Common`, `Workspace`, `Project`,
+`Tree`, `Filter`), an `Action`, the chords, and how it reads on the key bar and in the `?` overlay.
 Screens match on `Action`, never on keys; a scope's own binding wins over the common one, and the
 filter scope passes no letters through. The key bar and `?` are generated from the table.
 
-**List.** One list component, `tui::tree_view`, serves every list: the browser (`skillz list`)
-and every picker (`uninstall`, `prune`, the install pickers; a flat list is a tree with no
-children, `tree::flat`). `TreeState::handle` is a pure state machine tested without a terminal.
+**Lists.** `widgets::outline` is the one collapsible outline: rows in preorder with parents, which
+are open, a fuzzy filter and a scrolling cursor, with no idea what a row means. `tui::tree_view`
+builds the picker and browser on it (`skillz list`, `uninstall`, `prune`, the install pickers; a
+flat list is a tree with no children, `tree::flat`) and the Project tab builds its sections on it,
+so the Library and Profiles tabs can too. `TreeState::handle` is a pure state machine tested
+without a terminal.
 Rows are `tree::Node`s (`label`, `cells`: KIND, AGENTS, SCOPE, ITEMS, `info`, `item`);
 `tree::Widths` lays the columns out and the plain `list` output (`tree::render`) uses the same
 `Widths`, so the terminal list and the piped table match. JSON output is built from the items,
@@ -389,12 +394,20 @@ data on `Node::info`, built before the terminal opens by `info::item_lines` and
 Show / Remove… / Cancel menu. `enter` opens that menu for the marks (or the row under the cursor);
 in a picker it accepts them (`Prompter::select_items` returns `Node::item` indices).
 
-**Workspace.** `tui::home`: the current project, profiles and a detail pane. `home::layout` picks three
-panes (width >= 100), two (>= 60: lists stacked beside the detail), one behind tabs (>= 40) or
-"too small" (below 40x10). `Home::handle` returns an `Act` (`Apply`, `AddInstalled`, `RemoveEntries`, `AddTyped`, ...); `cli::workspace` performs it
-and rebuilds the model (`cli::screen`, `cli::detail`), carrying a typed `Notice` for the footer.
-Mouse: click focuses and selects, double-click applies,
-the wheel scrolls (`home::mouse`).
+**Workspace.** `tui::workspace`: `Workspace` owns the tab bar (`tab`, `shift-tab`, `1`-`3`, from
+`Scope::Workspace`), key bar, `?` help and toasts, and gives every `Tab` the same `Model` (the
+directory, what it has installed, the library, the readable profiles) after each act. A `Tab`
+has `title`, `scopes` (its key scopes, which the key bar and help are generated from), `load`
+(take a snapshot, keeping cursor, open groups and filter), `handle` (a key to an optional `Act`),
+`draw`, and `captures_keys` / `prompt` for a filter or popup that must get every key. Adding a tab
+is a directory under `workspace/`, an entry in `Workspace::standard`, and `Act` variants for what
+it asks `cli::workspace` to do; the Project code is not touched. **Project** (`project/`):
+`rows` builds a section per kind from the installed items plus the library items not installed
+(`apply::compare` decides which are), `drift` is `apply::compare` against the chosen profile,
+`picker` the compare-with popup, `header`, `keys`, `draw`. `space` on an item asks for `Act::Install`
+or `Act::Remove`; `cli::workspace::change` turns it into a one-entry or one-removal `Switch` and
+shows the plan, progress and result before anything changes. Wheel scrolling works; there is no
+other mouse handling. The Library and Profiles tabs are placeholders.
 
 **Switch screens.** `plan` shows the `PlanView` (keep `=`, remove `-`, install `+`, skip `~`;
 danger frame if anything is removed) with keys to toggle the raw steps and a dry run; `progress`
