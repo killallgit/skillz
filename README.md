@@ -1,7 +1,8 @@
 # skillz
 
 List, install and completely remove skills, plugins, marketplaces and hooks for
-Claude Code, Codex and Cursor — globally or per project.
+Claude Code, Codex and Cursor — globally or per project — and keep named sets of them
+(profiles) you can load into a project and swap.
 
 ```sh
 task install                     # release build, symlinked to ~/.local/bin/skillz
@@ -44,6 +45,49 @@ means both (project = cwd). A `list` PATH must start with `.`, `..` or `/` (`./s
 Pickers: `↑↓/jk` move, `space` toggle, `a` toggle all, `/` filter, `enter` accept, `esc` cancel.
 Browser (`list -i`, multi-group queries): `space`/`→←` expand, `x`/`tab` mark a group or item,
 `enter` opens Show / Remove… (same plan and `[y/N]` as `rm`), `/` filter, `q` quit.
+
+## Profiles
+
+`skillz` with no arguments opens the workspace: registered projects on the left, profiles in
+the middle, details on the right. `Tab` switches pane, `Enter` applies the selected profile to
+the selected project (the plan is shown and confirmed first), `u` unloads a project's profile,
+`a` adds a project, `n` creates an empty profile, `s` saves what the project has installed as a
+profile, `d` deletes, `q` quits.
+
+The same from the command line:
+
+```sh
+skillz profile save web          # snapshot this project's installs (-g: the global config)
+skillz profile ls | show web | rm web
+skillz use web --dry-run         # what swapping this project to `web` would remove and install
+skillz use web                   # swap: only the difference is removed and installed
+skillz use --none                # unload the current profile
+skillz project add . | ls | rm . # projects the workspace shows
+```
+
+A profile is `~/.config/skillz/profiles/<name>.toml`:
+
+```toml
+agents = ["claude", "codex"]          # default for entries that name none
+
+[[entry]]
+kind = "skill"
+source = "mattpocock/skills"
+names = ["tdd", "grilling"]
+
+[[entry]]
+kind = "plugin"
+source = "killallgit/killall-skills"  # what adds the marketplace
+marketplace = "killallgit"
+name = "killall-skills"
+agents = ["claude"]
+```
+
+skillz records what each entry added (`~/.config/skillz/applied.json`, per project and per
+`CLAUDE_CONFIG_DIR`/`CODEX_HOME`), so swapping or unloading removes exactly that and never
+what was installed by hand or was already there. Project plugins go to Claude's `local` scope,
+not the settings file the team shares. Codex plugins can only be installed globally, so a
+project profile reports them as skipped.
 
 ## Isolating a config
 

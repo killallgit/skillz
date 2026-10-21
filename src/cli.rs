@@ -17,6 +17,7 @@ use crate::prune;
 use crate::runner::{CommandRunner, SystemRunner};
 use crate::snapshot;
 use crate::tree;
+use crate::tui::home;
 use crate::usage;
 use crate::workspace::Workspace;
 use crate::{info, remove, spinner};
@@ -28,8 +29,9 @@ use crate::{info, remove, spinner};
     about = "Manage skills, plugins, marketplaces and hooks for Claude, Codex and Cursor"
 )]
 pub struct Cli {
+    /// Without one, opens the workspace
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -250,7 +252,7 @@ pub struct Deps<'a> {
 
 pub fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let prompter: &dyn Prompter = if wants_auto_yes(&cli.command) {
+    let prompter: &dyn Prompter = if cli.command.as_ref().is_some_and(wants_auto_yes) {
         &AssumeYes
     } else {
         &TuiPrompter
@@ -282,7 +284,10 @@ pub fn main() -> anyhow::Result<()> {
         // Pickers and the browser read keys from stdin and draw on stdout.
         interactive: std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
     };
-    run(cli.command, &deps, &mut std::io::stdout())
+    match cli.command {
+        Some(command) => run(command, &deps, &mut std::io::stdout()),
+        None => workspace(&deps, &mut std::io::stdout()),
+    }
 }
 
 /// `--yes` (prune: `--force`) swaps the interactive prompter for one that picks and confirms everything.
@@ -879,15 +884,9 @@ fn profile_command(deps: &Deps, action: ProfileCommand, out: &mut dyn Write) -> 
             project,
             force,
         } => {
-            profile::check_name(&name)?;
-            if !force && store.names()?.contains(&name) {
-                bail!("profile {name} exists; use --force to replace it");
-            }
             let (env, scopes) = resolve(deps, project.as_deref(), global)?;
             let scope = single_scope(&scopes, global);
-            let items = gather(deps, &env, &[scope], &Filter::default());
-            let snap = snapshot::snapshot(&name, &items);
-            store.save(&snap.profile)?;
+            let snap = save_profile(deps, &store, &env, scope, &name, force)?;
             writeln!(out, "saved {name} from the {scope} config:")?;
             for entry in &snap.profile.entries {
                 writeln!(out, "  {entry}")?;
@@ -898,6 +897,199 @@ fn profile_command(deps: &Deps, action: ProfileCommand, out: &mut dyn Write) -> 
         }
     }
     Ok(())
+}
+
+/// Snapshot what `scope` of `env` has installed into the profile `name`.
+fn save_profile(
+    deps: &Deps,
+    store: &profile::Store,
+    env: &Env,
+    scope: Scope,
+    name: &str,
+    force: bool,
+) -> anyhow::Result<snapshot::Snapshot> {
+    profile::check_name(name)?;
+    if !force && store.names()?.iter().any(|n| n == name) {
+        bail!("profile {name} exists; use --force to replace it");
+    }
+    let items = gather(deps, env, &[scope], &Filter::default());
+    let snap = snapshot::snapshot(name, &items);
+    store.save(&snap.profile)?;
+    Ok(snap)
+}
+
+/// The environment of one registered project, with the config dirs this run redirects.
+fn project_env(deps: &Deps, dir: &Path) -> Env {
+    Env {
+        project: dir.to_path_buf(),
+        claude_config: deps.claude_config.clone(),
+        codex_home: deps.codex_home.clone(),
+        ..Env::new(deps.home.clone(), dir.to_path_buf())
+    }
+}
+
+fn workspace_model(
+    deps: &Deps,
+    store: &profile::Store,
+    workspace: &Workspace,
+    notice: Option<String>,
+) -> anyhow::Result<home::Model> {
+    let ledger = apply::Ledger::in_env(&project_env(deps, &deps.cwd));
+    let short = |p: &Path| match p.strip_prefix(&deps.home) {
+        Ok(rest) => format!("~/{}", rest.display()),
+        Err(_) => p.display().to_string(),
+    };
+    let projects = workspace
+        .projects()?
+        .into_iter()
+        .map(|path| {
+            let env = project_env(deps, &path);
+            let record = ledger
+                .get(&apply::Ledger::key(&env, Scope::Project))
+                .ok()
+                .flatten();
+            let missing = !path.is_dir();
+            let profile_name = record.as_ref().map_or("-", |r| r.profile.as_str());
+            let mut detail = vec![path.display().to_string()];
+            if missing {
+                detail.push("directory is missing".into());
+            }
+            for loaded in record.iter().flat_map(|r| &r.entries) {
+                detail.push(format!("{}", loaded.entry));
+                detail.extend(loaded.items.iter().map(|o| format!("    {}", o.name)));
+            }
+            home::ProjectRow {
+                label: format!(
+                    "{profile_name:<14} {}{}",
+                    short(&path),
+                    if missing { "  (missing)" } else { "" }
+                ),
+                loaded: record.is_some(),
+                missing,
+                detail,
+                path,
+            }
+        })
+        .collect();
+    let profiles = store
+        .names()?
+        .into_iter()
+        .map(|name| match store.load(&name) {
+            Ok(p) => home::ProfileRow {
+                detail: p.entries.iter().map(ToString::to_string).collect(),
+                broken: false,
+                name,
+            },
+            Err(e) => home::ProfileRow {
+                detail: vec![format!("{e:#}")],
+                broken: true,
+                name,
+            },
+        })
+        .collect();
+    Ok(home::Model {
+        projects,
+        profiles,
+        notice,
+    })
+}
+
+/// What the workspace does after a step.
+enum Flow {
+    Stay,
+    Leave,
+}
+
+/// The workspace: pick a project and a profile and apply, unload, add, save or delete, with the
+/// plan and progress of each change shown as for `use`. A step that fails shows its error in the
+/// footer and the workspace stays open.
+pub fn workspace(deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
+    let base = project_env(deps, &deps.cwd);
+    let store = profile::Store::in_env(&base);
+    let registry = Workspace::in_env(&base);
+    let mut pos = home::Pos::default();
+    let mut notice = None;
+    loop {
+        let model = workspace_model(deps, &store, &registry, notice.take())?;
+        let (act, next) = deps.prompter.home(model, pos)?;
+        pos = next;
+        match workspace_step(deps, &store, &registry, act, &mut notice, out) {
+            Ok(Flow::Leave) => return Ok(()),
+            Ok(Flow::Stay) => {}
+            Err(e) => notice = Some(format!("{e:#}")),
+        }
+    }
+}
+
+fn workspace_step(
+    deps: &Deps,
+    store: &profile::Store,
+    registry: &Workspace,
+    act: home::Act,
+    notice: &mut Option<String>,
+    out: &mut dyn Write,
+) -> anyhow::Result<Flow> {
+    use home::Act;
+    let projects = registry.projects()?;
+    let names = store.names()?;
+    let switch =
+        |project: usize, name: Option<&str>, out: &mut dyn Write| -> anyhow::Result<Flow> {
+            let Some(dir) = projects.get(project) else {
+                return Ok(Flow::Stay);
+            };
+            use_profile(
+                deps,
+                &project_env(deps, dir),
+                Scope::Project,
+                name,
+                false,
+                out,
+            )?;
+            out.flush()?;
+            Ok(if deps.prompter.confirm("Back to the workspace?")? {
+                Flow::Stay
+            } else {
+                Flow::Leave
+            })
+        };
+    match act {
+        Act::Quit => return Ok(Flow::Leave),
+        Act::Apply { project, profile } => {
+            let name = names.get(profile).map(String::as_str);
+            return switch(project, name, out);
+        }
+        Act::Unload { project } => return switch(project, None, out),
+        Act::AddProject(text) => {
+            registry.add(&deps.cwd.join(text))?;
+        }
+        Act::ForgetProject(i) => {
+            if let Some(dir) = projects.get(i) {
+                registry.remove(dir)?;
+            }
+        }
+        Act::NewProfile(name) => {
+            profile::check_name(&name)?;
+            anyhow::ensure!(!names.contains(&name), "profile {name} exists");
+            store.save(&profile::Profile::new(&name))?;
+        }
+        Act::SaveProfile { name, project } => {
+            if let Some(dir) = projects.get(project) {
+                let env = project_env(deps, dir);
+                let snap = save_profile(deps, store, &env, Scope::Project, &name, false)?;
+                *notice = Some(format!(
+                    "saved {name}: {} entries, {} not reproducible",
+                    snap.profile.entries.len(),
+                    snap.skipped.len()
+                ));
+            }
+        }
+        Act::DeleteProfile(i) => {
+            if let Some(name) = names.get(i) {
+                store.delete(name)?;
+            }
+        }
+    }
+    Ok(Flow::Stay)
 }
 
 /// `use`: show what moving `scope` to the named profile (`None` = no profile) changes, ask, then
@@ -1070,6 +1262,7 @@ mod tests {
             Cli::try_parse_from([&["skillz"], args].concat())
                 .unwrap()
                 .command
+                .unwrap()
         };
         assert!(wants_auto_yes(&parse(&["rm", "x", "-y"])));
         assert!(!wants_auto_yes(&parse(&["rm", "x"])));

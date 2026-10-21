@@ -7,10 +7,11 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use skillz::action::{Action, execute};
 use skillz::agents;
-use skillz::cli::{Command, Deps, Filter, ProfileCommand, ProjectCommand, run};
+use skillz::cli::{Command, Deps, Filter, ProfileCommand, ProjectCommand, run, workspace};
 use skillz::model::{Agent, Augmentation, Kind, Scope};
 use skillz::prompt::{Choice, Picked, Prompter};
 use skillz::runner::{CommandRunner, Output};
+use skillz::tui::home::{Act, Model, Pos};
 
 struct Scripted {
     pick: Option<Vec<usize>>,
@@ -1077,4 +1078,90 @@ fn projects_are_registered_by_hand_or_by_using_a_profile() {
     )
     .unwrap();
     assert!(list().contains("web"), "the ledger still knows the profile");
+}
+
+/// What one workspace screen showed: project labels, profile names, the notice.
+type Screen = (Vec<String>, Vec<String>, Option<String>);
+
+/// Plays a script of workspace actions and remembers what each screen showed.
+struct Home {
+    acts: RefCell<std::collections::VecDeque<Act>>,
+    seen: RefCell<Vec<Screen>>,
+}
+
+impl Prompter for Home {
+    fn multi_select(&self, _: &str, _: &[String]) -> anyhow::Result<Vec<usize>> {
+        Ok(vec![])
+    }
+    fn confirm(&self, _: &str) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+    fn home(&self, model: Model, pos: Pos) -> anyhow::Result<(Act, Pos)> {
+        self.seen.borrow_mut().push((
+            model.projects.iter().map(|p| p.label.clone()).collect(),
+            model.profiles.iter().map(|p| p.name.clone()).collect(),
+            model.notice.clone(),
+        ));
+        Ok((self.acts.borrow_mut().pop_front().unwrap_or(Act::Quit), pos))
+    }
+}
+
+#[test]
+fn the_workspace_manages_projects_and_profiles_and_survives_errors() {
+    let w = world();
+    write(
+        &w.home.join(".config/skillz/profiles/web.toml"),
+        "[[entry]]\nkind = \"skill\"\nsource = \"o/r\"\nnames = [\"tdd\"]\n",
+    );
+    let home = Home {
+        acts: RefCell::new(
+            [
+                Act::AddProject(".".into()),
+                Act::NewProfile("tmp".into()),
+                Act::NewProfile("tmp".into()),
+                Act::Apply {
+                    project: 0,
+                    profile: 1,
+                },
+                Act::SaveProfile {
+                    name: "snap".into(),
+                    project: 0,
+                },
+                Act::Unload { project: 0 },
+                Act::DeleteProfile(1),
+                Act::ForgetProject(0),
+            ]
+            .into(),
+        ),
+        seen: RefCell::default(),
+    };
+    let r = Recorder::default();
+    let mut d = deps(
+        &w,
+        &r,
+        &Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    d.prompter = &home;
+    workspace(&d, &mut Vec::new()).unwrap();
+
+    let seen = home.seen.borrow();
+    assert_eq!(seen.len(), 9, "one screen per action plus the last quit");
+    assert_eq!(seen[1].0.len(), 1, "the project was added");
+    assert_eq!(seen[2].1, ["tmp", "web"], "the profile was created");
+    assert!(
+        seen[3].2.is_some(),
+        "creating it twice is reported, not fatal"
+    );
+    assert!(
+        seen[4].0[0].starts_with("web"),
+        "the project shows its profile"
+    );
+    assert!(seen[5].2.as_deref().unwrap().contains("saved snap"));
+    assert_eq!(seen[6].1, ["snap", "tmp", "web"]);
+    assert!(seen[6].0[0].starts_with('-'), "unloaded");
+    assert_eq!(seen[7].1, ["snap", "web"]);
+    assert!(seen[8].0.is_empty());
 }

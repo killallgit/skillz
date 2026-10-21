@@ -54,6 +54,12 @@ All agent knowledge lives in `src/agents/<name>.rs`. Steps:
 | `usage` | merges each adapter's `usage()` records into last use per skill/plugin. Sources live in the adapters: Claude `~/.claude.json` `skillUsage`/`pluginUsage`, Codex session logs (tool calls reading a `SKILL.md`) |
 | `cost` | always-on context tokens per skill/plugin, merged from each adapter's `context_costs()`: Claude parses `claude -p "/context"` (exact, per skill and agent; built-in and claude.ai skills left out), others estimate from `SKILL.md` frontmatter (~3.5 chars/token). `list --json` adds `tokens` |
 | `remove` | removal as data: `candidates` (query + `--yes` rule), `Plan` (steps, owner, agents outside a filter), `run` (execute, re-read the inventory, `Outcome`); prints and prompts nothing, `cli` renders it |
+| `profile` | `Profile`/`Entry` (toml), `Store` of `<name>.toml` files; a new kind of entry = a variant plus a `provision` arm in the adapters that can take it |
+| `provision` | `plan(adapters, profile, scope, env)`: a profile as install `Action`s. Skills go through `npx skills` for all agents at once; other entries ask each `AgentAdapter::provision`, and what an agent cannot take comes back as `unsupported` |
+| `apply` | `Ledger` (what each entry added, per scope), `plan` (diff of the ledger against the target: keep / drop / add), `run` (remove dropped items via `remove`, install added entries one at a time, record each by inventory diff) |
+| `snapshot` | installed items -> a `Profile`; what cannot be reinstalled (no source) is reported as skipped |
+| `workspace` | the registered projects (`workspace.toml`) |
+| `tui/home` | the workspace screen: a pure state machine that returns an `Act`; `cli::workspace` performs it and shows the screen again |
 | `prune` | pure checks: duplicate loose skills, never-used and 7+ days unused skills/plugins |
 | `cli` | clap definitions, wiring, list/uninstall/install commands |
 

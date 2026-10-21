@@ -1,4 +1,5 @@
 use crate::tree::Node;
+use crate::tui::home::{Act, Model, Pos};
 
 /// User interaction. Injected so flows are testable without a terminal.
 pub trait Prompter {
@@ -29,6 +30,11 @@ pub trait Prompter {
             };
             (Choice::Show, picked)
         }))
+    }
+    /// The workspace screen: show `model` with the cursors at `pos` until the user asks for
+    /// something. Needs a terminal, so the default is an error.
+    fn home(&self, _model: Model, _pos: Pos) -> anyhow::Result<(Act, Pos)> {
+        anyhow::bail!("the workspace needs a terminal")
     }
 }
 
@@ -80,6 +86,10 @@ impl Prompter for TuiPrompter {
 
     fn browse(&self, title: &str, groups: &[Node]) -> anyhow::Result<Option<(Choice, Picked)>> {
         crate::tui::tree_view::browse(title, groups)
+    }
+
+    fn home(&self, model: Model, pos: Pos) -> anyhow::Result<(Act, Pos)> {
+        crate::tui::home::run(model, pos)
     }
 
     fn confirm(&self, question: &str) -> anyhow::Result<bool> {
