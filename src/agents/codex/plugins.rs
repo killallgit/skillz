@@ -109,6 +109,7 @@ fn display_source(source: &str) -> String {
 fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
     let (name, mp) = split_plugin_id(id);
     Augmentation {
+        hooks: Vec::new(),
         id: format!("plugin:codex:{}:{id}", cx.scope),
         name: id.to_string(),
         kind: Kind::Plugin,
@@ -149,6 +150,7 @@ fn marketplace(
 ) -> Augmentation {
     let own: Vec<&Augmentation> = plugins.iter().filter(|p| p.group == m.name).collect();
     Augmentation {
+        hooks: Vec::new(),
         id: format!("marketplace:codex:{}:{}", cx.scope, m.name),
         name: m.name.clone(),
         kind: Kind::Marketplace,

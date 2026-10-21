@@ -289,7 +289,7 @@ pub fn deps<'a>(w: &World, runner: &'a Recorder, prompter: &'a dyn Prompter) -> 
 }
 
 pub fn run_quiet(cmd: Command, d: &Deps) -> anyhow::Result<()> {
-    run(cmd, d, &mut Vec::new())
+    run(cmd, d, &mut Vec::new()).map(|_| ())
 }
 
 pub fn run_captured(cmd: Command, d: &Deps) -> Vec<u8> {

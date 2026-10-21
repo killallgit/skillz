@@ -137,15 +137,15 @@ fn a_successful_command_exits_zero() {
 }
 
 #[test]
-fn a_failing_command_makes_skillz_exit_non_zero() {
+fn skillz_exits_with_the_exit_code_of_the_command() {
     // Assemble
     let sb = sandbox_with_notify();
 
     // Act
     let out = sb.skillz(&["run", "-y", "notify", "--", "sh", "-c", "exit 3"]);
 
-    // Assert: a failure status
-    assert!(!out.status.success());
+    // Assert: the child's own code, not a generic failure
+    assert_eq!(out.status.code(), Some(3));
 }
 
 #[test]

@@ -3,6 +3,7 @@
 //! Pure data plus a directory store. Turning entries into install steps is `provision`.
 
 mod entry;
+mod identity;
 mod spec;
 mod store;
 mod validate;

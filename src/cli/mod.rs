@@ -4,6 +4,7 @@ mod args;
 mod deps;
 mod isolate;
 mod list;
+mod notice;
 mod profile;
 mod project;
 mod prune;
@@ -35,7 +36,8 @@ use crate::runner::SystemRunner;
 use crate::tui::prompter::TuiPrompter;
 use crate::tui::theme::Theme;
 
-pub fn main() -> anyhow::Result<()> {
+/// Returns the process exit code.
+pub fn main() -> anyhow::Result<i32> {
     let cli = Cli::parse();
     let tui = TuiPrompter::new(Theme::detect(&|name| std::env::var(name).ok()));
     let prompter: &dyn Prompter = if cli.command.as_ref().is_some_and(wants_auto_yes) {
@@ -59,7 +61,7 @@ pub fn main() -> anyhow::Result<()> {
     };
     match cli.command {
         Some(command) => run(command, &deps, &mut std::io::stdout()),
-        None => workspace(&deps, &mut std::io::stdout()),
+        None => workspace(&deps, &mut std::io::stdout()).map(|()| 0),
     }
 }
 

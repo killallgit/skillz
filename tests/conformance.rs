@@ -49,6 +49,7 @@ impl AgentAdapter for Fake {
             return Ok(vec![]);
         }
         Ok(vec![Augmentation {
+            hooks: Vec::new(),
             id: format!("plugin:global:{PLUGIN}"),
             name: PLUGIN.into(),
             kind: Kind::Plugin,

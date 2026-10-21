@@ -12,7 +12,7 @@ pub use add::add_hook;
 pub use layout::{parse, remove_hook};
 
 /// One hook handler as written in a hooks config file.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct HookEntry {
     pub event: String,
     pub matcher: Option<String>,

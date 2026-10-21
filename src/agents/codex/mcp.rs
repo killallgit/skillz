@@ -32,6 +32,7 @@ fn server_augmentation(server: &Server, scope: Scope, config: &Path) -> Augmenta
     );
     removal.push(toml_remove(config, &["mcp_servers", &server.name]));
     Augmentation {
+        hooks: Vec::new(),
         id: format!("mcp:codex:{scope}:{}", server.name),
         name: server.name.clone(),
         kind: Kind::Mcp,

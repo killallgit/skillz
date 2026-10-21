@@ -116,7 +116,12 @@ servers globally, and has no SSE transport.
 
 A profile can start from others: `extends = ["base"]` at the top loads `base`'s entries (and
 theirs, recursively) before its own; a missing base or a cycle is an error. Each base keeps the
-agents of its own profile.
+agents of its own profile. An entry replaces an inherited one that names the same thing, so a
+child can override a base instead of repeating it: a skill or subagent is identified by source
+and name, a plugin by marketplace and name, an MCP server by name, and a hook by event, matcher
+and command. The replacing entry brings its own settings (agents, launch) and takes the place
+after the inherited ones; an inherited skill or subagent entry that names several things only
+loses the ones the child names. Of two bases, the later one wins.
 
 skillz records what each entry added (`~/.config/skillz/applied.json`, per project and per
 `CLAUDE_CONFIG_DIR`/`CODEX_HOME`), so swapping or unloading removes exactly that and never

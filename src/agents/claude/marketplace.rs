@@ -20,6 +20,7 @@ pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> 
         .filter(|i| split_plugin_id(&i.id).1 == m.name)
         .collect();
     Augmentation {
+        hooks: Vec::new(),
         id: format!("marketplace:claude:{}", m.name),
         name: m.name.clone(),
         kind: Kind::Marketplace,

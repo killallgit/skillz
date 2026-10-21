@@ -214,6 +214,7 @@ mod tests {
         children: &[&str],
     ) -> Augmentation {
         Augmentation {
+            hooks: Vec::new(),
             id: format!("{kind}:{name}"),
             name: name.into(),
             kind,

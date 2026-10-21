@@ -53,6 +53,7 @@ fn group_entries(entries: Vec<HookEntry>) -> BTreeMap<String, Vec<HookEntry>> {
 
 fn augmentation(source: &Source, name: String, entries: &[HookEntry]) -> Augmentation {
     Augmentation {
+        hooks: entries.to_vec(),
         id: format!("hook:{}:{}", source.file.display(), name),
         kind: Kind::Hook,
         agents: vec![source.agent],
@@ -139,6 +140,7 @@ mod tests {
         assert_eq!(rtk.group, format!("{} hooks", Agent::Codex));
         assert_eq!(rtk.source, None);
         assert_eq!(rtk.children.len(), 3);
+        assert_eq!(rtk.hooks.len(), 3);
         let remove = |event: &str| Action::Edit {
             file: file.clone(),
             edit: Edit::RemoveHook {

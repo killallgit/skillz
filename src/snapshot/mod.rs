@@ -147,6 +147,7 @@ mod tests {
         agents: &[Agent],
     ) -> Augmentation {
         Augmentation {
+            hooks: Vec::new(),
             id: format!("{kind}:{name}:{agents:?}"),
             name: name.into(),
             kind,
@@ -286,12 +287,18 @@ mod tests {
     }
 
     #[test]
-    fn hooks_are_read_back_from_their_children_and_merged_across_agents() {
+    fn hooks_are_read_from_typed_data_and_merged_across_agents() {
+        let handler =
+            |event: &str, matcher: Option<&str>, command: &str| crate::hook_text::HookEntry {
+                event: event.into(),
+                matcher: matcher.map(String::from),
+                command: command.into(),
+            };
         let hook = |agent: Agent| {
             let mut i = item("fmt", Kind::Hook, Installer::Local, "hooks", None, &[agent]);
-            i.children = vec![
-                "PostToolUse [Edit]: cargo fmt".into(),
-                "Stop: notify: done".into(),
+            i.hooks = vec![
+                handler("PostToolUse", Some("Edit"), "cargo fmt"),
+                handler("Stop", None, "notify: done"),
             ];
             i
         };
@@ -315,6 +322,24 @@ mod tests {
             ]
         );
         assert!(snap.skipped.is_empty());
+    }
+
+    #[test]
+    fn a_matcher_containing_a_colon_survives_the_snapshot() {
+        let mut i = item("fmt", Kind::Hook, Installer::Local, "hooks", None, &both());
+        i.hooks = vec![crate::hook_text::HookEntry {
+            event: "PreToolUse".into(),
+            matcher: Some("mcp__a: b".into()),
+            command: "run".into(),
+        }];
+
+        let snap = snapshot("p", &[i]);
+
+        // Assert the matcher is kept whole.
+        assert!(matches!(
+            &snap.profile.entries[0],
+            Entry::Hook { matcher: Some(m), .. } if m == "mcp__a: b"
+        ));
     }
 
     #[test]

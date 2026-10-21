@@ -17,7 +17,8 @@ use crate::env::Env;
 use crate::model::Scope;
 use crate::profile;
 
-pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> anyhow::Result<()> {
+/// Returns the exit code of the command.
+pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> anyhow::Result<i32> {
     profile::check_name(&args.profile)?;
     let (env, _) = resolve(deps, args.project.as_deref(), false)?;
     let isolated = isolated_env(&env, &args.profile);
@@ -71,13 +72,9 @@ fn launch(
     runner: &dyn crate::runner::CommandRunner,
     command: &[String],
     env: &Env,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<i32> {
     let (program, args) = command.split_first().context("no command to run")?;
-    anyhow::ensure!(
-        runner.launch(program, args, &env.project)?,
-        "`{program}` failed"
-    );
-    Ok(())
+    runner.launch(program, args, &env.project)
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use super::deps::Deps;
+use super::notice::Notice;
 use super::profile::save_profile;
 use super::scope::{installed, project_env};
 use super::screen::screen_model;
@@ -24,7 +25,7 @@ enum Flow {
 /// An action's result: whether to carry on, and what to tell the user in the footer.
 struct Reply {
     flow: Flow,
-    notice: Option<String>,
+    notice: Option<Notice>,
 }
 
 impl Reply {
@@ -35,7 +36,7 @@ impl Reply {
         }
     }
 
-    fn said(notice: String) -> Self {
+    fn said(notice: Notice) -> Self {
         Reply {
             flow: Flow::Stay,
             notice: Some(notice),
@@ -76,7 +77,7 @@ pub fn workspace(deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
                 flow: Flow::Leave, ..
             }) => return Ok(()),
             Ok(reply) => notice = reply.notice,
-            Err(e) => notice = Some(format!("{e:#}")),
+            Err(e) => notice = Some(Notice::Failed(format!("{e:#}"))),
         }
     }
 }
@@ -159,11 +160,11 @@ impl Session<'_, '_> {
         };
         let items = installed(self.deps, &project_env(self.deps, &dir), Scope::Project);
         let snap = save_profile(&self.store, &items, &name, false)?;
-        Ok(Reply::said(format!(
-            "saved {name}: {} entries, {} not reproducible",
-            snap.profile.entries.len(),
-            snap.skipped.len()
-        )))
+        Ok(Reply::said(Notice::Saved {
+            name,
+            entries: snap.profile.entries.len(),
+            skipped: snap.skipped.iter().map(|s| s.reason).collect(),
+        }))
     }
 
     fn delete_profile(&self, i: usize) -> anyhow::Result<Reply> {
@@ -192,7 +193,7 @@ impl Session<'_, '_> {
         p.entries
             .extend(picked.into_iter().map(|i| offered[i].clone()));
         self.store.save(&p)?;
-        Ok(Reply::said(format!("added {added} entries to {name}")))
+        Ok(Reply::said(Notice::Added { name, count: added }))
     }
 
     fn remove_entries(&self, profile: usize) -> anyhow::Result<Reply> {
@@ -207,10 +208,10 @@ impl Session<'_, '_> {
             !picked.contains(&(index - 1))
         });
         self.store.save(&p)?;
-        Ok(Reply::said(format!(
-            "removed {} entries from {name}",
-            picked.len()
-        )))
+        Ok(Reply::said(Notice::Removed {
+            name,
+            count: picked.len(),
+        }))
     }
 
     fn add_typed(&self, profile: usize, spec: &str) -> anyhow::Result<Reply> {

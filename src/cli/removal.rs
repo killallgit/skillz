@@ -186,6 +186,7 @@ mod tests {
 
     fn item(name: &str, kind: Kind, group: &str) -> Augmentation {
         Augmentation {
+            hooks: Vec::new(),
             id: format!("{kind}:{name}"),
             name: name.into(),
             kind,

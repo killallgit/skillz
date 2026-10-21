@@ -75,6 +75,7 @@ fn server_augmentation(
                 edit: Edit::JsonRemoveKey { path: key },
             });
             Augmentation {
+                hooks: Vec::new(),
                 id: format!("mcp:claude:{scope}:{claude_scope}:{}", server.name),
                 name: server.name.clone(),
                 kind: Kind::Mcp,

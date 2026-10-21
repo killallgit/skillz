@@ -3,6 +3,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::action::Action;
+use crate::hook_text::HookEntry;
 
 /// A coding agent whose harness we manage. Add a variant + an adapter in `agents/` to extend.
 #[derive(
@@ -78,6 +79,9 @@ pub struct Augmentation {
     pub installer: Installer,
     /// Display-only contents (a plugin's skills, a hook group's commands).
     pub children: Vec<String>,
+    /// The handlers of a hook group as data; `children` only shows them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hooks: Vec<HookEntry>,
     /// Steps that remove this item completely. `execute` commits every `Edit` first (all or
     /// none), then runs each `RemovePath` in plan order.
     pub removal: Vec<Action>,
@@ -157,6 +161,7 @@ mod tests {
 
     fn item(source: Option<&str>) -> Augmentation {
         Augmentation {
+            hooks: Vec::new(),
             id: "skill:a".into(),
             name: "a".into(),
             kind: Kind::Skill,

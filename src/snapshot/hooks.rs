@@ -7,7 +7,7 @@ use crate::profile::Entry;
 /// One hook handler: event, matcher, command.
 type HookKey = (String, Option<String>, String);
 
-/// Hook handlers read back from the `event [matcher]: command` children of a hook group.
+/// Hook handlers carried by hook groups.
 #[derive(Default)]
 pub(super) struct Hooks(BTreeMap<HookKey, Vec<Agent>>);
 
@@ -16,16 +16,18 @@ impl Collector for Hooks {
         if item.kind != Kind::Hook {
             return Accept::Pass;
         }
-        let keys: Option<Vec<HookKey>> = item.children.iter().map(|c| parse_child(c)).collect();
-        match keys.filter(|k| !k.is_empty()) {
-            Some(keys) => {
-                for key in keys {
-                    merge_agents(self.0.entry(key).or_default(), agents.clone());
-                }
-                Accept::Taken
-            }
-            None => Accept::Skipped(Skipped::new(item, Reason::Unreadable)),
+        if item.hooks.is_empty() {
+            return Accept::Skipped(Skipped::new(item, Reason::Unreadable));
         }
+        for hook in &item.hooks {
+            let key = (
+                hook.event.clone(),
+                hook.matcher.clone(),
+                hook.command.clone(),
+            );
+            merge_agents(self.0.entry(key).or_default(), agents.clone());
+        }
+        Accept::Taken
     }
 
     fn finish(&mut self, default: &[Agent]) -> Vec<Entry> {
@@ -39,13 +41,4 @@ impl Collector for Hooks {
             })
             .collect()
     }
-}
-
-fn parse_child(child: &str) -> Option<HookKey> {
-    let (head, command) = child.split_once(": ")?;
-    let (event, matcher) = match head.split_once(" [") {
-        Some((event, rest)) => (event, Some(rest.strip_suffix(']')?.to_string())),
-        None => (head, None),
-    };
-    Some((event.to_string(), matcher, command.to_string()))
 }

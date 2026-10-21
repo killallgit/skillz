@@ -33,6 +33,7 @@ pub(super) fn plugins(
 fn plugin(env: &Env, scope: Scope, install: &Install, markets: &[Marketplace]) -> Augmentation {
     let (_, mp) = split_plugin_id(&install.id);
     Augmentation {
+        hooks: Vec::new(),
         id: format!("plugin:claude:{scope}:{}", install.id),
         name: install.id.clone(),
         kind: Kind::Plugin,

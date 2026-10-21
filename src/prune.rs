@@ -80,6 +80,7 @@ mod tests {
         skills: &[&str],
     ) -> Augmentation {
         Augmentation {
+            hooks: Vec::new(),
             id: format!("{kind}:{scope}:{name}"),
             name: name.into(),
             kind,
