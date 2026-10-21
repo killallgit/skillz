@@ -4,10 +4,11 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use serde_json::Value;
 
-use super::json::{edit_json, remove_array_items, remove_json_key};
+use super::json::{remove_array_items, remove_json_key};
 use super::toml::toml_remove_key;
 use super::{Action, Edit};
-use crate::hooks::{self, Format};
+use crate::hook_text::{self, Format};
+use crate::json_edit::edit_json;
 
 /// Apply `edit` to `contents` of `file` (whose extension picks the format where the edit
 /// depends on it). The result is guaranteed to parse in the same format.
@@ -19,15 +20,15 @@ pub fn apply_edit(file: &Path, edit: &Edit, contents: &str) -> anyhow::Result<St
             matcher,
             command,
         } => {
-            let hook = hooks::HookEntry {
+            let hook = hook_text::HookEntry {
                 event: event.clone(),
                 matcher: matcher.clone(),
                 command: command.clone(),
             };
-            hooks::add_hook(contents, Format::of(file), &hook)
+            hook_text::add_hook(contents, Format::of(file), &hook)
         }
         Edit::RemoveHook { event, command } => {
-            hooks::remove_hook(contents, Format::of(file), event, command)
+            hook_text::remove_hook(contents, Format::of(file), event, command)
         }
         Edit::JsonRemoveKey { path } => edit_json(contents, |doc| remove_json_key(doc, path)),
         Edit::JsonRemoveArrayItems { path, fields } => {

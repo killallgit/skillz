@@ -4,7 +4,7 @@ use anyhow::bail;
 use serde_json::{Map, Value, json};
 
 use super::{Format, HookEntry};
-use crate::action::edit_json;
+use crate::json_edit::edit_json;
 
 /// Add `hook` to the nested JSON layout (Claude and Codex `hooks.json`/settings): under its
 /// event, in the group with the same matcher, creating what is missing. A handler that is
@@ -78,7 +78,7 @@ fn handler(command: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hooks::parse;
+    use crate::hook_text::parse;
 
     fn hook(event: &str, matcher: Option<&str>, command: &str) -> HookEntry {
         HookEntry {

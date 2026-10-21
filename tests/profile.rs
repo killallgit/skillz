@@ -161,19 +161,19 @@ fn saving_snapshots_the_installed_skill_with_its_source() {
 
     let entries = w.profile("mine").entries;
 
-    assert!(matches!(
-        entries.as_slice(),
-        [Entry::Skill { source, names, .. }] if source == "mattpocock/skills" && names == &["tdd"]
-    ));
+    assert!(entries.iter().any(|e| matches!(
+        e,
+        Entry::Skill { source, names, .. } if source == "mattpocock/skills" && names == &["tdd"]
+    )));
 }
 
 #[test]
-fn saving_leaves_out_hooks_which_cannot_be_reproduced() {
+fn saving_snapshots_the_installed_hooks() {
     let (w, _) = saved_profile();
 
     let entries = w.profile("mine").entries;
 
-    assert!(entries.iter().all(|e| matches!(e, Entry::Skill { .. })));
+    assert!(entries.iter().any(|e| matches!(e, Entry::Hook { .. })));
 }
 
 #[test]

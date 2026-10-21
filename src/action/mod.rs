@@ -17,7 +17,6 @@ use serde_json::Value;
 
 pub use edit::apply_edit;
 pub use execute::{execute, execute_with};
-pub(crate) use json::edit_json;
 pub use removal_target::RemovalTarget;
 
 /// A single side effect of changing what is installed: removing an augmentation, or (from a
@@ -116,7 +115,7 @@ impl Action {
 #[serde(rename_all = "snake_case")]
 pub enum Edit {
     /// Remove every hook handler under `event` whose command equals `command`, in whichever
-    /// layout the file uses (`hooks::remove_hook`). Prunes emptied groups and events.
+    /// layout the file uses (`hook_text::remove_hook`). Prunes emptied groups and events.
     RemoveHook { event: String, command: String },
     /// Remove the object key at `path` (e.g. `["enabledPlugins", "x@y"]`). No-op if absent.
     JsonRemoveKey { path: Vec<String> },
