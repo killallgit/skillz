@@ -246,7 +246,55 @@ fn plugin_removal(home: &Path, install: &Install) -> Vec<Action> {
             },
         }))
         .chain(plugin_dirs(home, &install.id))
+        .chain(leftovers(home, &install.id))
         .collect()
+}
+
+/// Files a plugin's own hooks wrote beside Claude's config (`~/.claude/.<name>-active`,
+/// `<name>-statusline.sh`, `plugins/store/<name>_<mp>-….json`) and that no uninstall knows
+/// about. Matched by name: the plugin name, then `-`, `_` or `.`. Gone with the plugin, and
+/// skipped when another installed plugin's longer name claims the file (`killall` vs
+/// `killall-agents`). Global installs only; names under 4 chars are too generic to match.
+fn leftovers(home: &Path, id: &str) -> Vec<Action> {
+    let Some((name, _)) = id.rsplit_once('@') else {
+        return vec![];
+    };
+    if name.len() < 4 {
+        return vec![];
+    }
+    let claims = |owner: &str, file: &str| {
+        let stem = file.trim_start_matches('.');
+        stem.strip_prefix(owner)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(['-', '_', '.']))
+    };
+    let rivals: Vec<String> = read_json(&installed_file(home))
+        .ok()
+        .and_then(|j| j.get("plugins").and_then(Value::as_object).cloned())
+        .map(|m| {
+            m.keys()
+                .filter_map(|k| k.rsplit_once('@').map(|(n, _)| n.to_string()))
+                .filter(|n| n.len() > name.len() && n.starts_with(name))
+                .collect()
+        })
+        .unwrap_or_default();
+    let base = home.join(".claude");
+    let mut found: Vec<Action> = [base.clone(), base.join("plugins/store")]
+        .iter()
+        .flat_map(|dir| {
+            dir_entries(dir).into_iter().filter_map(|path| {
+                let file = path.file_name()?.to_str()?.to_string();
+                let mine = claims(name, &file) && !rivals.iter().any(|r| claims(r, &file));
+                let target = mine.then(|| RemovalTarget::new(dir, [&file]))??;
+                Some(Action::RemovePathIfJsonAbsent {
+                    target,
+                    file: installed_file(home),
+                    key: vec!["plugins".into(), id.into()],
+                })
+            })
+        })
+        .collect();
+    found.sort_by_key(|a| format!("{a:?}"));
+    found
 }
 
 /// Selects the `plugins[id]` records that removing `install` drops: user scope is the global
@@ -1042,5 +1090,34 @@ mod tests {
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].0, "skill:tdd");
+    }
+
+    #[test]
+    fn leftovers_match_plugin_named_files_but_not_a_longer_plugin_s() {
+        let home = TempDir::new().unwrap();
+        let claude = home.path().join(".claude");
+        fs::create_dir_all(claude.join("plugins/store")).unwrap();
+        for f in [
+            ".killall-active",
+            "killall-modes",
+            "killall-agents-state",
+            "killallx",
+            "plugins/store/killall_mp-1.json",
+        ] {
+            fs::write(claude.join(f), "").unwrap();
+        }
+        fs::write(
+            claude.join("plugins/installed_plugins.json"),
+            json!({"plugins": {"killall@mp": [], "killall-agents@mp": []}}).to_string(),
+        )
+        .unwrap();
+        let names: Vec<String> = leftovers(home.path(), "killall@mp")
+            .iter()
+            .map(|a| format!("{a:?}"))
+            .collect();
+        let has = |f: &str| names.iter().any(|n| n.contains(f));
+        assert_eq!(names.len(), 3);
+        assert!(has(".killall-active") && has("killall-modes") && has("killall_mp-1.json"));
+        assert!(leftovers(home.path(), "ab@mp").is_empty());
     }
 }
