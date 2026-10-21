@@ -324,3 +324,25 @@ fn a_corrupt_ledger_stops_planning() {
 
     assert!(fx.applier().plan(None).is_err());
 }
+
+#[test]
+fn a_loaded_hook_lands_in_the_settings_and_unloading_takes_it_out_again() {
+    let fx = Fx::new();
+    let settings = fx.env.project.join(".claude/settings.local.json");
+    let mut p = Profile::new("notify");
+    p.entries.push(Entry::Hook {
+        event: "Stop".into(),
+        matcher: None,
+        command: "say done".into(),
+        agents: vec![Agent::Claude],
+    });
+    let runner = fx.npx();
+
+    fx.switch_to(Some(&p), &runner);
+    let loaded = fs::read_to_string(&settings).unwrap();
+    fx.switch_to(None, &runner);
+    let unloaded = fs::read_to_string(&settings).unwrap();
+
+    assert!(loaded.contains("say done"));
+    assert!(!unloaded.contains("say done"));
+}

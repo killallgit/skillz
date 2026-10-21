@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use super::AgentAdapter;
 use crate::action::Action;
 use crate::env::Env;
+use crate::hooks;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 use crate::npx_skills;
 use crate::profile::Entry;
@@ -85,6 +86,9 @@ impl AgentAdapter for Codex {
     /// way in for those.
     fn provision(&self, entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
         match entry {
+            Entry::Hook { .. } => {
+                hooks::provision(entry, env.codex_scope_dir(scope).join("hooks.json"))
+            }
             Entry::Mcp { .. } => mcp::provision(entry, scope, env),
             Entry::Subagent { .. } => {
                 let to = env.codex_scope_dir(scope).join("agents");

@@ -15,10 +15,19 @@ impl Entry {
                 name,
                 ..
             } => vec![source.as_str(), marketplace, name],
+            Entry::Hook { event, command, .. } => hook_args(event, command)?,
             Entry::Mcp { .. } => mcp_args(self)?,
         };
         ensure_plain(&args, self)
     }
+}
+
+fn hook_args<'a>(event: &'a str, command: &'a str) -> anyhow::Result<Vec<&'a str>> {
+    anyhow::ensure!(
+        !event.contains(char::is_whitespace),
+        "invalid hook event {event:?}"
+    );
+    Ok(vec![event, command])
 }
 
 fn sourced_args<'a>(source: &'a str, names: &'a [String]) -> anyhow::Result<Vec<&'a str>> {

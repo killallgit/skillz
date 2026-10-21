@@ -14,6 +14,18 @@ use crate::hooks::{self, Format};
 pub fn apply_edit(file: &Path, edit: &Edit, contents: &str) -> anyhow::Result<String> {
     match edit {
         Edit::TomlRemoveKey { path } => toml_remove_key(contents, path),
+        Edit::AddHook {
+            event,
+            matcher,
+            command,
+        } => {
+            let hook = hooks::HookEntry {
+                event: event.clone(),
+                matcher: matcher.clone(),
+                command: command.clone(),
+            };
+            hooks::add_hook(contents, Format::of(file), &hook)
+        }
         Edit::RemoveHook { event, command } => {
             hooks::remove_hook(contents, Format::of(file), event, command)
         }

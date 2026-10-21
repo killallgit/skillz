@@ -6,7 +6,7 @@ use super::edit::{FilePlan, plan_edits};
 use super::json::json_has;
 use super::removal_target::remove_path;
 use super::stage::{commit, discard, stage};
-use super::{Action, RemovalTarget, Report};
+use super::{Action, Edit, RemovalTarget, Report};
 use crate::runner::CommandRunner;
 
 /// Dedupe, run every `Run` in plan order (stopping at the first failure), then plan every
@@ -148,6 +148,7 @@ impl Execution<'_> {
     }
 
     fn edit_files(&mut self, actions: &[&Action]) -> anyhow::Result<()> {
+        create_missing_files(actions)?;
         let plans = plan_edits(actions, &mut *self.on_step)?;
         let edited = write_plans(&plans)?;
         self.report.edited.extend(edited);
@@ -190,6 +191,26 @@ fn write_plans(plans: &[FilePlan]) -> anyhow::Result<Vec<PathBuf>> {
     }
     commit(&staged)?;
     Ok(edited)
+}
+
+/// A hook can be added to a config that does not exist yet: start it as an empty JSON object.
+fn create_missing_files(actions: &[&Action]) -> anyhow::Result<()> {
+    for action in actions {
+        let Action::Edit {
+            file,
+            edit: Edit::AddHook { .. },
+        } = action
+        else {
+            continue;
+        };
+        if !file.exists() {
+            if let Some(dir) = file.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            std::fs::write(file, "{}\n")?;
+        }
+    }
+    Ok(())
 }
 
 fn removal_target(action: &Action) -> Option<&RemovalTarget> {

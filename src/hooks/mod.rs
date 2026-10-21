@@ -1,16 +1,20 @@
 //! Hook handlers in agent config files: reading, grouping by tool, and removing them.
 
+mod add;
 mod discover;
 mod group;
 mod layout;
+mod provision;
 #[cfg(test)]
 mod testutil;
 
 use std::path::Path;
 
+pub use add::add_hook;
 pub use discover::discover;
 pub use group::hook_group;
 pub use layout::{parse, remove_hook};
+pub use provision::provision;
 
 /// One hook handler as written in a hooks config file.
 #[derive(Debug, Clone, PartialEq, Eq)]

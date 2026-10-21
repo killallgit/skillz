@@ -36,6 +36,15 @@ pub enum Entry {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         agents: Vec<Agent>,
     },
+    /// A hook running `command` on `event`, for the tools matching `matcher` (all when absent).
+    Hook {
+        event: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        matcher: Option<String>,
+        command: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        agents: Vec<Agent>,
+    },
     /// An MCP server, launched by `command` or reached at `url`. Env vars and headers are
     /// secrets and cannot be part of a profile, so servers that need them are not supported.
     Mcp {
@@ -61,6 +70,7 @@ impl Entry {
             Entry::Skill { agents, .. }
             | Entry::Plugin { agents, .. }
             | Entry::Mcp { agents, .. }
+            | Entry::Hook { agents, .. }
             | Entry::Subagent { agents, .. } => agents,
         }
     }
@@ -70,6 +80,7 @@ impl Entry {
         let (Entry::Skill { agents, .. }
         | Entry::Plugin { agents, .. }
         | Entry::Mcp { agents, .. }
+        | Entry::Hook { agents, .. }
         | Entry::Subagent { agents, .. }) = &mut self;
         *agents = new;
         self
@@ -85,6 +96,7 @@ impl fmt::Display for Entry {
             Entry::Subagent { source, names, .. } => {
                 write!(f, "subagents {} [{source}]", names.join(","))
             }
+            Entry::Hook { event, command, .. } => write!(f, "hook {event} [{command}]"),
             Entry::Plugin {
                 marketplace, name, ..
             } => write!(f, "plugin {name}@{marketplace}"),

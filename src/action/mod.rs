@@ -105,7 +105,7 @@ impl Action {
                 key.join(".")
             ),
             Action::Edit { file, edit } => {
-                format!("edit {} (remove {})", file.display(), edit.describe())
+                format!("edit {} ({})", file.display(), edit.describe())
             }
         }
     }
@@ -126,6 +126,13 @@ pub enum Edit {
         path: Vec<String>,
         fields: Vec<(String, Value)>,
     },
+    /// Add a hook handler under `event` (in the group with the same `matcher`), creating the
+    /// file and whatever is missing in it. A handler that is already there stays as it is.
+    AddHook {
+        event: String,
+        matcher: Option<String>,
+        command: String,
+    },
     /// Remove the TOML key/table at `path` (e.g. `["plugins", "x@y"]`), keeping formatting.
     TomlRemoveKey { path: Vec<String> },
 }
@@ -133,11 +140,14 @@ pub enum Edit {
 impl Edit {
     fn describe(&self) -> String {
         match self {
-            Edit::RemoveHook { event, command } => format!("hook {event}: {command}"),
-            Edit::JsonRemoveKey { path } | Edit::TomlRemoveKey { path } => path.join("."),
+            Edit::RemoveHook { event, command } => format!("remove hook {event}: {command}"),
+            Edit::AddHook { event, command, .. } => format!("add hook {event}: {command}"),
+            Edit::JsonRemoveKey { path } | Edit::TomlRemoveKey { path } => {
+                format!("remove {}", path.join("."))
+            }
             Edit::JsonRemoveArrayItems { path, fields } => {
                 let when: Vec<String> = fields.iter().map(|(k, v)| format!("{k}={v}")).collect();
-                format!("{}[{}]", path.join("."), when.join(","))
+                format!("remove {}[{}]", path.join("."), when.join(","))
             }
         }
     }

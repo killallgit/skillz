@@ -4,7 +4,7 @@ use super::Entry;
 
 impl Entry {
     /// `skill SOURCE NAME[,NAME...]`, `subagent SOURCE NAME[,NAME...]`,
-    /// `plugin SOURCE MARKETPLACE NAME` or `mcp NAME COMMAND|URL [ARGS...]`. It uses the
+    /// `plugin SOURCE MARKETPLACE NAME`, `hook EVENT COMMAND...` or `mcp NAME COMMAND|URL [ARGS...]`. It uses the
     /// profile's agents.
     pub fn parse_spec(spec: &str) -> anyhow::Result<Entry> {
         let words: Vec<&str> = spec.split_whitespace().collect();
@@ -25,9 +25,15 @@ impl Entry {
                 name: name.to_string(),
                 agents: vec![],
             },
+            ["hook", event, command @ ..] if !command.is_empty() => Entry::Hook {
+                event: event.to_string(),
+                matcher: None,
+                command: command.join(" "),
+                agents: vec![],
+            },
             ["mcp", name, target, rest @ ..] => mcp_entry(name, target, rest),
             _ => anyhow::bail!(
-                "expected `skill SOURCE NAMES`, `subagent SOURCE NAMES`, `plugin SOURCE MARKETPLACE NAME` or `mcp NAME COMMAND|URL [ARGS]`"
+                "expected `skill SOURCE NAMES`, `subagent SOURCE NAMES`, `plugin SOURCE MARKETPLACE NAME`, `hook EVENT COMMAND` or `mcp NAME COMMAND|URL [ARGS]`"
             ),
         };
         entry.validate()?;
@@ -116,7 +122,7 @@ mod tests {
             "skill o/r ,",
             "skill -g a",
             "plugin o/mp mp",
-            "hook x y",
+            "hook x",
         ];
 
         for line in bad {

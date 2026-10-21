@@ -31,6 +31,14 @@ pub(super) fn agents_dir(env: &Env, scope: Scope) -> PathBuf {
     }
 }
 
+/// Where a profile's hooks go: the global settings, or the project's personal (uncommitted) ones.
+pub(super) fn hook_settings(env: &Env, scope: Scope) -> PathBuf {
+    match scope {
+        Scope::Global => env.claude_dir().join("settings.json"),
+        Scope::Project => env.project.join(".claude/settings.local.json"),
+    }
+}
+
 pub(super) fn settings_files(env: &Env, scope: Scope) -> Vec<PathBuf> {
     match scope {
         Scope::Global => global_settings(&env.claude_dir()),

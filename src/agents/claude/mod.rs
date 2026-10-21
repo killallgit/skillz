@@ -14,12 +14,15 @@ use std::path::PathBuf;
 use super::{AgentAdapter, PluginInstall, PluginOutcome};
 use crate::action::Action;
 use crate::env::Env;
+use crate::hooks;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 use crate::profile::Entry;
 use crate::runner::CommandRunner;
 use crate::subagents;
 use context::parse_context;
-use files::{agents_dir, installed_file, marketplaces_file, read_json, settings_files};
+use files::{
+    agents_dir, hook_settings, installed_file, marketplaces_file, read_json, settings_files,
+};
 use records::{installs_from, marketplaces_from};
 
 pub struct Claude;
@@ -91,6 +94,7 @@ impl AgentAdapter for Claude {
 
     fn provision(&self, entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
         match entry {
+            Entry::Hook { .. } => hooks::provision(entry, hook_settings(env, scope)),
             Entry::Mcp { .. } => mcp::provision(entry, scope, env),
             Entry::Subagent { .. } => {
                 subagents::provision(entry, agents_dir(env, scope), "md", env)

@@ -54,7 +54,7 @@ the selected project (the plan is shown and confirmed first), `u` unloads a proj
 `a` adds a project, `n` creates an empty profile, `s` saves what the project has installed as a
 profile, `d` deletes, `q` quits. On a profile: `i` adds items the selected project has installed,
 `t` types an entry (`skill SOURCE NAMES`, `plugin SOURCE MARKETPLACE NAME` or
-`mcp NAME COMMAND|URL [ARGS]` or `subagent SOURCE NAMES`), `r` removes entries.
+`mcp NAME COMMAND|URL [ARGS]`, `hook EVENT COMMAND` or `subagent SOURCE NAMES`), `r` removes entries.
 
 The same from the command line:
 
