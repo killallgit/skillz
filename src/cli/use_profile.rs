@@ -1,10 +1,13 @@
 use std::io::Write;
 
-use anyhow::bail;
+use anyhow::{Context, bail};
 
 use super::deps::Deps;
+use super::recording::record_since;
+use super::scope::installed;
 use crate::env::Env;
 use crate::model::Scope;
+use crate::store::Store;
 use crate::{apply, profile, remove, spinner};
 
 /// Where a profile is loaded: one scope of one project's environment.
@@ -45,7 +48,12 @@ pub(super) fn use_profile(
         writeln!(out, "aborted")?;
         return Ok(());
     }
-    let done = execute(deps, &applier, &switch)?;
+    let store = Store::in_env(target.env);
+    let before = installed(deps, target.env, target.scope);
+    let done = execute(deps, &applier, &switch);
+    let recorded = record_since(deps, &store, (target.env, target.scope), &before);
+    let done = done?;
+    recorded.context("installed, but the library was not updated")?;
     report(out, &switch, &done)
 }
 
@@ -131,4 +139,44 @@ fn report(out: &mut dyn Write, switch: &apply::Switch, done: &apply::Done) -> an
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agents::registry;
+    use crate::install::test_support::{FakeNpx, LOCKED_LINK, ScriptedPrompter};
+    use crate::profile::{Entry, Profile};
+
+    #[test]
+    fn using_a_profile_records_what_it_installed_in_the_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::new(dir.path().into(), dir.path().into());
+        let mut profile = Profile::new("web");
+        profile.agents = vec![crate::model::Agent::Claude];
+        profile.entries = vec![Entry::Skill {
+            source: "o/r".into(),
+            names: vec!["tdd".into()],
+            agents: vec![],
+        }];
+        profile::Store::in_env(&env).save(&profile).unwrap();
+        let (runner, prompter) = (FakeNpx::new(), ScriptedPrompter::new(&[], true));
+        let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+        let target = Target {
+            env: &env,
+            scope: Scope::Project,
+        };
+        let switching = Switching {
+            profile: "web",
+            exact: false,
+            dry_run: false,
+        };
+
+        use_profile(&deps, &target, &switching, &mut Vec::new()).unwrap();
+
+        // Assert the library holds the skill with the link npx locked.
+        let items = Store::in_env(&env).read().unwrap().items;
+        let provenance = items.items()[0].provenance.clone().unwrap();
+        assert_eq!(provenance.link.as_deref(), Some(LOCKED_LINK));
+    }
 }

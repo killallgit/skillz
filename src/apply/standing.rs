@@ -146,6 +146,7 @@ mod tests {
             group: "g".into(),
             source: source.map(Into::into),
             installer: Installer::Npx,
+            origin: Default::default(),
             children: vec![],
             removal: vec![],
         }

@@ -255,6 +255,7 @@ mod tests {
             project: None,
             scope: "user".into(),
             install_path: None,
+            version: None,
         };
         let local = Install {
             project: Some(PathBuf::from("/proj")),

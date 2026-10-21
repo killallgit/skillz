@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::provenance::Provenance;
 use crate::model::Kind;
 use crate::profile::{Entry, same_thing};
 
@@ -51,6 +52,8 @@ impl ItemKind {
 pub struct LibraryItem {
     pub label: String,
     pub entry: Entry,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Provenance>,
 }
 
 impl LibraryItem {
@@ -58,6 +61,14 @@ impl LibraryItem {
         LibraryItem {
             label: label.into(),
             entry,
+            provenance: None,
+        }
+    }
+
+    pub fn with_provenance(self, provenance: Provenance) -> Self {
+        LibraryItem {
+            provenance: Some(provenance),
+            ..self
         }
     }
 

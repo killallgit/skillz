@@ -136,6 +136,7 @@ pub(super) mod tests {
             group: source.unwrap_or("local").into(),
             source: source.map(Into::into),
             installer: Installer::Npx,
+            origin: Default::default(),
             children: vec![],
             removal: vec![],
         }

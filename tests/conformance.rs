@@ -55,6 +55,7 @@ impl AgentAdapter for Fake {
             group: "mp".into(),
             source: None,
             installer: Installer::Local,
+            origin: Default::default(),
             children: vec![format!("{SKILL_CHILD}dup")],
             removal: vec![Action::RemovePath(
                 RemovalTarget::new(&root, [PLUGIN]).unwrap(),

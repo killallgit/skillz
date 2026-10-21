@@ -93,7 +93,7 @@ fn saved_profile() -> (World, String) {
     let w = world_with_project_setup();
     let (r, p) = (Recorder::default(), Scripted::yes());
     run_quiet(save(false), &deps(&w, &r, &p)).unwrap();
-    let text = std::fs::read_to_string(w.skillz_dir().join("profiles/mine.toml")).unwrap();
+    let text = w.profile("mine").to_text().unwrap();
     (w, text)
 }
 
@@ -166,6 +166,37 @@ fn profile_show_prints_the_stored_toml() {
     let out = run_captured(show, &deps(&w, &r, &p));
 
     assert_eq!(String::from_utf8(out).unwrap(), text);
+}
+
+#[test]
+fn a_shown_profile_can_be_imported_again() {
+    let (w, text) = saved_profile();
+    let (r, p) = (Recorder::default(), Scripted::yes());
+    let d = deps(&w, &r, &p);
+    let file = w.project.join("mine.toml");
+    std::fs::write(&file, &text).unwrap();
+    run_quiet(delete_mine(), &d).unwrap();
+
+    run_quiet(profile_cmd(ProfileCommand::Import { file }), &d).unwrap();
+
+    assert_eq!(w.profile("mine").to_text().unwrap(), text);
+}
+
+#[test]
+fn importing_a_file_that_is_not_a_valid_profile_stores_nothing() {
+    let w = world_with_web();
+    let (r, p) = (Recorder::default(), Scripted::yes());
+    let file = w.project.join("bad.toml");
+    std::fs::write(&file, "name = \"-bad\"").unwrap();
+    let before = w.profile_names();
+
+    let res = run_quiet(
+        profile_cmd(ProfileCommand::Import { file }),
+        &deps(&w, &r, &p),
+    );
+
+    assert!(res.is_err());
+    assert_eq!(w.profile_names(), before);
 }
 
 #[test]

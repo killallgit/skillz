@@ -7,11 +7,14 @@ use super::isolate::run_isolated;
 use super::list::{ListView, list};
 use super::profile::profile_command;
 use super::prune::prune;
+use super::recording::record_since;
 use super::removal::{UninstallRequest, reset, uninstall};
-use super::scope::{Scene, resolve, resolve_project, split_target};
+use super::scope::{Scene, installed, resolve, resolve_project, split_target};
 use super::use_profile::{Switching, Target, use_profile};
 use crate::install::{self, InstallRequest, SkillSelection};
 use crate::model::Scope;
+use crate::store::Store;
+use anyhow::Context;
 
 /// Runs the command and returns the process exit code: the child's for `run`, else 0.
 pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<i32> {
@@ -105,7 +108,12 @@ fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
         runner: deps.runner,
         prompter: deps.prompter,
     };
-    install::install(&ctx, &request)
+    let store = Store::in_env(&env);
+    let before = installed(deps, &env, Scope::Project);
+    let result = install::install(&ctx, &request);
+    let recorded = record_since(deps, &store, (&env, Scope::Project), &before);
+    result?;
+    recorded.context("installed, but the library was not updated")
 }
 
 fn skill_selection(all: bool, skills: Vec<String>) -> SkillSelection {

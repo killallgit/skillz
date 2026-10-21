@@ -39,7 +39,8 @@ pub(super) fn run_change(
     let runner = FakeRunner::new(|_| {});
     let prompter = ScriptedPrompter::new(&[], approve);
     let deps = Deps::for_test(dir, registry(), (&runner, &prompter));
-    let result = change(&deps, dir, what);
+    let store = Store::in_env(&project_env(&deps, dir));
+    let result = change(&deps, &store, dir, what);
     (result, runner)
 }
 

@@ -220,6 +220,7 @@ mod tests {
             group: group.into(),
             source: None,
             installer: Installer::Local,
+            origin: Default::default(),
             children: vec![],
             removal: vec![],
         }

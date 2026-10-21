@@ -15,6 +15,7 @@ pub(super) struct Install {
     /// The entry's `scope` as `claude plugin uninstall --scope` spells it: user, project, local.
     pub(super) scope: String,
     pub(super) install_path: Option<PathBuf>,
+    pub(super) version: Option<String>,
 }
 
 /// One entry of `known_marketplaces.json`.
@@ -54,6 +55,7 @@ fn install_from(id: &str, entry: &Value) -> Option<Install> {
         project,
         scope: str_at(entry, "scope").unwrap_or("user").to_string(),
         install_path: str_at(entry, "installPath").map(PathBuf::from),
+        version: str_at(entry, "version").map(String::from),
     })
 }
 
@@ -99,6 +101,15 @@ mod tests {
         assert_eq!(ms[0].install_location, "");
         assert_eq!(ms[1].source, None);
         assert!(marketplaces_from(&json!([])).is_empty());
+    }
+
+    #[test]
+    fn an_install_carries_the_version_claude_recorded() {
+        let installs = installs_from(&json!({"plugins": {"x@y": [
+            {"scope": "user", "version": "1.2.3"}
+        ]}}));
+
+        assert_eq!(installs[0].version.as_deref(), Some("1.2.3"));
     }
 
     #[test]

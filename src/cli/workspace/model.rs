@@ -11,19 +11,19 @@ use crate::profile::{self, Profile};
 use crate::tui::workspace::Model;
 
 /// The snapshot to show next, with `notice` to toast; an unreadable library is shown empty and
-/// reported in its place.
+/// reported in its place, along with the profiles kept beside it.
 pub(super) fn snapshot(session: &Session, notice: Option<Notice>) -> anyhow::Result<Model> {
     let deps = session.deps;
     let env = project_env(deps, &session.project);
-    let (library, problem) = match session.library.load() {
-        Ok(catalog) => (catalog, None),
+    let (library, problem) = match session.store.read() {
+        Ok(document) => (document.items, None),
         Err(e) => (Catalog::default(), Some(Notice::Failed(format!("{e:#}")))),
     };
     Ok(Model {
         dir: short_path(&session.project, &deps.home),
         installed: installed(deps, &env, Scope::Project),
         library,
-        profiles: readable_profiles(&session.profiles)?,
+        profiles: readable_profiles(&session.profiles).unwrap_or_default(),
         notice: notice.or(problem).map(|n| n.to_string()),
     })
 }

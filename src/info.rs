@@ -110,6 +110,7 @@ mod tests {
             group: "mp".into(),
             source: Some("org/repo".into()),
             installer: Installer::ClaudeCli,
+            origin: Default::default(),
             children: (0..20).map(|i| format!("skill: s{i}")).collect(),
             removal: vec![
                 Action::native(

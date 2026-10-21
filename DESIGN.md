@@ -46,10 +46,10 @@ Top level (`src/`):
 | Module | Owns |
 | --- | --- |
 | `main`, `lib` | the binary calls `cli::main`; `lib` lists the modules |
-| `model` | `Agent`, `Kind` (marketplace, plugin, skill, hook, mcp, subagent), `Scope`, `Installer`, `Augmentation` |
-| `env` | `Env`: home, project, `CLAUDE_CONFIG_DIR`/`CODEX_HOME` redirects and the paths derived from them (`skillz_dir` = `~/.config/skillz`) |
+| `model` | `Agent`, `Kind` (marketplace, plugin, skill, hook, mcp, subagent), `Scope`, `Installer`, `Origin` (link, version), `Augmentation` |
+| `env` | `Env`: home, project, `CLAUDE_CONFIG_DIR`/`CODEX_HOME` redirects and the paths derived from them (`skillz_dir` = `~/.config/skillz`, `store_path` = `<skillz_dir>/store.json`) |
 | `matcher` | `fuzzy_rank` (substring first, then fuzzy), match positions, `pattern_matches` (glob) |
-| `npx_skills` | the npx `skills` format: store dir and lock path per scope, lock parsing (name -> source), `add` command line |
+| `npx_skills` | the npx `skills` format: store dir and lock path per scope, lock parsing (name -> `LockEntry`: source, `sourceUrl`, folder hash), `add` command line |
 | `usage` | merges each adapter's `usage()` records into last use per skill/plugin |
 | `cost` | always-on context tokens per skill/plugin, merged from each adapter's `context_costs()`; `list --json` adds `tokens` |
 | `prune` | pure checks: duplicate loose skills, never-used and 7+ days unused skills/plugins |
@@ -62,6 +62,7 @@ Top level (`src/`):
 | `fswalk` | the one recursive directory walk (skips `.git`, `node_modules`, `dist`, `build`, `target`, `__pycache__`; never follows symlinks) |
 | `json_edit` | parse, mutate, re-serialize JSON; an unchanged value returns the text verbatim |
 | `atomic` | `write_atomic`: temp file in the same directory, then rename |
+| `store` | the one global `store.json` (`Document`: `version`, `items`, `profiles`): `Store::read` and `Store::update` (read, change, atomic write under an advisory lock on `store.json.lock`); a file that does not parse, or has another version, is the typed `Corrupt` and is never written over |
 | `redact` | hides credentials in urls, command lines and text (userinfo, query strings, secret-named flags and `NAME=` pairs, `Bearer`); `credential_count` |
 | `runner` | `CommandRunner` trait (`run`, `run_quiet`, `launch`, `capture`, `with_envs`), `SystemRunner`, `run_checked` |
 | `spinner` | the one-line stderr status for non-TUI commands |
@@ -83,7 +84,8 @@ Directories:
 | `agents/codex` | `config` (project-config guards), `plugins`, `mcp`, `removal`, `usage` + `timestamp` (session logs) |
 | `agents/cursor` | skills and hooks only |
 | `install` | `skillz install`: `install()` dispatch, `InstallRequest`, `SkillSelection`; `source` (local path or clone, rejects empty/option-like sources), `skills` (scan, selection, npx `add`) |
-| `profile` | `Profile` (toml), `Entry` (skill, plugin, subagent, hook, mcp), `Store` of `<name>.toml` with `load_flat` for `extends`; `validate` (every value non-empty, not option-like), `spec` (the one-line typed form), `identity` (which entries are the same thing; `overlay`) |
+| `profile` | `Profile` (toml), `Entry` (skill, plugin, subagent, hook, mcp), `Store`, a facade over the `store` document, with `load_flat` for `extends`; `validate` (every value non-empty, not option-like), `spec` (the one-line typed form), `identity` (which entries are the same thing; `overlay`) |
+| `library` | `Catalog` of `LibraryItem`s (label, `Entry`, optional `Provenance`: link, engine = `Installer`, version, `recorded_at`); `import_installed` / `record_installed` turn installed `Augmentation`s into items with their `Origin`; `Catalog::installable` swaps a skill's source for its recorded link |
 | `snapshot` | installed items -> a `Profile` through one collector per kind (`skills`, `plugins`, `subagents`, `hooks`, `mcp`); what cannot be reinstalled comes back as `Skipped` with a `Reason` |
 | `apply` | `standing` (pure: `compare` a profile's entries with the inventory into present / missing / extras; `loaded` picks the matching profile), `Applier::plan` (`Switch`: present, installs, and with `exact` the removals), `Applier::run` (remove via `remove`, then run the install steps) |
 | `cli` | `args` (clap), `deps` (`Deps`), `scope` (scope and target rules), `run` (dispatch), one module per command group (`list`, `removal` for uninstall and reset, `prune`, `use_profile`, `isolate` for `run`, `profile`); the workspace side, a directory `workspace` (`mod` the loop, `model` the snapshot the tabs show, `perform`, `change` (plan, progress, result of one change), `plan_view`, `notice`); `cli::main` wires real dependencies |
@@ -153,9 +155,18 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
   Agent ids come from `Agent::npx_id`: claude -> `claude-code`, codex -> `codex`, cursor -> `cursor`.
 
 ### skillz's own files (`~/.config/skillz/`)
-- `profiles/<name>.toml`: a `Profile`: `description`, `extends`, `agents` (default
-  `["claude","codex"]`) and `[[entry]]` tables tagged by `kind` (`skill`, `plugin`, `subagent`,
-  `hook`, `mcp`), each with optional `agents`. Examples are in the README.
+- `store.json`: `{"version":1,"items":[{"label","entry","provenance"}],"profiles":[...]}`. An item's
+  `entry` and a profile's `entry` list use the profile `Entry` (tagged by `kind`: `skill`,
+  `plugin`, `subagent`, `hook`, `mcp`). A profile is `name`, `description`, `extends`, `agents`
+  (default `["claude","codex"]`) and `entry`; `skillz profile show` prints it as TOML (examples
+  in the README). `provenance` is `{"link","engine","version","recorded_at"}` and is absent for
+  items typed in. Where each value comes from: a skill's link and version are the lock entry's
+  `sourceUrl` and `skillFolderHash` (project lock: `computedHash`); a Claude plugin's link is its
+  marketplace source and its version is `installed_plugins.json` `version`; a Codex plugin's
+  version is the newest directory in its cache. Hooks, MCP servers and subagents carry the
+  installer only. Nothing can install a pinned revision: `npx skills add`, `claude plugin install`
+  and `codex plugin add` take no version or ref option, so the version is informational.
+- `store.json.lock`: the file the advisory lock is taken on.
 - `envs/<profile>/{claude,codex}`: the config dirs `skillz run` points the command at.
 - `.skillz-sources.json` inside an agent's `agents/` dir: `{"<file>": "<source>"}` for subagents
   skillz copied.
@@ -211,7 +222,10 @@ subagents). Removal uses this to pick the tool's own uninstall.
   `Change` (install an entry, remove an installed item, apply a profile), each a `Switch` from the
   same planner (additive only). `change` shows the plan screen, then progress, then the result
   (retry replans). One directory (cwd or `skillz PATH`) is the only project and nothing is stored
-  for it: the Project tab is derived from the native config, the library and the profiles.
+  for it: the Project tab is derived from the native config, the library and the profiles. After
+  each install (`install`, `use`, workspace changes) `cli::recording` adds the installed items
+  that are new or changed since before the run to the library, with their provenance; a picked
+  library item is installed from its recorded link (`Catalog::installable`).
 
 ## Removal semantics (complete removal, no backups)
 

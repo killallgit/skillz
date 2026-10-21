@@ -17,6 +17,7 @@ fn installed(name: &str) -> Augmentation {
         group: "o/r".into(),
         source: Some("o/r".into()),
         installer: Installer::Npx,
+        origin: Default::default(),
         children: vec![],
         removal: vec![],
     }

@@ -22,9 +22,19 @@ pub fn lock_path(env: &Env, scope: Scope) -> PathBuf {
     }
 }
 
-/// Skill name -> `source` from `{"skills": {"<name>": {"source": "org/repo"}}}`.
+/// What the lock records about one skill.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LockEntry {
+    pub source: String,
+    /// `sourceUrl`: where it can be fetched from again.
+    pub link: Option<String>,
+    /// `skillFolderHash` (project locks: `computedHash`): the content it was installed at.
+    pub hash: Option<String>,
+}
+
+/// Skill name -> lock entry from `{"skills": {"<name>": {"source": "org/repo", ...}}}`.
 /// Missing or corrupt lock files read as empty so skills are still discovered.
-pub fn read_lock(env: &Env, scope: Scope) -> BTreeMap<String, String> {
+pub fn read_lock(env: &Env, scope: Scope) -> BTreeMap<String, LockEntry> {
     let json: Value = fs::read_to_string(lock_path(env, scope))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
@@ -33,8 +43,17 @@ pub fn read_lock(env: &Env, scope: Scope) -> BTreeMap<String, String> {
         .and_then(Value::as_object)
         .into_iter()
         .flatten()
-        .filter_map(|(name, v)| Some((name.clone(), v.get("source")?.as_str()?.to_owned())))
+        .filter_map(|(name, v)| Some((name.clone(), lock_entry(v)?)))
         .collect()
+}
+
+fn lock_entry(value: &Value) -> Option<LockEntry> {
+    let text = |key: &str| value.get(key)?.as_str().map(str::to_owned);
+    Some(LockEntry {
+        source: text("source")?,
+        link: text("sourceUrl"),
+        hash: text("skillFolderHash").or_else(|| text("computedHash")),
+    })
 }
 
 /// JSON key path of `name`'s entry in the lock file.
@@ -143,6 +162,22 @@ mod tests {
     }
 
     #[test]
+    fn a_lock_entry_carries_its_link_and_content_hash() {
+        let global = serde_json::json!({"source": "o/r", "sourceUrl": "https://h/o/r.git", "skillFolderHash": "abc"});
+        let project = serde_json::json!({"source": "o/r", "computedHash": "def"});
+
+        assert_eq!(
+            lock_entry(&global),
+            Some(LockEntry {
+                source: "o/r".into(),
+                link: Some("https://h/o/r.git".into()),
+                hash: Some("abc".into())
+            })
+        );
+        assert_eq!(lock_entry(&project).unwrap().hash.as_deref(), Some("def"));
+    }
+
+    #[test]
     fn read_lock_keeps_string_sources_only() {
         let tmp = tempfile::tempdir().unwrap();
         let env = Env {
@@ -159,6 +194,7 @@ mod tests {
         )
         .unwrap();
         let lock = read_lock(&env, Scope::Project);
-        assert_eq!(lock, BTreeMap::from([("a".into(), "o/r".into())]));
+        assert_eq!(lock.keys().collect::<Vec<_>>(), ["a"]);
+        assert_eq!(lock["a"].source, "o/r");
     }
 }

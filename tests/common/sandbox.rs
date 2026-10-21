@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::{read_json, write};
+use super::read_json;
 
 pub struct Sandbox {
     pub _tmp: tempfile::TempDir,
@@ -48,10 +48,10 @@ impl Sandbox {
     }
 
     pub fn write_profile(&self, name: &str, text: &str) {
-        write(
-            &self.skillz_dir().join(format!("profiles/{name}.toml")),
-            text,
-        );
+        let profile = skillz::profile::Profile::parse(name, text).unwrap();
+        skillz::profile::Store::new(self.skillz_dir().join("store.json"))
+            .save(&profile)
+            .unwrap();
     }
 
     pub fn skillz(&self, args: &[&str]) -> std::process::Output {

@@ -2,12 +2,12 @@ use std::path::Path;
 
 use super::discover::Ctx;
 use super::entry::canonical_or;
-use crate::npx_skills;
+use crate::npx_skills::{self, LockEntry};
 
-/// A skill the npx lock claims: its name in the lock and where it came from.
+/// A skill the npx lock claims: its name in the lock and what the lock records of it.
 pub(super) struct Locked {
     pub name: String,
-    pub source: String,
+    pub entry: LockEntry,
 }
 
 /// npx keys its lock by the dir name in its store. With `--copy` it writes real dirs into
@@ -22,7 +22,7 @@ pub(super) fn lock_ownership(cx: &Ctx, canonical: &Path) -> Option<Locked> {
         .and_then(|n| {
             Some(Locked {
                 name: n.to_owned(),
-                source: cx.lock.get(n)?.clone(),
+                entry: cx.lock.get(n)?.clone(),
             })
         })
 }
@@ -43,6 +43,22 @@ mod tests {
     use crate::env::Env;
     use crate::model::{Agent, Installer, Scope};
     use std::path::Path;
+
+    #[test]
+    fn a_locked_skill_carries_its_link_and_content_hash() {
+        let f = fixture();
+        let canon = f.env.home.join(".agents/skills/tdd");
+        skill(&canon);
+        write_lock(
+            &f.env.home.join(".agents/.skill-lock.json"),
+            r#"{"skills":{"tdd":{"source":"o/r","sourceUrl":"https://h/o/r.git","skillFolderHash":"abc"}}}"#,
+        );
+
+        let augs = discover(&f.env, &global_dirs(&f.env)).unwrap();
+
+        assert_eq!(augs[0].origin.link.as_deref(), Some("https://h/o/r.git"));
+        assert_eq!(augs[0].origin.version.as_deref(), Some("abc"));
+    }
 
     #[test]
     fn lock_entry_belongs_to_the_store_dir_not_the_entry_name() {

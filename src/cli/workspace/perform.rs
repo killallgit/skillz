@@ -14,6 +14,7 @@ impl Session<'_, '_> {
             Act::Change { install, remove } => {
                 return change(
                     self.deps,
+                    &self.store,
                     &self.project,
                     &Change::Selection(&Selection { install, remove }),
                 );
@@ -30,6 +31,6 @@ impl Session<'_, '_> {
             }
             Act::DeleteProfile { name } => return self.delete_profile(name).map(Some),
         };
-        change(self.deps, &self.project, &what)
+        change(self.deps, &self.store, &self.project, &what)
     }
 }

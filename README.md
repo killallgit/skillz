@@ -23,7 +23,7 @@ is also a command.
 | `install` (`add`) | install skills with `npx skills`, or Claude plugins from a marketplace |
 | `use` | load a profile into a project (or globally), swapping out the one that is there |
 | `run` | run a command against one profile in config dirs of its own |
-| `profile` | `list` (`ls`), `show`, `save`, `delete` (`rm`) |
+| `profile` | `list` (`ls`), `show` (`export`), `import FILE`, `save`, `delete` (`rm`) |
 | `project` | `list` (`ls`), `add`, `remove` (`rm`) |
 
 Kind filters on `list`, `uninstall`, `reset` and `prune`: `--skills --hooks --plugins
@@ -64,8 +64,9 @@ start with `.`, `..` or `/` (`./sub`, not `sub`); any other word is a query.
 
 ## Profiles
 
-A profile is `~/.config/skillz/profiles/<name>.toml`. Names are letters, digits, `-`, `_` and `.`
-and do not start with `-` or `.`.
+A profile is kept in skillz's one global store, `~/.config/skillz/store.json`, next to the library
+(below). Names are letters, digits, `-`, `_` and `.` and do not start with `-` or `.`. The examples
+below are the TOML that `skillz profile show` prints.
 
 ```toml
 description = "frontend work"         # optional
@@ -142,7 +143,7 @@ skillz use web --exact           # also removes what `web` does not want (-y ski
 ```
 
 skillz works on one directory: the current one, or the one given with `-p PATH`. Profiles are
-global (`~/.config/skillz/profiles`); nothing about a project is stored.
+global (the store); nothing about a project is stored. A project's state is its own tool config.
 
 `profile save` keeps only what can be installed again: skills fetched by `npx skills` from a
 source, plugins whose marketplace has one, subagents with a recorded source, hooks, and MCP
@@ -157,6 +158,24 @@ shared with a wanted entry, such as a skill for two agents of which the profile 
 Which profile a project has loaded is never stored. A project matches a profile when nothing the
 profile wants is missing from the inventory; the Project tab compares the directory with the
 profile you choose.
+
+## The store and the library
+
+`~/.config/skillz/store.json` is the only file skillz keeps for itself (apart from the scratch
+config dirs `run` makes). It holds `version`, `items` (the library) and `profiles`. The library is
+every skill, plugin, MCP server, hook and subagent you have installed or typed in, so that
+anything installed once can be installed again from the Project tab. Each item records its
+provenance: the `link` it was fetched from, the `engine` that installed it, the `version` (a
+plugin version, or the content hash `npx skills` locked) and when it was `recorded_at`. Every
+successful `install`, `use` and workspace change adds what it installed; the Library tab's
+import adds everything already installed. Installing a skill again fetches it from its recorded
+link when there is one.
+
+The version is recorded and shown, not pinned: `npx skills add`, `claude plugin install` and
+`codex plugin add` have no option to install a given revision, so a reinstall gets the latest.
+
+The CLI and the workspace may write at the same time; every change is read, modified and written
+back under a lock. A store that cannot be parsed is reported and left untouched.
 
 ## Running one profile in isolation
 
@@ -186,7 +205,10 @@ at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
   (shown unchecked). A header shows the directory and how it compares with a profile you chose:
   matching, or `N missing` / `N extra`. Picked rows get their own marker and a `to install` /
   `to remove` note, and each group shows its count of picks.
-- **Library** and **Profiles**: placeholders for now.
+- **Library**: the items skillz knows about, with where each came from. The line under the list
+  shows the link, how it was installed (`npx skills`, `claude plugin`, `codex plugin`, `manual`
+  for items typed in) and the version or hash recorded.
+- **Profiles**: placeholder for now.
 
 | Key | Does |
 | --- | --- |

@@ -6,7 +6,9 @@ use super::config::{hook_state_keys, plugin_ids, str_field, table_keys};
 use super::removal::{native, toml_remove};
 use crate::action::{Action, RemovalTarget};
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope, split_plugin_id};
+use crate::model::{
+    Agent, Augmentation, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
+};
 use crate::profile::Entry;
 
 /// `codex plugin marketplace add` then `plugin add`; the user config only.
@@ -108,6 +110,11 @@ fn display_source(source: &str) -> String {
 
 fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
     let (name, mp) = split_plugin_id(id);
+    let source = cx
+        .marketplaces
+        .iter()
+        .find(|m| m.name == mp)
+        .and_then(|m| m.source.clone());
     Augmentation {
         hooks: Vec::new(),
         id: format!("plugin:codex:{}:{id}", cx.scope),
@@ -116,15 +123,27 @@ fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
         agents: vec![Agent::Codex],
         scope: cx.scope,
         group: mp.to_string(),
-        source: cx
-            .marketplaces
-            .iter()
-            .find(|m| m.name == mp)
-            .and_then(|m| m.source.clone()),
+        source: source.clone(),
         installer: Installer::CodexCli,
+        origin: Origin {
+            link: source,
+            version: cached_version(&cx.cache.join(mp).join(name)),
+        },
         children: plugin_children(&cx.cache.join(mp).join(name)),
         removal: plugin_removal(cx, id, keep_cache),
     }
+}
+
+/// The newest version directory Codex cached for a plugin.
+fn cached_version(plugin_cache: &Path) -> Option<String> {
+    let mut versions: Vec<String> = std::fs::read_dir(plugin_cache)
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+    versions.sort();
+    versions.pop()
 }
 
 fn plugin_removal(cx: &Cx, id: &str, keep_cache: bool) -> Vec<Action> {
@@ -159,6 +178,7 @@ fn marketplace(
         group: m.name.clone(),
         source: m.source.clone(),
         installer: Installer::CodexCli,
+        origin: Default::default(),
         children: own.iter().map(|p| p.name.clone()).collect(),
         removal: marketplace_removal(cx, m, &own, keep_cache),
     }

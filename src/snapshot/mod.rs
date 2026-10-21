@@ -149,6 +149,7 @@ mod tests {
             group: "local".into(),
             source: None,
             installer,
+            origin: Default::default(),
             children: vec![],
             removal: vec![],
         }

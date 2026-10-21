@@ -59,9 +59,14 @@ impl Env {
         }
     }
 
-    /// skillz's own config: the profiles and the dirs `run` keeps.
+    /// skillz's own config: the store and the dirs `run` keeps.
     pub fn skillz_dir(&self) -> PathBuf {
         self.home.join(".config/skillz")
+    }
+
+    /// The one global store of the library and the profiles.
+    pub fn store_path(&self) -> PathBuf {
+        self.skillz_dir().join("store.json")
     }
 
     pub fn root(&self, scope: Scope) -> &Path {

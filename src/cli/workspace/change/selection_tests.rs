@@ -126,8 +126,10 @@ fn one_failing_install_is_reported_and_the_others_still_run() {
     let prompter = ScriptedPrompter::new(&[], true);
     let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
 
+    let store = Store::in_env(&project_env(&deps, dir.path()));
     let result = change(
         &deps,
+        &store,
         dir.path(),
         &Change::Selection(&selection(&entries, &[])),
     );

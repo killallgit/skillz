@@ -177,8 +177,11 @@ pub enum ProfileCommand {
     /// List profiles
     #[command(visible_alias = "ls")]
     List,
-    /// Print a profile's file
+    /// Print a profile as TOML, to read or copy (`export`)
+    #[command(visible_alias = "export")]
     Show { name: String },
+    /// Store the profile in a TOML file printed by `show`, replacing one of the same name
+    Import { file: PathBuf },
     /// Save what is installed in the project as a profile
     Save {
         name: String,

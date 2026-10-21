@@ -6,6 +6,7 @@ mod isolate;
 mod list;
 mod profile;
 mod prune;
+mod recording;
 mod removal;
 mod run;
 mod scope;

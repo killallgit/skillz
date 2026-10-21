@@ -6,7 +6,7 @@ use crate::tui::widgets::outline::Shape;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Row {
     Section { kind: ItemKind, count: usize },
-    Item(LibraryItem),
+    Item(Box<LibraryItem>),
 }
 
 /// Every kind that has items, each followed by them, in preorder.
@@ -19,7 +19,9 @@ pub(super) fn build(catalog: &Catalog) -> Vec<Row> {
                 kind,
                 count: items.len(),
             };
-            let items = items.into_iter().map(|item| Row::Item(item.clone()));
+            let items = items
+                .into_iter()
+                .map(|item| Row::Item(Box::new(item.clone())));
             std::iter::once(section).chain(items)
         })
         .collect()

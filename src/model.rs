@@ -57,7 +57,7 @@ pub enum Scope {
 }
 
 /// What put an item there, so removal can use the same tool.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Installer {
     /// `npx skills add`: the skill has an entry in the scope's `.skill-lock.json`.
@@ -68,6 +68,15 @@ pub enum Installer {
     CodexCli,
     /// No tool recorded it: a skill or hook put there by hand or copied from a local path.
     Local,
+}
+
+/// Where an installed item was fetched from and which revision, as its installer recorded it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Origin {
+    /// A repository URL or path the item can be fetched from again.
+    pub link: Option<String>,
+    /// A plugin version or a content hash.
+    pub version: Option<String>,
 }
 
 /// One removable thing installed into an agent harness.
@@ -88,6 +97,7 @@ pub struct Augmentation {
     /// Where it came from, for display (e.g. `mattpocock/skills`).
     pub source: Option<String>,
     pub installer: Installer,
+    pub origin: Origin,
     /// Display-only contents (a plugin's skills, a hook group's commands).
     pub children: Vec<String>,
     /// The handlers of a hook group as data; `children` only shows them.
@@ -144,6 +154,17 @@ impl fmt::Display for Agent {
     }
 }
 
+impl fmt::Display for Installer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Installer::Npx => "npx skills",
+            Installer::ClaudeCli => "claude plugin",
+            Installer::CodexCli => "codex plugin",
+            Installer::Local => "manual",
+        })
+    }
+}
+
 impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -181,6 +202,7 @@ mod tests {
             group: "g".into(),
             source: source.map(Into::into),
             installer: Installer::Local,
+            origin: Origin::default(),
             children: vec![],
             removal: vec![],
         }

@@ -206,6 +206,7 @@ mod tests {
             group: "mcp".into(),
             source: None,
             installer: Installer::ClaudeCli,
+            origin: Default::default(),
             children: server.children(),
             removal: vec![],
         }
