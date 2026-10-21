@@ -41,6 +41,7 @@ fn server_augmentation(server: &Server, scope: Scope, config: &Path) -> Augmenta
         group: "mcp".into(),
         source: None,
         installer: Installer::CodexCli,
+        origin: Default::default(),
         children: server.children(),
         removal,
     }

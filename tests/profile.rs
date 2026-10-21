@@ -93,7 +93,7 @@ fn saved_profile() -> (World, String) {
     let w = world_with_project_setup();
     let (r, p) = (Recorder::default(), Scripted::yes());
     run_quiet(save(false), &deps(&w, &r, &p)).unwrap();
-    let text = std::fs::read_to_string(w.skillz_dir().join("profiles/mine.toml")).unwrap();
+    let text = w.profile("mine").to_text().unwrap();
     (w, text)
 }
 

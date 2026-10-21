@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use super::records::{Install, Marketplace, same_path};
 use super::removal::plugin_removal;
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope, split_plugin_id};
+use crate::model::{
+    Agent, Augmentation, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
+};
 
 /// One plugin augmentation per id among the installs belonging to `scope`.
 pub(super) fn plugins(
@@ -32,6 +34,10 @@ pub(super) fn plugins(
 
 fn plugin(env: &Env, scope: Scope, install: &Install, markets: &[Marketplace]) -> Augmentation {
     let (_, mp) = split_plugin_id(&install.id);
+    let source = markets
+        .iter()
+        .find(|m| m.name == mp)
+        .and_then(|m| m.source.clone());
     Augmentation {
         hooks: Vec::new(),
         id: format!("plugin:claude:{scope}:{}", install.id),
@@ -40,11 +46,12 @@ fn plugin(env: &Env, scope: Scope, install: &Install, markets: &[Marketplace]) -
         agents: vec![Agent::Claude],
         scope,
         group: mp.into(),
-        source: markets
-            .iter()
-            .find(|m| m.name == mp)
-            .and_then(|m| m.source.clone()),
+        source: source.clone(),
         installer: Installer::ClaudeCli,
+        origin: Origin {
+            link: source,
+            version: install.version.clone(),
+        },
         children: install
             .install_path
             .as_deref()

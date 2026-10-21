@@ -77,6 +77,7 @@ impl Scan<'_> {
             group: source.clone().unwrap_or_else(|| "local".into()),
             source,
             installer: Installer::Local,
+            origin: Default::default(),
             children: vec![format!("file: {file}")],
             removal: self.removal(&file),
         })

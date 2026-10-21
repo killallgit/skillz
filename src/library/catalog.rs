@@ -1,8 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 use super::item::{ItemKind, LibraryItem};
-use crate::profile::Entry;
+use crate::profile::{Entry, same_thing};
 
 /// The items of a library, in the order they were first added.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Vec<LibraryItem>", into = "Vec<LibraryItem>")]
 pub struct Catalog {
     items: Vec<LibraryItem>,
 }
@@ -19,10 +22,14 @@ impl Catalog {
         &self.items
     }
 
-    /// Replace the item that is the same thing in place, else append.
+    /// Replace the item that is the same thing in place, else append. An item without a
+    /// provenance keeps the one it replaces.
     pub fn add(&mut self, item: LibraryItem) {
         match self.items.iter_mut().find(|i| i.is_same_thing_as(&item)) {
-            Some(existing) => *existing = item,
+            Some(existing) => {
+                let provenance = item.provenance.or(existing.provenance.take());
+                *existing = LibraryItem { provenance, ..item };
+            }
             None => self.items.push(item),
         }
     }
@@ -32,6 +39,31 @@ impl Catalog {
         LibraryItem::each_of(entry)
             .into_iter()
             .for_each(|item| self.add(item));
+    }
+
+    /// The entry to install again: a skill is fetched from the link recorded when it was last
+    /// installed, when there is a usable one, else from the entry's own source.
+    pub fn installable(&self, entry: &Entry) -> Entry {
+        let link = self
+            .items
+            .iter()
+            .find(|i| same_thing(&i.entry, entry))
+            .and_then(|i| i.provenance.as_ref()?.link.clone());
+        match (entry, link) {
+            (Entry::Skill { names, agents, .. }, Some(source)) => {
+                let linked = Entry::Skill {
+                    source,
+                    names: names.clone(),
+                    agents: agents.clone(),
+                };
+                if linked.validate().is_ok() {
+                    linked
+                } else {
+                    entry.clone()
+                }
+            }
+            _ => entry.clone(),
+        }
     }
 
     /// Remove the item that is the same thing as `item`; whether there was one.
@@ -53,6 +85,18 @@ impl Catalog {
             }
         }
         groups
+    }
+}
+
+impl From<Vec<LibraryItem>> for Catalog {
+    fn from(items: Vec<LibraryItem>) -> Self {
+        Catalog::from_items(items)
+    }
+}
+
+impl From<Catalog> for Vec<LibraryItem> {
+    fn from(catalog: Catalog) -> Self {
+        catalog.items
     }
 }
 

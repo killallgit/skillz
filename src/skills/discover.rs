@@ -7,8 +7,8 @@ use super::ownership::{Locked, lock_ownership};
 use super::removal::{owned_roots, removal};
 use crate::action::Action;
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
-use crate::npx_skills;
+use crate::model::{Agent, Augmentation, Installer, Kind, Origin, Scope};
+use crate::npx_skills::{self, LockEntry};
 
 type Groups = BTreeMap<(Scope, PathBuf), Vec<Entry>>;
 
@@ -17,7 +17,7 @@ pub(super) struct Ctx<'a> {
     pub env: &'a Env,
     pub dirs: &'a [SkillDir],
     pub scope: Scope,
-    pub lock: &'a BTreeMap<String, String>,
+    pub lock: &'a BTreeMap<String, LockEntry>,
 }
 
 /// Installed skills across all `dirs`, deduplicated by canonical path.
@@ -65,7 +65,7 @@ fn global_targets(groups: &Groups) -> BTreeSet<&PathBuf> {
         .collect()
 }
 
-fn read_locks(env: &Env) -> BTreeMap<Scope, BTreeMap<String, String>> {
+fn read_locks(env: &Env) -> BTreeMap<Scope, BTreeMap<String, LockEntry>> {
     [Scope::Global, Scope::Project]
         .into_iter()
         .map(|s| (s, npx_skills::read_lock(env, s)))
@@ -75,7 +75,7 @@ fn read_locks(env: &Env) -> BTreeMap<Scope, BTreeMap<String, String>> {
 fn augmentation(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -> Augmentation {
     let locked = lock_ownership(cx, canonical);
     let agents = agents_of(entries);
-    let source = locked.as_ref().map(|l| l.source.clone());
+    let source = locked.as_ref().map(|l| l.entry.source.clone());
     let mut plan = removal_plan(cx, canonical, entries, locked.as_ref());
     plan.splice(0..0, native_uninstall(cx, locked.as_ref(), &agents));
     Augmentation {
@@ -88,6 +88,7 @@ fn augmentation(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -> 
         group: source.clone().unwrap_or_else(|| "local".into()),
         source,
         installer: installer_of(locked.as_ref()),
+        origin: origin_of(locked.as_ref()),
         children: vec![],
         removal: plan,
     }
@@ -107,6 +108,13 @@ fn agents_of(entries: &[Entry]) -> Vec<Agent> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+fn origin_of(locked: Option<&Locked>) -> Origin {
+    Origin {
+        link: locked.and_then(|l| l.entry.link.clone()),
+        version: locked.and_then(|l| l.entry.hash.clone()),
+    }
 }
 
 fn installer_of(locked: Option<&Locked>) -> Installer {

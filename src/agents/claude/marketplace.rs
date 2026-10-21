@@ -30,6 +30,7 @@ pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> 
         group: m.name.clone(),
         source: m.source.clone(),
         installer: Installer::ClaudeCli,
+        origin: Default::default(),
         children: plugin_names(&own),
         removal: marketplace_removal(claude, m, &own),
     }
@@ -339,6 +340,7 @@ mod tests {
             project: None,
             scope: "user".into(),
             install_path: None,
+            version: None,
         };
         let m = Marketplace {
             name: "mp".into(),

@@ -57,6 +57,7 @@ fn augmentation(source: &Source, name: String, entries: &[HookEntry]) -> Augment
         group: format!("{} hooks", source.agent),
         source: None,
         installer: Installer::Local,
+        origin: Default::default(),
         children: entries.iter().map(child_label).collect(),
         removal: removal_plan(source.file, entries),
         name,

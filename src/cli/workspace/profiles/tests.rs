@@ -5,15 +5,15 @@ use super::*;
 use crate::agents::registry;
 use crate::cli::deps::Deps;
 use crate::install::test_support::{FakeRunner, ScriptedPrompter};
-use crate::library;
 use crate::model::Agent;
 use crate::profile::{self, StillExtended};
+use crate::store;
 
 fn session<'a, 'd>(deps: &'a Deps<'d>, dir: &Path) -> Session<'a, 'd> {
     Session {
         deps,
-        profiles: profile::Store::new(dir.join("profiles")),
-        library: library::Store::new(dir.join("library.toml")),
+        profiles: profile::Store::new(dir.join("store.json")),
+        store: store::Store::new(dir.join("store.json")),
         project: dir.to_path_buf(),
     }
 }

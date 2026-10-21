@@ -1,10 +1,13 @@
 use std::io::Write;
 
-use anyhow::bail;
+use anyhow::{Context, bail};
 
 use super::deps::Deps;
+use super::recording::record_since;
+use super::scope::installed;
 use crate::env::Env;
 use crate::model::Scope;
+use crate::store::Store;
 use crate::{apply, profile, remove, spinner};
 
 /// Where a profile is loaded: one scope of one project's environment.
@@ -45,7 +48,12 @@ pub(super) fn use_profile(
         writeln!(out, "aborted")?;
         return Ok(());
     }
-    let done = execute(deps, &applier, &switch)?;
+    let store = Store::in_env(target.env);
+    let before = installed(deps, target.env, target.scope);
+    let done = execute(deps, &applier, &switch);
+    let recorded = record_since(deps, &store, (target.env, target.scope), &before);
+    let done = done?;
+    recorded.context("installed, but the library was not updated")?;
     report(out, &switch, &done)
 }
 

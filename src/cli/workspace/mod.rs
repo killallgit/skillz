@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 
 use super::deps::Deps;
 use super::scope::resolve_project;
-use crate::library;
 use crate::profile;
+use crate::store;
 use crate::tui::workspace::{Act, Workspace};
 use model::snapshot;
 use notice::Notice;
@@ -24,7 +24,7 @@ use notice::Notice;
 struct Session<'a, 'd> {
     deps: &'a Deps<'d>,
     profiles: profile::Store,
-    library: library::Store,
+    store: store::Store,
     project: PathBuf,
 }
 
@@ -37,7 +37,7 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
     let session = Session {
         deps,
         profiles: profile::Store::in_env(&env),
-        library: library::Store::in_env(&env),
+        store: store::Store::in_env(&env),
         project: env.project,
     };
     let mut screen = Workspace::standard();

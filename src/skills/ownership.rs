@@ -2,12 +2,12 @@ use std::path::Path;
 
 use super::discover::Ctx;
 use super::entry::canonical_or;
-use crate::npx_skills;
+use crate::npx_skills::{self, LockEntry};
 
-/// A skill the npx lock claims: its name in the lock and where it came from.
+/// A skill the npx lock claims: its name in the lock and what the lock records of it.
 pub(super) struct Locked {
     pub name: String,
-    pub source: String,
+    pub entry: LockEntry,
 }
 
 /// npx keys its lock by the dir name in its store. With `--copy` it writes real dirs into
@@ -22,7 +22,7 @@ pub(super) fn lock_ownership(cx: &Ctx, canonical: &Path) -> Option<Locked> {
         .and_then(|n| {
             Some(Locked {
                 name: n.to_owned(),
-                source: cx.lock.get(n)?.clone(),
+                entry: cx.lock.get(n)?.clone(),
             })
         })
 }

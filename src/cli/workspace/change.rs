@@ -10,12 +10,14 @@ use super::selection::{Selection, outcome_of_each, selection_plan};
 use crate::action::Action;
 use crate::apply::{self, Done, Switch};
 use crate::cli::deps::Deps;
-use crate::cli::scope::project_env;
+use crate::cli::recording::record_since;
+use crate::cli::scope::{installed, project_env};
 use crate::env::Env;
 use crate::model::Scope;
 use crate::profile;
 use crate::remove;
 use crate::review::{Next, Outcome, Verdict};
+use crate::store::Store;
 
 /// What the user asked to change.
 pub(super) enum Change<'a> {
@@ -49,14 +51,21 @@ impl Change<'_> {
 /// What one change works on: the project's environment and the effects.
 struct Job<'a> {
     deps: &'a Deps<'a>,
+    store: &'a Store,
     env: Env,
 }
 
 /// Make the change once the user approves the plan. A failed run can be retried from its
 /// result screen; the plan is made again each time.
-pub(super) fn change(deps: &Deps, project: &Path, what: &Change) -> anyhow::Result<Option<Notice>> {
+pub(super) fn change(
+    deps: &Deps,
+    store: &Store,
+    project: &Path,
+    what: &Change,
+) -> anyhow::Result<Option<Notice>> {
     let job = Job {
         deps,
+        store,
         env: project_env(deps, project),
     };
     loop {
@@ -70,9 +79,11 @@ pub(super) fn change(deps: &Deps, project: &Path, what: &Change) -> anyhow::Resu
             Verdict::DryRun => return Ok(Some(Notice::DryRun(switch.steps().len()))),
             Verdict::Apply => {}
         }
+        let before = installed(deps, &job.env, Scope::Project);
         let outcome = job.apply(&applier, &switch, what);
+        let recorded = record_since(deps, store, (&job.env, Scope::Project), &before);
         if deps.prompter.outcome(what.title(), &outcome)? != Next::Retry {
-            return Ok(Some(job.notice(what, &switch, &outcome)));
+            return Ok(Some(job.notice(what, &switch, &outcome, recorded)));
         }
     }
 }
@@ -90,7 +101,10 @@ impl Job<'_> {
         match what {
             Change::Apply(name) => self.apply_plan(applier, name, false),
             Change::ApplyExact(name) => self.apply_plan(applier, name, true),
-            Change::Selection(picked) => selection_plan(self.deps, &self.env, applier, picked),
+            Change::Selection(picked) => {
+                let library = self.store.read()?.items;
+                selection_plan(self.deps, &self.env, applier, (picked, &library))
+            }
         }
     }
 
@@ -127,10 +141,17 @@ impl Job<'_> {
         Outcome { log, ..outcome }
     }
 
-    fn notice(&self, what: &Change, switch: &Switch, outcome: &Outcome) -> Notice {
-        match outcome.problems().lines().next() {
-            Some(problem) => Notice::Failed(problem.to_string()),
-            None => what.done(switch),
+    fn notice(
+        &self,
+        what: &Change,
+        switch: &Switch,
+        outcome: &Outcome,
+        recorded: anyhow::Result<()>,
+    ) -> Notice {
+        match (outcome.problems().lines().next(), recorded) {
+            (Some(problem), _) => Notice::Failed(problem.to_string()),
+            (None, Err(e)) => Notice::Failed(format!("installed, but not recorded: {e:#}")),
+            (None, Ok(())) => what.done(switch),
         }
     }
 }

@@ -6,6 +6,7 @@ use crate::apply::{Applier, Each, Switch};
 use crate::cli::deps::Deps;
 use crate::cli::scope::installed;
 use crate::env::Env;
+use crate::library::Catalog;
 use crate::model::Scope;
 use crate::profile::{Entry, Profile};
 use crate::review::Outcome;
@@ -16,16 +17,21 @@ pub(super) struct Selection<'a> {
     pub remove: &'a [String],
 }
 
-/// Installs for what is missing, removals for what is still installed. A picked item that
+/// Installs for what is missing (from the link the library recorded, when it has one),
+/// removals for what is still installed. A picked item that
 /// has since changed on disk simply drops out of the plan.
 pub(super) fn selection_plan(
     deps: &Deps,
     env: &Env,
     applier: &Applier,
-    picked: &Selection,
+    (picked, library): (&Selection, &Catalog),
 ) -> anyhow::Result<Switch> {
     let mut wanted = Profile::new("selection");
-    wanted.entries = picked.install.to_vec();
+    wanted.entries = picked
+        .install
+        .iter()
+        .map(|entry| library.installable(entry))
+        .collect();
     let mut switch = applier.plan(&wanted, false).context("planning installs")?;
     switch.removals = installed(deps, env, Scope::Project)
         .into_iter()

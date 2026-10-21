@@ -134,7 +134,7 @@ impl World {
     }
 
     pub fn profiles(&self) -> Store {
-        Store::new(self.skillz_dir().join("profiles"))
+        Store::new(self.skillz_dir().join("store.json"))
     }
 
     pub fn profile(&self, name: &str) -> Profile {
@@ -146,10 +146,9 @@ impl World {
     }
 
     pub fn write_profile(&self, name: &str, text: &str) {
-        write(
-            &self.skillz_dir().join(format!("profiles/{name}.toml")),
-            text,
-        );
+        self.profiles()
+            .save(&Profile::parse(name, text).unwrap())
+            .unwrap();
     }
 
     pub fn write_skill_profile(&self, name: &str, skill: &str) {

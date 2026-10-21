@@ -1,6 +1,6 @@
-//! A profile: a named set of things to load into a project, kept as a toml file.
+//! A profile: a named set of things to load into a project, kept in the global `store`.
 //!
-//! Pure data plus a directory store. Turning entries into install steps is `provision`.
+//! Pure data plus a facade over the store. Turning entries into install steps is `provision`.
 
 mod entry;
 mod identity;
@@ -20,8 +20,7 @@ pub use store::{StillExtended, Store};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Profile {
-    /// The file stem; not stored in the file.
-    #[serde(skip)]
+    #[serde(default)]
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,

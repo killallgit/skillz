@@ -1,11 +1,9 @@
-use std::fs;
 use std::path::PathBuf;
 
 use anyhow::Context;
 
 use super::identity::overlay;
 use super::{Entry, Profile, check_name};
-use crate::atomic::write_atomic;
 use crate::env::Env;
 
 /// A profile cannot be removed while others start from it.
@@ -28,49 +26,38 @@ impl std::fmt::Display for StillExtended {
 
 impl std::error::Error for StillExtended {}
 
-/// A directory of `<name>.toml` profiles.
+/// The profiles section of the global store.
 pub struct Store {
-    dir: PathBuf,
+    store: crate::store::Store,
 }
 
 impl Store {
-    pub fn new(dir: PathBuf) -> Self {
-        Store { dir }
-    }
-
-    /// `<skillz dir>/profiles`.
-    pub fn in_env(env: &Env) -> Self {
-        Store::new(env.skillz_dir().join("profiles"))
-    }
-
-    fn path(&self, name: &str) -> anyhow::Result<PathBuf> {
-        check_name(name)?;
-        Ok(self.dir.join(format!("{name}.toml")))
-    }
-
-    /// Profile names, sorted. A missing directory has none.
-    pub fn names(&self) -> anyhow::Result<Vec<String>> {
-        let read = match fs::read_dir(&self.dir) {
-            Ok(read) => read,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
-            Err(e) => return Err(e).with_context(|| format!("reading {}", self.dir.display())),
-        };
-        let mut names = Vec::new();
-        for entry in read {
-            let path = entry
-                .with_context(|| format!("reading {}", self.dir.display()))?
-                .path();
-            names.extend(profile_name(&path).filter(|n| check_name(n).is_ok()));
+    pub fn new(path: PathBuf) -> Self {
+        Store {
+            store: crate::store::Store::new(path),
         }
+    }
+
+    pub fn in_env(env: &Env) -> Self {
+        Store::new(env.store_path())
+    }
+
+    fn all(&self) -> anyhow::Result<Vec<Profile>> {
+        Ok(self.store.read()?.profiles)
+    }
+
+    /// Profile names, sorted. A missing store has none.
+    pub fn names(&self) -> anyhow::Result<Vec<String>> {
+        let mut names: Vec<String> = self.all()?.into_iter().map(|p| p.name).collect();
         names.sort();
         Ok(names)
     }
 
     pub fn load(&self, name: &str) -> anyhow::Result<Profile> {
-        let path = self.path(name)?;
-        let text =
-            fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-        Profile::parse(name, &text).with_context(|| path.display().to_string())
+        check_name(name)?;
+        let profile = find(self.all()?, name).with_context(|| format!("no profile {name}"))?;
+        profile.validate()?;
+        Ok(profile)
     }
 
     /// The profile with every profile it extends folded in: their entries first, in order, each
@@ -104,48 +91,47 @@ impl Store {
         Ok(entries)
     }
 
+    /// Add the profile, or replace the one of the same name.
     pub fn save(&self, profile: &Profile) -> anyhow::Result<()> {
         profile.validate()?;
-        let path = self.path(&profile.name)?;
-        write_atomic(&path, &profile.to_text()?)
-    }
-
-    /// The profiles that list `name` in `extends`. Unreadable ones are skipped.
-    fn extended_by(&self, name: &str) -> anyhow::Result<Vec<String>> {
-        Ok(self
-            .names()?
-            .into_iter()
-            .filter(|other| other != name)
-            .filter(|other| {
-                self.load(other)
-                    .is_ok_and(|p| p.extends.iter().any(|base| base == name))
-            })
-            .collect())
+        self.store.update(|document| {
+            document.profiles.retain(|p| p.name != profile.name);
+            document.profiles.push(profile.clone());
+            Ok(())
+        })
     }
 
     /// Missing is fine. A profile another one extends is refused with `StillExtended`.
     pub fn delete(&self, name: &str) -> anyhow::Result<()> {
-        let by = self.extended_by(name)?;
-        if !by.is_empty() {
-            return Err(StillExtended {
-                name: name.into(),
-                by,
+        check_name(name)?;
+        self.store.update(|document| {
+            let by = extended_by(&document.profiles, name);
+            if !by.is_empty() {
+                return Err(StillExtended {
+                    name: name.into(),
+                    by,
+                }
+                .into());
             }
-            .into());
-        }
-        match fs::remove_file(self.path(name)?) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
-            _ => Ok(()),
-        }
+            document.profiles.retain(|p| p.name != name);
+            Ok(())
+        })
     }
 }
 
-/// The profile a `<name>.toml` path holds; `None` for any other file.
-fn profile_name(path: &std::path::Path) -> Option<String> {
-    if path.extension()? != "toml" {
-        return None;
-    }
-    path.file_stem()?.to_str().map(String::from)
+fn find(profiles: Vec<Profile>, name: &str) -> Option<Profile> {
+    profiles.into_iter().find(|p| p.name == name)
+}
+
+/// The profiles that list `name` in `extends`.
+fn extended_by(profiles: &[Profile], name: &str) -> Vec<String> {
+    let mut by: Vec<String> = profiles
+        .iter()
+        .filter(|p| p.name != name && p.extends.iter().any(|base| base == name))
+        .map(|p| p.name.clone())
+        .collect();
+    by.sort();
+    by
 }
 
 #[cfg(test)]
@@ -154,28 +140,27 @@ mod tests {
 
     fn store() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();
-        let store = Store::new(dir.path().join("profiles"));
+        let store = Store::new(dir.path().join("store.json"));
         (dir, store)
     }
 
     #[test]
     fn saved_profiles_are_listed_sorted_and_load_back() {
-        let (dir, store) = store();
+        let (_dir, store) = store();
         let mut web = Profile::new("web");
         web.description = Some("frontend".into());
 
         store.save(&web).unwrap();
         store.save(&Profile::new("a")).unwrap();
-        fs::write(dir.path().join("profiles/notes.txt"), "x").unwrap();
 
         assert_eq!(store.names().unwrap(), ["a", "web"]);
         assert_eq!(store.load("web").unwrap(), web);
     }
 
     #[test]
-    fn an_unreadable_profile_directory_is_an_error_not_an_empty_list() {
+    fn a_corrupt_store_is_an_error_not_an_empty_list() {
         let (dir, store) = store();
-        fs::write(dir.path().join("profiles"), "not a directory").unwrap();
+        std::fs::write(dir.path().join("store.json"), "not json").unwrap();
 
         assert!(store.names().is_err());
     }
@@ -316,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_directory_has_no_profiles() {
+    fn a_missing_store_has_no_profiles() {
         let (_dir, store) = store();
 
         assert!(store.names().unwrap().is_empty());

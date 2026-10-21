@@ -201,6 +201,7 @@ mod tests {
             group: group.into(),
             source: None,
             installer: crate::model::Installer::Local,
+            origin: Default::default(),
             children: vec![],
             removal: vec![],
         }
