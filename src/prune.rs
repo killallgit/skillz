@@ -72,13 +72,7 @@ mod tests {
     use crate::model::SKILL_CHILD;
     use serde_json::json;
 
-    fn item(
-        kind: Kind,
-        name: &str,
-        agents: &[Agent],
-        scope: Scope,
-        skills: &[&str],
-    ) -> Augmentation {
+    fn item(kind: Kind, name: &str, agents: &[Agent], scope: Scope) -> Augmentation {
         Augmentation {
             hooks: Vec::new(),
             id: format!("{kind}:{scope}:{name}"),
@@ -89,17 +83,24 @@ mod tests {
             group: "g".into(),
             source: None,
             installer: Installer::Local,
-            children: skills.iter().map(|s| format!("{SKILL_CHILD}{s}")).collect(),
+            children: vec![],
             removal: vec![],
         }
     }
 
+    fn with_skills(item: Augmentation, skills: &[&str]) -> Augmentation {
+        Augmentation {
+            children: skills.iter().map(|s| format!("{SKILL_CHILD}{s}")).collect(),
+            ..item
+        }
+    }
+
     fn skill(name: &str, agents: &[Agent], scope: Scope) -> Augmentation {
-        item(Kind::Skill, name, agents, scope, &[])
+        item(Kind::Skill, name, agents, scope)
     }
 
     fn plugin(name: &str, agent: Agent, scope: Scope, skills: &[&str]) -> Augmentation {
-        item(Kind::Plugin, name, &[agent], scope, skills)
+        with_skills(item(Kind::Plugin, name, &[agent], scope), skills)
     }
 
     fn ids<'a>(items: impl IntoIterator<Item = &'a Augmentation>) -> Vec<&'a str> {
@@ -179,13 +180,7 @@ mod tests {
             hook,
             skill("cursor-only", &[Agent::Cursor], Scope::Global),
             plugin("hooks-only@mp", Agent::Codex, Scope::Global, &[]),
-            item(
-                Kind::Marketplace,
-                "mp",
-                &[Agent::Claude],
-                Scope::Global,
-                &[],
-            ),
+            item(Kind::Marketplace, "mp", &[Agent::Claude], Scope::Global),
         ];
         assert_eq!(
             check(&items, &registry(), &usage(&[]), NOW),

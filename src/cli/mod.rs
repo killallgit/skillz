@@ -55,7 +55,7 @@ pub fn main() -> anyhow::Result<i32> {
         claude_config,
         codex_home,
         cwd: std::env::current_dir()?,
-        adapters: agents::registry(),
+        adapters: agents::registry().into(),
         runner: &runner,
         prompter,
         // Pickers and the browser read keys from stdin and draw on stdout.

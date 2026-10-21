@@ -32,10 +32,6 @@ impl AgentAdapter for Claude {
         Agent::Claude
     }
 
-    fn npx_id(&self) -> &'static str {
-        "claude-code"
-    }
-
     fn home_dir_names(&self) -> &'static [&'static str] {
         &["claude"]
     }
@@ -103,18 +99,7 @@ impl AgentAdapter for Claude {
             Entry::Subagent { .. } => {
                 subagents::provision(entry, &AgentDir::new(&agents_dir(env, scope), "md"), env)
             }
-            Entry::Plugin {
-                source,
-                marketplace,
-                name,
-                ..
-            } => Some(marketplace::provision(
-                source,
-                marketplace,
-                name,
-                scope,
-                &env.project,
-            )),
+            Entry::Plugin { .. } => marketplace::provision(entry, scope, &env.project),
             Entry::Skill { .. } => None,
         }
     }

@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use super::AgentAdapter;
 use crate::env::Env;
-use crate::hooks;
+use crate::hooks::{self, GroupHints};
 use crate::model::{Augmentation, Kind, Scope};
 use crate::skills::{self, SkillDir};
 
@@ -45,9 +45,10 @@ pub fn inventory(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]
         "skills",
         skills::discover(env, &skill_dirs(adapters, env, scopes)),
     );
+    let hints = group_hints(adapters);
     for &scope in scopes {
         for a in adapters {
-            absorb_adapter(&mut inv, a.as_ref(), env, scope);
+            absorb_adapter(&mut inv, a.as_ref(), (env, scope), &hints);
         }
     }
     let mut seen = HashSet::new();
@@ -73,11 +74,30 @@ fn skill_dirs(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]) -
         .collect()
 }
 
-fn absorb_adapter(inv: &mut Inventory, a: &dyn AgentAdapter, env: &Env, scope: Scope) {
+fn group_hints(adapters: &[Box<dyn AgentAdapter>]) -> GroupHints {
+    GroupHints {
+        plugin_root_vars: adapters
+            .iter()
+            .filter_map(|a| a.plugin_root_var())
+            .collect(),
+        agent_dirs: adapters
+            .iter()
+            .flat_map(|a| a.home_dir_names())
+            .copied()
+            .collect(),
+    }
+}
+
+fn absorb_adapter(
+    inv: &mut Inventory,
+    a: &dyn AgentAdapter,
+    (env, scope): (&Env, Scope),
+    hints: &GroupHints,
+) {
     for file in a.hook_files(env, scope) {
         inv.absorb(
             &file.display().to_string(),
-            hooks::discover(&file, a.agent(), scope),
+            hooks::discover(&file, a.agent(), scope, hints),
         );
     }
     inv.absorb(&a.agent().to_string(), a.discover(env, scope));

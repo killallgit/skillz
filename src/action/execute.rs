@@ -111,14 +111,14 @@ impl Execution<'_> {
         else {
             return Ok(());
         };
-        let request = crate::subagents::CopyRequest {
+        let request = crate::subagent_store::CopyRequest {
             source,
             cwd,
             names,
             ext,
             to,
         };
-        let written = crate::subagents::copy(self.runner, &request)
+        let written = crate::subagent_store::copy(self.runner, &request)
             .with_context(|| format!("already ran: {:?}", self.report.ran))?;
         self.report.copied.extend(written);
         Ok(())

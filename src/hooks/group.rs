@@ -8,18 +8,28 @@ const WRAPPERS: &[&str] = &[
 ];
 
 /// Hidden home dirs that belong to the OS, not to a hook-installing tool. Agents add their own
-/// (`AgentAdapter::home_dir_names`).
+/// (`GroupHints::agent_dirs`).
 const SHARED_DIRS: &[&str] = &["config", "local"];
+
+/// What the installed agents contribute to grouping: where they keep plugin files and which
+/// hidden home dirs are theirs rather than a hook-installing tool's.
+#[derive(Debug, Default, Clone)]
+pub struct GroupHints {
+    /// Env vars a plugin's hook commands use for the plugin's own dir.
+    pub plugin_root_vars: Vec<&'static str>,
+    /// Hidden home dir names (`.claude` -> `claude`) agents own.
+    pub agent_dirs: Vec<&'static str>,
+}
 
 /// Name of the tool a hook command belongs to, so related hooks group together.
 /// e.g. `bd prime --hook-json` -> `bd`, `bash '/x/.claude/hooks/herdr-agent-state.sh' s` -> `herdr-agent-state`.
-pub fn hook_group(command: &str) -> String {
+pub fn hook_group(command: &str, hints: &GroupHints) -> String {
     let tokens = words(command);
     match tokens.iter().find(|t| !is_skippable(t)) {
         // `bash -c "rtk hook"`: the program is inside the quoted script. Recurse only when
         // that splits further, or a space shell_words keeps (U+00A0) would loop forever.
-        Some(t) if words(t).len() > 1 => hook_group(t),
-        Some(t) => program_group(t),
+        Some(t) if words(t).len() > 1 => hook_group(t, hints),
+        Some(t) => program_group(t, hints),
         None => tokens.first().cloned().unwrap_or_default(),
     }
 }
@@ -43,15 +53,16 @@ fn is_assignment(token: &str) -> bool {
     })
 }
 
-fn program_group(token: &str) -> String {
-    if crate::agents::plugin_root_vars()
+fn program_group(token: &str, hints: &GroupHints) -> String {
+    if hints
+        .plugin_root_vars
         .iter()
         .any(|var| token.contains(&format!("${{{var}}}")))
     {
         return "plugin".to_string();
     }
     let path = Path::new(token);
-    if let Some(tool) = tool_dir(path) {
+    if let Some(tool) = tool_dir(path, &hints.agent_dirs) {
         return tool;
     }
     match path.file_stem().and_then(|s| s.to_str()) {
@@ -61,9 +72,8 @@ fn program_group(token: &str) -> String {
 }
 
 /// `/home/me/.orca/hooks/x.sh` -> `orca`: the first hidden directory not shared by agents.
-fn tool_dir(path: &Path) -> Option<String> {
+fn tool_dir(path: &Path, agent_dirs: &[&str]) -> Option<String> {
     let parent = path.parent()?;
-    let agent_dirs = crate::agents::home_dir_names();
     parent
         .components()
         .filter_map(|c| c.as_os_str().to_str()?.strip_prefix('.'))
@@ -79,6 +89,14 @@ fn tool_dir(path: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hook_group(command: &str) -> String {
+        let hints = GroupHints {
+            plugin_root_vars: vec!["CLAUDE_PLUGIN_ROOT"],
+            agent_dirs: vec!["claude", "codex", "agents", "cursor"],
+        };
+        super::hook_group(command, &hints)
+    }
 
     #[test]
     fn groups_real_commands() {

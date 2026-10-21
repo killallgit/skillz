@@ -19,44 +19,54 @@ pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentati
     let project = env.project.display().to_string();
     let mut out = vec![];
     match scope {
-        Scope::Global => out.extend(server_augmentation(
-            env,
-            scope,
-            "user",
-            &json["mcpServers"],
-            &state,
-            &["mcpServers"],
-        )),
+        Scope::Global => {
+            let user = Store {
+                claude_scope: "user",
+                file: &state,
+                path: &["mcpServers"],
+            };
+            out.extend(server_augmentation(env, scope, &user, &json["mcpServers"]));
+        }
         Scope::Project => {
-            let local = &json["projects"][project.as_str()]["mcpServers"];
-            let path = ["projects", project.as_str(), "mcpServers"];
-            out.extend(server_augmentation(
-                env, scope, "local", local, &state, &path,
-            ));
+            let local = Store {
+                claude_scope: "local",
+                file: &state,
+                path: &["projects", project.as_str(), "mcpServers"],
+            };
+            let servers = &json["projects"][project.as_str()]["mcpServers"];
+            out.extend(server_augmentation(env, scope, &local, servers));
             let shared = env.project.join(".mcp.json");
-            out.extend(server_augmentation(
-                env,
-                scope,
-                "project",
-                &read_json(&shared)?["mcpServers"],
-                &shared,
-                &["mcpServers"],
-            ));
+            let project_store = Store {
+                claude_scope: "project",
+                file: &shared,
+                path: &["mcpServers"],
+            };
+            let servers = &read_json(&shared)?["mcpServers"];
+            out.extend(server_augmentation(env, scope, &project_store, servers));
         }
     }
     Ok(out)
 }
 
-/// The servers under `servers`, each removed with `claude mcp remove --scope <claude_scope>`
-/// and, should that not run, by deleting its key at `path` in `file`.
+/// Where a set of servers is kept: removed with `claude mcp remove --scope <claude_scope>` and,
+/// should that not run, by deleting the server's key under `path` in `file`.
+struct Store<'a> {
+    claude_scope: &'a str,
+    file: &'a Path,
+    path: &'a [&'a str],
+}
+
 fn server_augmentation(
     env: &Env,
     scope: Scope,
-    claude_scope: &str,
+    store: &Store,
     servers: &Value,
-    file: &Path,
-    path: &[&str],
 ) -> Vec<Augmentation> {
+    let Store {
+        claude_scope,
+        file,
+        path,
+    } = *store;
     servers
         .as_object()
         .into_iter()

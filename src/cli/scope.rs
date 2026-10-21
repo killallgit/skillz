@@ -136,7 +136,7 @@ mod tests {
             claude_config: None,
             codex_home: None,
             cwd: cwd.to_path_buf(),
-            adapters: vec![],
+            adapters: Vec::new().into(),
             runner: &NO_ENVS,
             prompter: &AssumeYes,
             interactive: false,

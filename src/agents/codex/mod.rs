@@ -28,10 +28,6 @@ impl AgentAdapter for Codex {
         Agent::Codex
     }
 
-    fn npx_id(&self) -> &'static str {
-        "codex"
-    }
-
     fn home_dir_names(&self) -> &'static [&'static str] {
         &["codex", "agents"]
     }

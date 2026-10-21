@@ -6,5 +6,5 @@ mod group;
 mod provision;
 
 pub use discover::discover;
-pub use group::hook_group;
+pub use group::GroupHints;
 pub use provision::provision;

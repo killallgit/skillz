@@ -281,7 +281,7 @@ pub fn deps<'a>(w: &World, runner: &'a Recorder, prompter: &'a dyn Prompter) -> 
         claude_config: None,
         codex_home: None,
         cwd: w.project.clone(),
-        adapters: agents::registry(),
+        adapters: agents::registry().into(),
         runner,
         prompter,
         interactive: false,

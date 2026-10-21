@@ -5,8 +5,8 @@ use crate::matcher::pattern_matches;
 use crate::model::Agent;
 use crate::npx_skills;
 use crate::prompt::Prompter;
+use crate::runner::run_checked;
 
-use super::source::run_checked;
 use super::{Ctx, InstallRequest, SkillSelection, Tree};
 
 /// Pick skills found under the tree and install them with `npx skills add <source>`.
@@ -133,13 +133,11 @@ fn unquote(v: &str) -> &str {
 mod tests {
     use super::*;
     use crate::install::test_support::*;
-    use crate::model::Scope;
 
     /// Run the installer on the fixture's `repo/`, handing npx the source `"o/r"`.
     fn run(
         fx: &Fixture,
-        selection: SkillSelection,
-        agent: Agent,
+        req: &InstallRequest,
         runner: &FakeRunner,
         prompter: &ScriptedPrompter,
     ) -> anyhow::Result<()> {
@@ -150,18 +148,18 @@ mod tests {
             runner,
             prompter,
         };
-        let req = InstallRequest {
-            source: "o/r".into(),
-            cwd: fx.env.project.clone(),
-            agents: vec![agent],
-            scope: Scope::Project,
-            selection,
-        };
         let tree = Tree {
             src: &src,
             source: "o/r",
         };
-        install(&ctx, &req, &tree, &[agent])
+        install(&ctx, req, &tree, &req.agents)
+    }
+
+    fn request(fx: &Fixture, selection: SkillSelection, agent: Agent) -> InstallRequest {
+        InstallRequest {
+            agents: vec![agent],
+            ..req(fx, "o/r", selection)
+        }
     }
 
     #[test]
@@ -169,7 +167,15 @@ mod tests {
         let fx = project_with(skills_fixture);
         let runner = FakeRunner::new(|_| {}).failing("npx");
         let prompter = ScriptedPrompter::new(&[], true);
-        assert!(run(&fx, SkillSelection::All, Agent::Claude, &runner, &prompter).is_err());
+        assert!(
+            run(
+                &fx,
+                &request(&fx, SkillSelection::All, Agent::Claude),
+                &runner,
+                &prompter
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -178,7 +184,7 @@ mod tests {
         let runner = FakeRunner::new(|_| {});
         let sel = SkillSelection::Patterns(s(&["*commit, tdd"]));
         let prompter = ScriptedPrompter::new(&[], true);
-        run(&fx, sel, Agent::Cursor, &runner, &prompter).unwrap();
+        run(&fx, &request(&fx, sel, Agent::Cursor), &runner, &prompter).unwrap();
         let expected = npx(
             "o/r",
             &[
@@ -205,7 +211,7 @@ mod tests {
         let runner = FakeRunner::new(|_| {});
         let sel = SkillSelection::Patterns(s(&["tdd"]));
         let prompter = ScriptedPrompter::new(&[], false);
-        run(&fx, sel, Agent::Claude, &runner, &prompter).unwrap();
+        run(&fx, &request(&fx, sel, Agent::Claude), &runner, &prompter).unwrap();
         assert!(runner.calls().is_empty());
     }
 
@@ -215,7 +221,7 @@ mod tests {
         let runner = FakeRunner::new(|_| {});
         let sel = SkillSelection::Patterns(s(&["nope*"]));
         let prompter = ScriptedPrompter::new(&[], true);
-        assert!(run(&fx, sel, Agent::Claude, &runner, &prompter).is_err());
+        assert!(run(&fx, &request(&fx, sel, Agent::Claude), &runner, &prompter).is_err());
         assert!(runner.calls().is_empty());
     }
 
@@ -224,14 +230,8 @@ mod tests {
         let fx = project_with(skills_fixture);
         let runner = FakeRunner::new(|_| {});
         let prompter = ScriptedPrompter::new(&[], true);
-        run(
-            &fx,
-            SkillSelection::Interactive,
-            Agent::Claude,
-            &runner,
-            &prompter,
-        )
-        .unwrap();
+        let req = request(&fx, SkillSelection::Interactive, Agent::Claude);
+        run(&fx, &req, &runner, &prompter).unwrap();
         assert_eq!(
             prompter.offered.borrow()[0],
             s(&["caveman-commit", "git-commit", "tdd", "zeta"])

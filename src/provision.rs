@@ -44,7 +44,11 @@ pub fn plan_entries(
     for entry in entries {
         match skills_step(adapters, entry, scope, env) {
             Some(step) => out.steps.push(step),
-            None => provision_per_agent(adapters, entry, scope, env, &mut out),
+            None => {
+                let per_agent = provision_per_agent(adapters, entry, scope, env);
+                out.steps.extend(per_agent.steps);
+                out.unsupported.extend(per_agent.unsupported);
+            }
         }
     }
     out
@@ -77,8 +81,8 @@ fn provision_per_agent(
     entry: &Entry,
     scope: Scope,
     env: &Env,
-    out: &mut Provision,
-) {
+) -> Provision {
+    let mut out = Provision::default();
     for &agent in entry.agents() {
         let steps = adapter_for(adapters, agent).and_then(|a| a.provision(entry, scope, env));
         match steps {
@@ -89,6 +93,7 @@ fn provision_per_agent(
             }),
         }
     }
+    out
 }
 
 #[cfg(test)]

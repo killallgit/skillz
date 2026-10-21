@@ -31,9 +31,6 @@ impl AgentAdapter for Fake {
     fn agent(&self) -> Agent {
         Agent::Cursor
     }
-    fn npx_id(&self) -> &'static str {
-        "fake"
-    }
     fn home_dir_names(&self) -> &'static [&'static str] {
         &["fake"]
     }
@@ -175,7 +172,7 @@ fn uninstall_runs_the_fakes_removal_plan() {
         claude_config: None,
         codex_home: None,
         cwd: w.env.project.clone(),
-        adapters: w.adapters(),
+        adapters: w.adapters().into(),
         runner: &NoRun,
         prompter: &Yes,
         interactive: false,
