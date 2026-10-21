@@ -4,25 +4,30 @@ use super::provenance::Provenance;
 use crate::model::Augmentation;
 use crate::snapshot::{Skipped, snapshot};
 
-/// Add everything the snapshot collectors keep from the installed `items`, each with the
-/// provenance its installer left; what they leave out (hand-made, or needing secrets) is
-/// returned and stays out.
-pub fn import_installed(
-    catalog: &mut Catalog,
+/// What the snapshot collectors keep of the installed `items`, each with the provenance its
+/// installer left; what they leave out (hand-made, or needing secrets) is returned apart.
+pub(super) fn collect_installed(
     items: &[Augmentation],
     recorded_at: u64,
-) -> Vec<Skipped> {
+) -> (Vec<LibraryItem>, Vec<Skipped>) {
+    let mut kept = vec![];
     let mut skipped = vec![];
     for item in items {
         let snap = snapshot("library", std::slice::from_ref(item));
         skipped.extend(snap.skipped);
         for entry in snap.profile.entries {
             for each in LibraryItem::each_of(entry) {
-                catalog.add(each.with_provenance(Provenance::of(item, recorded_at)));
+                kept.push(each.with_provenance(Provenance::of(item, recorded_at)));
             }
         }
     }
-    skipped
+    (kept, skipped)
+}
+
+/// Add everything the snapshot collectors keep from the installed `items`.
+pub fn import_installed(catalog: &mut Catalog, items: &[Augmentation], recorded_at: u64) {
+    let (kept, _) = collect_installed(items, recorded_at);
+    kept.into_iter().for_each(|item| catalog.add(item));
 }
 
 /// Add what an install left behind: the items in `after` that were not in `before` or were
@@ -41,12 +46,11 @@ pub fn record_installed(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::model::{Agent, Installer, Kind, Origin, Scope};
-    use crate::snapshot::Reason;
 
-    fn installed_skill(name: &str, source: Option<&str>) -> Augmentation {
+    pub fn installed_skill(name: &str, source: Option<&str>) -> Augmentation {
         Augmentation {
             hooks: vec![],
             id: format!("skill:{name}"),
@@ -67,19 +71,17 @@ mod tests {
     }
 
     #[test]
-    fn importing_adds_what_has_a_source_and_reports_the_rest_skipped() {
+    fn importing_adds_what_has_a_source() {
         let mut catalog = Catalog::default();
         let items = [
             installed_skill("tdd", Some("o/r")),
             installed_skill("mine", None),
         ];
 
-        let skipped = import_installed(&mut catalog, &items, 7);
+        import_installed(&mut catalog, &items, 7);
 
-        // Assert one item kept and the sourceless one skipped for having no source.
+        // Assert the sourceless skill stays out.
         assert_eq!(catalog.items().len(), 1);
-        assert_eq!(skipped.len(), 1);
-        assert_eq!(skipped[0].reason, Reason::NoSource);
     }
 
     #[test]
@@ -107,6 +109,7 @@ mod tests {
                 engine: Installer::Npx,
                 version: Some("abc".into()),
                 recorded_at: 7,
+                detected: false,
             })
         );
     }

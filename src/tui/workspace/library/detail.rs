@@ -58,6 +58,7 @@ mod tests {
             engine: crate::model::Installer::Npx,
             version: None,
             recorded_at: 1,
+            detected: false,
         };
         let item = skill("o/r", "tdd").with_provenance(provenance.clone());
 

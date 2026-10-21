@@ -13,6 +13,9 @@ pub struct Provenance {
     pub version: Option<String>,
     /// Seconds since the Unix epoch.
     pub recorded_at: u64,
+    /// Found already installed by a scan, not put there by skillz.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub detected: bool,
 }
 
 impl Provenance {
@@ -22,6 +25,20 @@ impl Provenance {
             engine: installed.installer,
             version: installed.origin.version.clone(),
             recorded_at,
+            detected: false,
         }
     }
+
+    pub fn detected(self) -> Self {
+        Provenance {
+            detected: true,
+            ..self
+        }
+    }
+}
+
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }

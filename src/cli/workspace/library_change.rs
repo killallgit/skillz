@@ -2,11 +2,11 @@
 
 use super::Session;
 use super::notice::Notice;
-use crate::cli::recording::now_secs;
 use crate::cli::scope::{installed, project_env};
-use crate::library::{LibraryItem, import_installed};
+use crate::library::LibraryItem;
 use crate::model::Scope;
 use crate::profile::Entry;
+use crate::sync::sync_library;
 
 impl Session<'_, '_> {
     /// Items typed in carry no provenance; one the library already knows keeps its own.
@@ -20,15 +20,17 @@ impl Session<'_, '_> {
         Ok(Some(Notice::LibraryAdded(label)))
     }
 
+    /// Sync the library with everything installed in the project and at user level.
     pub(super) fn library_import(&self) -> anyhow::Result<Option<Notice>> {
         let env = project_env(self.deps, &self.project);
-        let items = installed(self.deps, &env, Scope::Project);
-        let (added, skipped) = self.store.update(|document| {
-            let before = document.items.items().len();
-            let skipped = import_installed(&mut document.items, &items, now_secs());
-            Ok((document.items.items().len() - before, skipped))
-        })?;
-        Ok(Some(Notice::Imported { added, skipped }))
+        let items = [Scope::Project, Scope::Global]
+            .map(|scope| installed(self.deps, &env, scope))
+            .concat();
+        let report = sync_library(&self.store, &items, false)?;
+        Ok(Some(Notice::Synced {
+            added: report.synced.added.len(),
+            secrets: report.synced.secrets_skipped(),
+        }))
     }
 
     pub(super) fn library_remove(&self, entry: &Entry) -> anyhow::Result<Option<Notice>> {
@@ -101,7 +103,10 @@ mod tests {
 
         assert!(matches!(
             notice,
-            Some(Notice::Imported { added: 0, ref skipped }) if skipped.is_empty()
+            Some(Notice::Synced {
+                added: 0,
+                secrets: 0
+            })
         ));
     }
 }

@@ -34,6 +34,16 @@ impl Catalog {
         }
     }
 
+    /// Append `item` unless the library already has the same thing, leaving that one as it is;
+    /// whether it was appended.
+    pub fn add_if_new(&mut self, item: LibraryItem) -> bool {
+        let known = self.items.iter().any(|i| i.is_same_thing_as(&item));
+        if !known {
+            self.items.push(item);
+        }
+        !known
+    }
+
     /// Add each thing `entry` names as an item of its own.
     pub fn add_entry(&mut self, entry: Entry) {
         LibraryItem::each_of(entry)

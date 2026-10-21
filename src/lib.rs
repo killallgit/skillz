@@ -37,6 +37,7 @@ pub(crate) mod spinner;
 pub mod store;
 pub(crate) mod subagent_store;
 pub(crate) mod subagents;
+pub mod sync;
 pub mod tree;
 pub mod tui;
 pub mod update;

@@ -3,17 +3,12 @@
 use super::deps::Deps;
 use super::scope::installed;
 use crate::env::Env;
-use crate::library::record_installed;
+use crate::library::{now_secs, record_installed, sync_installed};
 use crate::model::{Augmentation, Scope};
 use crate::store::Store;
 
-pub(super) fn now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
-/// Add to the library what is installed now but was not, or was different, in `before`.
+/// Add to the library what is installed now but was not, or was different, in `before`, then
+/// sync it with everything else installed in both scopes.
 pub(super) fn record_since(
     deps: &Deps,
     store: &Store,
@@ -21,8 +16,12 @@ pub(super) fn record_since(
     before: &[Augmentation],
 ) -> anyhow::Result<()> {
     let after = installed(deps, env, scope);
+    let everything = [Scope::Project, Scope::Global]
+        .map(|s| installed(deps, env, s))
+        .concat();
     store.update(|document| {
         record_installed(&mut document.items, (before, &after), now_secs());
+        sync_installed(&mut document.items, &everything, now_secs());
         Ok(())
     })
 }

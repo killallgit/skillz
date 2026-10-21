@@ -112,6 +112,7 @@ fn check_output(w: &World, json: bool, checker: &'static str) -> (String, Record
     let prompter = Scripted::yes();
     let d = Deps {
         checker: Arc::new(Outdated(checker)),
+        scanner: None,
         ..deps(w, &runner, &prompter)
     };
     let mut out = Vec::new();

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::agents::AgentAdapter;
 use crate::prompt::Prompter;
 use crate::runner::CommandRunner;
+use crate::sync::Scanner;
 use crate::update::check::UpdateCheck;
 
 /// External effects the commands need; real ones in `main`, fakes in tests.
@@ -21,6 +22,9 @@ pub struct Deps<'a> {
     pub interactive: bool,
     /// Finds out whether installed items have a newer version.
     pub checker: Arc<dyn UpdateCheck>,
+    /// Finds what is installed so the library can be synced in the background; `None` turns
+    /// that off.
+    pub scanner: Option<Arc<dyn Scanner>>,
 }
 
 #[cfg(test)]
@@ -41,6 +45,7 @@ impl<'a> Deps<'a> {
             prompter,
             interactive: false,
             checker: Arc::new(crate::update::check::NoCheck),
+            scanner: None,
         }
     }
 }
@@ -63,6 +68,7 @@ impl<'a> Deps<'a> {
             prompter: self.prompter,
             interactive: self.interactive,
             checker: Arc::clone(&self.checker),
+            scanner: self.scanner.clone(),
         }
     }
 }

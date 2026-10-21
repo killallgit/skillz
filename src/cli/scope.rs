@@ -137,6 +137,7 @@ mod tests {
             prompter: &AssumeYes,
             interactive: false,
             checker: std::sync::Arc::new(crate::update::check::NoCheck),
+            scanner: None,
         }
     }
 

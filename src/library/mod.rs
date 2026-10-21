@@ -6,8 +6,10 @@ mod catalog;
 mod import;
 mod item;
 mod provenance;
+mod sync;
 
 pub use catalog::Catalog;
 pub use import::{import_installed, record_installed};
 pub use item::{ItemKind, LibraryItem};
-pub use provenance::Provenance;
+pub use provenance::{Provenance, now_secs};
+pub use sync::{Synced, sync_installed};

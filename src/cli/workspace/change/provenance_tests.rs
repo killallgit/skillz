@@ -51,6 +51,7 @@ fn installing_again_fetches_from_the_recorded_link() {
         engine: Installer::Npx,
         version: None,
         recorded_at: 1,
+        detected: false,
     });
 
     let (runner, _) = install_picked(dir.path(), &[known]);
