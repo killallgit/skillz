@@ -296,7 +296,7 @@ mod tests {
         assert!(
             snap.skipped
                 .iter()
-                .any(|s| s.contains("TOKEN") && !s.contains("secret="))
+                .any(|s| s.contains("has 1 env") && !s.contains("TOKEN"))
         );
         let get = |n: &str| {
             snap.profile.entries.iter().find_map(|e| match e {
