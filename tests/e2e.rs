@@ -7,7 +7,10 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use skillz::action::{Action, execute};
 use skillz::agents;
-use skillz::cli::{Command, Deps, Filter, ProfileCommand, ProjectCommand, run, workspace};
+use skillz::cli::{
+    Command, Deps, Filter, InstallArgs, ListArgs, ProfileCommand, ProjectCommand, PruneArgs,
+    ResetArgs, UninstallArgs, UseArgs, run, workspace,
+};
 use skillz::model::{Agent, Augmentation, Kind, Scope};
 use skillz::prompt::{Choice, Picked, Prompter};
 use skillz::runner::{CommandRunner, Output};
@@ -125,13 +128,13 @@ fn deps<'a>(w: &World, runner: &'a Recorder, prompter: &'a Scripted) -> Deps<'a>
 }
 
 fn uninstall(query: &str, filter: Filter, yes: bool) -> Command {
-    Command::Uninstall {
+    Command::Uninstall(UninstallArgs {
         query: Some(query.into()),
         project: None,
         filter,
         yes,
         dry_run: false,
-    }
+    })
 }
 
 #[test]
@@ -218,14 +221,14 @@ fn list_lines(w: &World, target: Option<&str>, all: bool) -> Vec<String> {
         },
     );
     let mut out = Vec::new();
-    let cmd = Command::List {
+    let cmd = Command::List(ListArgs {
         target: target.map(Into::into),
         project: None,
         all,
         json: false,
         filter: Filter::default(),
         interactive: false,
-    };
+    });
     run(cmd, &deps(w, &r, &p), &mut out).unwrap();
     String::from_utf8(out)
         .unwrap()
@@ -407,13 +410,13 @@ fn project_path_scopes_to_project_only() {
         },
     );
     let filter = Filter::default();
-    let cmd = Command::Uninstall {
+    let cmd = Command::Uninstall(UninstallArgs {
         query: Some("bd".into()),
         project: Some(w.project.clone()),
         filter,
         yes: true,
         dry_run: false,
-    };
+    });
     // Only the codex project hook matches, so --yes is unambiguous.
     run(cmd, &deps(&w, &r, &p), &mut Vec::new()).unwrap();
     let codex = read_json(&w.project.join(".codex/hooks.json"));
@@ -431,13 +434,13 @@ fn dry_run_changes_nothing() {
             confirm: true,
         },
     );
-    let cmd = Command::Uninstall {
+    let cmd = Command::Uninstall(UninstallArgs {
         query: Some("tdd".into()),
         project: None,
         filter: Filter::default(),
         yes: true,
         dry_run: true,
-    };
+    });
     run(cmd, &deps(&w, &r, &p), &mut Vec::new()).unwrap();
     assert!(w.home.join(".agents/skills/tdd/SKILL.md").exists());
 }
@@ -459,7 +462,7 @@ fn install_local_source_runs_npx_skills_with_matches() {
             confirm: true,
         },
     );
-    let cmd = Command::Install {
+    let cmd = Command::Install(InstallArgs {
         source: src.display().to_string(),
         global: true,
         agents: vec![Agent::Claude],
@@ -467,7 +470,7 @@ fn install_local_source_runs_npx_skills_with_matches() {
         skill: vec!["*commit".into()],
         project: None,
         yes: true,
-    };
+    });
     run(cmd, &deps(&w, &r, &p), &mut Vec::new()).unwrap();
     let calls = r.0.borrow();
     let (program, args) = calls.last().unwrap();
@@ -499,7 +502,7 @@ fn install_relative_source_resolves_against_cwd_not_project_dir() {
             confirm: true,
         },
     );
-    let cmd = Command::Install {
+    let cmd = Command::Install(InstallArgs {
         source: "./src-repo".into(),
         global: false,
         agents: vec![Agent::Codex],
@@ -507,7 +510,7 @@ fn install_relative_source_resolves_against_cwd_not_project_dir() {
         skill: vec![],
         project: Some("../other".into()),
         yes: true,
-    };
+    });
     run(cmd, &deps(&w, &r, &p), &mut Vec::new()).unwrap();
     let calls = r.0.borrow();
     assert_eq!(calls.len(), 1);
@@ -535,7 +538,7 @@ fn install_from_home_is_global() {
         },
     );
     for project in [None, Some(w.home.clone())] {
-        let cmd = Command::Install {
+        let cmd = Command::Install(InstallArgs {
             source: src.display().to_string(),
             global: false,
             agents: vec![Agent::Codex],
@@ -543,7 +546,7 @@ fn install_from_home_is_global() {
             skill: vec![],
             project,
             yes: true,
-        };
+        });
         let from_home = Deps {
             cwd: w.home.clone(),
             ..deps(&w, &r, &p)
@@ -585,7 +588,7 @@ fn install_rejects_option_like_source() {
             confirm: true,
         },
     );
-    let cmd = Command::Install {
+    let cmd = Command::Install(InstallArgs {
         source: "--upload-pack=touch /tmp/x".into(),
         global: false,
         agents: vec![],
@@ -593,7 +596,7 @@ fn install_rejects_option_like_source() {
         skill: vec![],
         project: None,
         yes: true,
-    };
+    });
     assert!(run(cmd, &deps(&w, &r, &p), &mut Vec::new()).is_err());
     assert!(r.0.borrow().is_empty());
 }
@@ -607,14 +610,14 @@ fn list_json(w: &World, target: Option<&str>) -> Vec<Value> {
         },
     );
     let mut out = Vec::new();
-    let cmd = Command::List {
+    let cmd = Command::List(ListArgs {
         target: target.map(Into::into),
         project: None,
         all: false,
         json: true,
         filter: Filter::default(),
         interactive: false,
-    };
+    });
     run(cmd, &deps(w, &r, &p), &mut out).unwrap();
     serde_json::from_slice::<Value>(&out)
         .unwrap()
@@ -658,14 +661,14 @@ fn list_items_picking(w: &World, query: &str, pick: Option<Vec<usize>>, json: bo
     let mut d = deps(w, &r, &p);
     d.interactive = true;
     let mut out = Vec::new();
-    let cmd = Command::List {
+    let cmd = Command::List(ListArgs {
         target: Some(query.into()),
         project: None,
         all: false,
         json,
         filter: Filter::default(),
         interactive: false,
-    };
+    });
     run(cmd, &d, &mut out).unwrap();
     let text = String::from_utf8(out).unwrap();
     if json {
@@ -734,14 +737,14 @@ fn browser_remove_deletes_only_the_marked_group() {
         prompter: &p,
         interactive: true,
     };
-    let cmd = Command::List {
+    let cmd = Command::List(ListArgs {
         target: None,
         project: None,
         all: false,
         json: false,
         filter: Filter::default(),
         interactive: true,
-    };
+    });
     run(cmd, &d, &mut Vec::new()).unwrap();
     assert!(!w.home.join(".agents/skills/tdd").exists());
     assert!(!w.home.join(".claude/skills/tdd").exists());
@@ -768,11 +771,13 @@ fn prune_removes_duplicates_and_only_the_picked_unused_items() {
         &w.home.join(".claude/skills/lint/SKILL.md"),
         "---\nname: lint\n---\n",
     );
-    let prune = |dry_run| Command::Prune {
-        project: None,
-        filter: Filter::default(),
-        dry_run,
-        force: false,
+    let prune = |dry_run| {
+        Command::Prune(PruneArgs {
+            project: None,
+            filter: Filter::default(),
+            dry_run,
+            force: false,
+        })
     };
     let (r, p) = (
         Recorder::default(),
@@ -811,12 +816,12 @@ fn prune_force_removes_duplicates_and_every_unused_item() {
         &w.home.join(".claude/skills/lint/SKILL.md"),
         "---\nname: lint\n---\n",
     );
-    let cmd = Command::Prune {
+    let cmd = Command::Prune(PruneArgs {
         project: None,
         filter: Filter::default(),
         dry_run: false,
         force: true,
-    };
+    });
     let (r, p) = (
         Recorder::default(),
         Scripted {
@@ -839,13 +844,13 @@ fn global() -> Filter {
 }
 
 fn reset(filter: Filter, keep: &[&str], dry_run: bool) -> Command {
-    Command::Reset {
+    Command::Reset(ResetArgs {
         project: None,
         filter,
         keep: keep.iter().map(|k| k.to_string()).collect(),
         dry_run,
         force: false,
-    }
+    })
 }
 
 #[test]
@@ -917,14 +922,14 @@ fn reset_spares_what_keep_names_and_nothing_removed_when_declined() {
 }
 
 fn use_cmd(profile: Option<&str>, dry_run: bool) -> Command {
-    Command::Use {
+    Command::Use(UseArgs {
         profile: profile.map(String::from),
         none: profile.is_none(),
         global: false,
         project: Some(PathBuf::from(".")),
         yes: true,
         dry_run,
-    }
+    })
 }
 
 #[test]
@@ -1266,7 +1271,7 @@ fn mcp_servers_are_listed_from_every_agent_file_and_secrets_stay_out() {
         },
     );
     let mut out = Vec::new();
-    let cmd = Command::List {
+    let cmd = Command::List(ListArgs {
         target: None,
         project: None,
         all: true,
@@ -1276,7 +1281,7 @@ fn mcp_servers_are_listed_from_every_agent_file_and_secrets_stay_out() {
             ..Filter::default()
         },
         interactive: false,
-    };
+    });
     run(cmd, &d, &mut out).unwrap();
     let text = String::from_utf8(out).unwrap();
     assert!(!text.contains("hunter2"));
@@ -1350,12 +1355,14 @@ fn reset_leaves_mcp_servers_unless_asked() {
         },
     );
     let d = deps(&w, &r, &p);
-    let reset = |filter| Command::Reset {
-        project: None,
-        filter,
-        keep: vec![],
-        dry_run: false,
-        force: true,
+    let reset = |filter| {
+        Command::Reset(ResetArgs {
+            project: None,
+            filter,
+            keep: vec![],
+            dry_run: false,
+            force: true,
+        })
     };
     run(reset(global()), &d, &mut Vec::new()).unwrap();
     assert!(
@@ -1411,7 +1418,7 @@ fn subagents_are_copied_in_by_a_profile_tracked_and_removed_with_it() {
 
     // The files are listed with where they came from, and a snapshot can name them again.
     let mut out = Vec::new();
-    let list = Command::List {
+    let list = Command::List(ListArgs {
         target: None,
         project: Some(PathBuf::from(".")),
         all: true,
@@ -1421,7 +1428,7 @@ fn subagents_are_copied_in_by_a_profile_tracked_and_removed_with_it() {
             ..Filter::default()
         },
         interactive: false,
-    };
+    });
     run(list, &d, &mut out).unwrap();
     let items: Value = serde_json::from_slice(&out).unwrap();
     assert_eq!(items.as_array().unwrap().len(), 2);

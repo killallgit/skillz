@@ -31,17 +31,11 @@ pub(super) fn resolve(
         (false, true, false) => vec![Scope::Project],
         _ => vec![Scope::Global, Scope::Project],
     };
-    let claude_config = deps.claude_config.clone();
-    let codex_home = deps.codex_home.clone();
-    Ok((
-        Env {
-            home,
-            project,
-            claude_config,
-            codex_home,
-        },
-        scopes,
-    ))
+    let env = Env {
+        home,
+        ..project_env(deps, &project)
+    };
+    Ok((env, scopes))
 }
 
 pub(super) fn gather(
@@ -84,10 +78,29 @@ pub(super) struct Scene<'a, 'd> {
     pub(super) filter: &'a Filter,
 }
 
-impl Scene<'_, '_> {
+impl<'a, 'd> Scene<'a, 'd> {
+    pub(super) fn new(
+        deps: &'a Deps<'d>,
+        env: &'a Env,
+        scopes: &'a [Scope],
+        filter: &'a Filter,
+    ) -> Self {
+        Scene {
+            deps,
+            env,
+            scopes,
+            filter,
+        }
+    }
+
     pub(super) fn gather(&self) -> Vec<Augmentation> {
         gather(self.deps, self.env, self.scopes, self.filter)
     }
+}
+
+/// Everything installed in one scope of `env`, whatever the filters.
+pub(super) fn installed(deps: &Deps, env: &Env, scope: Scope) -> Vec<Augmentation> {
+    gather(deps, env, &[scope], &Filter::default())
 }
 
 /// One scope at a time: the project, unless asked for global or this is the home dir.

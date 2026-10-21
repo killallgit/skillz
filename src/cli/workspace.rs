@@ -1,229 +1,232 @@
-use std::io::Write;
-use std::path::Path;
+//! The workspace: pick a project and a profile and apply, unload, add, save or delete, with the
+//! plan and progress of each change shown as for `use`.
 
-use super::args::Filter;
+use std::io::Write;
+use std::path::PathBuf;
+
 use super::deps::Deps;
 use super::profile::save_profile;
-use super::scope::{gather, project_env};
-use super::use_profile::use_profile;
+use super::scope::{installed, project_env};
+use super::screen::screen_model;
+use super::use_profile::{Switching, Target, use_profile};
 use crate::model::Scope;
-use crate::tui::home;
+use crate::profile;
+use crate::snapshot;
+use crate::tui::home::{Act, Pos};
 use crate::workspace::Workspace;
-use crate::{apply, profile, snapshot};
 
-pub(super) fn workspace_model(
-    deps: &Deps,
-    store: &profile::Store,
-    workspace: &Workspace,
-    notice: Option<String>,
-) -> anyhow::Result<home::Model> {
-    let ledger = apply::Ledger::in_env(&project_env(deps, &deps.cwd));
-    let short = |p: &Path| match p.strip_prefix(&deps.home) {
-        Ok(rest) => format!("~/{}", rest.display()),
-        Err(_) => p.display().to_string(),
-    };
-    let projects = workspace
-        .projects()?
-        .into_iter()
-        .map(|path| {
-            let env = project_env(deps, &path);
-            let record = ledger
-                .get(&apply::Ledger::key(&env, Scope::Project))
-                .ok()
-                .flatten();
-            let missing = !path.is_dir();
-            let profile_name = record.as_ref().map_or("-", |r| r.profile.as_str());
-            let mut detail = vec![path.display().to_string()];
-            if missing {
-                detail.push("directory is missing".into());
-            }
-            for loaded in record.iter().flat_map(|r| &r.entries) {
-                detail.push(format!("{}", loaded.entry));
-                detail.extend(loaded.items.iter().map(|o| format!("    {}", o.name)));
-            }
-            home::ProjectRow {
-                label: format!(
-                    "{profile_name:<14} {}{}",
-                    short(&path),
-                    if missing { "  (missing)" } else { "" }
-                ),
-                loaded: record.is_some(),
-                missing,
-                detail,
-                path,
-            }
-        })
-        .collect();
-    let profiles = store
-        .names()?
-        .into_iter()
-        .map(|name| match store.load(&name) {
-            Ok(p) => home::ProfileRow {
-                detail: p.entries.iter().map(ToString::to_string).collect(),
-                broken: false,
-                name,
-            },
-            Err(e) => home::ProfileRow {
-                detail: vec![format!("{e:#}")],
-                broken: true,
-                name,
-            },
-        })
-        .collect();
-    Ok(home::Model {
-        projects,
-        profiles,
-        notice,
-    })
-}
-
-/// What the workspace does after a step.
+/// What the workspace does after an action.
 enum Flow {
     Stay,
     Leave,
 }
 
-/// The workspace: pick a project and a profile and apply, unload, add, save or delete, with the
-/// plan and progress of each change shown as for `use`. A step that fails shows its error in the
-/// footer and the workspace stays open.
+/// An action's result: whether to carry on, and what to tell the user in the footer.
+struct Reply {
+    flow: Flow,
+    notice: Option<String>,
+}
+
+impl Reply {
+    fn done() -> Self {
+        Reply {
+            flow: Flow::Stay,
+            notice: None,
+        }
+    }
+
+    fn said(notice: String) -> Self {
+        Reply {
+            flow: Flow::Stay,
+            notice: Some(notice),
+        }
+    }
+
+    fn leave() -> Self {
+        Reply {
+            flow: Flow::Leave,
+            notice: None,
+        }
+    }
+}
+
+/// The projects, profiles and prompts one workspace session works with.
+struct Session<'a, 'd> {
+    deps: &'a Deps<'d>,
+    store: profile::Store,
+    registry: Workspace,
+}
+
+/// A step that fails shows its error in the footer and the workspace stays open.
 pub fn workspace(deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
     let base = project_env(deps, &deps.cwd);
-    let store = profile::Store::in_env(&base);
-    let registry = Workspace::in_env(&base);
-    let mut pos = home::Pos::default();
+    let session = Session {
+        deps,
+        store: profile::Store::in_env(&base),
+        registry: Workspace::in_env(&base),
+    };
+    let mut pos = Pos::default();
     let mut notice = None;
     loop {
-        let model = workspace_model(deps, &store, &registry, notice.take())?;
+        let model = screen_model(deps, &session.store, &session.registry, notice.take())?;
         let (act, next) = deps.prompter.home(model, pos)?;
         pos = next;
-        match workspace_step(deps, &store, &registry, act, &mut notice, out) {
-            Ok(Flow::Leave) => return Ok(()),
-            Ok(Flow::Stay) => {}
+        match session.perform(act, out) {
+            Ok(Reply {
+                flow: Flow::Leave, ..
+            }) => return Ok(()),
+            Ok(reply) => notice = reply.notice,
             Err(e) => notice = Some(format!("{e:#}")),
         }
     }
 }
 
-fn workspace_step(
-    deps: &Deps,
-    store: &profile::Store,
-    registry: &Workspace,
-    act: home::Act,
-    notice: &mut Option<String>,
-    out: &mut dyn Write,
-) -> anyhow::Result<Flow> {
-    use home::Act;
-    let projects = registry.projects()?;
-    let names = store.names()?;
-    let switch =
-        |project: usize, name: Option<&str>, out: &mut dyn Write| -> anyhow::Result<Flow> {
-            let Some(dir) = projects.get(project) else {
-                return Ok(Flow::Stay);
-            };
-            use_profile(
-                deps,
-                &project_env(deps, dir),
-                Scope::Project,
-                name,
-                false,
-                out,
-            )?;
-            out.flush()?;
-            Ok(if deps.prompter.confirm("Back to the workspace?")? {
-                Flow::Stay
-            } else {
-                Flow::Leave
-            })
-        };
-    match act {
-        Act::Quit => return Ok(Flow::Leave),
-        Act::Apply { project, profile } => {
-            let name = names.get(profile).map(String::as_str);
-            return switch(project, name, out);
-        }
-        Act::Unload { project } => return switch(project, None, out),
-        Act::AddProject(text) => {
-            registry.add(&deps.cwd.join(text))?;
-        }
-        Act::ForgetProject(i) => {
-            if let Some(dir) = projects.get(i) {
-                registry.remove(dir)?;
-            }
-        }
-        Act::NewProfile(name) => {
-            profile::check_name(&name)?;
-            anyhow::ensure!(!names.contains(&name), "profile {name} exists");
-            store.save(&profile::Profile::new(&name))?;
-        }
-        Act::SaveProfile { name, project } => {
-            if let Some(dir) = projects.get(project) {
-                let env = project_env(deps, dir);
-                let snap = save_profile(deps, store, &env, Scope::Project, &name, false)?;
-                *notice = Some(format!(
-                    "saved {name}: {} entries, {} not reproducible",
-                    snap.profile.entries.len(),
-                    snap.skipped.len()
-                ));
-            }
-        }
-        Act::DeleteProfile(i) => {
-            if let Some(name) = names.get(i) {
-                store.delete(name)?;
-            }
-        }
-        Act::AddInstalled { profile, project } => {
-            let (Some(name), Some(dir)) = (names.get(profile), projects.get(project)) else {
-                return Ok(Flow::Stay);
-            };
-            let mut p = store.load(name)?;
-            let items = gather(
-                deps,
-                &project_env(deps, dir),
-                &[Scope::Project],
-                &Filter::default(),
-            );
-            let have = p.resolved();
-            let offered: Vec<profile::Entry> = snapshot::snapshot(name, &items)
-                .profile
-                .entries
-                .into_iter()
-                .filter(|e| !have.contains(e))
-                .collect();
-            let labels: Vec<String> = offered.iter().map(ToString::to_string).collect();
-            let picked = deps
-                .prompter
-                .multi_select(&format!("Add to {name}"), &labels)?;
-            let added = picked.len();
-            p.entries
-                .extend(picked.into_iter().filter_map(|i| offered.get(i).cloned()));
-            store.save(&p)?;
-            *notice = Some(format!("added {added} entries to {name}"));
-        }
-        Act::RemoveEntries { profile } => {
-            let Some(name) = names.get(profile) else {
-                return Ok(Flow::Stay);
-            };
-            let mut p = store.load(name)?;
-            let labels: Vec<String> = p.entries.iter().map(ToString::to_string).collect();
-            let picked = deps
-                .prompter
-                .multi_select(&format!("Remove from {name}"), &labels)?;
-            let mut index = 0;
-            p.entries.retain(|_| {
-                index += 1;
-                !picked.contains(&(index - 1))
-            });
-            store.save(&p)?;
-            *notice = Some(format!("removed {} entries from {name}", picked.len()));
-        }
-        Act::AddTyped { profile, spec } => {
-            let Some(name) = names.get(profile) else {
-                return Ok(Flow::Stay);
-            };
-            let mut p = store.load(name)?;
-            p.entries.push(profile::Entry::parse_spec(&spec)?);
-            store.save(&p)?;
+impl Session<'_, '_> {
+    fn perform(&self, act: Act, out: &mut dyn Write) -> anyhow::Result<Reply> {
+        match act {
+            Act::Quit => Ok(Reply::leave()),
+            Act::Apply { project, profile } => self.switch(project, self.profile(profile), out),
+            Act::Unload { project } => self.switch(project, None, out),
+            Act::AddProject(text) => self.add_project(text),
+            Act::ForgetProject(i) => self.forget_project(i),
+            Act::NewProfile(name) => self.new_profile(name),
+            Act::SaveProfile { name, project } => self.save_setup(name, project),
+            Act::DeleteProfile(i) => self.delete_profile(i),
+            Act::AddInstalled { profile, project } => self.add_installed(profile, project),
+            Act::RemoveEntries { profile } => self.remove_entries(profile),
+            Act::AddTyped { profile, spec } => self.add_typed(profile, &spec),
         }
     }
-    Ok(Flow::Stay)
+
+    fn project(&self, i: usize) -> Option<PathBuf> {
+        self.registry.projects().ok()?.into_iter().nth(i)
+    }
+
+    fn profile(&self, i: usize) -> Option<String> {
+        self.store.names().ok()?.into_iter().nth(i)
+    }
+
+    /// Load `profile` into the project (or unload with `None`), then ask whether to come back.
+    fn switch(
+        &self,
+        project: usize,
+        profile: Option<String>,
+        out: &mut dyn Write,
+    ) -> anyhow::Result<Reply> {
+        let Some(dir) = self.project(project) else {
+            return Ok(Reply::done());
+        };
+        let env = project_env(self.deps, &dir);
+        let target = Target {
+            env: &env,
+            scope: Scope::Project,
+        };
+        let switching = Switching {
+            profile: profile.as_deref(),
+            dry_run: false,
+        };
+        use_profile(self.deps, &target, &switching, out)?;
+        out.flush()?;
+        let back = self.deps.prompter.confirm("Back to the workspace?")?;
+        Ok(if back { Reply::done() } else { Reply::leave() })
+    }
+
+    fn add_project(&self, text: String) -> anyhow::Result<Reply> {
+        self.registry.add(&self.deps.cwd.join(text))?;
+        Ok(Reply::done())
+    }
+
+    fn forget_project(&self, i: usize) -> anyhow::Result<Reply> {
+        if let Some(dir) = self.project(i) {
+            self.registry.remove(&dir)?;
+        }
+        Ok(Reply::done())
+    }
+
+    fn new_profile(&self, name: String) -> anyhow::Result<Reply> {
+        profile::check_name(&name)?;
+        anyhow::ensure!(
+            !self.store.names()?.contains(&name),
+            "profile {name} exists"
+        );
+        self.store.save(&profile::Profile::new(&name))?;
+        Ok(Reply::done())
+    }
+
+    fn save_setup(&self, name: String, project: usize) -> anyhow::Result<Reply> {
+        let Some(dir) = self.project(project) else {
+            return Ok(Reply::done());
+        };
+        let items = installed(self.deps, &project_env(self.deps, &dir), Scope::Project);
+        let snap = save_profile(&self.store, &items, &name, false)?;
+        Ok(Reply::said(format!(
+            "saved {name}: {} entries, {} not reproducible",
+            snap.profile.entries.len(),
+            snap.skipped.len()
+        )))
+    }
+
+    fn delete_profile(&self, i: usize) -> anyhow::Result<Reply> {
+        if let Some(name) = self.profile(i) {
+            self.store.delete(&name)?;
+        }
+        Ok(Reply::done())
+    }
+
+    /// Offer what the project has installed that the profile does not have yet.
+    fn add_installed(&self, profile: usize, project: usize) -> anyhow::Result<Reply> {
+        let (Some(name), Some(dir)) = (self.profile(profile), self.project(project)) else {
+            return Ok(Reply::done());
+        };
+        let mut p = self.store.load(&name)?;
+        let items = installed(self.deps, &project_env(self.deps, &dir), Scope::Project);
+        let have = p.resolved();
+        let offered: Vec<profile::Entry> = snapshot::snapshot(&name, &items)
+            .profile
+            .entries
+            .into_iter()
+            .filter(|e| !have.contains(e))
+            .collect();
+        let picked = self.pick_entries(&format!("Add to {name}"), &offered)?;
+        let added = picked.len();
+        p.entries
+            .extend(picked.into_iter().map(|i| offered[i].clone()));
+        self.store.save(&p)?;
+        Ok(Reply::said(format!("added {added} entries to {name}")))
+    }
+
+    fn remove_entries(&self, profile: usize) -> anyhow::Result<Reply> {
+        let Some(name) = self.profile(profile) else {
+            return Ok(Reply::done());
+        };
+        let mut p = self.store.load(&name)?;
+        let picked = self.pick_entries(&format!("Remove from {name}"), &p.entries)?;
+        let mut index = 0;
+        p.entries.retain(|_| {
+            index += 1;
+            !picked.contains(&(index - 1))
+        });
+        self.store.save(&p)?;
+        Ok(Reply::said(format!(
+            "removed {} entries from {name}",
+            picked.len()
+        )))
+    }
+
+    fn add_typed(&self, profile: usize, spec: &str) -> anyhow::Result<Reply> {
+        let Some(name) = self.profile(profile) else {
+            return Ok(Reply::done());
+        };
+        let mut p = self.store.load(&name)?;
+        p.entries.push(profile::Entry::parse_spec(spec)?);
+        self.store.save(&p)?;
+        Ok(Reply::done())
+    }
+
+    /// Indices of the entries the user marks, valid for `entries`.
+    fn pick_entries(&self, title: &str, entries: &[profile::Entry]) -> anyhow::Result<Vec<usize>> {
+        let labels: Vec<String> = entries.iter().map(ToString::to_string).collect();
+        let picked = self.deps.prompter.multi_select(title, &labels)?;
+        Ok(picked.into_iter().filter(|&i| i < entries.len()).collect())
+    }
 }

@@ -9,6 +9,7 @@ mod prune;
 mod removal;
 mod run;
 mod scope;
+mod screen;
 mod use_profile;
 mod workspace;
 
@@ -19,7 +20,10 @@ use anyhow::Context;
 use clap::Parser;
 
 use args::wants_auto_yes;
-pub use args::{Cli, Command, Filter, ProfileCommand, ProjectCommand};
+pub use args::{
+    Cli, Command, Filter, InstallArgs, ListArgs, ProfileCommand, ProjectCommand, PruneArgs,
+    ResetArgs, UninstallArgs, UseArgs,
+};
 pub use deps::Deps;
 pub use run::run;
 pub use workspace::workspace;
@@ -35,22 +39,9 @@ pub fn main() -> anyhow::Result<()> {
     } else {
         &TuiPrompter
     };
-    let dir_var = |name: &str| {
-        std::env::var_os(name)
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-    };
-    let claude_config = dir_var("CLAUDE_CONFIG_DIR");
-    let codex_home = dir_var("CODEX_HOME");
-    let runner = SystemRunner {
-        envs: [
-            ("CLAUDE_CONFIG_DIR", &claude_config),
-            ("CODEX_HOME", &codex_home),
-        ]
-        .into_iter()
-        .filter_map(|(k, v)| Some((k, v.clone()?)))
-        .collect(),
-    };
+    let claude_config = redirected_dir("CLAUDE_CONFIG_DIR");
+    let codex_home = redirected_dir("CODEX_HOME");
+    let runner = child_runner(&claude_config, &codex_home);
     let deps = Deps {
         home: std::env::home_dir().context("cannot find home directory")?,
         claude_config,
@@ -65,5 +56,26 @@ pub fn main() -> anyhow::Result<()> {
     match cli.command {
         Some(command) => run(command, &deps, &mut std::io::stdout()),
         None => workspace(&deps, &mut std::io::stdout()),
+    }
+}
+
+/// The directory an agent's config is redirected to, when the variable is set.
+fn redirected_dir(variable: &str) -> Option<PathBuf> {
+    std::env::var_os(variable)
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+}
+
+/// Runs child commands with the same redirects, so native tools act on the same directories.
+fn child_runner(claude_config: &Option<PathBuf>, codex_home: &Option<PathBuf>) -> SystemRunner {
+    let redirects = [
+        ("CLAUDE_CONFIG_DIR", claude_config),
+        ("CODEX_HOME", codex_home),
+    ];
+    SystemRunner {
+        envs: redirects
+            .into_iter()
+            .filter_map(|(name, dir)| Some((name, dir.clone()?)))
+            .collect(),
     }
 }

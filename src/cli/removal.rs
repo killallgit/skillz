@@ -31,7 +31,15 @@ pub(super) fn uninstall(
         .into_iter()
         .filter_map(|i| candidates.get(i).copied())
         .collect();
-    confirm_and_remove(scene, &chosen, dry_run, true, out)
+    confirm_and_remove(
+        scene,
+        &chosen,
+        Review {
+            dry_run,
+            list_items: true,
+        },
+        out,
+    )
 }
 
 /// Remove everything the filters leave, except what `keep` names. Hooks belong to other tools
@@ -44,7 +52,15 @@ pub(super) fn reset(
 ) -> anyhow::Result<()> {
     let items = scene.gather();
     let chosen = reset_set(&items, scene.filter, keep);
-    confirm_and_remove(scene, &chosen, dry_run, true, out)
+    confirm_and_remove(
+        scene,
+        &chosen,
+        Review {
+            dry_run,
+            list_items: true,
+        },
+        out,
+    )
 }
 
 fn reset_set<'a>(
@@ -78,27 +94,44 @@ fn reset_set<'a>(
         .collect()
 }
 
-/// Show the removal plan for `chosen` (and the items themselves if `list_items`), confirm,
-/// run it, and report what it did.
+/// How a removal is reviewed: a dry run only prints the plan; otherwise it asks first.
+#[derive(Clone, Copy)]
+pub(super) struct Review {
+    pub(super) dry_run: bool,
+    /// Print the chosen items before the plan.
+    pub(super) list_items: bool,
+}
+
+/// Show the removal plan for `chosen`, confirm, run it, and report what it did.
 pub(super) fn confirm_and_remove(
     scene: &Scene,
     chosen: &[&Augmentation],
-    dry_run: bool,
-    list_items: bool,
+    review: Review,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let deps = scene.deps;
     if chosen.is_empty() {
         writeln!(out, "nothing selected")?;
         return Ok(());
     }
-
     let plan = remove::Plan::new(chosen, &scene.filter.agents);
+    print_plan(out, &plan, review.list_items)?;
+    if review.dry_run {
+        return Ok(());
+    }
+    if !scene.deps.prompter.confirm("Proceed?")? {
+        writeln!(out, "aborted")?;
+        return Ok(());
+    }
+    let outcome = execute_plan(scene, &plan)?;
+    report(out, &outcome)
+}
+
+fn print_plan(out: &mut dyn Write, plan: &remove::Plan, list_items: bool) -> anyhow::Result<()> {
     if list_items {
         writeln!(out, "Removing:")?;
-        for c in chosen {
-            writeln!(out, "  {}", c.label(true))?;
-            if let Some((_, others)) = plan.also_removes.iter().find(|(i, _)| i.id == c.id) {
+        for item in &plan.chosen {
+            writeln!(out, "  {}", item.label(true))?;
+            if let Some((_, others)) = plan.also_removes.iter().find(|(i, _)| i.id == item.id) {
                 let others: Vec<String> = others.iter().map(Agent::to_string).collect();
                 writeln!(out, "    also removes it for: {}", others.join(", "))?;
             }
@@ -108,22 +141,18 @@ pub(super) fn confirm_and_remove(
     for step in &plan.steps {
         writeln!(out, "  {}", step.describe())?;
     }
-    if dry_run {
-        return Ok(());
-    }
-    if !deps.prompter.confirm("Proceed?")? {
-        writeln!(out, "aborted")?;
-        return Ok(());
-    }
+    Ok(())
+}
 
-    // One status line while it works: the thing being removed, not each command's chatter.
+/// One status line while it works: the thing being removed, not each command's chatter.
+fn execute_plan(scene: &Scene, plan: &remove::Plan) -> anyhow::Result<remove::Outcome> {
     let spinner = spinner::Spinner::start("removing");
     let result = remove::run(
-        &plan,
-        &deps.adapters,
+        plan,
+        &scene.deps.adapters,
         scene.env,
         scene.scopes,
-        deps.runner,
+        scene.deps.runner,
         &mut |step| {
             if let Some(s) = &spinner {
                 s.set(&format!("removing {}", plan.owner(step)));
@@ -131,7 +160,10 @@ pub(super) fn confirm_and_remove(
         },
     );
     drop(spinner);
-    let outcome = result?;
+    result
+}
+
+fn report(out: &mut dyn Write, outcome: &remove::Outcome) -> anyhow::Result<()> {
     writeln!(
         out,
         "ran {} commands, removed {} paths, edited {} files",

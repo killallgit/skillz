@@ -8,28 +8,65 @@ use crate::model::{Augmentation, Scope};
 use crate::workspace::Workspace;
 use crate::{apply, profile, remove, spinner};
 
-/// `use`: show what moving `scope` to the named profile (`None` = no profile) changes, ask, then
-/// do it with one status line.
+/// Where a profile is loaded: one scope of one project's environment.
+pub(super) struct Target<'a> {
+    pub(super) env: &'a Env,
+    pub(super) scope: Scope,
+}
+
+/// What `use` was asked to do.
+pub(super) struct Switching<'a> {
+    /// The profile to load; `None` unloads the current one.
+    pub(super) profile: Option<&'a str>,
+    pub(super) dry_run: bool,
+}
+
+/// Show what moving the target to the named profile changes, ask, then do it with one status
+/// line.
 pub(super) fn use_profile(
     deps: &Deps,
-    env: &Env,
-    scope: Scope,
-    name: Option<&str>,
-    dry_run: bool,
+    target: &Target,
+    switching: &Switching,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let ledger = apply::Ledger::in_env(env);
-    let target = name
-        .map(|n| profile::Store::in_env(env).load(n))
+    let ledger = apply::Ledger::in_env(target.env);
+    let profile = switching
+        .profile
+        .map(|name| profile::Store::in_env(target.env).load(name))
         .transpose()?;
-    let switch = apply::plan(&deps.adapters, target.as_ref(), scope, env, &ledger)?;
+    let switch = apply::plan(
+        &deps.adapters,
+        profile.as_ref(),
+        target.scope,
+        target.env,
+        &ledger,
+    )?;
 
-    let label = |p: &Option<String>| p.clone().unwrap_or_else(|| "none".into());
+    print_switch(out, &switch, target.scope)?;
+    if switch.is_empty() {
+        writeln!(out, "already up to date")?;
+        return Ok(());
+    }
+    print_steps(out, &switch)?;
+    if switching.dry_run {
+        return Ok(());
+    }
+    if !deps.prompter.confirm("Proceed?")? {
+        writeln!(out, "aborted")?;
+        return Ok(());
+    }
+    let done = execute(deps, target, &switch, &ledger)?;
+    remember_project(target);
+    report(out, &switch, &done)
+}
+
+fn print_switch(out: &mut dyn Write, switch: &apply::Switch, scope: Scope) -> anyhow::Result<()> {
+    let name = |p: &Option<String>| p.clone().unwrap_or_else(|| "none".into());
     writeln!(
         out,
         "{scope}: {} -> {}",
-        label(&switch.from),
-        label(&switch.to)
+        name(&switch.from),
+        name(&switch.to)
     )?;
     for l in &switch.keep {
         writeln!(out, "  keep    {}", l.entry)?;
@@ -47,31 +84,32 @@ pub(super) fn use_profile(
             u.entry, u.agent
         )?;
     }
-    if switch.is_empty() {
-        writeln!(out, "already up to date")?;
-        return Ok(());
-    }
+    Ok(())
+}
+
+fn print_steps(out: &mut dyn Write, switch: &apply::Switch) -> anyhow::Result<()> {
     writeln!(out, "Plan:")?;
     for step in switch.steps() {
         writeln!(out, "  {}", step.describe())?;
     }
-    if dry_run {
-        return Ok(());
-    }
-    if !deps.prompter.confirm("Proceed?")? {
-        writeln!(out, "aborted")?;
-        return Ok(());
-    }
+    Ok(())
+}
 
+fn execute(
+    deps: &Deps,
+    target: &Target,
+    switch: &apply::Switch,
+    ledger: &apply::Ledger,
+) -> anyhow::Result<apply::Done> {
     let spinner = spinner::Spinner::start("switching");
     let refs: Vec<&Augmentation> = switch.removals.iter().collect();
     let removal = remove::Plan::new(&refs, &[]);
     let result = apply::run(
         &deps.adapters,
-        &switch,
-        scope,
-        env,
-        &ledger,
+        switch,
+        target.scope,
+        target.env,
+        ledger,
         deps.runner,
         &mut |step| {
             let Some(s) = &spinner else { return };
@@ -86,18 +124,28 @@ pub(super) fn use_profile(
         },
     );
     drop(spinner);
-    let done = result?;
-    if scope == Scope::Project {
-        // Remembering the project is a convenience; the switch itself already worked.
-        let _ = Workspace::in_env(env).add(&env.project);
+    result
+}
+
+/// Remembering the project is a convenience; the switch itself already worked.
+fn remember_project(target: &Target) {
+    if target.scope == Scope::Project {
+        let _ = Workspace::in_env(target.env).add(&target.env.project);
     }
+}
+
+fn report(out: &mut dyn Write, switch: &apply::Switch, done: &apply::Done) -> anyhow::Result<()> {
     writeln!(
         out,
         "removed {} items, installed {} items",
         switch.removals.len(),
         done.added.len()
     )?;
-    if let Some(left) = done.removed.filter(|o| !o.still_installed.is_empty()) {
+    if let Some(left) = done
+        .removed
+        .as_ref()
+        .filter(|o| !o.still_installed.is_empty())
+    {
         bail!(
             "still installed after removal: {}",
             left.still_installed.join(", ")

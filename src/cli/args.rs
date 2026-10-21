@@ -20,93 +20,16 @@ pub struct Cli {
 pub enum Command {
     /// Show installed augmentations as a tree (groups collapsed unless queried or --all)
     #[command(visible_alias = "ls")]
-    List {
-        /// Fuzzy query to expand, or a project path (`.`, `./dir`, `/abs`) to limit the listing to
-        target: Option<String>,
-        /// Project directory (default: cwd + global)
-        #[arg(short = 'p', long)]
-        project: Option<PathBuf>,
-        /// Expand every group
-        #[arg(long)]
-        all: bool,
-        /// Print the matching items (with their removal plans) as JSON, no tree
-        #[arg(long, conflicts_with = "interactive")]
-        json: bool,
-        #[command(flatten)]
-        filter: Filter,
-        /// Browse in a collapsible tree
-        #[arg(short, long)]
-        interactive: bool,
-    },
+    List(ListArgs),
     /// Completely remove augmentations (fuzzy match, then pick)
     #[command(visible_aliases = ["rm", "delete"])]
-    Uninstall {
-        /// Fuzzy query over name, group and source
-        query: Option<String>,
-        /// Project directory (default: cwd)
-        #[arg(short = 'p', long)]
-        project: Option<PathBuf>,
-        #[command(flatten)]
-        filter: Filter,
-        /// Don't prompt; requires an unambiguous query
-        #[arg(short, long)]
-        yes: bool,
-        /// Print the removal plan without changing anything
-        #[arg(long)]
-        dry_run: bool,
-    },
+    Uninstall(UninstallArgs),
     /// Remove every skill, plugin and marketplace in scope (hooks, MCP servers and subagents only when asked: `--hooks`, `--mcp`, `--subagents`)
-    Reset {
-        /// Project directory (default: the current one). With `-g`, only global unless given.
-        #[arg(value_name = "PATH")]
-        project: Option<PathBuf>,
-        #[command(flatten)]
-        filter: Filter,
-        /// Spare items with this name, group or source (repeatable)
-        #[arg(long)]
-        keep: Vec<String>,
-        /// Print what would be removed without changing anything
-        #[arg(long, conflicts_with = "force")]
-        dry_run: bool,
-        /// Remove without asking
-        #[arg(short, long)]
-        force: bool,
-    },
+    Reset(ResetArgs),
     /// Find duplicate skills and skills/plugins unused for 7+ days, then remove the ones picked
-    Prune {
-        /// Project directory (default: the current one, plus global)
-        #[arg(value_name = "PATH")]
-        project: Option<PathBuf>,
-        #[command(flatten)]
-        filter: Filter,
-        /// Print the findings and their removal plan without changing anything
-        #[arg(long, conflicts_with = "force")]
-        dry_run: bool,
-        /// Remove everything found without asking
-        #[arg(short, long)]
-        force: bool,
-    },
+    Prune(PruneArgs),
     /// Load a profile into the project (or globally), swapping out the one that is there
-    Use {
-        /// Profile name (see `~/.config/skillz/profiles`)
-        #[arg(required_unless_present = "none", conflicts_with = "none")]
-        profile: Option<String>,
-        /// Unload the current profile instead
-        #[arg(long)]
-        none: bool,
-        /// Apply to the global config instead of the project
-        #[arg(short, long)]
-        global: bool,
-        /// Project directory (default: cwd)
-        #[arg(short = 'p', long)]
-        project: Option<PathBuf>,
-        /// Don't ask before changing anything
-        #[arg(short, long)]
-        yes: bool,
-        /// Print the plan without changing anything
-        #[arg(long)]
-        dry_run: bool,
-    },
+    Use(UseArgs),
     /// Register projects so the workspace can show and switch them
     Project {
         #[command(subcommand)]
@@ -119,28 +42,123 @@ pub enum Command {
     },
     /// Install skills (via `npx skills`) or a Claude plugin marketplace
     #[command(visible_alias = "add")]
-    Install {
-        /// org/repo, git URL or local path
-        source: String,
-        /// Install globally instead of into the project
-        #[arg(short, long)]
-        global: bool,
-        /// Target agents (default: all)
-        #[arg(short, long = "agent", value_enum)]
-        agents: Vec<Agent>,
-        /// Install every skill in the source
-        #[arg(long, conflicts_with = "skill")]
-        all: bool,
-        /// Skill names or globs, comma separated (e.g. `tdd,*commit`)
-        #[arg(long, value_delimiter = ',')]
-        skill: Vec<String>,
-        /// Project directory (default: cwd)
-        #[arg(short = 'p', long)]
-        project: Option<PathBuf>,
-        /// Don't prompt; pick everything matched
-        #[arg(short, long)]
-        yes: bool,
-    },
+    Install(InstallArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct ListArgs {
+    /// Fuzzy query to expand, or a project path (`.`, `./dir`, `/abs`) to limit the listing to
+    pub target: Option<String>,
+    /// Project directory (default: cwd + global)
+    #[arg(short = 'p', long)]
+    pub project: Option<PathBuf>,
+    /// Expand every group
+    #[arg(long)]
+    pub all: bool,
+    /// Print the matching items (with their removal plans) as JSON, no tree
+    #[arg(long, conflicts_with = "interactive")]
+    pub json: bool,
+    #[command(flatten)]
+    pub filter: Filter,
+    /// Browse in a collapsible tree
+    #[arg(short, long)]
+    pub interactive: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct UninstallArgs {
+    /// Fuzzy query over name, group and source
+    pub query: Option<String>,
+    /// Project directory (default: cwd)
+    #[arg(short = 'p', long)]
+    pub project: Option<PathBuf>,
+    #[command(flatten)]
+    pub filter: Filter,
+    /// Don't prompt; requires an unambiguous query
+    #[arg(short, long)]
+    pub yes: bool,
+    /// Print the removal plan without changing anything
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ResetArgs {
+    /// Project directory (default: the current one). With `-g`, only global unless given.
+    #[arg(value_name = "PATH")]
+    pub project: Option<PathBuf>,
+    #[command(flatten)]
+    pub filter: Filter,
+    /// Spare items with this name, group or source (repeatable)
+    #[arg(long)]
+    pub keep: Vec<String>,
+    /// Print what would be removed without changing anything
+    #[arg(long, conflicts_with = "force")]
+    pub dry_run: bool,
+    /// Remove without asking
+    #[arg(short, long)]
+    pub force: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct PruneArgs {
+    /// Project directory (default: the current one, plus global)
+    #[arg(value_name = "PATH")]
+    pub project: Option<PathBuf>,
+    #[command(flatten)]
+    pub filter: Filter,
+    /// Print the findings and their removal plan without changing anything
+    #[arg(long, conflicts_with = "force")]
+    pub dry_run: bool,
+    /// Remove everything found without asking
+    #[arg(short, long)]
+    pub force: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct UseArgs {
+    /// Profile name (see `~/.config/skillz/profiles`)
+    #[arg(required_unless_present = "none", conflicts_with = "none")]
+    pub profile: Option<String>,
+    /// Unload the current profile instead
+    #[arg(long)]
+    pub none: bool,
+    /// Apply to the global config instead of the project
+    #[arg(short, long)]
+    pub global: bool,
+    /// Project directory (default: cwd)
+    #[arg(short = 'p', long)]
+    pub project: Option<PathBuf>,
+    /// Don't ask before changing anything
+    #[arg(short, long)]
+    pub yes: bool,
+    /// Print the plan without changing anything
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct InstallArgs {
+    /// org/repo, git URL or local path
+    pub source: String,
+    /// Install globally instead of into the project
+    #[arg(short, long)]
+    pub global: bool,
+    /// Target agents (default: all)
+    #[arg(short, long = "agent", value_enum)]
+    pub agents: Vec<Agent>,
+    /// Install every skill in the source
+    #[arg(long, conflicts_with = "skill")]
+    pub all: bool,
+    /// Skill names or globs, comma separated (e.g. `tdd,*commit`)
+    #[arg(long, value_delimiter = ',')]
+    pub skill: Vec<String>,
+    /// Project directory (default: cwd)
+    #[arg(short = 'p', long)]
+    pub project: Option<PathBuf>,
+    /// Don't prompt; pick everything matched
+    #[arg(short, long)]
+    pub yes: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -226,14 +244,14 @@ impl Filter {
 
 /// `--yes` (prune: `--force`) swaps the interactive prompter for one that picks and confirms everything.
 pub(super) fn wants_auto_yes(command: &Command) -> bool {
-    matches!(
-        command,
-        Command::Uninstall { yes: true, .. }
-            | Command::Install { yes: true, .. }
-            | Command::Prune { force: true, .. }
-            | Command::Reset { force: true, .. }
-            | Command::Use { yes: true, .. }
-    )
+    match command {
+        Command::Uninstall(a) => a.yes,
+        Command::Install(a) => a.yes,
+        Command::Use(a) => a.yes,
+        Command::Prune(a) => a.force,
+        Command::Reset(a) => a.force,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -278,7 +296,8 @@ mod tests {
         assert!(!wants_auto_yes(&parse(&["reset"])));
         assert!(Cli::try_parse_from(["skillz", "reset", "--dry-run", "--force"]).is_err());
         let project = |args: &[&str]| match parse(args) {
-            Command::Reset { project, .. } | Command::Prune { project, .. } => project,
+            Command::Reset(a) => a.project,
+            Command::Prune(a) => a.project,
             other => panic!("{other:?}"),
         };
         assert_eq!(project(&["reset", "."]), Some(PathBuf::from(".")));

@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use skillz::action::{Action, RemovalTarget};
 use skillz::agents::{self, AgentAdapter, PluginInstall, PluginOutcome};
-use skillz::cli::{Command, Deps, Filter, run};
+use skillz::cli::{Command, Deps, Filter, UninstallArgs, run};
 use skillz::env::Env;
 use skillz::install::{InstallRequest, SkillSelection, install};
 use skillz::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
@@ -179,13 +179,13 @@ fn uninstall_runs_the_fakes_removal_plan() {
         prompter: &Yes,
         interactive: false,
     };
-    let cmd = Command::Uninstall {
+    let cmd = Command::Uninstall(UninstallArgs {
         query: Some(PLUGIN.into()),
         project: None,
         filter: Filter::default(),
         yes: true,
         dry_run: false,
-    };
+    });
     run(cmd, &deps, &mut Vec::new()).unwrap();
     assert!(!w.env.home.join(".fake/plugins").join(PLUGIN).exists());
     assert!(w.env.home.join(".fake/skills/dup").exists());
