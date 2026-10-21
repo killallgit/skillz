@@ -1,11 +1,11 @@
-//! How far the project is from a profile: what it lacks and what the profile does not ask for.
+//! How far an installed set is from a profile: what it lacks and what the profile does not ask for.
 
-use crate::apply::compare;
+use super::compare;
 use crate::model::Augmentation;
 use crate::profile::Profile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Drift {
+pub struct Drift {
     pub profile: String,
     pub missing: usize,
     pub extra: usize,
@@ -17,7 +17,7 @@ impl Drift {
     }
 }
 
-pub(super) fn drift(profile: &Profile, installed: &[Augmentation]) -> Drift {
+pub fn drift(profile: &Profile, installed: &[Augmentation]) -> Drift {
     let standing = compare(&profile.resolved(), installed);
     Drift {
         profile: profile.name.clone(),
@@ -28,10 +28,26 @@ pub(super) fn drift(profile: &Profile, installed: &[Augmentation]) -> Drift {
 
 #[cfg(test)]
 mod tests {
-    use super::super::rows::tests::installed;
     use super::*;
-    use crate::model::Kind;
+    use crate::model::{Agent, Installer, Kind, Scope};
     use crate::profile::Entry;
+
+    fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
+        Augmentation {
+            hooks: vec![],
+            id: format!("{kind}:{name}"),
+            name: name.into(),
+            kind,
+            agents: vec![Agent::Claude, Agent::Codex],
+            scope: Scope::Project,
+            group: source.unwrap_or("local").into(),
+            source: source.map(Into::into),
+            installer: Installer::Npx,
+            origin: Default::default(),
+            children: vec![],
+            removal: vec![],
+        }
+    }
 
     fn profile_with(names: &[&str]) -> Profile {
         let mut profile = Profile::new("web");

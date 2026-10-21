@@ -18,6 +18,7 @@ pub(crate) mod info;
 pub mod install;
 pub(crate) mod json_edit;
 pub mod library;
+pub(crate) mod location;
 pub(crate) mod matcher;
 pub(crate) mod mcp;
 pub mod model;

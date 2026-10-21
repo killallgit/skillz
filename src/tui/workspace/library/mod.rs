@@ -14,11 +14,12 @@ use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
-use self::presence::{Presence, presences};
+use self::presence::presences;
 use self::rows::{Row, build, shape};
 use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
+use crate::library::Presence;
 use crate::profile::Entry;
 use crate::tui::keymap::Scope;
 use crate::tui::theme::Theme;

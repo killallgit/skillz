@@ -1,38 +1,18 @@
 //! Whether each library item is installed right now, in the project and at user level.
 
 use super::rows::Row;
-use crate::model::Augmentation;
-use crate::profile::{Entry, same_thing};
-use crate::snapshot::snapshot;
+use crate::library::{Held, Presence};
 use crate::tui::workspace::Model;
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(super) struct Presence {
-    pub project: bool,
-    pub global: bool,
-}
 
 /// One presence per row, in row order; sections are never installed.
 pub(super) fn presences(rows: &[Row], model: &Model) -> Vec<Presence> {
-    let project = entries_of(&model.installed);
-    let global = entries_of(&model.global);
+    let held = Held::of(&model.installed, &model.global);
     rows.iter()
         .map(|row| match row {
-            Row::Item(item) => Presence {
-                project: holds(&project, &item.entry),
-                global: holds(&global, &item.entry),
-            },
+            Row::Item(item) => held.presence(&item.entry),
             Row::Section { .. } => Presence::default(),
         })
         .collect()
-}
-
-fn entries_of(installed: &[Augmentation]) -> Vec<Entry> {
-    snapshot("installed", installed).profile.entries
-}
-
-fn holds(installed: &[Entry], entry: &Entry) -> bool {
-    installed.iter().any(|have| same_thing(have, entry))
 }
 
 #[cfg(test)]
@@ -40,7 +20,7 @@ mod tests {
     use super::super::rows::{build, tests::skill};
     use super::*;
     use crate::library::Catalog;
-    use crate::model::{Agent, Installer, Kind, Origin, Scope};
+    use crate::model::{Agent, Augmentation, Installer, Kind, Origin, Scope};
 
     fn installed_tdd(scope: Scope) -> Augmentation {
         Augmentation {

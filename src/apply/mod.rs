@@ -4,6 +4,7 @@
 
 #[cfg(test)]
 mod each_tests;
+mod drift;
 mod plan;
 mod run;
 mod run_each;
@@ -12,6 +13,7 @@ mod switch;
 #[cfg(test)]
 mod tests;
 
+pub use drift::{Drift, drift};
 pub use run::Done;
 pub use run_each::{Each, Watch};
 pub use standing::{Standing, compare, holds, loaded};

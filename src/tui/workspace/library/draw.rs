@@ -5,11 +5,10 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::detail::{Cue, Detail, detail};
-use super::presence::Presence;
+use super::detail::{Detail, detail};
 use super::rows::Row;
 use super::{LibraryTab, Popup};
-use crate::library::Provenance;
+use crate::library::{Cue, Presence, Provenance};
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;

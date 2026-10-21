@@ -6,7 +6,7 @@ use crate::model::{Augmentation, Kind};
 const SKILL_PREFIX: &str = "skill:";
 
 /// The skill's directory, else the first file or directory its removal touches.
-pub(super) fn location(item: &Augmentation) -> String {
+pub fn location(item: &Augmentation) -> String {
     match item.kind {
         Kind::Skill => skill_dir(&item.id),
         _ => item.removal.iter().find_map(touched).unwrap_or_default(),
@@ -32,8 +32,25 @@ fn touched(step: &Action) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::rows::tests::installed;
     use super::*;
+    use crate::model::{Agent, Installer, Scope};
+
+    fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
+        Augmentation {
+            hooks: vec![],
+            id: format!("{kind}:{name}"),
+            name: name.into(),
+            kind,
+            agents: vec![Agent::Claude],
+            scope: Scope::Project,
+            group: source.unwrap_or("local").into(),
+            source: source.map(Into::into),
+            installer: Installer::Npx,
+            origin: Default::default(),
+            children: vec![],
+            removal: vec![],
+        }
+    }
 
     #[test]
     fn a_skill_is_where_its_id_says_without_the_scope_suffix() {

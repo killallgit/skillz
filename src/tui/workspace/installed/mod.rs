@@ -6,12 +6,10 @@ mod direct;
 #[cfg(test)]
 mod direct_tests;
 mod draw;
-mod drift;
 #[cfg(test)]
 mod global_tests;
 mod header;
 mod keys;
-mod location;
 mod pending;
 mod picker;
 #[cfg(test)]
@@ -34,7 +32,6 @@ use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
 use self::direct::Proposal;
-use self::drift::{Drift, drift};
 use self::pending::Pending;
 use self::picker::Picker;
 use self::rows::{Row, Sources, build, shape};
@@ -42,6 +39,7 @@ use self::status::Statuses;
 use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
+use crate::apply::{Drift, drift};
 use crate::model::{Augmentation, Scope};
 use crate::profile::Profile;
 use crate::review::ItemEvent;

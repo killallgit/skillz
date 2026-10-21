@@ -5,11 +5,13 @@
 mod catalog;
 mod import;
 mod item;
+mod presence;
 mod provenance;
 mod sync;
 
 pub use catalog::Catalog;
 pub use import::{import_installed, record_installed};
 pub use item::{ItemKind, LibraryItem};
-pub use provenance::{Provenance, now_secs};
+pub use presence::{Held, Presence};
+pub use provenance::{Cue, Provenance, now_secs};
 pub use sync::{Synced, sync_installed};

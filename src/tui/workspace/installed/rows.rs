@@ -1,10 +1,10 @@
 //! The rows of an installed tab's outline: a section per kind for what the scope has, then one
 //! `Available` group with a section per kind for what only the library offers.
 
-use super::location::location;
 use super::presence::{has_counterpart, has_library_item};
 use crate::hooks::UNOWNED_HOOKS;
 use crate::library::{Catalog, ItemKind, LibraryItem};
+use crate::location::location;
 use crate::model::{Augmentation, Kind};
 use crate::profile::Entry;
 use crate::tui::widgets::outline::Shape;
