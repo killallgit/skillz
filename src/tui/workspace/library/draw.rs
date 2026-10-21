@@ -5,7 +5,8 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::detail::{Detail, detail};
+use super::detail::{Cue, Detail, detail};
+use super::presence::Presence;
 use super::rows::Row;
 use super::{LibraryTab, Popup};
 use crate::library::Provenance;
@@ -50,7 +51,7 @@ impl LibraryTab {
         }
         vec![
             Line::styled("The library is empty", theme.text),
-            Line::styled("a adds an item, i imports what is installed", theme.muted),
+            Line::styled("a adds an item, i syncs with what is installed", theme.muted),
         ]
     }
 
@@ -72,6 +73,7 @@ impl LibraryTab {
                     theme.text,
                     theme,
                 ));
+                spans.push(Span::styled(presence_tags(self.presence[id]), theme.muted));
                 Line::from(spans)
             }
         }
@@ -111,6 +113,7 @@ fn detail_text(detail: &Detail, theme: &Theme) -> Line<'static> {
     };
     let provenance = detail.provenance.as_ref().map(provenance_text);
     let parts = [
+        Some(cue_text(detail.cue).to_string()),
         Some(format!("{:?}", detail.kind)),
         Some(detail.source.clone()),
         Some(agents),
@@ -132,4 +135,21 @@ fn provenance_text(provenance: &Provenance) -> String {
         .flatten()
         .collect::<Vec<_>>()
         .join(" · ")
+}
+
+fn cue_text(cue: Cue) -> &'static str {
+    match cue {
+        Cue::Manual => "added by hand",
+        Cue::Detected => "detected",
+        Cue::Skillz => "added by skillz",
+    }
+}
+
+/// `  project  global` for where the item is installed now; nothing when it is nowhere.
+fn presence_tags(presence: Presence) -> String {
+    let tags = [(presence.project, "project"), (presence.global, "global")];
+    tags.iter()
+        .filter(|(here, _)| *here)
+        .map(|(_, tag)| format!("  {tag}"))
+        .collect()
 }

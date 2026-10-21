@@ -5,6 +5,7 @@
 mod detail;
 mod draw;
 mod keys;
+mod presence;
 mod rows;
 #[cfg(test)]
 mod tests;
@@ -13,6 +14,7 @@ use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
+use self::presence::{Presence, presences};
 use self::rows::{Row, build, shape};
 use super::act::Act;
 use super::model::Model;
@@ -37,6 +39,7 @@ enum Popup {
 
 pub struct LibraryTab {
     rows: Vec<Row>,
+    presence: Vec<Presence>,
     outline: Outline,
     popup: Popup,
 }
@@ -45,6 +48,7 @@ impl LibraryTab {
     pub fn new() -> Self {
         LibraryTab {
             rows: vec![],
+            presence: vec![],
             outline: Outline::new(vec![]),
             popup: Popup::None,
         }
@@ -62,6 +66,7 @@ impl Tab for LibraryTab {
 
     fn load(&mut self, model: &Model) {
         self.rows = build(&model.library);
+        self.presence = presences(&self.rows, model);
         self.outline.reshape(shape(&self.rows));
     }
 
