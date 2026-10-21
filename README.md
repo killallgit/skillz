@@ -53,12 +53,13 @@ skillz prune                     # duplicates + unused 7+ days -> pick -> confir
 skillz prune --dry-run | --force
 
 skillz install mattpocock/skills --skill 'tdd,*commit'   # glob match, confirm, npx skills add
-skillz install mattpocock/skills --all -g
+skillz install mattpocock/skills --all
 skillz install killallgit/killall-skills                 # has a marketplace: pick Claude plugins
 ```
 
-Scope: a `PATH` (or `-p PATH`) means that project only, `-g` means global only, neither means
-both (project = cwd). A project that is your home directory counts as global. A `list` PATH must
+Scope for `list`, `uninstall`, `reset` and `prune`: a `PATH` (or `-p PATH`) means that project only,
+`-g` means global only, neither means both (project = cwd). `install`, `use`, `run`, `profile` and
+the TUI always act on one project. A project that is your home directory counts as global. A `list` PATH must
 start with `.`, `..` or `/` (`./sub`, not `sub`); any other word is a query.
 
 ## Profiles

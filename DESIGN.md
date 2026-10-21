@@ -346,7 +346,7 @@ Kind flags: `--skills --hooks --plugins --marketplaces --mcp --subagents` (singu
   or Codex plugins without skills). Duplicates always go into the removal; unused items only
   when picked. Then the same `remove` step as `uninstall`. `--force` picks and confirms
   everything (the `AssumeYes` prompter).
-- `install`: project scope unless `-g` or the project is the home dir (then global). Resolve
+- `install`: always the project (cwd or `-p PATH`). Resolve
   source (local path relative to the cwd, not `-p`; else shallow clone), scan skills and
   `.claude-plugin/marketplace.json`. Skills are named by their `SKILL.md` frontmatter `name:`
   (what npx `--skill` matches); as in npx, skills without `name`/`description` are skipped,
