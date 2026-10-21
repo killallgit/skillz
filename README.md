@@ -227,7 +227,9 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   disk (the skill's directory, or the config file). The header shows the directory, or `Global
   (user-level)`; on Project it also shows how the directory compares with a profile you chose:
   matching, or `N missing` / `N extra`. Picked rows get their own marker and a `to install` /
-  `to remove` note, and each section shows its count of picks. A filter keeps the section
+  `to remove` note, and each section shows its count of picks. A plugin lists the hooks it
+  declares beneath it (read-only, marked `added by <plugin>`; removing the plugin removes them),
+  and the Hooks section, titled `(unknown) hooks`, holds only hooks no plugin declares. A filter keeps the section
   structure and hides sections with no match. Installs, removals and updates on Global act on
   the user's installs (`npx skills -g`, `claude ... --scope user`, the Codex user config).
   Profiles apply to a project only, so Global has no `p` or `a`.
@@ -322,7 +324,7 @@ non-UTF-8 locale). `SKILLZ_NO_MOUSE` (any value) turns mouse capture off.
 | Item | Removed |
 | --- | --- |
 | Skill (npx `skills` or loose) | every agent link to it, the store copy in `.agents/skills`, its lock entry |
-| Hook group | every handler that runs the same tool, pruning empty groups/events |
+| Hook group (`(unknown) hooks`; a plugin's own hooks go with the plugin) | every handler that runs the same tool, pruning empty groups/events |
 | Subagent | the definition file and its `.skillz-sources.json` entry |
 | MCP server | `claude mcp remove` / `codex mcp remove`, then its config entry |
 | Claude plugin | `enabledPlugins` entry, install record, cache + data dirs once no scope uses it |
