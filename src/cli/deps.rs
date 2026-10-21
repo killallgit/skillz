@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use crate::agents::AgentAdapter;
 use crate::prompt::Prompter;
@@ -12,7 +13,7 @@ pub struct Deps<'a> {
     /// `CODEX_HOME`, when set: the only Codex config skillz touches.
     pub codex_home: Option<PathBuf>,
     pub cwd: PathBuf,
-    pub adapters: Vec<Box<dyn AgentAdapter>>,
+    pub adapters: Rc<[Box<dyn AgentAdapter>]>,
     pub runner: &'a dyn CommandRunner,
     pub prompter: &'a dyn Prompter,
     pub interactive: bool,
@@ -31,7 +32,7 @@ impl<'a> Deps<'a> {
             claude_config,
             codex_home,
             cwd: self.cwd.clone(),
-            adapters: crate::agents::registry(),
+            adapters: Rc::clone(&self.adapters),
             runner,
             prompter: self.prompter,
             interactive: self.interactive,

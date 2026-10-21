@@ -40,8 +40,6 @@ pub enum PluginOutcome {
 
 pub trait AgentAdapter {
     fn agent(&self) -> Agent;
-    /// The id the `skills` CLI (`npx skills add -a <id>`) uses for this agent.
-    fn npx_id(&self) -> &'static str;
     /// Directories this agent loads loose skills from, for `scope`.
     fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf>;
     /// Hook config files this agent reads for `scope` (parsed by `hooks::discover`).
@@ -98,55 +96,10 @@ pub fn registry() -> Vec<Box<dyn AgentAdapter>> {
     ]
 }
 
-/// Every registered agent, in registry order.
-pub fn all() -> Vec<Agent> {
-    registry().iter().map(|a| a.agent()).collect()
-}
-
-/// Hidden home dir names owned by any agent.
-pub fn home_dir_names() -> Vec<&'static str> {
-    registry()
-        .iter()
-        .flat_map(|a| a.home_dir_names())
-        .copied()
-        .collect()
-}
-
-/// `${VAR}` tokens that mark a command as living in a plugin's own dir.
-pub fn plugin_root_vars() -> Vec<&'static str> {
-    registry()
-        .iter()
-        .filter_map(|a| a.plugin_root_var())
-        .collect()
-}
-
-pub fn adapter(agent: Agent) -> Option<Box<dyn AgentAdapter>> {
-    registry().into_iter().find(|a| a.agent() == agent)
-}
-
 /// The adapter among `adapters` that handles `agent`.
 pub fn adapter_for(adapters: &[Box<dyn AgentAdapter>], agent: Agent) -> Option<&dyn AgentAdapter> {
     adapters
         .iter()
         .find(|a| a.agent() == agent)
         .map(|a| a.as_ref())
-}
-
-/// `agent`'s id for the `skills` CLI.
-pub fn npx_id(agent: Agent) -> &'static str {
-    adapter(agent).map_or("", |a| a.npx_id())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_agent_is_registered_with_a_distinct_npx_id() {
-        let mut ids: Vec<&str> = all().into_iter().map(npx_id).collect();
-        assert!(ids.iter().all(|id| !id.is_empty()));
-        ids.sort();
-        ids.dedup();
-        assert_eq!(ids.len(), all().len());
-    }
 }

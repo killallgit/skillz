@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::Context;
 
-use super::group::hook_group;
+use super::group::{GroupHints, hook_group};
 use crate::action::{Action, Edit};
 use crate::hook_text::{Format, HookEntry, parse};
 use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
@@ -18,14 +18,19 @@ struct Source<'a> {
 
 /// Hooks in one config file, one `Augmentation` per `hook_group`, each with its removal plan.
 /// A missing file yields an empty list.
-pub fn discover(file: &Path, agent: Agent, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
+pub fn discover(
+    file: &Path,
+    agent: Agent,
+    scope: Scope,
+    hints: &GroupHints,
+) -> anyhow::Result<Vec<Augmentation>> {
     let Some(text) = read_config(file)? else {
         return Ok(Vec::new());
     };
     let entries =
         parse(&text, Format::of(file)).with_context(|| format!("parse {}", file.display()))?;
     let source = Source { file, agent, scope };
-    Ok(group_entries(entries)
+    Ok(group_entries(entries, hints)
         .into_iter()
         .map(|(name, entries)| augmentation(&source, name, &entries))
         .collect())
@@ -40,11 +45,11 @@ fn read_config(file: &Path) -> anyhow::Result<Option<String>> {
     }
 }
 
-fn group_entries(entries: Vec<HookEntry>) -> BTreeMap<String, Vec<HookEntry>> {
+fn group_entries(entries: Vec<HookEntry>, hints: &GroupHints) -> BTreeMap<String, Vec<HookEntry>> {
     let mut groups: BTreeMap<String, Vec<HookEntry>> = BTreeMap::new();
     for entry in entries {
         groups
-            .entry(hook_group(&entry.command))
+            .entry(hook_group(&entry.command, hints))
             .or_default()
             .push(entry);
     }
@@ -96,6 +101,10 @@ mod tests {
     use super::*;
     use crate::hook_text::testutil::*;
     use serde_json::{Value, json};
+
+    fn discover(file: &Path, agent: Agent, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
+        super::discover(file, agent, scope, &GroupHints::default())
+    }
 
     #[test]
     fn discover_missing_file_is_empty() {

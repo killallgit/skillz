@@ -138,14 +138,7 @@ mod tests {
     use super::*;
     use crate::model::{Installer, Kind, Scope};
 
-    fn item(
-        name: &str,
-        kind: Kind,
-        installer: Installer,
-        group: &str,
-        source: Option<&str>,
-        agents: &[Agent],
-    ) -> Augmentation {
+    fn item(name: &str, kind: Kind, installer: Installer, agents: &[Agent]) -> Augmentation {
         Augmentation {
             hooks: Vec::new(),
             id: format!("{kind}:{name}:{agents:?}"),
@@ -153,11 +146,19 @@ mod tests {
             kind,
             agents: agents.to_vec(),
             scope: Scope::Project,
-            group: group.into(),
-            source: source.map(Into::into),
+            group: "local".into(),
+            source: None,
             installer,
             children: vec![],
             removal: vec![],
+        }
+    }
+
+    fn in_group(item: Augmentation, group: &str, source: Option<&str>) -> Augmentation {
+        Augmentation {
+            group: group.into(),
+            source: source.map(Into::into),
+            ..item
         }
     }
 
@@ -168,7 +169,7 @@ mod tests {
     #[test]
     fn npx_skills_group_by_source_and_agents() {
         let skill = |n: &str, src: &str, agents: &[Agent]| {
-            item(n, Kind::Skill, Installer::Npx, src, Some(src), agents)
+            in_group(item(n, Kind::Skill, Installer::Npx, agents), src, Some(src))
         };
         let snap = snapshot(
             "p",
@@ -210,22 +211,21 @@ mod tests {
     #[test]
     fn a_plugin_installed_for_two_agents_is_one_entry() {
         let plugin = |agent: Agent| {
-            item(
-                "pp@mp",
-                Kind::Plugin,
-                Installer::ClaudeCli,
+            in_group(
+                item("pp@mp", Kind::Plugin, Installer::ClaudeCli, &[agent]),
                 "mp",
                 Some("o/mp"),
-                &[agent],
             )
         };
-        let market = item(
-            "mp",
-            Kind::Marketplace,
-            Installer::ClaudeCli,
+        let market = in_group(
+            item(
+                "mp",
+                Kind::Marketplace,
+                Installer::ClaudeCli,
+                &[Agent::Claude],
+            ),
             "mp",
             Some("o/mp"),
-            &[Agent::Claude],
         );
         let snap = snapshot("p", &[plugin(Agent::Claude), plugin(Agent::Codex), market]);
         assert!(snap.skipped.is_empty());
@@ -245,30 +245,25 @@ mod tests {
         let snap = snapshot(
             "p",
             &[
-                item(
-                    "mine",
-                    Kind::Skill,
-                    Installer::Local,
+                in_group(
+                    item("mine", Kind::Skill, Installer::Local, &both()),
                     "local",
                     None,
-                    &both(),
                 ),
-                item("hk", Kind::Hook, Installer::Local, "hooks", None, &both()),
-                item(
-                    "np@mp",
-                    Kind::Plugin,
-                    Installer::ClaudeCli,
+                in_group(
+                    item("hk", Kind::Hook, Installer::Local, &both()),
+                    "hooks",
+                    None,
+                ),
+                in_group(
+                    item("np@mp", Kind::Plugin, Installer::ClaudeCli, &both()),
                     "mp",
                     None,
-                    &both(),
                 ),
-                item(
-                    "-bad",
-                    Kind::Skill,
-                    Installer::Npx,
+                in_group(
+                    item("-bad", Kind::Skill, Installer::Npx, &both()),
                     "o/r",
                     Some("o/r"),
-                    &both(),
                 ),
             ],
         );
@@ -295,7 +290,11 @@ mod tests {
                 command: command.into(),
             };
         let hook = |agent: Agent| {
-            let mut i = item("fmt", Kind::Hook, Installer::Local, "hooks", None, &[agent]);
+            let mut i = in_group(
+                item("fmt", Kind::Hook, Installer::Local, &[agent]),
+                "hooks",
+                None,
+            );
             i.hooks = vec![
                 handler("PostToolUse", Some("Edit"), "cargo fmt"),
                 handler("Stop", None, "notify: done"),
@@ -326,7 +325,11 @@ mod tests {
 
     #[test]
     fn a_matcher_containing_a_colon_survives_the_snapshot() {
-        let mut i = item("fmt", Kind::Hook, Installer::Local, "hooks", None, &both());
+        let mut i = in_group(
+            item("fmt", Kind::Hook, Installer::Local, &both()),
+            "hooks",
+            None,
+        );
         i.hooks = vec![crate::hook_text::HookEntry {
             event: "PreToolUse".into(),
             matcher: Some("mcp__a: b".into()),
@@ -345,7 +348,11 @@ mod tests {
     #[test]
     fn mcp_servers_are_saved_unless_they_need_secrets() {
         let server = |name: &str, children: Vec<&str>, agent: Agent| {
-            let mut i = item(name, Kind::Mcp, Installer::ClaudeCli, "mcp", None, &[agent]);
+            let mut i = in_group(
+                item(name, Kind::Mcp, Installer::ClaudeCli, &[agent]),
+                "mcp",
+                None,
+            );
             i.children = children.into_iter().map(String::from).collect();
             i
         };
@@ -409,13 +416,10 @@ mod tests {
     #[test]
     fn mcp_servers_with_credentials_in_args_or_url_are_not_saved() {
         let server = |name: &str, children: Vec<&str>| {
-            let mut i = item(
-                name,
-                Kind::Mcp,
-                Installer::ClaudeCli,
+            let mut i = in_group(
+                item(name, Kind::Mcp, Installer::ClaudeCli, &[Agent::Claude]),
                 "mcp",
                 None,
-                &[Agent::Claude],
             );
             i.children = children.into_iter().map(String::from).collect();
             i
@@ -444,13 +448,10 @@ mod tests {
     #[test]
     fn subagents_with_a_source_are_saved_by_file_stem() {
         let agent = |name: &str, file: &str, source: Option<&str>| {
-            let mut i = item(
-                name,
-                Kind::Subagent,
-                Installer::Local,
+            let mut i = in_group(
+                item(name, Kind::Subagent, Installer::Local, &[Agent::Claude]),
                 "g",
                 source,
-                &[Agent::Claude],
             );
             i.children = vec![format!("file: {file}")];
             i
@@ -480,13 +481,10 @@ mod tests {
     fn the_snapshot_is_a_valid_profile_that_round_trips() {
         let snap = snapshot(
             "p",
-            &[item(
-                "tdd",
-                Kind::Skill,
-                Installer::Npx,
+            &[in_group(
+                item("tdd", Kind::Skill, Installer::Npx, &both()),
                 "o/r",
                 Some("o/r"),
-                &both(),
             )],
         );
         let text = snap.profile.to_text().unwrap();

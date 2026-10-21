@@ -26,6 +26,17 @@ pub enum Agent {
     Cursor,
 }
 
+impl Agent {
+    /// The id the `skills` CLI (`npx skills add -a <id>`) uses for this agent.
+    pub fn npx_id(self) -> &'static str {
+        match self {
+            Agent::Claude => "claude-code",
+            Agent::Codex => "codex",
+            Agent::Cursor => "cursor",
+        }
+    }
+}
+
 /// The kind of harness augmentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -173,6 +184,17 @@ mod tests {
             children: vec![],
             removal: vec![],
         }
+    }
+
+    #[test]
+    fn every_agent_has_a_distinct_npx_id() {
+        let mut ids = [Agent::Claude, Agent::Codex, Agent::Cursor].map(Agent::npx_id);
+        ids.sort();
+
+        let distinct = ids.windows(2).all(|w| w[0] != w[1]);
+
+        // A shared id would make `npx skills -a` act on the wrong agent.
+        assert!(distinct && ids.iter().all(|id| !id.is_empty()));
     }
 
     #[test]

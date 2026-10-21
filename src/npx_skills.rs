@@ -54,7 +54,7 @@ pub fn add_command(
         args.extend(["--skill".into(), s.clone()]);
     }
     for a in agents {
-        args.extend(["-a".into(), crate::agents::npx_id(*a).into()]);
+        args.extend(["-a".into(), a.npx_id().into()]);
     }
     if scope == Scope::Global {
         args.push("-g".into());
@@ -68,7 +68,7 @@ pub fn add_command(
 pub fn remove_command(name: &str, agents: &[Agent], scope: Scope) -> (String, Vec<String>) {
     let mut args: Vec<String> = ["-y", "skills", "remove", name].map(String::from).to_vec();
     for a in agents {
-        args.extend(["-a".into(), crate::agents::npx_id(*a).into()]);
+        args.extend(["-a".into(), a.npx_id().into()]);
     }
     if scope == Scope::Global {
         args.push("-g".into());

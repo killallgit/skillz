@@ -4,7 +4,6 @@
 
 mod skills;
 mod source;
-pub(crate) use source::{run_checked, with_tmp_clone};
 #[cfg(test)]
 pub(crate) mod test_support;
 
@@ -38,8 +37,6 @@ pub struct InstallRequest {
     pub selection: SkillSelection,
 }
 
-pub(crate) type Cmd = (String, Vec<String>);
-
 /// What an install talks to: the registered agents and the outside world.
 pub struct Ctx<'a> {
     pub adapters: &'a [Box<dyn AgentAdapter>],
@@ -55,7 +52,13 @@ struct Tree<'a> {
 }
 
 pub fn install(ctx: &Ctx, req: &InstallRequest) -> anyhow::Result<()> {
-    source::with_source(&req.source, &req.cwd, ctx.env, ctx.runner, |src, source| {
+    let fetch = source::Fetch {
+        source: &req.source,
+        cwd: &req.cwd,
+        project: &ctx.env.project,
+        runner: ctx.runner,
+    };
+    source::with_source(&fetch, |src, source| {
         install_from(ctx, req, &Tree { src, source })
     })
 }
@@ -132,13 +135,7 @@ mod tests {
     fn local_path_all_installs_every_skill_from_absolute_path() {
         let fx = project_with(skills_fixture);
         let runner = FakeRunner::new(|_| {});
-        let r = req(
-            &fx,
-            "repo",
-            &[Agent::Claude],
-            Scope::Project,
-            SkillSelection::All,
-        );
+        let r = req(&fx, "repo", SkillSelection::All);
         run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
         let src = fx.env.project.join("repo").to_string_lossy().into_owned();
         let expected = npx(
@@ -167,13 +164,11 @@ mod tests {
     fn github_shorthand_clones_then_passes_original_source() {
         let fx = project_with(|_| {});
         let runner = FakeRunner::new(skills_fixture);
-        let r = req(
-            &fx,
-            "org/repo",
-            &[Agent::Codex],
-            Scope::Global,
-            SkillSelection::Interactive,
-        );
+        let r = InstallRequest {
+            agents: vec![Agent::Codex],
+            scope: Scope::Global,
+            ..req(&fx, "org/repo", SkillSelection::Interactive)
+        };
         run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[2], true)).unwrap();
         let calls = runner.calls();
         assert_eq!(calls.len(), 2);
@@ -195,13 +190,11 @@ mod tests {
     fn marketplace_with_other_agents_offers_them_the_skill_picker() {
         let fx = project_with(marketplace_fixture);
         let runner = FakeRunner::new(|_| {});
-        let r = req(
-            &fx,
-            "repo",
-            &[Agent::Claude, Agent::Codex],
-            Scope::Global,
-            SkillSelection::Interactive,
-        );
+        let r = InstallRequest {
+            agents: vec![Agent::Claude, Agent::Codex],
+            scope: Scope::Global,
+            ..req(&fx, "repo", SkillSelection::Interactive)
+        };
         let prompter = ScriptedPrompter::new(&[1], true);
         run_install(&fx, &r, &runner, &prompter).unwrap();
         assert_eq!(prompter.offered.borrow()[1], s(&["alpha", "beta"]));
@@ -226,7 +219,10 @@ mod tests {
         ] {
             let fx = project_with(marketplace_fixture);
             let runner = FakeRunner::new(|_| {});
-            let r = req(&fx, "repo", &agents, Scope::Project, sel);
+            let r = InstallRequest {
+                agents: agents.to_vec(),
+                ..req(&fx, "repo", sel)
+            };
             run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[0], true)).unwrap();
             let calls = runner.calls();
             assert_eq!(calls.len(), 1);

@@ -3,6 +3,11 @@ use std::process::{Command, Stdio};
 
 use anyhow::Context;
 
+use crate::redact::{redact_line, redact_text};
+
+/// A program and its arguments.
+pub type Cmd = (String, Vec<String>);
+
 /// Result of an external command; stderr is captured for error messages.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Output {
@@ -124,6 +129,24 @@ impl CommandRunner for SystemRunner {
         );
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     }
+}
+
+/// Run `program`, echoing the redacted command line first; a failed exit is an error.
+pub fn run_checked(
+    runner: &dyn CommandRunner,
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+) -> anyhow::Result<()> {
+    let shown = redact_line(args);
+    eprintln!("$ {program} {shown}");
+    let out = runner.run(program, args, cwd)?;
+    anyhow::ensure!(
+        out.success,
+        "`{program} {shown}` failed: {}",
+        redact_text(out.stderr.trim())
+    );
+    Ok(())
 }
 
 #[cfg(test)]

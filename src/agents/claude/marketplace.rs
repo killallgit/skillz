@@ -10,8 +10,9 @@ use super::records::{Install, Marketplace};
 use super::removal::{plugin_removal, unique_in_order};
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::agents::{PluginInstall, PluginOutcome};
-use crate::install::{Cmd, run_checked};
 use crate::model::{Agent, Augmentation, Installer, Kind, Scope, split_plugin_id};
+use crate::profile::Entry;
+use crate::runner::{Cmd, run_checked};
 
 /// One augmentation for an installed marketplace, removing it with all its plugins.
 pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> Augmentation {
@@ -160,23 +161,29 @@ fn install_commands(source: &str, marketplace: &str, plugins: &[String], scope: 
         .collect()
 }
 
-/// A profile's plugin for `scope`. A project's plugins go in the `local` scope, so they never
-/// touch the settings file the team shares.
-pub(super) fn provision(
-    source: &str,
-    marketplace: &str,
-    plugin: &str,
-    scope: Scope,
-    cwd: &Path,
-) -> Vec<Action> {
+/// A profile's plugin entry for `scope`; `None` for other entries. A project's plugins go in
+/// the `local` scope, so they never touch the settings file the team shares.
+pub(super) fn provision(entry: &Entry, scope: Scope, cwd: &Path) -> Option<Vec<Action>> {
+    let Entry::Plugin {
+        source,
+        marketplace,
+        name,
+        ..
+    } = entry
+    else {
+        return None;
+    };
     let scope = match scope {
         Scope::Global => "user",
         Scope::Project => "local",
     };
-    install_commands(source, marketplace, &[plugin.to_string()], scope)
-        .into_iter()
-        .map(|(program, args)| Action::required(&program, args, cwd))
-        .collect()
+    let commands = install_commands(source, marketplace, std::slice::from_ref(name), scope);
+    Some(
+        commands
+            .into_iter()
+            .map(|(program, args)| Action::required(&program, args, cwd))
+            .collect(),
+    )
 }
 
 #[cfg(test)]

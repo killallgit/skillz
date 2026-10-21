@@ -148,18 +148,12 @@ pub fn project_with(f: impl Fn(&Path)) -> Fixture {
 }
 
 /// A request run from `fx`'s project dir.
-pub fn req(
-    fx: &Fixture,
-    source: &str,
-    agents: &[Agent],
-    scope: Scope,
-    selection: SkillSelection,
-) -> InstallRequest {
+pub fn req(fx: &Fixture, source: &str, selection: SkillSelection) -> InstallRequest {
     InstallRequest {
         source: source.into(),
         cwd: fx.env.project.clone(),
-        agents: agents.to_vec(),
-        scope,
+        agents: vec![Agent::Claude],
+        scope: Scope::Project,
         selection,
     }
 }

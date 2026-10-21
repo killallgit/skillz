@@ -8,10 +8,9 @@ use super::list::{ListView, list};
 use super::profile::profile_command;
 use super::project::project_command;
 use super::prune::prune;
-use super::removal::{reset, uninstall};
+use super::removal::{UninstallRequest, reset, uninstall};
 use super::scope::{Scene, resolve, single_scope, split_target};
 use super::use_profile::{Switching, Target, use_profile};
-use crate::agents;
 use crate::install::{self, InstallRequest, SkillSelection};
 
 /// Runs the command and returns the process exit code: the child's for `run`, else 0.
@@ -51,7 +50,12 @@ fn run_list(deps: &Deps, args: ListArgs, out: &mut dyn Write) -> anyhow::Result<
 fn run_uninstall(deps: &Deps, args: UninstallArgs, out: &mut dyn Write) -> anyhow::Result<()> {
     let (env, scopes) = resolve(deps, args.project.as_deref(), args.filter.global)?;
     let scene = Scene::new(deps, &env, &scopes, &args.filter);
-    uninstall(&scene, args.query.as_deref(), args.yes, args.dry_run, out)
+    let request = UninstallRequest {
+        query: args.query.as_deref(),
+        yes: args.yes,
+        dry_run: args.dry_run,
+    };
+    uninstall(&scene, &request, out)
 }
 
 fn run_prune(deps: &Deps, args: PruneArgs, out: &mut dyn Write) -> anyhow::Result<()> {
@@ -89,7 +93,7 @@ fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
         source: args.source,
         cwd: deps.cwd.clone(),
         agents: if args.agents.is_empty() {
-            agents::all()
+            deps.adapters.iter().map(|a| a.agent()).collect()
         } else {
             args.agents
         },

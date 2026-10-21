@@ -11,10 +11,6 @@ impl AgentAdapter for Cursor {
         Agent::Cursor
     }
 
-    fn npx_id(&self) -> &'static str {
-        "cursor"
-    }
-
     fn home_dir_names(&self) -> &'static [&'static str] {
         &["cursor"]
     }
