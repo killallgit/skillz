@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::SkillDir;
 use super::entry::{Entry, entries};
+use super::local::{LocalSource, local_source};
 use super::ownership::{Locked, lock_ownership};
 use super::removal::{owned_roots, removal};
 use crate::action::Action;
@@ -76,6 +77,10 @@ fn augmentation(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -> 
     let locked = lock_ownership(cx, canonical);
     let agents = agents_of(entries);
     let source = locked.as_ref().map(|l| l.entry.source.clone());
+    let local = match locked {
+        Some(_) => LocalSource::default(),
+        None => local_source(cx.env, canonical),
+    };
     let mut plan = removal_plan(cx, canonical, entries, locked.as_ref());
     plan.splice(0..0, native_uninstall(cx, locked.as_ref(), &agents));
     Augmentation {
@@ -88,8 +93,8 @@ fn augmentation(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -> 
         group: source.clone().unwrap_or_else(|| "local".into()),
         source,
         installer: installer_of(locked.as_ref()),
-        origin: origin_of(locked.as_ref()),
-        children: vec![],
+        origin: locked.as_ref().map_or(local.origin, origin_of),
+        children: local.children,
         removal: plan,
     }
 }
@@ -110,10 +115,10 @@ fn agents_of(entries: &[Entry]) -> Vec<Agent> {
         .collect()
 }
 
-fn origin_of(locked: Option<&Locked>) -> Origin {
+fn origin_of(locked: &Locked) -> Origin {
     Origin {
-        link: locked.and_then(|l| l.entry.link.clone()),
-        version: locked.and_then(|l| l.entry.hash.clone()),
+        link: locked.entry.link.clone(),
+        version: locked.entry.hash.clone(),
     }
 }
 

@@ -241,6 +241,17 @@ its provenance as they are) and nothing in the sync path removes. Removal from t
 explicit `LibraryRemove` act only. Found items carry `Provenance::detected`; items recorded by an
 install do not, and a detected item that skillz installs later is rewritten without the flag.
 
+A hand-made item has no recorded source, so discovery gives it a local one in `Origin::link`: the
+directory holding the skill (`skills::local`; only when npx would see it, `skill_name`, and the
+resolved skill lies inside the home, project or the agents' config dirs, so a symlink out is not
+followed) or the directory holding the subagent file. A renamed skill (frontmatter `name` differing
+from its directory, which is what `--skill` matches) notes it as a `skill: <name>` child. The skill
+and subagent collectors take such an item with `Installer::Local` as an entry sourced by that
+directory, so sync, `profile save` and the library agree; reinstalling is
+`npx skills add <dir> --skill <name>` (verified against npx: a directory source is searched
+recursively and `--skill` matches the frontmatter name). Only what has no directory or needs
+secrets is still `Skipped`.
+
 Scanning never holds the store: `sync::Scanner` reads the inventory first, then `sync_library`
 takes the store lock for the merge alone. The workspace starts `sync::spawn` on a thread (the
 `Scanner` is `None` with `SKILLZ_NO_SYNC`), whose callback sends a `tui::workspace::Synced` (the new

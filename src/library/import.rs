@@ -5,7 +5,8 @@ use crate::model::Augmentation;
 use crate::snapshot::{Skipped, snapshot};
 
 /// What the snapshot collectors keep of the installed `items`, each with the provenance its
-/// installer left; what they leave out (hand-made, or needing secrets) is returned apart.
+/// installer left; what they leave out (needing secrets, or with nothing to reinstall from) is
+/// returned apart.
 pub(super) fn collect_installed(
     items: &[Augmentation],
     recorded_at: u64,
