@@ -19,7 +19,7 @@ use crate::runner::CommandRunner;
 const MANIFEST: &str = ".skillz-sources.json";
 
 /// The agent's own name for a definition: `name:` in markdown frontmatter, `name =` in toml.
-pub fn definition_name(text: &str, ext: &str) -> Option<String> {
+fn definition_name(text: &str, ext: &str) -> Option<String> {
     match ext {
         "toml" => text
             .parse::<toml_edit::DocumentMut>()

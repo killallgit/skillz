@@ -47,7 +47,7 @@ pub fn read(adapters: &[Box<dyn AgentAdapter>], env: &Env, runner: &dyn CommandR
 /// Tokens a skill's listing takes: its frontmatter (name and description) at ~3.5 chars per
 /// token, calibrated against Claude's own `/context` numbers.
 // shortcut: a chars-based estimate, replace with the agent's own count when it reports one.
-pub fn estimate_skill(skill_md: &Path) -> Option<u32> {
+fn estimate_skill(skill_md: &Path) -> Option<u32> {
     let text = fs::read_to_string(skill_md).ok()?;
     let front = text.strip_prefix("---\n")?.split("\n---").next()?;
     Some((front.len() as u32 * 2).div_ceil(7))

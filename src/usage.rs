@@ -1,8 +1,8 @@
 //! When each skill and plugin was last used, from the agents' own records.
 //!
 //! Each adapter reports its own records (`AgentAdapter::usage`); this module only merges them.
-//! Keys: `skill:<name>` (loose skill), `plugin:<name@mp>` (whole plugin: its hooks and other
-//! parts too) and `pskill:<plugin>:<skill>` (one skill of a plugin).
+//! Keys: `skill:<name>` (loose skill) and `plugin:<name@mp>` (whole plugin: its hooks and other
+//! parts too).
 
 use std::collections::HashMap;
 
@@ -18,19 +18,6 @@ impl Usage {
     fn record(&mut self, agent: Agent, key: String, ms: u64) {
         let last = self.0.entry((agent, key)).or_default();
         *last = (*last).max(ms);
-    }
-
-    /// Last use of `skill` from the plugin `plugin`, by any of the plugin's agents. This is
-    /// the skill alone: `last_used` on the plugin also counts its hooks and other parts.
-    pub fn skill_last_used(&self, plugin: &Augmentation, skill: &str) -> Option<u64> {
-        let name = plugin.name.split('@').next()?;
-        let key = format!("pskill:{name}:{skill}");
-        plugin
-            .agents
-            .iter()
-            .filter_map(|&a| self.0.get(&(a, key.clone())))
-            .max()
-            .copied()
     }
 
     /// Latest use by any of the item's agents; `None` = never used (or not tracked: hooks,
@@ -134,30 +121,5 @@ mod tests {
         assert_eq!(read(&registry(), &env).unwrap(), Usage::default());
         fs::write(home.path().join(".claude.json"), "{").unwrap();
         assert!(read(&registry(), &env).is_err());
-    }
-
-    #[test]
-    fn plugin_skill_use_is_separate_from_plugin_use() {
-        let home = tempfile::tempdir().unwrap();
-        let env = Env {
-            home: home.path().into(),
-            project: home.path().into(),
-            claude_config: None,
-            codex_home: None,
-        };
-        fs::write(
-            home.path().join(".claude.json"),
-            json!({
-                "skillUsage": {"caveman:caveman": {"lastUsedAt": 7}},
-                "pluginUsage": {"caveman@caveman": {"usageCount": 9, "lastUsedAt": 9}}
-            })
-            .to_string(),
-        )
-        .unwrap();
-        let usage = read(&registry(), &env).unwrap();
-        let plugin = item(Kind::Plugin, "caveman@caveman", &[Agent::Claude]);
-        assert_eq!(usage.skill_last_used(&plugin, "caveman"), Some(7));
-        assert_eq!(usage.skill_last_used(&plugin, "caveman-help"), None);
-        assert_eq!(usage.last_used(&plugin), Some(9));
     }
 }

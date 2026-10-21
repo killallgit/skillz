@@ -41,38 +41,6 @@ pub fn check<'a>(
     found
 }
 
-/// How a plugin earns its place, judged per kind of part: skills by their own use, everything
-/// else (hooks, agents, MCP servers) by the plugin's use.
-#[derive(Debug, PartialEq, Eq)]
-pub struct PluginUse<'a> {
-    /// Skills used within the unused-after window.
-    pub busy_skills: Vec<&'a str>,
-    /// Skills never used, or not within the window.
-    pub idle_skills: Vec<&'a str>,
-    /// The plugin as a whole was used within the window: some part runs even if no skill does.
-    pub active: bool,
-}
-
-impl PluginUse<'_> {
-    /// Nothing about the plugin has been used within the window.
-    pub fn is_idle(&self) -> bool {
-        !self.active && self.busy_skills.is_empty()
-    }
-}
-
-pub fn plugin_use<'a>(plugin: &'a Augmentation, usage: &Usage, now_ms: u64) -> PluginUse<'a> {
-    let recent =
-        |ms: Option<u64>| ms.is_some_and(|ms| now_ms.saturating_sub(ms) <= UNUSED_AFTER_MS);
-    let (busy_skills, idle_skills) = plugin
-        .plugin_skills()
-        .partition(|s| recent(usage.skill_last_used(plugin, s)));
-    PluginUse {
-        busy_skills,
-        idle_skills,
-        active: recent(usage.last_used(plugin)),
-    }
-}
-
 fn is_duplicate(skill: &Augmentation, items: &[Augmentation]) -> bool {
     // A global plugin serves every project; a project plugin only its own project's skills.
     let covers = |p: &Augmentation, agent: Agent| {
@@ -229,45 +197,5 @@ mod tests {
                 .len(),
             1
         );
-    }
-
-    #[test]
-    fn plugin_use_splits_skills_from_other_parts() {
-        let plugin = plugin("hooky@mp", Agent::Claude, Scope::Global, &["a", "b"]);
-        let json = |skills: serde_json::Value, plugins: serde_json::Value| {
-            let home = tempfile::tempdir().unwrap();
-            std::fs::write(
-                home.path().join(".claude.json"),
-                json!({"skillUsage": skills, "pluginUsage": plugins}).to_string(),
-            )
-            .unwrap();
-            let env = crate::env::Env {
-                home: home.path().into(),
-                project: home.path().into(),
-                claude_config: None,
-                codex_home: None,
-            };
-            crate::usage::read(&registry(), &env).unwrap()
-        };
-        let fresh = NOW - DAY;
-        let stale = NOW - 30 * DAY;
-        let used = json(
-            json!({"hooky:a": {"lastUsedAt": fresh}, "hooky:b": {"lastUsedAt": stale}}),
-            json!({"hooky@mp": {"usageCount": 3, "lastUsedAt": fresh}}),
-        );
-        let u = plugin_use(&plugin, &used, NOW);
-        assert_eq!((u.busy_skills, u.idle_skills), (vec!["a"], vec!["b"]));
-        assert!(u.active);
-
-        let hooks_only = json(
-            json!({}),
-            json!({"hooky@mp": {"usageCount": 9, "lastUsedAt": fresh}}),
-        );
-        let u = plugin_use(&plugin, &hooks_only, NOW);
-        assert_eq!(u.idle_skills, ["a", "b"]);
-        assert!(u.active && !u.is_idle());
-
-        let nothing = json(json!({}), json!({}));
-        assert!(plugin_use(&plugin, &nothing, NOW).is_idle());
     }
 }
