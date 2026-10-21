@@ -849,6 +849,7 @@ dependencies = [
  "shell-words",
  "tempfile",
  "toml_edit",
+ "unicode-width",
 ]
 
 [[package]]

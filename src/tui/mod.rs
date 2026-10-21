@@ -10,7 +10,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListState, Paragraph};
 
 pub mod home;
+pub mod theme;
 pub mod tree_view;
+pub mod widgets;
 
 /// Whether a row is chosen: all of it, only part of it (a group with some items marked), or not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
