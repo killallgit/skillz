@@ -18,6 +18,19 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
   Assert on structure: ids, kinds, counts, `Action`s, parsed file contents, tree shape.
 - Coverage target > 75% (`cargo llvm-cov`).
 
+## Adding an agent
+
+All agent knowledge lives in `src/agents/<name>.rs`. Steps:
+
+1. Add a variant to `Agent` in `model.rs` (and its `Display` line). It is the one closed list;
+   clap and serde need it.
+2. Implement `AgentAdapter` in the new module and add one line to `agents::registry()`.
+   Required: `agent`, `npx_id`, `home_dir_names`, `skill_dirs`, `hook_files`, `discover`.
+   Optional (defaults say "not supported"): `install_plugins`, `usage` + `tracks`,
+   `plugin_root_var`.
+3. Nothing else changes. `tests/conformance.rs` runs a fake adapter through list, usage,
+   prune, uninstall and install; if a new agent needs an edit anywhere else, that is a leak.
+
 ## Module map
 
 | Module | Owns |
@@ -37,9 +50,10 @@ hooks for Claude Code, Codex and Cursor, globally (`~`) or per project.
 | `install` | install flow: `install()` dispatch, `InstallRequest`, `SkillSelection` |
 | `install::source` | source fetch: reject empty/option-like sources, local path or `git clone --depth 1` into a temp dir, credential-redacted `run_checked` |
 | `install::skills` | npx `skills` installer: `scan_available`, selection/patterns, runs `npx_skills::add_command` |
-| `install::marketplace` | Claude marketplace installer: reads `.claude-plugin/marketplace.json`, runs `claude plugin marketplace add` + `plugin install` |
-| `usage` | last use per skill/plugin: Claude `~/.claude.json` `skillUsage`/`pluginUsage`, Codex session logs (tool calls reading a `SKILL.md`) |
-| `doctor` | pure checks: duplicate loose skills, never-used and 7+ days unused skills/plugins |
+| `agents::claude_marketplace` | Claude's `AgentAdapter::install_plugins`: reads `.claude-plugin/marketplace.json`, runs `claude plugin marketplace add` + `plugin install`. `install` asks each agent in turn and sends agents that return `Unsupported` through `npx skills` |
+| `usage` | merges each adapter's `usage()` records into last use per skill/plugin. Sources live in the adapters: Claude `~/.claude.json` `skillUsage`/`pluginUsage`, Codex session logs (tool calls reading a `SKILL.md`) |
+| `cost` | always-on context tokens per skill/plugin, merged from each adapter's `context_costs()`: Claude parses `claude -p "/context"` (exact, per skill and agent; built-in and claude.ai skills left out), others estimate from `SKILL.md` frontmatter (~3.5 chars/token). `list --json` adds `tokens` |
+| `prune` | pure checks: duplicate loose skills, never-used and 7+ days unused skills/plugins |
 | `cli` | clap definitions, wiring, list/uninstall/install commands |
 
 ## On-disk formats (observed on a real machine)
@@ -88,6 +102,13 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
 - Install: `npx -y skills add <source> --skill <a> --skill <b> -a claude-code -a codex -a cursor [-g] -y`.
   Agent ids: claude -> `claude-code`, codex -> `codex`, cursor -> `cursor`.
 
+## Installer
+
+Every item records what installed it (`Installer`): `Npx` (skill with a `.skill-lock.json`
+entry), `ClaudeCli` / `CodexCli` (plugins and marketplaces in that agent's own records), or
+`Local` (a skill without a lock entry, e.g. copied from a local path, and hooks). Removal uses
+this to pick the tool's own uninstall (see the native-removal epic).
+
 ## Ids and grouping
 
 - Skill: `skill:<canonical path>` (plus `:project` for a project item whose canonical dir a
@@ -99,6 +120,17 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
 - Marketplace: `marketplace:<agent>:<name>`; group = name; source = `org/repo` or URL.
 
 ## Removal semantics (complete removal, no backups)
+
+- **Native tool first.** An item installed by a tool starts its plan with that tool's own
+  uninstall as an `Action::Run` (`fallback: true`): `npx -y skills remove <name> -a … [-g]`,
+  `claude plugin uninstall <id> --scope user|project|local`, `claude plugin marketplace
+  remove <name>`, `codex plugin remove <id>` / `codex plugin marketplace remove <name>`
+  (Codex: global items only, since its CLI edits the user config). `execute` runs every `Run`
+  first, in plan order. A non-zero exit aborts the plan before any file is touched; a program
+  that is not installed is skipped (reported in `Report::skipped`). The file steps below then
+  finish whatever the tool left, and the final inventory check confirms the item is gone.
+  Names from config files that are empty or option-like (`-x`) never become command args
+  (`Action::native`).
 
 - **Skill**: remove every agent-dir entry (symlink or dir) that resolves to the canonical
   dir, then the canonical dir **only if it lives inside a known skill dir** (never delete a
@@ -165,9 +197,10 @@ etc.). For the first remaining token:
 ## CLI
 
 ```
-skillz list [QUERY|PATH] [-C PATH] [--all] [--json] [-g] [--skills] [--hooks] [--plugins] [--marketplaces] [-a <agent>]... [-i]
+skillz list [QUERY|PATH] [-p PATH] [--all] [--json] [-g] [--skills] [--hooks] [--plugins] [--marketplaces] [-a <agent>]... [-i]
 skillz uninstall|rm|delete [QUERY] [same filters] [-y]
-skillz doctor [-C PATH] [same filters] [--dry-run | -f/--force]
+skillz reset [PATH] [same filters] [--keep NAME]... [--dry-run | -f/--force]
+skillz prune [PATH] [same filters] [--dry-run | -f/--force]
 skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,b,*commit']... [-y]
 ```
 - Scope: `PATH` only -> project at PATH; `-g` only -> global; neither -> both (project = cwd).
@@ -178,19 +211,22 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,
   opens the browser (`--json` and pipes take all matches); a QUERY (fuzzy, as in uninstall; a matched
   marketplace pulls in its whole group) or `--all` prints the expanded tree. A positional
   starting with `.`, `..` or `/` (`.`, `./sub`, `/abs`) is the project path; any other word is
-  a query, even if a directory has that name; `-C` forces query mode. `-i` opens the
+  a query, even if a directory has that name; `-p` forces query mode. `-i` opens the
   browser on everything listed. Browser selections either print (Show) or go through the
   same `remove` step as `uninstall` (Remove).
 - `uninstall`: filter -> fuzzy match QUERY over `name group source` -> multi-select picker
   -> show plan -> confirm -> execute -> re-discover and verify.
-- `doctor`: report duplicates (a loose skill every one of whose agents also gets it from an
+- `reset`: remove every skill, plugin and marketplace the filters leave (hooks only with `--hooks`:
+  they belong to other tools), minus `--keep` matches by name/group/source; a marketplace stays
+  while any of its plugins is spared. Same plan, confirm and verify as `uninstall`.
+- `prune`: report duplicates (a loose skill every one of whose agents also gets it from an
   installed plugin: global, or the skill's own scope), never-used and 7+ days unused skills
   and plugins (only items a usage source can see: not hooks, marketplaces, Cursor-only items
   or Codex plugins without skills). Duplicates always go into the removal; unused items only
   when picked. Then the same `remove` step as `uninstall`. `--force` picks and confirms
   everything (the `AssumeYes` prompter).
 - `install`: project scope unless `-g` or the project is the home dir (then global). Resolve
-  source (local path relative to the cwd, not `-C`; else `git clone --depth 1`), scan skills and
+  source (local path relative to the cwd, not `-p`; else `git clone --depth 1`), scan skills and
   `.claude-plugin/marketplace.json`. Skills are named by their `SKILL.md` frontmatter `name:`
   (what npx `--skill` matches); as in npx, skills without `name`/`description` are skipped,
   as are `.git`, `node_modules`, `dist`, `build` and `__pycache__` dirs, and option-like
@@ -201,8 +237,11 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,
 
 ## TUI
 
-ratatui + crossterm. Widgets are pure state machines tested without a terminal:
-- `tui::select`: list with `[x]` checkboxes; `↑↓/jk` move, `space` toggle, `a` toggle all
+ratatui + crossterm. Widgets are pure state machines tested without a terminal. Both draw
+through `tui::draw_list`: a title line, no border, an `X` column for marked rows (`-` for a
+group with only some items marked), a key-hint footer. `i` on any row yields `Outcome::Info`
+(the info modal, skillz-atj, handles it; until then it is ignored).
+- `tui::select`: marked rows show `X`; `↑↓/jk` move, `space` toggle, `a` toggle all
   visible, `/` enters filter (typed text fuzzy-filters; `esc` leaves filter), `enter` accept,
   `esc`/`q` cancel.
 - `tui::tree_view`: the browser. Collapsible tree, starts collapsed; `↑↓/jk` move,

@@ -1,6 +1,7 @@
-//! `skillz doctor`: which installed items look redundant. Pure: callers pass the inventory,
+//! `skillz prune`: which installed items look redundant. Pure: callers pass the inventory,
 //! the usage data and the current time.
 
+use crate::agents::AgentAdapter;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 use crate::usage::Usage;
 
@@ -17,12 +18,17 @@ pub struct Findings<'a> {
     pub unused: Vec<(&'a Augmentation, u64)>,
 }
 
-pub fn check<'a>(items: &'a [Augmentation], usage: &Usage, now_ms: u64) -> Findings<'a> {
+pub fn check<'a>(
+    items: &'a [Augmentation],
+    adapters: &[Box<dyn AgentAdapter>],
+    usage: &Usage,
+    now_ms: u64,
+) -> Findings<'a> {
     let mut found = Findings::default();
     for item in items {
         if is_duplicate(item, items) {
             found.duplicates.push(item);
-        } else if tracked(item) {
+        } else if tracked(item, adapters) {
             match usage.last_used(item) {
                 None => found.never_used.push(item),
                 Some(ms) if now_ms.saturating_sub(ms) > UNUSED_AFTER_MS => {
@@ -33,6 +39,38 @@ pub fn check<'a>(items: &'a [Augmentation], usage: &Usage, now_ms: u64) -> Findi
         }
     }
     found
+}
+
+/// How a plugin earns its place, judged per kind of part: skills by their own use, everything
+/// else (hooks, agents, MCP servers) by the plugin's use.
+#[derive(Debug, PartialEq, Eq)]
+pub struct PluginUse<'a> {
+    /// Skills used within the unused-after window.
+    pub busy_skills: Vec<&'a str>,
+    /// Skills never used, or not within the window.
+    pub idle_skills: Vec<&'a str>,
+    /// The plugin as a whole was used within the window: some part runs even if no skill does.
+    pub active: bool,
+}
+
+impl PluginUse<'_> {
+    /// Nothing about the plugin has been used within the window.
+    pub fn is_idle(&self) -> bool {
+        !self.active && self.busy_skills.is_empty()
+    }
+}
+
+pub fn plugin_use<'a>(plugin: &'a Augmentation, usage: &Usage, now_ms: u64) -> PluginUse<'a> {
+    let recent =
+        |ms: Option<u64>| ms.is_some_and(|ms| now_ms.saturating_sub(ms) <= UNUSED_AFTER_MS);
+    let (busy_skills, idle_skills) = plugin
+        .plugin_skills()
+        .partition(|s| recent(usage.skill_last_used(plugin, s)));
+    PluginUse {
+        busy_skills,
+        idle_skills,
+        active: recent(usage.last_used(plugin)),
+    }
 }
 
 fn is_duplicate(skill: &Augmentation, items: &[Augmentation]) -> bool {
@@ -50,20 +88,19 @@ fn is_duplicate(skill: &Augmentation, items: &[Augmentation]) -> bool {
             .all(|&a| items.iter().any(|p| covers(p, a)))
 }
 
-/// Items some usage source can see: Cursor keeps no record, Codex records only skill reads
-/// (so a Codex plugin without skills never shows a use), and hooks/marketplaces have none.
-fn tracked(item: &Augmentation) -> bool {
-    let seen = |a: &Agent| match a {
-        Agent::Claude => true,
-        Agent::Codex => item.kind == Kind::Skill || item.plugin_skills().next().is_some(),
-        Agent::Cursor => false,
-    };
-    matches!(item.kind, Kind::Skill | Kind::Plugin) && item.agents.iter().any(seen)
+/// Items some adapter can see a use of (hooks and marketplaces never are).
+fn tracked(item: &Augmentation, adapters: &[Box<dyn AgentAdapter>]) -> bool {
+    matches!(item.kind, Kind::Skill | Kind::Plugin)
+        && adapters
+            .iter()
+            .any(|a| item.agents.contains(&a.agent()) && a.tracks(item))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agents::registry;
+    use crate::model::Installer;
     use crate::model::SKILL_CHILD;
     use serde_json::json;
 
@@ -82,6 +119,7 @@ mod tests {
             scope,
             group: "g".into(),
             source: None,
+            installer: Installer::Local,
             children: skills.iter().map(|s| format!("{SKILL_CHILD}{s}")).collect(),
             removal: vec![],
         }
@@ -119,8 +157,10 @@ mod tests {
         let env = crate::env::Env {
             home: home.path().into(),
             project: home.path().into(),
+            claude_config: None,
+            codex_home: None,
         };
-        crate::usage::read(&env).unwrap()
+        crate::usage::read(&registry(), &env).unwrap()
     }
 
     #[test]
@@ -134,7 +174,7 @@ mod tests {
             skill("ship", &[Agent::Claude], Scope::Project),
             skill("other", &[Agent::Claude], Scope::Global),
         ];
-        let found = check(&items, &usage(&[]), NOW);
+        let found = check(&items, &registry(), &usage(&[]), NOW);
         assert_eq!(
             ids(found.duplicates),
             ["skill:project:tdd", "skill:project:ship"]
@@ -151,7 +191,7 @@ mod tests {
             plugin("busy@mp", Agent::Claude, Scope::Global, &[]),
         ];
         let used = usage(&[("fresh", 6), ("old", 8), ("plugin:busy@mp", 0)]);
-        let found = check(&items, &used, NOW);
+        let found = check(&items, &registry(), &used, NOW);
         assert_eq!(
             ids(found.never_used),
             ["skill:global:never", "plugin:global:idle@mp"]
@@ -178,8 +218,56 @@ mod tests {
                 &[],
             ),
         ];
-        assert_eq!(check(&items, &usage(&[]), NOW), Findings::default());
+        assert_eq!(
+            check(&items, &registry(), &usage(&[]), NOW),
+            Findings::default()
+        );
         let codex_skills = [plugin("p@mp", Agent::Codex, Scope::Global, &["a"])];
-        assert_eq!(check(&codex_skills, &usage(&[]), NOW).never_used.len(), 1);
+        assert_eq!(
+            check(&codex_skills, &registry(), &usage(&[]), NOW)
+                .never_used
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn plugin_use_splits_skills_from_other_parts() {
+        let plugin = plugin("hooky@mp", Agent::Claude, Scope::Global, &["a", "b"]);
+        let json = |skills: serde_json::Value, plugins: serde_json::Value| {
+            let home = tempfile::tempdir().unwrap();
+            std::fs::write(
+                home.path().join(".claude.json"),
+                json!({"skillUsage": skills, "pluginUsage": plugins}).to_string(),
+            )
+            .unwrap();
+            let env = crate::env::Env {
+                home: home.path().into(),
+                project: home.path().into(),
+                claude_config: None,
+                codex_home: None,
+            };
+            crate::usage::read(&registry(), &env).unwrap()
+        };
+        let fresh = NOW - DAY;
+        let stale = NOW - 30 * DAY;
+        let used = json(
+            json!({"hooky:a": {"lastUsedAt": fresh}, "hooky:b": {"lastUsedAt": stale}}),
+            json!({"hooky@mp": {"usageCount": 3, "lastUsedAt": fresh}}),
+        );
+        let u = plugin_use(&plugin, &used, NOW);
+        assert_eq!((u.busy_skills, u.idle_skills), (vec!["a"], vec!["b"]));
+        assert!(u.active);
+
+        let hooks_only = json(
+            json!({}),
+            json!({"hooky@mp": {"usageCount": 9, "lastUsedAt": fresh}}),
+        );
+        let u = plugin_use(&plugin, &hooks_only, NOW);
+        assert_eq!(u.idle_skills, ["a", "b"]);
+        assert!(u.active && !u.is_idle());
+
+        let nothing = json(json!({}), json!({}));
+        assert!(plugin_use(&plugin, &nothing, NOW).is_idle());
     }
 }

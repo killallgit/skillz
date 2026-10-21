@@ -5,9 +5,60 @@ use std::io::IsTerminal;
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{List, ListState, Paragraph};
 
 pub mod select;
 pub mod tree_view;
+
+/// Whether a row is chosen: all of it, only part of it (a group with some items marked), or not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mark {
+    No,
+    Part,
+    All,
+}
+
+impl Mark {
+    /// Two columns: an `X` (or `-` for part) and a space, so rows line up.
+    fn column(self) -> &'static str {
+        match self {
+            Mark::No => "  ",
+            Mark::Part => "- ",
+            Mark::All => "X ",
+        }
+    }
+}
+
+/// The list both pickers share: a title line, borderless rows with the cursor row reversed,
+/// and a footer. Returns the rows' area, for overlays.
+fn draw_list(
+    frame: &mut Frame,
+    title: &str,
+    rows: Vec<String>,
+    cursor: usize,
+    footer: String,
+) -> Rect {
+    let [head, body, foot] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
+    frame.render_widget(
+        Paragraph::new(title.to_string()).style(Style::new().add_modifier(Modifier::BOLD)),
+        head,
+    );
+    let list = List::new(rows).highlight_style(Style::new().add_modifier(Modifier::REVERSED));
+    frame.render_stateful_widget(
+        list,
+        body,
+        &mut ListState::default().with_selected(Some(cursor)),
+    );
+    frame.render_widget(Paragraph::new(footer), foot);
+    body
+}
 
 /// Result of feeding a key to the `/` filter input.
 enum FilterKey {
@@ -81,4 +132,19 @@ fn key(code: KeyCode) -> KeyEvent {
 #[cfg(test)]
 fn keys(s: &str) -> Vec<KeyEvent> {
     s.chars().map(|c| key(KeyCode::Char(c))).collect()
+}
+
+#[cfg(test)]
+mod mark_tests {
+    use super::*;
+
+    #[test]
+    fn mark_columns_have_the_same_width() {
+        let widths: Vec<usize> = [Mark::No, Mark::Part, Mark::All]
+            .iter()
+            .map(|m| m.column().chars().count())
+            .collect();
+        assert!(widths.iter().all(|w| *w == widths[0]));
+        assert!(Mark::All.column().starts_with('X'));
+    }
 }

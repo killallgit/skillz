@@ -25,22 +25,33 @@ skillz rm --hook bd -a cursor    # every hook that runs `bd`, for Cursor
 skillz rm caveman@caveman -y     # non-interactive: needs one exact name match
 skillz rm speckit --dry-run      # print the removal plan only
 
-skillz doctor                    # duplicates + unused 7+ days -> pick -> confirm -> remove
-skillz doctor --dry-run          # findings and their removal plan only
-skillz doctor --force            # remove everything found, no questions
+skillz reset                    # remove every skill, plugin, marketplace in scope (hooks with --hooks)
+skillz reset --keep caveman     # spare items by name, group or source
+skillz reset --dry-run | --force
+skillz prune                    # duplicates + unused 7+ days -> pick -> confirm -> remove
+skillz prune --dry-run          # findings and their removal plan only
+skillz prune --force            # remove everything found, no questions
 
 skillz install mattpocock/skills --skill 'tdd,*commit' # glob match, confirm, npx skills add
 skillz install mattpocock/skills --all -g
 skillz install killallgit/killall-skills               # has a marketplace: pick Claude plugins
 ```
 
-Scope: a `PATH` (or `-C PATH`) means that project only, `-g` means global only, neither
+Scope: a `PATH` (or `-p PATH` (`--project`)) means that project only, `-g` means global only, neither
 means both (project = cwd). A `list` PATH must start with `.`, `..` or `/` (`./sub`, not
 `sub`); any other word is a query.
 
 Pickers: `↑↓/jk` move, `space` toggle, `a` toggle all, `/` filter, `enter` accept, `esc` cancel.
 Browser (`list -i`, multi-group queries): `space`/`→←` expand, `x`/`tab` mark a group or item,
 `enter` opens Show / Remove… (same plan and `[y/N]` as `rm`), `/` filter, `q` quit.
+
+## Isolating a config
+
+When `CLAUDE_CONFIG_DIR` or `CODEX_HOME` is set, skillz reads and changes only that directory
+for the agent's global config (skills, settings, plugins; for Claude also `.claude.json`) and
+never `~/.claude` or `~/.codex`. The variable is also set on every command skillz runs
+(`claude`, `codex`, `npx`), so native uninstalls act on the same directory. Project config
+(`<project>/.claude`, `<project>/.codex`) is unaffected. Unset, the usual home dirs apply.
 
 ## What "remove" means
 

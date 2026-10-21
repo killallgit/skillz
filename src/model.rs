@@ -30,6 +30,20 @@ pub enum Scope {
     Project,
 }
 
+/// What put an item there, so removal can use the same tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Installer {
+    /// `npx skills add`: the skill has an entry in the scope's `.skill-lock.json`.
+    Npx,
+    /// `claude plugin install` / `claude plugin marketplace add`.
+    ClaudeCli,
+    /// `codex plugin add` / `codex plugin marketplace add`.
+    CodexCli,
+    /// No tool recorded it: a skill or hook put there by hand or copied from a local path.
+    Local,
+}
+
 /// One removable thing installed into an agent harness.
 ///
 /// Discovery builds these with `removal` already planned, so uninstalling is just
@@ -47,6 +61,7 @@ pub struct Augmentation {
     pub group: String,
     /// Where it came from, for display (e.g. `mattpocock/skills`).
     pub source: Option<String>,
+    pub installer: Installer,
     /// Display-only contents (a plugin's skills, a hook group's commands).
     pub children: Vec<String>,
     /// Steps that remove this item completely. `execute` commits every `Edit` first (all or
@@ -128,6 +143,7 @@ mod tests {
             scope: Scope::Global,
             group: "g".into(),
             source: source.map(Into::into),
+            installer: Installer::Local,
             children: vec![],
             removal: vec![],
         }

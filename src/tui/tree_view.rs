@@ -4,9 +4,9 @@ use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Flex, Layout};
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
+use ratatui::widgets::{Block, Clear, List, ListState};
 
-use super::{FilterKey, event_loop, filter_key, is_ctrl_c, step_cursor};
+use super::{FilterKey, Mark, draw_list, event_loop, filter_key, is_ctrl_c, step_cursor};
 use crate::matcher::fuzzy_rank;
 use crate::prompt::{Choice, Picked};
 use crate::tree::Node;
@@ -16,6 +16,8 @@ pub enum Outcome {
     Continue,
     Quit,
     Accept(Choice, Picked),
+    /// `i` on this row (an index into the tree's rows).
+    Info(usize),
 }
 
 /// Menu entries shown on Enter; `None` closes the menu.
@@ -106,6 +108,7 @@ impl TreeState {
         match key.code {
             KeyCode::Char('/') => self.filtering = true,
             KeyCode::Char('x') | KeyCode::Tab => self.toggle_mark(),
+            KeyCode::Char('i') => return self.current().map_or(Outcome::Continue, Outcome::Info),
             KeyCode::Enter if self.current().is_some() || !self.marks.is_empty() => {
                 self.menu = Some(0)
             }
@@ -232,17 +235,14 @@ impl TreeState {
         }
     }
 
-    fn mark_box(&self, id: usize) -> &'static str {
+    fn mark(&self, id: usize) -> Mark {
         let row = &self.rows[id];
-        if row.depth > 0 && row.item.is_none() {
-            return "    ";
-        }
         if self.marks.contains(&id) {
-            "[x] "
+            Mark::All
         } else if row.depth == 0 && self.items_in(id).iter().any(|i| self.marks.contains(i)) {
-            "[~] "
+            Mark::Part
         } else {
-            "[ ] "
+            Mark::No
         }
     }
 
@@ -276,36 +276,33 @@ impl TreeState {
     }
 
     fn draw(&self, title: &str, frame: &mut Frame) {
-        let [body, footer] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
-        let items = self.visible.iter().map(|&id| {
-            let row = &self.rows[id];
-            let marker = match (row.has_children, self.is_open(id)) {
-                (false, _) => " ",
-                (true, true) => "▾",
-                (true, false) => "▸",
-            };
-            format!(
-                "{}{}{marker} {}",
-                "  ".repeat(row.depth),
-                self.mark_box(id),
-                row.label
-            )
-        });
-        let list = List::new(items)
-            .block(Block::bordered().title(title.to_string()))
-            .highlight_style(Style::new().add_modifier(Modifier::REVERSED));
-        let mut list_state = ListState::default().with_selected(Some(self.cursor));
-        frame.render_stateful_widget(list, body, &mut list_state);
-        let help = if self.filtering {
+        let rows = self
+            .visible
+            .iter()
+            .map(|&id| {
+                let row = &self.rows[id];
+                let caret = match (row.has_children, self.is_open(id)) {
+                    (false, _) => " ",
+                    (true, true) => "▾",
+                    (true, false) => "▸",
+                };
+                format!(
+                    "{}{}{caret} {}",
+                    self.mark(id).column(),
+                    "  ".repeat(row.depth),
+                    row.label
+                )
+            })
+            .collect();
+        let footer = if self.filtering {
             format!("/{}", self.filter)
         } else {
             format!(
-                "↑↓/jk move · space/→← expand · x/tab mark · enter actions · / filter · q quit  {}",
+                "↑↓/jk move · space/→← expand · x/tab mark · i info · enter actions · / filter · q quit  {}",
                 self.filter
             )
         };
-        frame.render_widget(Paragraph::new(help), footer);
+        let body = draw_list(frame, title, rows, self.cursor, footer);
 
         if let Some(at) = self.menu {
             let [area] = Layout::vertical([Constraint::Length(MENU.len() as u16 + 2)])
@@ -333,7 +330,8 @@ pub fn browse(title: &str, nodes: &[Node]) -> anyhow::Result<Option<(Choice, Pic
         &mut TreeState::new(nodes),
         |s, f| s.draw(title, f),
         |s, k| match s.handle(k) {
-            Outcome::Continue => None,
+            // The info modal (skillz-atj) takes over `Info`.
+            Outcome::Continue | Outcome::Info(_) => None,
             Outcome::Quit => Some(None),
             Outcome::Accept(choice, picked) => Some(Some((choice, picked))),
         },
@@ -352,6 +350,7 @@ mod tests {
             label: label.into(),
             children,
             item,
+            scope: None,
         }
     }
 
@@ -502,5 +501,31 @@ mod tests {
         term.draw(|f| s.draw("t", f)).unwrap();
         feed(&mut s, [key(KeyCode::Enter)]);
         term.draw(|f| s.draw("t", f)).unwrap();
+    }
+
+    #[test]
+    fn i_reports_the_row_under_the_cursor_for_every_row_kind() {
+        let mut s = TreeState::new(&sample());
+        assert_eq!(s.handle(key(KeyCode::Char('i'))), Outcome::Info(0));
+        feed(&mut s, keys(" j"));
+        assert_eq!(s.handle(key(KeyCode::Char('i'))), Outcome::Info(1));
+        feed(&mut s, keys("l"));
+        feed(&mut s, keys("j"));
+        // a child row that is not itself markable still answers
+        assert!(matches!(
+            s.handle(key(KeyCode::Char('i'))),
+            Outcome::Info(_)
+        ));
+    }
+
+    #[test]
+    fn marks_show_all_part_or_none() {
+        let mut s = TreeState::new(&sample());
+        assert_eq!(s.mark(0), Mark::No);
+        feed(&mut s, keys(" jx"));
+        assert_eq!(s.mark(0), Mark::Part);
+        assert_eq!(s.mark(1), Mark::All);
+        feed(&mut s, keys("kx"));
+        assert_eq!(s.mark(0), Mark::All);
     }
 }

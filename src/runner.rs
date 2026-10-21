@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::Context;
@@ -13,16 +13,36 @@ pub struct Output {
 /// Runs external programs (`git`, `npx`, `claude`). Injected so tests never spawn processes.
 pub trait CommandRunner {
     fn run(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output>;
+
+    /// Run and return stdout; a non-zero exit is an error. Runners that cannot capture say so.
+    fn capture(&self, program: &str, _args: &[String], _cwd: &Path) -> anyhow::Result<String> {
+        anyhow::bail!("cannot capture the output of `{program}` here")
+    }
+}
+
+/// For callers whose plan runs no commands: any command is an error.
+pub struct NoCommands;
+
+impl CommandRunner for NoCommands {
+    fn run(&self, program: &str, _args: &[String], _cwd: &Path) -> anyhow::Result<Output> {
+        anyhow::bail!("no commands allowed here, got `{program}`")
+    }
 }
 
 /// Spawns real processes in `cwd` with stdin and stdout inherited (npx and claude print
-/// prompts and errors to stdout) and stderr captured for the error message.
-pub struct SystemRunner;
+/// prompts and errors to stdout) and stderr captured for the error message. `envs` are set on
+/// every child, so a config dir skillz was pointed at (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`)
+/// reaches `claude`, `codex` and `npx` as well, whatever the parent process holds.
+#[derive(Default)]
+pub struct SystemRunner {
+    pub envs: Vec<(&'static str, PathBuf)>,
+}
 
 impl CommandRunner for SystemRunner {
     fn run(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output> {
         let out = Command::new(program)
             .args(args)
+            .envs(self.envs.iter().map(|(k, v)| (k, v)))
             .current_dir(cwd)
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
@@ -33,6 +53,22 @@ impl CommandRunner for SystemRunner {
             stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         })
     }
+
+    fn capture(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<String> {
+        let out = Command::new(program)
+            .args(args)
+            .envs(self.envs.iter().map(|(k, v)| (k, v)))
+            .current_dir(cwd)
+            .stdin(Stdio::null())
+            .output()
+            .with_context(|| format!("failed to run `{program}` in {}", cwd.display()))?;
+        anyhow::ensure!(
+            out.status.success(),
+            "`{program}` failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    }
 }
 
 #[cfg(test)]
@@ -41,7 +77,7 @@ mod tests {
 
     fn sh(script: &str) -> anyhow::Result<Output> {
         let dir = tempfile::tempdir().unwrap();
-        SystemRunner.run("sh", &["-c".into(), script.into()], dir.path())
+        SystemRunner::default().run("sh", &["-c".into(), script.into()], dir.path())
     }
 
     #[test]
@@ -57,8 +93,30 @@ mod tests {
     }
 
     #[test]
+    fn configured_envs_reach_the_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = SystemRunner {
+            envs: vec![("SKILLZ_TEST_DIR", dir.path().to_path_buf())],
+        };
+        let args = ["-c".into(), "printf %s \"$SKILLZ_TEST_DIR\"".into()];
+        let out = runner.capture("sh", &args, dir.path()).unwrap();
+        assert_eq!(out, dir.path().to_string_lossy());
+    }
+
+    #[test]
     fn nonzero_exit_is_not_success() {
         assert!(!sh("exit 3").unwrap().success);
+    }
+
+    #[test]
+    fn capture_returns_stdout_and_fails_on_nonzero_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        let sh = |script: &str| {
+            SystemRunner::default().capture("sh", &["-c".into(), script.into()], dir.path())
+        };
+        assert_eq!(sh("printf hi").unwrap(), "hi");
+        assert!(sh("exit 2").is_err());
+        assert!(NoCommands.capture("x", &[], dir.path()).is_err());
     }
 
     #[test]
@@ -66,13 +124,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("marker"), "").unwrap();
         let args = ["-c".into(), "test -f marker".into()];
-        assert!(SystemRunner.run("sh", &args, dir.path()).unwrap().success);
+        assert!(
+            SystemRunner::default()
+                .run("sh", &args, dir.path())
+                .unwrap()
+                .success
+        );
     }
 
     #[test]
     fn missing_program_is_err() {
         let dir = tempfile::tempdir().unwrap();
-        let res = SystemRunner.run("skillz-definitely-not-a-program", &[], dir.path());
+        let res = SystemRunner::default().run("skillz-definitely-not-a-program", &[], dir.path());
         assert!(res.is_err());
     }
 }

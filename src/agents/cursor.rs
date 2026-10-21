@@ -11,6 +11,14 @@ impl AgentAdapter for Cursor {
         Agent::Cursor
     }
 
+    fn npx_id(&self) -> &'static str {
+        "cursor"
+    }
+
+    fn home_dir_names(&self) -> &'static [&'static str] {
+        &["cursor"]
+    }
+
     fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
         vec![env.root(scope).join(".cursor/skills")]
     }
@@ -33,6 +41,8 @@ mod tests {
         Env {
             home: PathBuf::from("/h"),
             project: PathBuf::from("/p"),
+            claude_config: None,
+            codex_home: None,
         }
     }
 
@@ -64,6 +74,8 @@ mod tests {
         let e = Env {
             home: dir.path().into(),
             project: dir.path().into(),
+            claude_config: None,
+            codex_home: None,
         };
         assert!(Cursor.discover(&e, Scope::Global).unwrap().is_empty());
         assert!(Cursor.discover(&e, Scope::Project).unwrap().is_empty());

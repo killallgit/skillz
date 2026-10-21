@@ -1,6 +1,10 @@
 use std::collections::BTreeMap;
 
-use crate::model::{Augmentation, Kind};
+use crate::model::{Augmentation, Kind, Scope};
+
+/// Group of skills with no recorded source.
+const LOCAL: &str = "local";
+const LOCAL_LABEL: &str = "local files (no source)";
 
 /// A display tree node.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,6 +13,8 @@ pub struct Node {
     pub children: Vec<Node>,
     /// Index into `build`'s input for item rows; `None` for group headers and detail leaves.
     pub item: Option<usize>,
+    /// Scope of a group header; `None` below the top level.
+    pub scope: Option<Scope>,
 }
 
 impl Node {
@@ -25,41 +31,74 @@ impl Node {
             label,
             children: vec![],
             item: None,
+            scope: None,
         }
     }
 }
 
-/// Group augmentations for display: group -> item -> item.children. Sorted, deterministic.
+/// Group augmentations for display: scope -> group -> item -> item.children. Project groups
+/// come first, then global; within a scope the local-files group leads. Sorted, deterministic.
 pub fn build(items: &[Augmentation]) -> Vec<Node> {
-    let mut groups: BTreeMap<&str, Vec<(usize, &Augmentation)>> = BTreeMap::new();
+    let mut groups: BTreeMap<(&str, &str), Vec<(usize, &Augmentation)>> = BTreeMap::new();
     for (i, item) in items.iter().enumerate() {
-        groups.entry(&item.group).or_default().push((i, item));
+        // Keyed by scope name so BTreeMap order stays deterministic: "global" < "project".
+        groups
+            .entry((scope_key(item.scope), &item.group))
+            .or_default()
+            .push((i, item));
     }
+    let mut groups: Vec<_> = groups.into_iter().collect();
     groups
+        .sort_by_key(|((scope, group), _)| (*scope != scope_key(Scope::Project), *group != LOCAL));
+    let mut nodes: Vec<(Node, usize)> = groups
         .into_iter()
-        .map(|(group, members)| group_node(group, members))
-        .collect()
+        .map(|((_, group), members)| group_node(group, members))
+        .collect();
+    // Pad names so the scope and count columns line up down the list.
+    let width = nodes
+        .iter()
+        .map(|(n, _)| n.label.chars().count())
+        .max()
+        .unwrap_or(0);
+    nodes.iter_mut().for_each(|(n, total)| {
+        let scope = n.scope.map(scope_key).unwrap_or_default();
+        n.label = format!("{:<width$}  {scope:<7}  {total:>4}", n.label);
+    });
+    nodes.into_iter().map(|(n, _)| n).collect()
 }
 
-fn group_node(group: &str, members: Vec<(usize, &Augmentation)>) -> Node {
+fn scope_key(scope: Scope) -> &'static str {
+    match scope {
+        Scope::Global => "global",
+        Scope::Project => "project",
+    }
+}
+
+/// The header node plus its item count. A group of lone marketplaces counts their plugins.
+fn group_node(group: &str, members: Vec<(usize, &Augmentation)>) -> (Node, usize) {
     let (marketplaces, mut rest): (Vec<_>, Vec<_>) = members
         .iter()
         .copied()
         .partition(|(_, a)| a.kind == Kind::Marketplace && a.name == group);
     rest.sort_by(|(_, a), (_, b)| (a.kind, &a.name).cmp(&(b.kind, &b.name)));
 
-    let mut label = group.to_string();
-    if let Some(src) = members
+    // Skills with no recorded source: plain folders someone put in a skills dir.
+    let group = if group == LOCAL { LOCAL_LABEL } else { group };
+    let mut label = members
         .iter()
         .filter_map(|(_, a)| a.source.as_deref())
         .find(|s| *s != group)
-    {
-        label.push_str(&format!(" [{src}]"));
-    }
+        .unwrap_or(group)
+        .to_string();
     if !marketplaces.is_empty() {
         label.push_str(" (marketplace)");
     }
 
+    let count = if rest.is_empty() {
+        marketplaces.iter().map(|(_, m)| m.children.len()).sum()
+    } else {
+        rest.len()
+    };
     let children = if rest.is_empty() {
         let mut leaves: Vec<&String> = marketplaces.iter().flat_map(|(_, m)| &m.children).collect();
         leaves.sort();
@@ -68,11 +107,13 @@ fn group_node(group: &str, members: Vec<(usize, &Augmentation)>) -> Node {
     } else {
         rest.into_iter().map(|(i, a)| item_node(i, a)).collect()
     };
-    Node {
+    let node = Node {
         label,
         children,
         item: None,
-    }
+        scope: Some(members[0].1.scope),
+    };
+    (node, count)
 }
 
 fn item_node(index: usize, item: &Augmentation) -> Node {
@@ -80,17 +121,17 @@ fn item_node(index: usize, item: &Augmentation) -> Node {
         label: item.label(false),
         children: item.children.iter().map(Node::leaf).collect(),
         item: Some(index),
+        scope: None,
     }
 }
 
-/// Group headers only, each labelled with how many entries it hides.
+/// Group headers only (their labels already carry the counts).
 pub fn collapse(nodes: Vec<Node>) -> Vec<Node> {
     nodes
         .into_iter()
         .map(|n| Node {
-            label: format!("{}  ({})", n.label, n.children.len()),
             children: vec![],
-            item: None,
+            ..n
         })
         .collect()
 }
@@ -98,7 +139,11 @@ pub fn collapse(nodes: Vec<Node>) -> Vec<Node> {
 /// Render as a box-drawing text tree (`├──`, `└──`, `│`).
 pub fn render(nodes: &[Node]) -> String {
     let mut out = String::new();
-    for node in nodes {
+    for (i, node) in nodes.iter().enumerate() {
+        // Blank line between the project groups and the global ones.
+        if i > 0 && nodes[i - 1].scope != node.scope {
+            out.push('\n');
+        }
         out.push_str(&node.label);
         out.push('\n');
         render_children(&node.children, "", &mut out);
@@ -122,6 +167,7 @@ fn render_children(nodes: &[Node], prefix: &str, out: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Installer;
     use crate::model::{Agent, Scope};
 
     fn aug(
@@ -139,6 +185,7 @@ mod tests {
             scope: Scope::Global,
             group: group.into(),
             source: source.map(Into::into),
+            installer: Installer::Local,
             children: children.iter().map(|c| c.to_string()).collect(),
             removal: vec![],
         }
@@ -155,18 +202,18 @@ mod tests {
         ]);
         let tops: Vec<&str> = nodes.iter().map(|n| n.label.as_str()).collect();
         assert_eq!(tops.len(), 3);
-        assert!(tops[0].starts_with("hooks"));
-        assert!(tops[1].starts_with("local"));
+        assert!(tops[0].starts_with("local"));
+        assert!(tops[1].starts_with("hooks"));
         assert!(tops[2].starts_with("mp"));
 
-        let local = &nodes[1].children;
+        let local = &nodes[0].children;
         assert_eq!(local.len(), 3);
         assert!(local[0].label.starts_with("beta"));
         assert!(local[1].label.starts_with("alpha"));
         assert!(local[2].label.starts_with("zeta"));
         let items: Vec<Option<usize>> = local.iter().map(|n| n.item).collect();
         assert_eq!(items, [Some(4), Some(2), Some(0)]);
-        assert_eq!(nodes[1].item, None);
+        assert_eq!(nodes[0].item, None);
 
         assert_eq!(nodes[2].children[0].children.len(), 2);
         assert!(nodes[2].children[0].children[0].children.is_empty());
@@ -174,11 +221,40 @@ mod tests {
     }
 
     #[test]
-    fn source_decoration_only_when_it_differs_from_group() {
+    fn source_replaces_group_name_when_it_differs() {
         let same = build(&[aug("a", Kind::Skill, "org/repo", Some("org/repo"), &[])]);
-        assert_eq!(same[0].label, "org/repo");
+        assert!(same[0].label.starts_with("org/repo"));
         let diff = build(&[aug("a", Kind::Skill, "mp", Some("org/repo"), &[])]);
-        assert!(diff[0].label.starts_with("mp") && diff[0].label != "mp");
+        assert!(diff[0].label.starts_with("org/repo"));
+    }
+
+    #[test]
+    fn headers_align_and_count_items() {
+        let mut p = aug("b", Kind::Skill, "long-group-name", None, &[]);
+        p.scope = Scope::Project;
+        let nodes = build(&[
+            aug("a", Kind::Skill, "g", None, &[]),
+            aug("c", Kind::Skill, "g", None, &[]),
+            p,
+        ]);
+        assert_eq!(nodes[0].label.len(), nodes[1].label.len());
+        assert!(nodes[0].label.ends_with("   1"));
+        assert!(nodes[1].label.ends_with("   2"));
+    }
+
+    #[test]
+    fn project_groups_come_first_then_a_gap_then_global() {
+        let mut proj = aug("p", Kind::Skill, "zzz", None, &[]);
+        proj.scope = Scope::Project;
+        let nodes = build(&[
+            aug("a", Kind::Skill, "aaa", None, &[]),
+            aug("b", Kind::Skill, "local", None, &[]),
+            proj,
+        ]);
+        assert_eq!(nodes[0].scope, Some(Scope::Project));
+        assert!(nodes[1].label.starts_with(LOCAL_LABEL));
+        assert!(nodes[2].label.starts_with("aaa"));
+        assert!(render(&nodes).contains("\n\nlocal files"));
     }
 
     #[test]
@@ -188,7 +264,7 @@ mod tests {
             aug("p@mp", Kind::Plugin, "mp", None, &["s"]),
         ]);
         assert_eq!(nodes.len(), 1);
-        assert_ne!(nodes[0].label, "mp");
+        assert!(nodes[0].label.starts_with("org/repo (marketplace)"));
         assert_eq!(nodes[0].children.len(), 1);
         assert!(nodes[0].children[0].label.starts_with("p@mp"));
     }
