@@ -45,6 +45,8 @@ pub enum Command {
     },
     /// Run a command (say `claude`) in a config dir of its own that holds just one profile
     Run(RunArgs),
+    /// Add everything installed, in the project and at user level, to the library; never removes
+    Sync(SyncArgs),
     /// Install skills (via `npx skills`) or a Claude plugin marketplace
     #[command(visible_alias = "add")]
     Install(InstallArgs),
@@ -141,6 +143,22 @@ pub struct ResetArgs {
     /// Remove without asking
     #[arg(short, long)]
     pub force: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct SyncArgs {
+    /// Project directory (default: the current one, plus user-level installs)
+    #[arg(short = 'p', long)]
+    pub project: Option<PathBuf>,
+    /// Only what is installed at user level
+    #[arg(short, long)]
+    pub global: bool,
+    /// Say what would be added without changing the library
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Print what was added and what was left out as JSON
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -290,6 +308,8 @@ mod tests {
             &["profile", "rm", "x"],
             &["use", "x", "--dry-run"],
             &["use", "x", "--exact"],
+            &["sync", "-g", "--dry-run", "--json"],
+            &["sync", "-p", "."],
         ] {
             assert!(
                 Cli::try_parse_from([&["skillz"], args].concat()).is_ok(),

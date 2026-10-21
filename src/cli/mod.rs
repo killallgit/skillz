@@ -10,6 +10,7 @@ mod recording;
 mod removal;
 mod run;
 mod scope;
+mod sync;
 mod update;
 mod use_profile;
 mod workspace;
@@ -23,7 +24,7 @@ use clap::Parser;
 
 use args::wants_auto_yes;
 pub use args::{
-    Cli, Command, Filter, InstallArgs, ListArgs, ProfileCommand, PruneArgs, ResetArgs,
+    Cli, Command, Filter, InstallArgs, ListArgs, ProfileCommand, PruneArgs, ResetArgs, SyncArgs,
     UninstallArgs, UpdateArgs, UseArgs,
 };
 pub use deps::Deps;
