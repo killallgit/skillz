@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use crate::atomic::write_atomic;
 use crate::env::Env;
 use crate::model::{Augmentation, Kind, Scope};
 use crate::profile::Entry;
@@ -93,16 +94,27 @@ impl Ledger {
 
     /// Store `record` for `key`, or forget `key` when `record` is `None`.
     pub fn put(&self, key: &str, record: Option<Record>) -> anyhow::Result<()> {
+        let _lock = self.lock()?;
         let mut all = self.read()?;
         match record {
             Some(r) => all.insert(key.into(), r),
             None => all.remove(key),
         };
+        write_atomic(&self.path, &serde_json::to_string_pretty(&all)?)
+    }
+
+    /// Held for a read-modify-write, so two skillz runs do not overwrite each other's scopes.
+    fn lock(&self) -> anyhow::Result<fs::File> {
         if let Some(dir) = self.path.parent() {
             fs::create_dir_all(dir)?;
         }
-        fs::write(&self.path, serde_json::to_string_pretty(&all)?)
-            .with_context(|| format!("writing {}", self.path.display()))
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(self.path.with_extension("lock"))?;
+        file.lock()?;
+        Ok(file)
     }
 }
 
@@ -133,6 +145,25 @@ mod tests {
 
         assert!(ledger.get("global").unwrap().is_none());
         assert_eq!(ledger.get("/proj").unwrap(), Some(record("b")));
+    }
+
+    #[test]
+    fn concurrent_puts_do_not_lose_each_others_scopes() {
+        let (_dir, ledger) = ledger();
+        let ledger = std::sync::Arc::new(ledger);
+
+        let workers: Vec<_> = (0..8)
+            .map(|i| {
+                let ledger = ledger.clone();
+                std::thread::spawn(move || {
+                    ledger.put(&format!("scope{i}"), Some(record("p"))).unwrap();
+                })
+            })
+            .collect();
+        workers.into_iter().for_each(|w| w.join().unwrap());
+
+        // every scope's record survived the interleaved read-modify-writes
+        assert_eq!(ledger.read().unwrap().len(), 8);
     }
 
     #[test]

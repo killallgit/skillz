@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use crate::atomic::write_atomic;
 use crate::env::Env;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,11 +39,7 @@ impl Workspace {
     }
 
     fn write(&self, file: &File) -> anyhow::Result<()> {
-        if let Some(dir) = self.path.parent() {
-            fs::create_dir_all(dir)?;
-        }
-        fs::write(&self.path, toml_edit::ser::to_string_pretty(file)?)
-            .with_context(|| format!("writing {}", self.path.display()))
+        write_atomic(&self.path, &toml_edit::ser::to_string_pretty(file)?)
     }
 
     /// Registered projects, sorted. Ones whose directory is gone are still listed so they can

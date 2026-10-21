@@ -2,6 +2,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::env::Env;
+use crate::redact::{redact_line, redact_text};
 use crate::runner::CommandRunner;
 
 use super::Cmd;
@@ -71,29 +72,19 @@ pub(crate) fn unique_name() -> String {
     format!("skillz-install-{}-{nanos}", std::process::id())
 }
 
-/// Hide `user:token@` credentials in URLs before echoing a command.
-fn redact(arg: &str) -> String {
-    match (arg.find("://"), arg.find('@')) {
-        (Some(scheme), Some(at)) if at > scheme && !arg[scheme + 3..at].contains('/') => {
-            format!("{}://***{}", &arg[..scheme], &arg[at..])
-        }
-        _ => arg.to_string(),
-    }
-}
-
 pub(crate) fn run_checked(
     runner: &dyn CommandRunner,
     program: &str,
     args: &[String],
     cwd: &Path,
 ) -> anyhow::Result<()> {
-    let shown = args.iter().map(|a| redact(a)).collect::<Vec<_>>().join(" ");
+    let shown = redact_line(args);
     eprintln!("$ {program} {shown}");
     let out = runner.run(program, args, cwd)?;
     anyhow::ensure!(
         out.success,
         "`{program} {shown}` failed: {}",
-        redact(out.stderr.trim())
+        redact_text(out.stderr.trim())
     );
     Ok(())
 }
@@ -186,16 +177,5 @@ mod tests {
             "git@github.com:a/b.git"
         );
         assert_eq!(clone_url("a/b"), "https://github.com/a/b.git");
-    }
-
-    #[test]
-    fn redact_hides_url_credentials_only() {
-        assert!(!redact("https://u:tok@github.com/o/r.git").contains("tok"));
-        assert_eq!(
-            redact("https://github.com/o/r.git"),
-            "https://github.com/o/r.git"
-        );
-        assert_eq!(redact("git@github.com:o/r.git"), "git@github.com:o/r.git");
-        assert_eq!(redact("https://github.com/a@b"), "https://github.com/a@b");
     }
 }

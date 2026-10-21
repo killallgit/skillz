@@ -6,6 +6,7 @@
 pub mod action;
 pub mod agents;
 pub mod apply;
+pub mod atomic;
 pub mod cli;
 pub mod cost;
 pub mod env;
@@ -23,6 +24,7 @@ pub mod profile;
 pub mod prompt;
 pub mod provision;
 pub mod prune;
+pub mod redact;
 pub mod remove;
 pub mod runner;
 pub mod skills;

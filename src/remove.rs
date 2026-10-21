@@ -116,7 +116,16 @@ impl<'a> Plan<'a> {
 pub struct Outcome {
     pub report: Report,
     /// Chosen items the inventory still finds afterwards; empty when the removal worked.
-    pub still_installed: Vec<String>,
+    pub still_installed: Vec<Augmentation>,
+}
+
+impl Outcome {
+    pub fn still_installed_names(&self) -> Vec<&str> {
+        self.still_installed
+            .iter()
+            .map(|i| i.name.as_str())
+            .collect()
+    }
 }
 
 /// What a removal runs against and re-reads the inventory from.
@@ -135,12 +144,12 @@ pub fn run(
     on_step: &mut dyn FnMut(&Action),
 ) -> anyhow::Result<Outcome> {
     let report = action::execute_with(&plan.steps, removal.runner, on_step)?;
-    let after = agents::inventory(removal.adapters, removal.env, removal.scopes);
+    let after = agents::inventory(removal.adapters, removal.env, removal.scopes).complete()?;
     let still_installed = plan
         .chosen
         .iter()
-        .filter(|c| after.items.iter().any(|i| i.id == c.id))
-        .map(|c| c.name.clone())
+        .filter(|c| after.iter().any(|i| i.id == c.id))
+        .map(|&c| c.clone())
         .collect();
     Ok(Outcome {
         report,

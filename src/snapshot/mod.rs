@@ -407,6 +407,41 @@ mod tests {
     }
 
     #[test]
+    fn mcp_servers_with_credentials_in_args_or_url_are_not_saved() {
+        let server = |name: &str, children: Vec<&str>| {
+            let mut i = item(
+                name,
+                Kind::Mcp,
+                Installer::ClaudeCli,
+                "mcp",
+                None,
+                &[Agent::Claude],
+            );
+            i.children = children.into_iter().map(String::from).collect();
+            i
+        };
+        let snap = snapshot(
+            "p",
+            &[
+                server("flag", vec!["command: srv", "arg: --api-key", "arg: abc"]),
+                server("eq", vec!["command: srv", "arg: --token=abc"]),
+                server(
+                    "query",
+                    vec!["url: https://x/mcp?key=abc", "transport: http"],
+                ),
+                server("user", vec!["url: https://u:p@x/mcp", "transport: http"]),
+                server("clean", vec!["command: srv", "arg: --port", "arg: 80"]),
+            ],
+        );
+
+        let reasons: Vec<Reason> = snap.skipped.iter().map(|s| s.reason).collect();
+
+        // every credential carrier is skipped as Secrets; only the clean server is saved
+        assert_eq!(reasons, [Reason::Secrets(1); 4]);
+        assert_eq!(snap.profile.entries.len(), 1);
+    }
+
+    #[test]
     fn subagents_with_a_source_are_saved_by_file_stem() {
         let agent = |name: &str, file: &str, source: Option<&str>| {
             let mut i = item(

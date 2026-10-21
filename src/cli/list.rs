@@ -42,9 +42,11 @@ pub(super) fn now_ms() -> u64 {
 }
 
 /// `tree::build` plus each row's info-modal text. Last-use data is optional: if an agent's
-/// records cannot be read the modal just omits it.
+/// records cannot be read the modal omits it, after a warning.
 pub(super) fn display_tree(deps: &Deps, env: &Env, items: &[Augmentation]) -> Vec<tree::Node> {
-    let usage = usage::read(&deps.adapters, env).ok();
+    let usage = usage::read(&deps.adapters, env)
+        .inspect_err(|e| eprintln!("warning: last-use data unavailable: {e:#}"))
+        .ok();
     let now = now_ms();
     let mut nodes = tree::build(items);
     tree::attach_info(&mut nodes, &|i| {

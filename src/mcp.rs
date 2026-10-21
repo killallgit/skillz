@@ -6,6 +6,7 @@ use serde_json::Value;
 use toml_edit::{Item, TableLike};
 
 use crate::model::Augmentation;
+use crate::redact::credential_count;
 
 const COMMAND: &str = "command: ";
 const ARG: &str = "arg: ";
@@ -107,6 +108,16 @@ impl Server {
             launch,
             secrets,
         })
+    }
+
+    /// How many secrets a profile could not carry: the env vars and headers it needs, plus the
+    /// args or url that embed a credential.
+    pub fn secret_count(&self) -> usize {
+        let embedded = match &self.launch {
+            Launch::Stdio { args, .. } => credential_count(args),
+            Launch::Url { url, .. } => credential_count(std::slice::from_ref(url)),
+        };
+        self.secrets.len() + embedded
     }
 
     /// The `Augmentation::children` lines; `from_item` reads them back.

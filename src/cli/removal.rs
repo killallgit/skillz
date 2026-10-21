@@ -173,7 +173,7 @@ fn report(out: &mut dyn Write, outcome: &remove::Outcome) -> anyhow::Result<()> 
     if !outcome.still_installed.is_empty() {
         bail!(
             "still installed after removal: {}",
-            outcome.still_installed.join(", ")
+            outcome.still_installed_names().join(", ")
         );
     }
     Ok(())

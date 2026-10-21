@@ -65,7 +65,7 @@ impl AgentAdapter for Claude {
             &AgentDir::new(&agents, "md"),
             Agent::Claude,
             scope,
-        ));
+        )?);
         if scope == Scope::Global {
             out.extend(
                 markets
