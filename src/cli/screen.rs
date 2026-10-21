@@ -64,7 +64,7 @@ fn project_detail(path: &Path, missing: bool, record: Option<&apply::Record>) ->
 fn profile_row(store: &profile::Store, name: String) -> ProfileRow {
     match store.load(&name) {
         Ok(p) => ProfileRow {
-            detail: p.entries.iter().map(ToString::to_string).collect(),
+            detail: profile_detail(&p),
             broken: false,
             name,
         },
@@ -74,6 +74,15 @@ fn profile_row(store: &profile::Store, name: String) -> ProfileRow {
             name,
         },
     }
+}
+
+fn profile_detail(profile: &profile::Profile) -> Vec<String> {
+    let extends =
+        (!profile.extends.is_empty()).then(|| format!("extends {}", profile.extends.join(", ")));
+    extends
+        .into_iter()
+        .chain(profile.entries.iter().map(ToString::to_string))
+        .collect()
 }
 
 fn short_path(deps: &Deps, path: &Path) -> String {

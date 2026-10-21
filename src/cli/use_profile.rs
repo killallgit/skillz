@@ -32,7 +32,7 @@ pub(super) fn use_profile(
     let ledger = apply::Ledger::in_env(target.env);
     let profile = switching
         .profile
-        .map(|name| profile::Store::in_env(target.env).load(name))
+        .map(|name| profile::Store::in_env(target.env).load_flat(name))
         .transpose()?;
     let applier = make_applier(deps, target, &ledger);
     let switch = applier.plan(profile.as_ref())?;

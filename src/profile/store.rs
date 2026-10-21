@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 
-use super::{Profile, check_name};
+use super::{Entry, Profile, check_name};
 use crate::env::Env;
 
 /// A directory of `<name>.toml` profiles.
@@ -45,6 +45,37 @@ impl Store {
         let text =
             fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
         Profile::parse(name, &text).with_context(|| path.display().to_string())
+    }
+
+    /// The profile with every profile it extends folded in: their entries first, in order, each
+    /// with its own profile's agents filled in. A base that is missing, or that leads back to
+    /// itself, is an error.
+    pub fn load_flat(&self, name: &str) -> anyhow::Result<Profile> {
+        let mut profile = self.load(name)?;
+        let mut entries = self.base_entries(&profile, &mut vec![name.to_string()])?;
+        entries.extend(profile.resolved());
+        profile.entries = entries;
+        profile.extends.clear();
+        Ok(profile)
+    }
+
+    /// The resolved entries of everything `profile` extends. `chain` is the profiles being
+    /// expanded, to catch cycles.
+    fn base_entries(
+        &self,
+        profile: &Profile,
+        chain: &mut Vec<String>,
+    ) -> anyhow::Result<Vec<Entry>> {
+        let mut entries = vec![];
+        for base in &profile.extends {
+            anyhow::ensure!(!chain.contains(base), "profile {base} extends itself");
+            let loaded = self.load(base)?;
+            chain.push(base.clone());
+            entries.extend(self.base_entries(&loaded, chain)?);
+            chain.pop();
+            entries.extend(loaded.resolved());
+        }
+        Ok(entries)
     }
 
     pub fn save(&self, profile: &Profile) -> anyhow::Result<()> {
@@ -105,6 +136,79 @@ mod tests {
 
         assert!(store.names().unwrap().is_empty());
         assert!(store.load("web").is_err());
+    }
+
+    fn skill(name: &str) -> Entry {
+        Entry::Skill {
+            source: "o/r".into(),
+            names: vec![name.into()],
+            agents: vec![],
+        }
+    }
+
+    fn saved(store: &Store, name: &str, extends: &[&str], skills: &[&str]) {
+        let mut p = Profile::new(name);
+        p.extends = extends.iter().map(|b| b.to_string()).collect();
+        p.entries = skills.iter().map(|s| skill(s)).collect();
+        store.save(&p).unwrap();
+    }
+
+    fn skill_names(profile: &Profile) -> Vec<String> {
+        profile
+            .entries
+            .iter()
+            .flat_map(|e| match e {
+                Entry::Skill { names, .. } => names.clone(),
+                _ => vec![],
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_profile_starts_from_the_entries_of_the_ones_it_extends() {
+        let (_dir, store) = store();
+        saved(&store, "base", &[], &["tdd"]);
+        saved(&store, "mid", &["base"], &["grill"]);
+        saved(&store, "web", &["mid"], &["react"]);
+
+        let flat = store.load_flat("web").unwrap();
+
+        assert_eq!(skill_names(&flat), ["tdd", "grill", "react"]);
+        assert!(flat.extends.is_empty());
+    }
+
+    #[test]
+    fn a_base_keeps_the_agents_of_its_own_profile() {
+        let (_dir, store) = store();
+        let mut base = Profile::new("base");
+        base.agents = vec![crate::model::Agent::Codex];
+        base.entries = vec![skill("tdd")];
+        store.save(&base).unwrap();
+        saved(&store, "web", &["base"], &[]);
+
+        let flat = store.load_flat("web").unwrap();
+
+        assert_eq!(flat.entries[0].agents(), [crate::model::Agent::Codex]);
+    }
+
+    #[test]
+    fn a_missing_base_or_a_cycle_is_an_error() {
+        let (_dir, store) = store();
+        saved(&store, "web", &["nope"], &[]);
+        saved(&store, "a", &["b"], &[]);
+        saved(&store, "b", &["a"], &[]);
+
+        assert!(store.load_flat("web").is_err());
+        assert!(store.load_flat("a").is_err());
+    }
+
+    #[test]
+    fn a_profile_cannot_extend_something_that_is_not_a_name() {
+        let (_dir, store) = store();
+        let mut p = Profile::new("web");
+        p.extends = vec!["../x".into()];
+
+        assert!(store.save(&p).is_err());
     }
 
     #[test]

@@ -114,6 +114,10 @@ spared by `reset` unless you pass `--mcp` (subagents: `--subagents`). A server t
 a profile (it would have to carry secrets); a snapshot lists it as skipped. Codex only installs MCP
 servers globally, and has no SSE transport.
 
+A profile can start from others: `extends = ["base"]` at the top loads `base`'s entries (and
+theirs, recursively) before its own; a missing base or a cycle is an error. Each base keeps the
+agents of its own profile.
+
 skillz records what each entry added (`~/.config/skillz/applied.json`, per project and per
 `CLAUDE_CONFIG_DIR`/`CODEX_HOME`), so swapping or unloading removes exactly that and never
 what was installed by hand or was already there. Project plugins go to Claude's `local` scope,

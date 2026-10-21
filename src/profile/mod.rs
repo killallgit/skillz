@@ -22,6 +22,9 @@ pub struct Profile {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Profiles whose entries this one starts from, loaded in order before its own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extends: Vec<String>,
     /// Agents an entry applies to unless it names its own.
     #[serde(default = "default_agents")]
     pub agents: Vec<Agent>,
@@ -38,6 +41,7 @@ impl Profile {
         Profile {
             name: name.into(),
             description: None,
+            extends: vec![],
             agents: default_agents(),
             entries: vec![],
         }
@@ -79,6 +83,7 @@ impl Profile {
             "profile {} has no agents",
             self.name
         );
+        self.extends.iter().try_for_each(|base| check_name(base))?;
         self.entries.iter().try_for_each(Entry::validate)
     }
 }
