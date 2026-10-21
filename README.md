@@ -45,6 +45,14 @@ Pickers: `↑↓/jk` move, `space` toggle, `a` toggle all, `/` filter, `enter` a
 Browser (`list -i`, multi-group queries): `space`/`→←` expand, `x`/`tab` mark a group or item,
 `enter` opens Show / Remove… (same plan and `[y/N]` as `rm`), `/` filter, `q` quit.
 
+## Isolating a config
+
+When `CLAUDE_CONFIG_DIR` or `CODEX_HOME` is set, skillz reads and changes only that directory
+for the agent's global config (skills, settings, plugins; for Claude also `.claude.json`) and
+never `~/.claude` or `~/.codex`. The variable is also set on every command skillz runs
+(`claude`, `codex`, `npx`), so native uninstalls act on the same directory. Project config
+(`<project>/.claude`, `<project>/.codex`) is unaffected. Unset, the usual home dirs apply.
+
 ## What "remove" means
 
 | Item | Removed |

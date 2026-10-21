@@ -244,6 +244,8 @@ mod tests {
         let env = Env {
             home: root.join("home"),
             project: root.join("proj"),
+            claude_config: None,
+            codex_home: None,
         };
         fs::create_dir_all(&env.home).unwrap();
         fs::create_dir_all(&env.project).unwrap();
@@ -600,6 +602,8 @@ mod tests {
         let env = Env {
             home: h.into(),
             project: h.join("p"),
+            claude_config: None,
+            codex_home: None,
         };
         write_lock(
             &h.join(".agents/.skill-lock.json"),

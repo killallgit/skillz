@@ -157,6 +157,8 @@ mod tests {
         let env = crate::env::Env {
             home: home.path().into(),
             project: home.path().into(),
+            claude_config: None,
+            codex_home: None,
         };
         crate::usage::read(&registry(), &env).unwrap()
     }
@@ -242,6 +244,8 @@ mod tests {
             let env = crate::env::Env {
                 home: home.path().into(),
                 project: home.path().into(),
+                claude_config: None,
+                codex_home: None,
             };
             crate::usage::read(&registry(), &env).unwrap()
         };

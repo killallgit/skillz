@@ -137,6 +137,8 @@ pub fn project_with(f: impl Fn(&Path)) -> Fixture {
     let env = Env {
         home: home.path().into(),
         project: project.path().into(),
+        claude_config: None,
+        codex_home: None,
     };
     Fixture {
         _home: home,

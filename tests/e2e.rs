@@ -113,6 +113,8 @@ fn world() -> World {
 fn deps<'a>(w: &World, runner: &'a Recorder, prompter: &'a Scripted) -> Deps<'a> {
     Deps {
         home: w.home.clone(),
+        claude_config: None,
+        codex_home: None,
         cwd: w.project.clone(),
         adapters: agents::registry(),
         runner,
@@ -137,6 +139,8 @@ fn inventory_finds_everything_once() {
     let env = skillz::env::Env {
         home: w.home.canonicalize().unwrap(),
         project: w.project.canonicalize().unwrap(),
+        claude_config: None,
+        codex_home: None,
     };
     let inv = agents::inventory(&agents::registry(), &env, &[Scope::Global, Scope::Project]);
     assert!(inv.warnings.is_empty(), "{:?}", inv.warnings);
@@ -166,6 +170,8 @@ fn project_link_into_global_store_is_its_own_item() {
     let env = skillz::env::Env {
         home: w.home.canonicalize().unwrap(),
         project: w.project.canonicalize().unwrap(),
+        claude_config: None,
+        codex_home: None,
     };
     let proj_link = env.project.join(".claude/skills/tdd");
     fs::create_dir_all(proj_link.parent().unwrap()).unwrap();
@@ -624,6 +630,8 @@ fn list_json_dumps_every_item_with_its_removal_plan() {
         &skillz::env::Env {
             home: w.home.canonicalize().unwrap(),
             project: w.project.canonicalize().unwrap(),
+            claude_config: None,
+            codex_home: None,
         },
         &[Scope::Global, Scope::Project],
     );
@@ -714,6 +722,8 @@ fn browser_remove_deletes_only_the_marked_group() {
     let p = RemoveGroups(vec![3]); // groups: three "<agent> hooks", "mattpocock/skills"
     let d = Deps {
         home: w.home.clone(),
+        claude_config: None,
+        codex_home: None,
         cwd: w.project.clone(),
         adapters: agents::registry(),
         runner: &r,

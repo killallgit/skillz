@@ -31,7 +31,7 @@ impl AgentAdapter for Codex {
     fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
         match scope {
             Scope::Global => vec![
-                env.home.join(".codex/skills"),
+                env.codex_dir().join("skills"),
                 npx_skills::store_dir(env, scope),
             ],
             Scope::Project => vec![
@@ -42,16 +42,16 @@ impl AgentAdapter for Codex {
     }
 
     fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
-        let dir = env.root(scope).join(".codex");
+        let dir = env.codex_scope_dir(scope);
         vec![dir.join("hooks.json"), dir.join("config.toml")]
     }
 
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
-        let config = env.root(scope).join(".codex/config.toml");
+        let config = env.codex_scope_dir(scope).join("config.toml");
         let Some(doc) = read_config(&config)? else {
             return Ok(vec![]);
         };
-        let cache = env.home.join(".codex/plugins/cache");
+        let cache = env.codex_dir().join("plugins/cache");
         let in_project = project_plugin_ids(env, &config);
         let in_use = |pick: &dyn Fn(&str) -> bool| {
             in_project
@@ -83,13 +83,12 @@ impl AgentAdapter for Codex {
     }
 
     /// Codex keeps no counters: a tool call in a session log under
-    /// `~/.codex/{sessions,archived_sessions}` whose input reads `.../skills/<name>/SKILL.md`
+    /// `$CODEX_HOME/{sessions,archived_sessions}` whose input reads `.../skills/<name>/SKILL.md`
     /// is a use, and a path under `plugins/cache/<mp>/<plugin>/` is a use of that plugin.
     fn usage(&self, env: &Env) -> anyhow::Result<Vec<(String, u64)>> {
         let mut uses = vec![];
         for dir in ["sessions", "archived_sessions"] {
-            let pattern =
-                glob::Pattern::escape(&env.home.join(".codex").join(dir).to_string_lossy());
+            let pattern = glob::Pattern::escape(&env.codex_dir().join(dir).to_string_lossy());
             for log in glob::glob(&format!("{pattern}/**/*.jsonl"))
                 .into_iter()
                 .flatten()
@@ -278,7 +277,7 @@ fn marketplace(
 /// `codex plugin …` always works on the user config, so only global items use it; a project's
 /// `.codex/config.toml` is edited directly.
 fn native(scope: Scope, config: &Path, args: &[&str], name: &str) -> Vec<Action> {
-    let home = config.parent().and_then(Path::parent);
+    let home = config.parent();
     match (scope, home) {
         (Scope::Global, Some(cwd)) => Action::native("codex", args, &[name], cwd)
             .into_iter()
@@ -473,6 +472,8 @@ enabled = true
         let env = Env {
             home: dir.path().join("home"),
             project: dir.path().join("proj"),
+            claude_config: None,
+            codex_home: None,
         };
         write(&env.home.join(".codex/config.toml"), CONFIG);
         let cache = env.home.join(".codex/plugins/cache/killall");
@@ -518,6 +519,8 @@ enabled = true
         let env = Env {
             home: "/h".into(),
             project: "/p".into(),
+            claude_config: None,
+            codex_home: None,
         };
         assert_eq!(Codex.agent(), Agent::Codex);
         assert_eq!(
@@ -689,6 +692,8 @@ enabled = true
         let home = Env {
             home: env.home.clone(),
             project: env.home.clone(),
+            claude_config: None,
+            codex_home: None,
         };
         let items = Codex.discover(&home, Scope::Global).unwrap();
         assert!(
@@ -827,6 +832,8 @@ enabled = true
         let env = Env {
             home: dir.path().into(),
             project: dir.path().into(),
+            claude_config: None,
+            codex_home: None,
         };
         assert!(Codex.discover(&env, Scope::Global).unwrap().is_empty());
         assert!(Codex.discover(&env, Scope::Project).unwrap().is_empty());
@@ -926,5 +933,29 @@ enabled = true
         assert_eq!(at("2024-02-29T12:00:00.5Z"), Some(1_709_208_000_500));
         assert_eq!(at("garbage"), None);
         assert_eq!(record_ms("not json"), None);
+    }
+
+    #[test]
+    fn codex_home_replaces_dot_codex_for_global_only() {
+        let env = Env {
+            home: PathBuf::from("/h"),
+            project: PathBuf::from("/p"),
+            claude_config: None,
+            codex_home: Some(PathBuf::from("/iso")),
+        };
+        let skills = Codex.skill_dirs(&env, Scope::Global);
+        assert_eq!(skills[0], PathBuf::from("/iso/skills"));
+        assert_eq!(
+            Codex.hook_files(&env, Scope::Global),
+            [
+                PathBuf::from("/iso/hooks.json"),
+                PathBuf::from("/iso/config.toml")
+            ]
+        );
+        assert_eq!(
+            Codex.hook_files(&env, Scope::Project)[0],
+            PathBuf::from("/p/.codex/hooks.json")
+        );
+        assert_eq!(env.codex_dir(), PathBuf::from("/iso"));
     }
 }

@@ -123,7 +123,12 @@ fn world() -> World {
     .unwrap();
     fs::create_dir_all(home.join(".fake/plugins").join(PLUGIN)).unwrap();
     World {
-        env: Env { home, project },
+        env: Env {
+            home,
+            project,
+            claude_config: None,
+            codex_home: None,
+        },
         _tmp: tmp,
         installs: Rc::default(),
     }
@@ -166,6 +171,8 @@ fn uninstall_runs_the_fakes_removal_plan() {
     let w = world();
     let deps = Deps {
         home: w.env.home.clone(),
+        claude_config: None,
+        codex_home: None,
         cwd: w.env.project.clone(),
         adapters: w.adapters(),
         runner: &NoRun,

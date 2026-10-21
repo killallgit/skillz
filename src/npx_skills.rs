@@ -144,6 +144,8 @@ mod tests {
         let env = Env {
             home: tmp.path().join("h"),
             project: tmp.path().join("p"),
+            claude_config: None,
+            codex_home: None,
         };
         assert!(read_lock(&env, Scope::Project).is_empty());
         fs::create_dir_all(&env.project).unwrap();

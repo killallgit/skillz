@@ -94,6 +94,8 @@ mod tests {
         let env = Env {
             home: home.path().into(),
             project: home.path().join("p"),
+            claude_config: None,
+            codex_home: None,
         };
         fs::write(
             home.path().join(".claude.json"),
@@ -126,6 +128,8 @@ mod tests {
         let env = Env {
             home: home.path().into(),
             project: home.path().into(),
+            claude_config: None,
+            codex_home: None,
         };
         assert_eq!(read(&registry(), &env).unwrap(), Usage::default());
         fs::write(home.path().join(".claude.json"), "{").unwrap();
@@ -138,6 +142,8 @@ mod tests {
         let env = Env {
             home: home.path().into(),
             project: home.path().into(),
+            claude_config: None,
+            codex_home: None,
         };
         fs::write(
             home.path().join(".claude.json"),

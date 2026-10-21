@@ -166,6 +166,10 @@ impl Filter {
 /// External effects the commands need; real ones in `main`, fakes in tests.
 pub struct Deps<'a> {
     pub home: PathBuf,
+    /// `CLAUDE_CONFIG_DIR`, when set: the only Claude config skillz touches.
+    pub claude_config: Option<PathBuf>,
+    /// `CODEX_HOME`, when set: the only Codex config skillz touches.
+    pub codex_home: Option<PathBuf>,
     pub cwd: PathBuf,
     pub adapters: Vec<Box<dyn AgentAdapter>>,
     pub runner: &'a dyn CommandRunner,
@@ -180,11 +184,29 @@ pub fn main() -> anyhow::Result<()> {
     } else {
         &TuiPrompter
     };
+    let dir_var = |name: &str| {
+        std::env::var_os(name)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    let claude_config = dir_var("CLAUDE_CONFIG_DIR");
+    let codex_home = dir_var("CODEX_HOME");
+    let runner = SystemRunner {
+        envs: [
+            ("CLAUDE_CONFIG_DIR", &claude_config),
+            ("CODEX_HOME", &codex_home),
+        ]
+        .into_iter()
+        .filter_map(|(k, v)| Some((k, v.clone()?)))
+        .collect(),
+    };
     let deps = Deps {
         home: std::env::home_dir().context("cannot find home directory")?,
+        claude_config,
+        codex_home,
         cwd: std::env::current_dir()?,
         adapters: agents::registry(),
-        runner: &SystemRunner,
+        runner: &runner,
         prompter,
         // Pickers and the browser read keys from stdin and draw on stdout.
         interactive: std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
@@ -326,7 +348,17 @@ fn resolve(deps: &Deps, path: Option<&Path>, global: bool) -> anyhow::Result<(En
         (false, true, false) => vec![Scope::Project],
         _ => vec![Scope::Global, Scope::Project],
     };
-    Ok((Env { home, project }, scopes))
+    let claude_config = deps.claude_config.clone();
+    let codex_home = deps.codex_home.clone();
+    Ok((
+        Env {
+            home,
+            project,
+            claude_config,
+            codex_home,
+        },
+        scopes,
+    ))
 }
 
 fn gather(deps: &Deps, env: &Env, scopes: &[Scope], filter: &Filter) -> Vec<Augmentation> {
@@ -753,12 +785,16 @@ fn describe(step: &Action) -> String {
 mod tests {
     use super::*;
 
+    static NO_ENVS: SystemRunner = SystemRunner { envs: Vec::new() };
+
     fn deps_at(home: &Path, cwd: &Path) -> Deps<'static> {
         Deps {
             home: home.to_path_buf(),
+            claude_config: None,
+            codex_home: None,
             cwd: cwd.to_path_buf(),
             adapters: vec![],
-            runner: &SystemRunner,
+            runner: &NO_ENVS,
             prompter: &AssumeYes,
             interactive: false,
         }
