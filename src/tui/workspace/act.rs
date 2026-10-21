@@ -16,4 +16,11 @@ pub enum Act {
     Apply {
         profile: String,
     },
+    /// Add the item a one-line entry describes to the library.
+    LibraryAdd {
+        spec: String,
+    },
+    /// Add what the project has installed to the library.
+    LibraryImport,
+    LibraryRemove(Entry),
 }

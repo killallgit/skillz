@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::snapshot::Skipped;
+
 pub(super) enum Notice {
     Failed(String),
     UpToDate,
@@ -10,6 +12,13 @@ pub(super) enum Notice {
     Installed(String),
     Removed(String),
     Applied(String),
+    LibraryAdded(String),
+    LibraryRemoved(String),
+    /// How many items the library gained, and what was left out.
+    Imported {
+        added: usize,
+        skipped: Vec<Skipped>,
+    },
 }
 
 impl fmt::Display for Notice {
@@ -21,6 +30,21 @@ impl fmt::Display for Notice {
             Notice::Installed(what) => write!(f, "installed {what}"),
             Notice::Removed(what) => write!(f, "removed {what}"),
             Notice::Applied(profile) => write!(f, "applied {profile}"),
+            Notice::LibraryAdded(what) => write!(f, "added {what} to the library"),
+            Notice::LibraryRemoved(what) => write!(f, "removed {what} from the library"),
+            Notice::Imported { added, skipped } => write_imported(f, *added, skipped),
         }
     }
+}
+
+fn write_imported(f: &mut fmt::Formatter<'_>, added: usize, skipped: &[Skipped]) -> fmt::Result {
+    write!(f, "imported {added}")?;
+    if skipped.is_empty() {
+        return Ok(());
+    }
+    let left_out: Vec<String> = skipped
+        .iter()
+        .map(|s| format!("{} ({})", s.label, s.reason))
+        .collect();
+    write!(f, ", skipped {}: {}", skipped.len(), left_out.join("; "))
 }

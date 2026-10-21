@@ -10,6 +10,7 @@ pub enum Scope {
     /// The tab bar and what works on every tab.
     Workspace,
     Project,
+    Library,
     Tree,
     /// While a filter is being typed, so letters stay text.
     Filter,
@@ -21,6 +22,7 @@ impl Scope {
             Scope::Common => "Everywhere",
             Scope::Workspace => "Tabs",
             Scope::Project => "Project",
+            Scope::Library => "Library",
             Scope::Tree => "List",
             Scope::Filter => "Filter",
         }
@@ -53,6 +55,9 @@ pub enum Action {
     GoTab(u8),
     PickProfile,
     ApplyProfile,
+    Add,
+    Import,
+    Delete,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -102,7 +107,7 @@ const fn bind(
 }
 
 use Action as A;
-use Scope::{Common, Filter, Project, Tree, Workspace};
+use Scope::{Common, Filter, Library, Project, Tree, Workspace};
 
 #[rustfmt::skip]
 pub const BINDINGS: &[Binding] = &[
@@ -131,6 +136,14 @@ pub const BINDINGS: &[Binding] = &[
     bind(Project, A::Select, &[plain(KeyCode::Enter)], "enter", "expand / toggle", 0),
     bind(Project, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
     bind(Project, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
+    bind(Library, A::Add, &[ch('a')], "a", "add", 1),
+    bind(Library, A::Import, &[ch('i')], "i", "import installed", 2),
+    bind(Library, A::Delete, &[ch('x')], "x", "remove", 3),
+    bind(Library, A::Filter, &[ch('/')], "/", "filter", 4),
+    bind(Library, A::Toggle, &[ch(' ')], "space", "expand", 0),
+    bind(Library, A::Select, &[plain(KeyCode::Enter)], "enter", "expand", 0),
+    bind(Library, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
+    bind(Library, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
     bind(Tree, A::Mark, &[ch('x'), plain(KeyCode::Tab)], "x tab", "mark", 1),
     bind(Tree, A::Select, &[plain(KeyCode::Enter)], "enter", "actions", 2),
     bind(Tree, A::Filter, &[ch('/')], "/", "filter", 3),
@@ -285,7 +298,7 @@ mod tests {
 
     #[test]
     fn hints_come_out_most_important_first_and_without_duplicates() {
-        for scope in [Project, Tree] {
+        for scope in [Project, Library, Tree] {
             let hints = hints(&[scope]);
             let mut sorted = hints.clone();
             sorted.dedup();

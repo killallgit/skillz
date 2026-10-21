@@ -2,6 +2,7 @@
 //! installs, removals and profile applies shown as a plan first, as for `use`.
 
 mod change;
+mod library_change;
 mod model;
 mod notice;
 mod perform;
