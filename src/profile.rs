@@ -119,6 +119,21 @@ impl Profile {
         }
     }
 
+    /// The entries with every agent list filled in, so two entries compare equal exactly when
+    /// they would install the same things.
+    pub fn resolved(&self) -> Vec<Entry> {
+        self.entries
+            .iter()
+            .map(|e| {
+                let resolved = self.agents_for(e).to_vec();
+                let mut e = e.clone();
+                let (Entry::Skill { agents, .. } | Entry::Plugin { agents, .. }) = &mut e;
+                *agents = resolved;
+                e
+            })
+            .collect()
+    }
+
     pub fn parse(name: &str, text: &str) -> anyhow::Result<Profile> {
         check_name(name)?;
         let mut profile: Profile = toml_edit::de::from_str(text).context("invalid profile")?;

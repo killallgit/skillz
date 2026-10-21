@@ -914,3 +914,57 @@ fn reset_spares_what_keep_names_and_nothing_removed_when_declined() {
     .unwrap();
     assert!(w.home.join(".agents/skills/tdd").exists());
 }
+
+fn use_cmd(profile: Option<&str>, dry_run: bool) -> Command {
+    Command::Use {
+        profile: profile.map(String::from),
+        none: profile.is_none(),
+        global: false,
+        project: Some(PathBuf::from(".")),
+        yes: true,
+        dry_run,
+    }
+}
+
+#[test]
+fn use_profile_installs_once_then_swaps_and_unloads() {
+    let w = world();
+    let skills = |name: &str, skill: &str| {
+        write(
+            &w.home.join(format!(".config/skillz/profiles/{name}.toml")),
+            &format!("[[entry]]\nkind = \"skill\"\nsource = \"o/r\"\nnames = [\"{skill}\"]\n"),
+        )
+    };
+    skills("web", "tdd");
+    skills("api", "grill");
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let d = deps(&w, &r, &p);
+    let ledger = w.home.join(".config/skillz/applied.json");
+
+    run(use_cmd(Some("web"), true), &d, &mut Vec::new()).unwrap();
+    assert!(r.0.borrow().is_empty(), "dry run runs nothing");
+    assert!(!ledger.exists());
+
+    run(use_cmd(Some("web"), false), &d, &mut Vec::new()).unwrap();
+    assert_eq!(r.0.borrow().len(), 1);
+    assert!(fs::read_to_string(&ledger).unwrap().contains("web"));
+
+    run(use_cmd(Some("web"), false), &d, &mut Vec::new()).unwrap();
+    assert_eq!(r.0.borrow().len(), 1, "same profile again changes nothing");
+
+    run(use_cmd(Some("api"), false), &d, &mut Vec::new()).unwrap();
+    let calls = r.0.borrow().len();
+    assert_eq!(calls, 2, "only the new profile's skill is installed");
+    assert!(fs::read_to_string(&ledger).unwrap().contains("api"));
+
+    run(use_cmd(None, false), &d, &mut Vec::new()).unwrap();
+    assert!(!fs::read_to_string(&ledger).unwrap().contains("api"));
+
+    assert!(run(use_cmd(Some("missing"), false), &d, &mut Vec::new()).is_err());
+}

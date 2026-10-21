@@ -6,10 +6,12 @@ use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
 
 use crate::agents::{self, AgentAdapter};
+use crate::apply;
 use crate::cost;
 use crate::env::Env;
 use crate::install::{self, InstallRequest, SkillSelection};
 use crate::model::{Agent, Augmentation, Kind, Scope};
+use crate::profile;
 use crate::prompt::{AssumeYes, Choice, Prompter, TuiPrompter};
 use crate::prune;
 use crate::runner::{CommandRunner, SystemRunner};
@@ -97,6 +99,27 @@ pub enum Command {
         /// Remove everything found without asking
         #[arg(short, long)]
         force: bool,
+    },
+    /// Load a profile into the project (or globally), swapping out the one that is there
+    Use {
+        /// Profile name (see `~/.config/skillz/profiles`)
+        #[arg(required_unless_present = "none", conflicts_with = "none")]
+        profile: Option<String>,
+        /// Unload the current profile instead
+        #[arg(long)]
+        none: bool,
+        /// Apply to the global config instead of the project
+        #[arg(short, long)]
+        global: bool,
+        /// Project directory (default: cwd)
+        #[arg(short = 'p', long)]
+        project: Option<PathBuf>,
+        /// Don't ask before changing anything
+        #[arg(short, long)]
+        yes: bool,
+        /// Print the plan without changing anything
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Install skills (via `npx skills`) or a Claude plugin marketplace
     #[command(visible_alias = "add")]
@@ -221,6 +244,7 @@ fn wants_auto_yes(command: &Command) -> bool {
             | Command::Install { yes: true, .. }
             | Command::Prune { force: true, .. }
             | Command::Reset { force: true, .. }
+            | Command::Use { yes: true, .. }
     )
 }
 
@@ -293,6 +317,23 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
                 filter: &filter,
             };
             reset(&scene, &keep, dry_run, out)
+        }
+        Command::Use {
+            profile,
+            none: _,
+            global,
+            project,
+            yes: _,
+            dry_run,
+        } => {
+            let (env, scopes) = resolve(deps, project.as_deref(), global)?;
+            // One scope at a time: the project, unless asked for global or this is the home dir.
+            let scope = if global || !scopes.contains(&Scope::Project) {
+                Scope::Global
+            } else {
+                Scope::Project
+            };
+            use_profile(deps, &env, scope, profile.as_deref(), dry_run, out)
         }
         Command::Install {
             source,
@@ -719,6 +760,100 @@ fn confirm_and_remove(
         bail!(
             "still installed after removal: {}",
             outcome.still_installed.join(", ")
+        );
+    }
+    Ok(())
+}
+
+/// `use`: show what moving `scope` to the named profile (`None` = no profile) changes, ask, then
+/// do it with one status line.
+fn use_profile(
+    deps: &Deps,
+    env: &Env,
+    scope: Scope,
+    name: Option<&str>,
+    dry_run: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let ledger = apply::Ledger::in_env(env);
+    let target = name
+        .map(|n| profile::Store::in_env(env).load(n))
+        .transpose()?;
+    let switch = apply::plan(&deps.adapters, target.as_ref(), scope, env, &ledger)?;
+
+    let label = |p: &Option<String>| p.clone().unwrap_or_else(|| "none".into());
+    writeln!(
+        out,
+        "{scope}: {} -> {}",
+        label(&switch.from),
+        label(&switch.to)
+    )?;
+    for l in &switch.keep {
+        writeln!(out, "  keep    {}", l.entry)?;
+    }
+    for l in &switch.drop {
+        writeln!(out, "  remove  {}", l.entry)?;
+    }
+    for (entry, _) in &switch.installs {
+        writeln!(out, "  install {entry}")?;
+    }
+    for u in &switch.unsupported {
+        writeln!(
+            out,
+            "  skip    {} for {}: not supported at {scope} scope",
+            u.entry, u.agent
+        )?;
+    }
+    if switch.is_empty() {
+        writeln!(out, "already up to date")?;
+        return Ok(());
+    }
+    writeln!(out, "Plan:")?;
+    for step in switch.steps() {
+        writeln!(out, "  {}", step.describe())?;
+    }
+    if dry_run {
+        return Ok(());
+    }
+    if !deps.prompter.confirm("Proceed?")? {
+        writeln!(out, "aborted")?;
+        return Ok(());
+    }
+
+    let spinner = spinner::Spinner::start("switching");
+    let refs: Vec<&Augmentation> = switch.removals.iter().collect();
+    let removal = remove::Plan::new(&refs, &[]);
+    let result = apply::run(
+        &deps.adapters,
+        &switch,
+        scope,
+        env,
+        &ledger,
+        deps.runner,
+        &mut |step| {
+            let Some(s) = &spinner else { return };
+            let installing = switch
+                .installs
+                .iter()
+                .find(|(_, steps)| steps.contains(step));
+            match installing {
+                Some((entry, _)) => s.set(&format!("installing {entry}")),
+                None => s.set(&format!("removing {}", removal.owner(step))),
+            }
+        },
+    );
+    drop(spinner);
+    let done = result?;
+    writeln!(
+        out,
+        "removed {} items, installed {} items",
+        switch.removals.len(),
+        done.added.len()
+    )?;
+    if let Some(left) = done.removed.filter(|o| !o.still_installed.is_empty()) {
+        bail!(
+            "still installed after removal: {}",
+            left.still_installed.join(", ")
         );
     }
     Ok(())
