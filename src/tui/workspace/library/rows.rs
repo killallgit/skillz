@@ -19,7 +19,9 @@ pub(super) fn build(catalog: &Catalog) -> Vec<Row> {
                 kind,
                 count: items.len(),
             };
-            let items = items.into_iter().map(|item| Row::Item(Box::new(item.clone())));
+            let items = items
+                .into_iter()
+                .map(|item| Row::Item(Box::new(item.clone())));
             std::iter::once(section).chain(items)
         })
         .collect()

@@ -178,6 +178,8 @@ fn outcome_of(switch: &Switch, result: anyhow::Result<Done>) -> Outcome {
 }
 
 #[cfg(test)]
+mod provenance_tests;
+#[cfg(test)]
 mod selection_tests;
 #[cfg(test)]
 mod tests;

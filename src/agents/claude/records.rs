@@ -104,6 +104,15 @@ mod tests {
     }
 
     #[test]
+    fn an_install_carries_the_version_claude_recorded() {
+        let installs = installs_from(&json!({"plugins": {"x@y": [
+            {"scope": "user", "version": "1.2.3"}
+        ]}}));
+
+        assert_eq!(installs[0].version.as_deref(), Some("1.2.3"));
+    }
+
+    #[test]
     fn plugin_without_marketplace_suffix() {
         assert!(installs_from(&json!({"plugins": {"x@y": "nope"}})).is_empty());
         assert!(installs_from(&json!({})).is_empty());

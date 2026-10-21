@@ -8,6 +8,7 @@ use ratatui::widgets::Paragraph;
 use super::detail::{Detail, detail};
 use super::rows::Row;
 use super::{LibraryTab, Popup};
+use crate::library::Provenance;
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;
@@ -108,8 +109,27 @@ fn detail_text(detail: &Detail, theme: &Theme) -> Line<'static> {
             .collect::<Vec<_>>()
             .join(", "),
     };
-    Line::styled(
-        format!(" {:?} · {} · {agents}", detail.kind, detail.source),
-        theme.muted,
-    )
+    let provenance = detail.provenance.as_ref().map(provenance_text);
+    let parts = [
+        Some(format!("{:?}", detail.kind)),
+        Some(detail.source.clone()),
+        Some(agents),
+        provenance,
+    ];
+    let line: Vec<String> = parts.into_iter().flatten().collect();
+    Line::styled(format!(" {}", line.join(" · ")), theme.muted)
+}
+
+/// `link <url> · <engine> · <version>`, leaving out what was not recorded.
+fn provenance_text(provenance: &Provenance) -> String {
+    let link = provenance.link.as_ref().map(|link| format!("link {link}"));
+    let version = provenance
+        .version
+        .as_ref()
+        .map(|v| format!("version {}", v.chars().take(12).collect::<String>()));
+    [link, Some(provenance.engine.to_string()), version]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" · ")
 }

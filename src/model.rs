@@ -154,6 +154,17 @@ impl fmt::Display for Agent {
     }
 }
 
+impl fmt::Display for Installer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Installer::Npx => "npx skills",
+            Installer::ClaudeCli => "claude plugin",
+            Installer::CodexCli => "codex plugin",
+            Installer::Local => "manual",
+        })
+    }
+}
+
 impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {

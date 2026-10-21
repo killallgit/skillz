@@ -1,6 +1,6 @@
 //! What the line under the library says about the highlighted item.
 
-use crate::library::{ItemKind, LibraryItem};
+use crate::library::{ItemKind, LibraryItem, Provenance};
 use crate::model::Agent;
 use crate::profile::Entry;
 
@@ -11,6 +11,8 @@ pub(super) struct Detail {
     pub source: String,
     /// Empty when it goes to whichever agents the profile uses.
     pub agents: Vec<Agent>,
+    /// How it was installed; `None` for an item typed in by hand.
+    pub provenance: Option<Provenance>,
 }
 
 pub(super) fn detail(item: &LibraryItem) -> Detail {
@@ -25,6 +27,7 @@ pub(super) fn detail(item: &LibraryItem) -> Detail {
         kind: item.kind(),
         source,
         agents: item.entry.agents().to_vec(),
+        provenance: item.provenance.clone(),
     }
 }
 
@@ -46,6 +49,20 @@ mod tests {
             (hook.kind, hook.source.as_str()),
             (ItemKind::Hook, "notify")
         );
+    }
+
+    #[test]
+    fn an_item_carries_the_provenance_it_was_recorded_with() {
+        let provenance = Provenance {
+            link: Some("https://h/o/r.git".into()),
+            engine: crate::model::Installer::Npx,
+            version: None,
+            recorded_at: 1,
+        };
+        let item = skill("o/r", "tdd").with_provenance(provenance.clone());
+
+        assert_eq!(detail(&item).provenance, Some(provenance));
+        assert_eq!(detail(&skill("o/r", "tdd")).provenance, None);
     }
 
     #[test]
