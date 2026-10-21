@@ -186,7 +186,7 @@ impl Home {
         if matches!(self.popup, Popup::Filter) {
             return filter::draw_prompt(frame, area, self.pane().field(), theme);
         }
-        KeyBar::new(&keymap::hints(Scope::Home)).render(frame, area, theme);
+        KeyBar::new(&keymap::hints(&[Scope::Home])).render(frame, area, theme);
     }
 
     fn draw_popup(&mut self, frame: &mut Frame, theme: &Theme) {

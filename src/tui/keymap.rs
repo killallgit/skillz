@@ -176,33 +176,35 @@ pub fn keys_for(scope: Scope, action: Action) -> &'static str {
         .map_or("", |b| b.keys)
 }
 
-/// The key bar's hints for `scope`, most important first.
-pub fn hints(scope: Scope) -> Vec<(&'static str, &'static str)> {
+/// The key bar's hints for `scopes`, most important first.
+pub fn hints(scopes: &[Scope]) -> Vec<(&'static str, &'static str)> {
     let mut ranked: Vec<&Binding> = BINDINGS
         .iter()
-        .filter(|b| b.rank > 0 && (b.scope == scope || b.scope == Common))
+        .filter(|b| b.rank > 0 && (b.scope == Common || scopes.contains(&b.scope)))
         .collect();
     ranked.sort_by_key(|b| b.rank);
     ranked.iter().map(|b| (b.keys, b.label)).collect()
 }
 
-fn overridden(binding: &Binding, scope: Scope) -> bool {
+fn overridden(binding: &Binding, scopes: &[Scope]) -> bool {
     binding.scope == Common
         && BINDINGS
             .iter()
-            .any(|b| b.scope == scope && b.action == binding.action)
+            .any(|b| scopes.contains(&b.scope) && b.action == binding.action)
 }
 
-/// The rows of the `?` overlay: the scope's own bindings, then the common ones.
-pub fn help_sections(scope: Scope) -> [Vec<&'static Binding>; 2] {
-    let listed = |s: Scope| {
-        BINDINGS
+/// The rows of the `?` overlay: each scope's own bindings in the order given, then the common
+/// ones the scopes do not replace.
+pub fn help_sections(scopes: &[Scope]) -> Vec<(Scope, Vec<&'static Binding>)> {
+    let listed = |scope: Scope| {
+        let bindings = BINDINGS
             .iter()
-            .filter(|b| b.scope == s && !b.label.is_empty())
-            .filter(|b| s == scope || !overridden(b, scope))
-            .collect()
+            .filter(|b| b.scope == scope && !b.label.is_empty())
+            .filter(|b| scope != Common || !overridden(b, scopes))
+            .collect();
+        (scope, bindings)
     };
-    [listed(scope), listed(Common)]
+    scopes.iter().copied().chain([Common]).map(listed).collect()
 }
 
 #[cfg(test)]
@@ -274,7 +276,7 @@ mod tests {
     #[test]
     fn hints_come_out_most_important_first_and_without_duplicates() {
         for scope in [Home, Tree] {
-            let hints = hints(scope);
+            let hints = hints(&[scope]);
             let mut sorted = hints.clone();
             sorted.dedup();
 
@@ -291,11 +293,9 @@ mod tests {
 
     #[test]
     fn the_scopes_own_enter_replaces_the_common_one_in_help() {
-        let [own, common] = help_sections(Home);
-
-        let selects = own
-            .iter()
-            .chain(&common)
+        let selects = help_sections(&[Home])
+            .into_iter()
+            .flat_map(|(_, bindings)| bindings)
             .filter(|b| b.action == Action::Select);
 
         assert_eq!(selects.count(), 1);
@@ -312,10 +312,14 @@ mod tests {
 
     #[test]
     fn help_lists_the_scope_first_then_the_common_bindings() {
-        let [own, common] = help_sections(Home);
+        let sections = help_sections(&[Home]);
 
-        assert!(own.iter().all(|b| b.scope == Home));
-        assert!(common.iter().all(|b| b.scope == Common));
-        assert!(!own.is_empty() && !common.is_empty());
+        let scopes: Vec<Scope> = sections.iter().map(|(s, _)| *s).collect();
+        assert_eq!(scopes, [Home, Common]);
+        assert!(
+            sections
+                .iter()
+                .all(|(s, b)| b.iter().all(|b| b.scope == *s))
+        );
     }
 }

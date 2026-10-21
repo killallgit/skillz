@@ -34,14 +34,15 @@ fn sample() -> Vec<Node> {
 }
 
 fn labels(s: &TreeState) -> Vec<&str> {
-    s.visible
+    s.outline
+        .visible()
         .iter()
-        .map(|&i| s.rows[i].label.as_str())
+        .map(|&i| s.outline.label(i))
         .collect()
 }
 
 fn under_cursor(s: &TreeState) -> &str {
-    labels(s)[s.list.selected().unwrap()]
+    labels(s)[s.outline.selected().unwrap()]
 }
 
 fn feed(s: &mut TreeState, ks: impl IntoIterator<Item = KeyEvent>) {
@@ -82,7 +83,7 @@ fn starts_collapsed_and_space_or_arrows_expand() {
 
     feed(&mut s, [key(KeyCode::Left)]);
     // Left on an open row closes it.
-    assert_eq!(s.visible.len(), 4);
+    assert_eq!(s.outline.visible().len(), 4);
 
     feed(&mut s, keys("h"));
     // Left on a closed row climbs to its parent.
@@ -160,7 +161,7 @@ fn left_on_leaf_jumps_to_parent_and_cursor_clamps() {
 
     feed(&mut s, keys("kkkkkkkk"));
     // Moving up stops at the first row.
-    assert_eq!(s.list.selected(), Some(0));
+    assert_eq!(s.outline.selected(), Some(0));
 }
 
 #[test]
@@ -171,10 +172,10 @@ fn filter_shows_matches_with_ancestors_and_esc_clears() {
 
     // The match shows with its ancestors, and every group is open while filtering.
     assert_eq!(labels(&s), ["g0", "a", "a2"]);
-    assert!(s.is_open(1));
+    assert!(s.outline.is_open(1));
     feed(&mut s, [key(KeyCode::Enter)]);
     assert_eq!(s.overlay, Overlay::None);
-    assert_eq!(s.visible.len(), 3);
+    assert_eq!(s.outline.visible().len(), 3);
     feed(&mut s, [key(KeyCode::Esc)]);
     // Esc clears the filter, then q quits.
     assert_eq!(labels(&s), ["g0", "g1"]);
@@ -201,7 +202,7 @@ fn empty_tree_is_safe() {
     feed(&mut s, [key(KeyCode::Esc), key(KeyCode::Enter)]);
 
     // Nothing to show and no menu opened from nothing.
-    assert!(s.visible.is_empty() && !menu_is_open(&s));
+    assert!(s.outline.visible().is_empty() && !menu_is_open(&s));
 }
 
 #[test]
@@ -240,7 +241,7 @@ fn i_opens_the_modal_for_rows_with_info_and_esc_closes_it() {
     feed(&mut s, keys("jx"));
     // Keys other than the closing ones do nothing while it is open.
     assert_eq!(
-        (s.overlay.clone(), s.list.selected(), s.marks.len()),
+        (s.overlay.clone(), s.outline.selected(), s.marks.len()),
         (Overlay::Info(0), Some(0), 0)
     );
     let theme = Theme::dark();
@@ -267,7 +268,7 @@ fn question_mark_opens_help_which_scrolls_without_moving_the_cursor_and_esc_clos
 
     assert!(open && still_open);
     assert_eq!(
-        (s.overlay.clone(), s.list.selected()),
+        (s.overlay.clone(), s.outline.selected()),
         (Overlay::None, Some(0))
     );
 }
@@ -337,7 +338,7 @@ fn filtering_underlines_the_matched_letters_and_counts_matches_in_the_badge() {
         .count();
     // Only the "c" row (and its group "g1", which has no c) is shown; exactly one letter matches.
     assert_eq!(underlined, 1);
-    assert_eq!(s.visible.len(), 2);
+    assert_eq!(s.outline.visible().len(), 2);
 }
 
 #[test]

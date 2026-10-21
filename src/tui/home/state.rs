@@ -104,7 +104,7 @@ impl Home {
             Action::Quit => Some(Act::Quit),
             Action::Back => self.back(),
             Action::SwitchPane => self.switch_pane(),
-            Action::Help => self.open(Popup::Help(Help::new(Scope::Home))),
+            Action::Help => self.open(Popup::Help(Help::new(&[Scope::Home]))),
             Action::Filter => self.open(Popup::Filter),
             Action::Select => self.apply(),
             action => self.command(action),

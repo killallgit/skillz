@@ -6,6 +6,7 @@ pub(crate) mod input;
 pub(crate) mod keybar;
 pub(crate) mod list;
 pub(crate) mod modal;
+pub(crate) mod outline;
 pub(crate) mod panel;
 #[allow(dead_code, reason = "wired back in by the next TUI bead")]
 pub(crate) mod path_picker;
