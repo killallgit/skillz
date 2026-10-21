@@ -42,3 +42,38 @@ impl Collector for Hooks {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hook_text::HookEntry;
+    use crate::model::{Installer, Scope};
+
+    #[test]
+    fn the_hooks_a_plugin_declares_are_left_to_the_plugin_entry() {
+        let plugin = Augmentation {
+            hooks: vec![HookEntry {
+                event: "Stop".into(),
+                matcher: None,
+                command: "say done".into(),
+            }],
+            id: "plugin:claude:global:p@mp".into(),
+            name: "p@mp".into(),
+            kind: Kind::Plugin,
+            agents: vec![Agent::Claude],
+            scope: Scope::Global,
+            group: "mp".into(),
+            source: None,
+            installer: Installer::ClaudeCli,
+            origin: Default::default(),
+            children: vec![],
+            removal: vec![],
+        };
+        let mut hooks = Hooks::default();
+
+        let accepted = hooks.accept(&plugin, vec![Agent::Claude]);
+
+        assert!(matches!(accepted, Accept::Pass));
+        assert!(hooks.finish(&[Agent::Claude]).is_empty());
+    }
+}
