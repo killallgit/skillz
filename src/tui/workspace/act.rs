@@ -11,6 +11,10 @@ pub enum Act {
         install: Vec<Entry>,
         remove: Vec<String>,
     },
+    /// Bring the installed items with these ids to their latest version, as one plan.
+    Update {
+        ids: Vec<String>,
+    },
     /// Install what the profile has that the project lacks.
     Apply {
         profile: String,

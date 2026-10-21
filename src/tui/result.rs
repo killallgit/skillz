@@ -108,6 +108,7 @@ fn counts(outcome: &Outcome, theme: &Theme) -> Line<'static> {
     Line::from(vec![
         count(outcome.removed, "removed", theme.text),
         count(outcome.installed, "installed", theme.ok),
+        count(outcome.updated, "updated", theme.ok),
         count(outcome.skipped, "skipped", theme.warn),
         count(outcome.failures.len(), "failed", theme.danger),
     ])

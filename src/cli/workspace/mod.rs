@@ -9,6 +9,7 @@ mod perform;
 mod plan_view;
 mod profiles;
 mod selection;
+mod updates;
 
 use std::path::{Path, PathBuf};
 

@@ -127,7 +127,7 @@ fn group_style(group: Group, theme: &Theme) -> Style {
     match group {
         Group::Keep => theme.muted,
         Group::Remove => theme.danger,
-        Group::Install => theme.ok,
+        Group::Install | Group::Update => theme.ok,
         Group::Skip => theme.warn,
     }
 }
@@ -137,6 +137,7 @@ fn group_marker(group: Group) -> &'static str {
         Group::Keep => "=",
         Group::Remove => "-",
         Group::Install => "+",
+        Group::Update => "^",
         Group::Skip => "~",
     }
 }
@@ -146,6 +147,7 @@ fn group_name(group: Group) -> &'static str {
         Group::Keep => "keep",
         Group::Remove => "remove",
         Group::Install => "install",
+        Group::Update => "update",
         Group::Skip => "skip",
     }
 }

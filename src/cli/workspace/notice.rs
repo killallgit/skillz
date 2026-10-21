@@ -15,6 +15,8 @@ pub(super) enum Notice {
         installed: usize,
         removed: usize,
     },
+    /// How many items were brought to their latest version.
+    ItemsUpdated(usize),
     Applied(String),
     LibraryAdded(String),
     LibraryRemoved(String),
@@ -42,6 +44,7 @@ impl fmt::Display for Notice {
             Notice::Changed { installed, removed } => {
                 write!(f, "installed {installed}, removed {removed}")
             }
+            Notice::ItemsUpdated(count) => write!(f, "updated {count}"),
             Notice::Applied(profile) => write!(f, "applied {profile}"),
             Notice::LibraryAdded(what) => write!(f, "added {what} to the library"),
             Notice::LibraryRemoved(what) => write!(f, "removed {what} from the library"),

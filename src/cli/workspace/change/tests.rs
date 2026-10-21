@@ -100,14 +100,7 @@ fn applying_additively_keeps_what_the_profile_does_not_have() {
 
 #[test]
 fn a_failed_run_is_a_failure_and_a_clean_one_is_not() {
-    let switch = Switch {
-        to: "p".into(),
-        present: vec![],
-        removals: vec![],
-        unsourced: vec![],
-        installs: vec![],
-        unsupported: vec![],
-    };
+    let switch = Switch::updating(vec![]);
 
     let failed = outcome_of(&switch, Err(anyhow::anyhow!("boom")));
     let clean = outcome_of(

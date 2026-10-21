@@ -7,11 +7,18 @@ pub enum Group {
     Keep,
     Remove,
     Install,
+    Update,
     Skip,
 }
 
 impl Group {
-    pub const ALL: [Group; 4] = [Group::Keep, Group::Remove, Group::Install, Group::Skip];
+    pub const ALL: [Group; 5] = [
+        Group::Keep,
+        Group::Remove,
+        Group::Install,
+        Group::Update,
+        Group::Skip,
+    ];
 }
 
 /// A plan to approve: what stays, goes, arrives and cannot be done, and the raw steps behind it.
@@ -50,6 +57,7 @@ pub enum Verdict {
 pub struct Outcome {
     pub removed: usize,
     pub installed: usize,
+    pub updated: usize,
     pub skipped: usize,
     pub failures: Vec<String>,
     /// Items a removal reported as still installed.
