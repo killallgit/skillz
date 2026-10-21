@@ -1,38 +1,8 @@
-use std::collections::BTreeMap;
-use std::io::ErrorKind;
-use std::path::Path;
-
 use anyhow::Context;
 use serde_json::Value;
 
-use crate::action::{Action, Edit, edit_json};
-use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
-
-/// One hook handler as written in a hooks config file.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HookEntry {
-    pub event: String,
-    pub matcher: Option<String>,
-    pub command: String,
-}
-
-/// Syntax of a config file, decided by its extension.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Format {
-    Json,
-    Toml,
-}
-
-impl Format {
-    /// `.toml` files are TOML; everything else is JSON.
-    pub fn of(file: &Path) -> Self {
-        if file.extension().is_some_and(|e| e == "toml") {
-            Format::Toml
-        } else {
-            Format::Json
-        }
-    }
-}
+use super::{Format, HookEntry};
+use crate::action::edit_json;
 
 /// Parse the hooks of a config file. JSON: the top-level `"hooks"` object, nested
 /// (Claude/Codex) or flat (Cursor) layout. TOML: the inline hooks of a Codex `config.toml`.
@@ -188,196 +158,11 @@ fn entry(event: &str, matcher: &Option<String>, command: &str) -> HookEntry {
     }
 }
 
-/// Programs that run another program; the hook belongs to what they run.
-const WRAPPERS: &[&str] = &[
-    "bash", "sh", "zsh", "fish", "node", "python", "python3", "uv", "uvx", "bun", "bunx", "deno",
-    "npx", "pnpx", "pnpm", "yarn", "npm", "exec", "env", "sudo", "command", "run", "nohup", "time",
-    "if", "then", "test", "[", "[[", "!",
-];
-
-/// Hidden home dirs that belong to the OS, not to a hook-installing tool. Agents add their own
-/// (`AgentAdapter::home_dir_names`).
-const SHARED_DIRS: &[&str] = &["config", "local"];
-
-/// Name of the tool a hook command belongs to, so related hooks group together.
-/// e.g. `bd prime --hook-json` -> `bd`, `bash '/x/.claude/hooks/herdr-agent-state.sh' s` -> `herdr-agent-state`.
-pub fn hook_group(command: &str) -> String {
-    let tokens = words(command);
-    match tokens.iter().find(|t| !is_skippable(t)) {
-        // `bash -c "rtk hook"`: the program is inside the quoted script. Recurse only when
-        // that splits further, or a space shell_words keeps (U+00A0) would loop forever.
-        Some(t) if words(t).len() > 1 => hook_group(t),
-        Some(t) => program_group(t),
-        None => tokens.first().cloned().unwrap_or_default(),
-    }
-}
-
-fn words(command: &str) -> Vec<String> {
-    shell_words::split(command)
-        .unwrap_or_else(|_| command.split_whitespace().map(str::to_string).collect())
-}
-
-fn is_skippable(token: &str) -> bool {
-    let name = Path::new(token)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(token);
-    token.starts_with('-') || is_assignment(token) || WRAPPERS.contains(&name)
-}
-
-fn is_assignment(token: &str) -> bool {
-    token.split_once('=').is_some_and(|(var, _)| {
-        !var.is_empty() && var.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-    })
-}
-
-fn program_group(token: &str) -> String {
-    if crate::agents::plugin_root_vars()
-        .iter()
-        .any(|var| token.contains(&format!("${{{var}}}")))
-    {
-        return "plugin".to_string();
-    }
-    let path = Path::new(token);
-    if let Some(tool) = tool_dir(path) {
-        return tool;
-    }
-    match path.file_stem().and_then(|s| s.to_str()) {
-        Some(stem) if token.contains('/') || path.extension().is_some() => stem.to_string(),
-        _ => token.to_string(),
-    }
-}
-
-/// `/home/me/.orca/hooks/x.sh` -> `orca`: the first hidden directory not shared by agents.
-fn tool_dir(path: &Path) -> Option<String> {
-    let parent = path.parent()?;
-    let agent_dirs = crate::agents::home_dir_names();
-    parent
-        .components()
-        .filter_map(|c| c.as_os_str().to_str()?.strip_prefix('.'))
-        .find(|name| {
-            !name.is_empty()
-                && !name.starts_with('.')
-                && !SHARED_DIRS.contains(name)
-                && !agent_dirs.contains(name)
-        })
-        .map(str::to_string)
-}
-
-/// Hooks in one config file, one `Augmentation` per `hook_group`, each with its removal plan.
-/// A missing file yields an empty list.
-pub fn discover(file: &Path, agent: Agent, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
-    let text = match std::fs::read_to_string(file) {
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-        other => other.with_context(|| format!("read {}", file.display()))?,
-    };
-    let entries =
-        parse(&text, Format::of(file)).with_context(|| format!("parse {}", file.display()))?;
-    let mut groups: BTreeMap<String, Vec<HookEntry>> = BTreeMap::new();
-    for entry in entries {
-        groups
-            .entry(hook_group(&entry.command))
-            .or_default()
-            .push(entry);
-    }
-    Ok(groups
-        .into_iter()
-        .map(|(name, entries)| augmentation(file, agent, scope, name, &entries))
-        .collect())
-}
-
-fn augmentation(
-    file: &Path,
-    agent: Agent,
-    scope: Scope,
-    name: String,
-    entries: &[HookEntry],
-) -> Augmentation {
-    let mut removal: Vec<Action> = Vec::new();
-    for e in entries {
-        let action = Action::Edit {
-            file: file.to_path_buf(),
-            edit: Edit::RemoveHook {
-                event: e.event.clone(),
-                command: e.command.clone(),
-            },
-        };
-        if !removal.contains(&action) {
-            removal.push(action);
-        }
-    }
-    Augmentation {
-        id: format!("hook:{}:{}", file.display(), name),
-        kind: Kind::Hook,
-        agents: vec![agent],
-        scope,
-        group: format!("{agent} hooks"),
-        source: None,
-        installer: Installer::Local,
-        children: entries.iter().map(child_label).collect(),
-        removal,
-        name,
-    }
-}
-
-fn child_label(e: &HookEntry) -> String {
-    match &e.matcher {
-        Some(m) => format!("{} [{}]: {}", e.event, m, e.command),
-        None => format!("{}: {}", e.event, e.command),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Installer;
+    use crate::hooks::testutil::*;
     use serde_json::json;
-
-    fn entry(event: &str, matcher: Option<&str>, command: &str) -> HookEntry {
-        HookEntry {
-            event: event.into(),
-            matcher: matcher.map(Into::into),
-            command: command.into(),
-        }
-    }
-
-    #[test]
-    fn groups_real_commands() {
-        let cases = [
-            ("bd prime --hook-json", "bd"),
-            ("rtk hook claude", "rtk"),
-            (
-                "bash '/Users/ryan/.claude/hooks/herdr-agent-state.sh' session",
-                "herdr-agent-state",
-            ),
-            (
-                "/Users/ryan/.superset/hooks/cursor-hook.sh PermissionRequest",
-                "superset",
-            ),
-            (
-                "if [ -f '/Users/ryan/.orca/agent-hooks/cursor-hook.sh' ] && [ -r '/Users/ryan/.orca/agent-hooks/cursor-hook.sh' ]; then ORCA_X='{}' /bin/sh '/Users/ryan/.orca/agent-hooks/cursor-hook.sh'; fi",
-                "orca",
-            ),
-            ("node \"${CLAUDE_PLUGIN_ROOT}/hooks/x.js\"", "plugin"),
-            ("FOO=1 uv run python script.py", "script"),
-            ("npx -y some-tool run", "some-tool"),
-        ];
-        for (cmd, group) in cases {
-            assert_eq!(hook_group(cmd), group, "{cmd}");
-        }
-    }
-
-    #[test]
-    fn groups_edge_commands() {
-        assert_eq!(hook_group("bash -c \"rtk hook claude\""), "rtk");
-        assert_eq!(hook_group("/usr/bin/env bd sync"), "bd");
-        assert_eq!(hook_group("~/.config/tool/run.sh"), "run");
-        assert_eq!(hook_group("bd 'unterminated"), "bd");
-        assert_eq!(hook_group("bash"), "bash");
-        assert_eq!(hook_group(""), "");
-        assert!(!hook_group("rtk\u{a0}hook").is_empty());
-        assert_eq!(hook_group("=x ok"), "=x");
-    }
 
     #[test]
     fn parses_nested_layout() {
@@ -391,8 +176,8 @@ mod tests {
         assert_eq!(
             parse(&doc.to_string(), Format::Json).unwrap(),
             vec![
-                entry("PreToolUse", Some("Bash"), "rtk hook claude"),
-                entry("SessionStart", None, "bd prime"),
+                hook_entry("PreToolUse", Some("Bash"), "rtk hook claude"),
+                hook_entry("SessionStart", None, "bd prime"),
             ]
         );
     }
@@ -406,8 +191,8 @@ mod tests {
         assert_eq!(
             parse(&doc.to_string(), Format::Json).unwrap(),
             vec![
-                entry("sessionStart", None, "bd cursor-hook sessionStart"),
-                entry("sessionStart", Some("Shell"), "x"),
+                hook_entry("sessionStart", None, "bd cursor-hook sessionStart"),
+                hook_entry("sessionStart", Some("Shell"), "x"),
             ]
         );
     }
@@ -424,114 +209,17 @@ mod tests {
     }
 
     #[test]
-    fn discover_missing_file_is_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        let found = discover(&dir.path().join("none.json"), Agent::Claude, Scope::Global).unwrap();
-        assert!(found.is_empty());
-    }
-
-    #[test]
-    fn discover_invalid_file_errors() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("settings.json");
-        std::fs::write(&file, "{").unwrap();
-        assert!(discover(&file, Agent::Claude, Scope::Global).is_err());
-        assert!(discover(dir.path(), Agent::Claude, Scope::Global).is_err());
-    }
-
-    #[test]
-    fn discover_groups_and_plans_removal() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("settings.json");
-        let doc = json!({"hooks": {
-            "SessionStart": [{"hooks": [{"command": "bd prime"}, {"command": "rtk hook claude"}]}],
-            "PreCompact": [{"hooks": [{"command": "bd prime"}]}],
-            "PreToolUse": [
-                {"matcher": "Bash", "hooks": [{"command": "rtk hook claude"}]},
-                {"matcher": "Edit", "hooks": [{"command": "rtk hook claude"}]}
-            ]
-        }});
-        std::fs::write(&file, doc.to_string()).unwrap();
-
-        let found = discover(&file, Agent::Codex, Scope::Project).unwrap();
-        let names: Vec<_> = found.iter().map(|a| a.name.as_str()).collect();
-        assert_eq!(names, ["bd", "rtk"]);
-
-        let rtk = &found[1];
-        assert_eq!(rtk.id, format!("hook:{}:rtk", file.display()));
-        assert_eq!(rtk.kind, Kind::Hook);
-        assert_eq!(rtk.installer, Installer::Local);
-        assert_eq!(rtk.agents, vec![Agent::Codex]);
-        assert_eq!(rtk.scope, Scope::Project);
-        assert_eq!(rtk.group, format!("{} hooks", Agent::Codex));
-        assert_eq!(rtk.source, None);
-        assert_eq!(rtk.children.len(), 3);
-        let remove = |event: &str| Action::Edit {
-            file: file.clone(),
-            edit: Edit::RemoveHook {
-                event: event.into(),
-                command: "rtk hook claude".into(),
-            },
-        };
-        assert_eq!(
-            rtk.removal,
-            vec![remove("SessionStart"), remove("PreToolUse")]
-        );
-        assert_eq!(found[0].removal.len(), 2);
-    }
-
-    #[test]
-    fn discover_removal_empties_hooks() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("hooks.json");
-        let doc = json!({"version": 1, "hooks": {
-            "sessionStart": [{"command": "bd cursor-hook sessionStart"}],
-            "stop": [{"command": "/x/.orca/h.sh stop"}, {"command": "bd cursor-hook stop"}]
-        }});
-        std::fs::write(&file, doc.to_string()).unwrap();
-        let plan: Vec<Action> = discover(&file, Agent::Cursor, Scope::Global)
-            .unwrap()
-            .into_iter()
-            .flat_map(|a| a.removal)
-            .collect();
-        crate::action::execute(&plan, &crate::runner::NoCommands).unwrap();
-        let after: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-        assert_eq!(after, json!({"version": 1, "hooks": {}}));
-    }
-
-    const CODEX_TOML: &str = r#"# my config
-[features]
-codex_hooks = true
-
-[[hooks.SessionStart]]
-matcher = "startup|resume"
-[[hooks.SessionStart.hooks]]
-type = "command"
-command = "bd codex-hook SessionStart"
-statusMessage = "loading"
-
-[hooks]
-Stop = [{ hooks = [{ type = "command", command = "rtk hook codex" }, { type = "command", command = "bd codex-hook Stop" }] }]
-
-[hooks.state."x@y:hooks.json:0"]
-trusted = true
-
-[plugins."x@y"]
-enabled = true
-"#;
-
-    #[test]
     fn parses_toml_layouts_and_skips_state() {
         assert_eq!(
             parse(CODEX_TOML, Format::Toml).unwrap(),
             vec![
-                entry(
+                hook_entry(
                     "SessionStart",
                     Some("startup|resume"),
                     "bd codex-hook SessionStart"
                 ),
-                entry("Stop", None, "rtk hook codex"),
-                entry("Stop", None, "bd codex-hook Stop"),
+                hook_entry("Stop", None, "rtk hook codex"),
+                hook_entry("Stop", None, "bd codex-hook Stop"),
             ]
         );
         assert!(
@@ -541,31 +229,6 @@ enabled = true
         );
         assert!(parse("hooks = 1\n", Format::Toml).unwrap().is_empty());
         assert!(parse("[nope", Format::Toml).is_err());
-    }
-
-    #[test]
-    fn discover_toml_plans_removal() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("config.toml");
-        std::fs::write(&file, CODEX_TOML).unwrap();
-        let found = discover(&file, Agent::Codex, Scope::Global).unwrap();
-        let names: Vec<_> = found.iter().map(|a| a.name.as_str()).collect();
-        assert_eq!(names, ["bd", "rtk"]);
-        let remove = |event: &str, command: &str| Action::Edit {
-            file: file.clone(),
-            edit: Edit::RemoveHook {
-                event: event.into(),
-                command: command.into(),
-            },
-        };
-        assert_eq!(
-            found[0].removal,
-            vec![
-                remove("SessionStart", "bd codex-hook SessionStart"),
-                remove("Stop", "bd codex-hook Stop"),
-            ]
-        );
-        assert_eq!(found[1].removal, vec![remove("Stop", "rtk hook codex")]);
     }
 
     /// Removes every parsed entry in turn.
@@ -680,31 +343,6 @@ enabled = true
         assert!(remove_hook("{oops", Format::Json, "a", "x").is_err());
     }
 
-    const HOOKS_TOML: &str = r#"[features]
-x = 1
-
-# start hooks
-[[hooks.SessionStart]]
-matcher = "startup"
-[[hooks.SessionStart.hooks]]
-command = "rtk"
-[[hooks.SessionStart.hooks]]
-command = "keep" # keep me
-
-[[hooks.SessionStart]]
-[[hooks.SessionStart.hooks]]
-command = "rtk"
-
-[hooks]
-Stop = [{ hooks = [{ command = "rtk" }] }, { hooks = [] }, "odd"]
-
-[hooks.state."a@b:x"]
-trusted = true
-
-[plugins."a@b"]
-enabled = true
-"#;
-
     fn toml_removed(src: &str, event: &str, command: &str) -> toml_edit::DocumentMut {
         remove_hook(src, Format::Toml, event, command)
             .unwrap()
@@ -757,12 +395,5 @@ enabled = true
             "a = 1\n"
         );
         assert!(remove_hook("[nope", Format::Toml, "E", "c").is_err());
-    }
-
-    #[test]
-    fn format_from_extension() {
-        assert_eq!(Format::of(Path::new("a/config.toml")), Format::Toml);
-        assert_eq!(Format::of(Path::new("a/hooks.json")), Format::Json);
-        assert_eq!(Format::of(Path::new("a/toml")), Format::Json);
     }
 }
