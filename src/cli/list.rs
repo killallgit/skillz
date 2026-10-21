@@ -5,8 +5,8 @@ use super::deps::Deps;
 use super::removal::{Review, confirm_and_remove};
 use super::scope::Scene;
 use crate::cost;
-use crate::mcp;
 use crate::env::Env;
+use crate::mcp;
 use crate::model::{Augmentation, Kind};
 use crate::prompt::Choice;
 use crate::prune;
@@ -167,8 +167,8 @@ fn render_listing(listing: &Listing, out: &mut dyn Write) -> anyhow::Result<()> 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::scope::project_env;
+    use super::*;
     use crate::agents::AgentAdapter;
     use crate::install::test_support::{FakeRunner, ScriptedPrompter};
     use crate::model::{Agent, Installer, Scope};
@@ -217,7 +217,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let runner = FakeRunner::new(|_| {});
         let prompter = ScriptedPrompter::new(&[], true);
-        let deps = Deps::for_test(dir.path(), vec![Box::new(BrokenUsage)], (&runner, &prompter));
+        let deps = Deps::for_test(
+            dir.path(),
+            vec![Box::new(BrokenUsage)],
+            (&runner, &prompter),
+        );
         let env = project_env(&deps, &deps.cwd);
 
         let nodes = display_tree(&deps, &env, &[skill("a")]);

@@ -14,14 +14,18 @@ impl Applier<'_> {
         let record = self.ledger.get(&self.ledger_key())?;
         let wanted = target.map(Profile::resolved).unwrap_or_default();
         let current = record.as_ref().map(|r| r.entries.as_slice());
-        let Diff { keep, drop, add } = diff_entries(current.unwrap_or_default(), &wanted);
-        let removals = self.items_of(&drop)?;
-        let (installs, unsupported) = self.installs_for(&add);
+        let Diff {
+            kept,
+            dropped,
+            added,
+        } = diff_entries(current.unwrap_or_default(), &wanted);
+        let removals = self.items_of(&dropped)?;
+        let (installs, unsupported) = self.installs_for(&added);
         Ok(Switch {
             from: record.map(|r| r.profile),
             to: target.map(|p| p.name.clone()),
-            keep,
-            drop,
+            kept,
+            dropped,
             removals,
             installs,
             unsupported,

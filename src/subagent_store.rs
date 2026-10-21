@@ -8,10 +8,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
-use crate::read_optional::read_optional;
 use crate::atomic::write_atomic;
 use crate::clone::{check_source, with_tmp_clone};
 use crate::fswalk;
+use crate::read_optional::read_optional;
 use crate::redact::redact_text;
 use crate::runner::{Cmd, CommandRunner};
 

@@ -2,8 +2,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::Context;
 use crate::read_optional::read_optional;
+use anyhow::Context;
 
 /// An edit written to a temp file beside the real file, ready to rename over it.
 pub(super) struct Staged {

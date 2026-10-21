@@ -20,7 +20,9 @@ pub(crate) fn with_tmp_clone<T>(
     clone: impl FnOnce(&Cmd) -> anyhow::Result<()>,
     f: impl FnOnce(&Path) -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
-    let tmp = tempfile::Builder::new().prefix("skillz-install-").tempdir()?;
+    let tmp = tempfile::Builder::new()
+        .prefix("skillz-install-")
+        .tempdir()?;
     clone(&clone_command(source, tmp.path()))?;
     f(tmp.path())
 }

@@ -4,10 +4,10 @@ use std::path::Path;
 use anyhow::Context;
 
 use super::group::{GroupHints, hook_group};
-use crate::read_optional::read_optional;
 use crate::action::{Action, Edit};
 use crate::hook_text::{Format, HookEntry, parse};
 use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
+use crate::read_optional::read_optional;
 
 /// The config file a hook was read from, and whose it is.
 struct Source<'a> {

@@ -4,8 +4,8 @@ use anyhow::bail;
 
 use super::args::ProfileCommand;
 use super::deps::Deps;
-use super::screen::Rows;
 use super::scope::{installed, project_env, resolve, single_scope};
+use super::screen::Rows;
 use crate::model::{Augmentation, Scope};
 use crate::{profile, snapshot};
 

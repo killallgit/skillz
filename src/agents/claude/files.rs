@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use serde_json::Value;
 
-use crate::read_optional::read_optional;
 use crate::env::Env;
 use crate::model::Scope;
+use crate::read_optional::read_optional;
 
 pub(super) const ENABLED_PLUGINS: &str = "enabledPlugins";
 pub(super) const PLUGINS: &str = "plugins";

@@ -231,7 +231,11 @@ fn swapping_touches_only_the_difference() {
     fx.run(&switch, &runner).unwrap();
 
     assert_eq!(
-        (switch.keep.len(), switch.drop.len(), switch.installs.len()),
+        (
+            switch.kept.len(),
+            switch.dropped.len(),
+            switch.installs.len()
+        ),
         (1, 1, 1)
     );
     assert_eq!(runner.count(), 3, "only the new skill was installed");
@@ -271,7 +275,11 @@ fn a_profile_whose_agents_differ_is_a_different_entry() {
     let switch = fx.plan(Some(&b));
 
     assert_eq!(
-        (switch.keep.len(), switch.drop.len(), switch.installs.len()),
+        (
+            switch.kept.len(),
+            switch.dropped.len(),
+            switch.installs.len()
+        ),
         (0, 1, 1)
     );
 }

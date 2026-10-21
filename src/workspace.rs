@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
-use crate::read_optional::read_optional;
 use crate::atomic::write_atomic;
 use crate::env::Env;
+use crate::read_optional::read_optional;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct File {

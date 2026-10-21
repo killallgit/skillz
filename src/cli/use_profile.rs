@@ -65,10 +65,10 @@ fn print_switch(out: &mut dyn Write, switch: &apply::Switch, scope: Scope) -> an
         name(&switch.from),
         name(&switch.to)
     )?;
-    for l in &switch.keep {
+    for l in &switch.kept {
         writeln!(out, "  keep    {}", l.entry)?;
     }
-    for l in &switch.drop {
+    for l in &switch.dropped {
         writeln!(out, "  remove  {}", l.entry)?;
     }
     for (entry, _) in &switch.installs {

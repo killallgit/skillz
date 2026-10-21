@@ -8,11 +8,11 @@ use std::path::PathBuf;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
-use crate::read_optional::read_optional;
 use crate::atomic::write_atomic;
 use crate::env::Env;
 use crate::model::{Augmentation, Kind, Scope};
 use crate::profile::Entry;
+use crate::read_optional::read_optional;
 
 /// One item a profile added.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
