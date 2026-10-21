@@ -246,7 +246,7 @@ fn exact_flags_an_item_no_profile_could_install_again() {
 }
 
 #[test]
-fn a_dry_exact_plan_that_has_nothing_extra_is_empty() {
+fn exact_has_nothing_to_do_when_nothing_is_extra() {
     let fx = Fx::new();
     let runner = fx.npx();
     let web = profile("web", &["tdd"]);

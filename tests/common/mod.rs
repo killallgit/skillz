@@ -7,13 +7,11 @@ mod sandbox;
 pub use sandbox::*;
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use skillz::agents;
-use skillz::apply::Record;
 use skillz::cli::{Command, Deps, Filter, ListArgs, ResetArgs, UninstallArgs, UseArgs, run};
 use skillz::env::Env;
 use skillz::profile::{Profile, Store};
@@ -156,31 +154,6 @@ impl World {
 
     pub fn write_skill_profile(&self, name: &str, skill: &str) {
         self.write_profile(name, &skill_profile_text(skill));
-    }
-
-    /// What each applied scope holds, keyed as the ledger keys it.
-    pub fn ledger(&self) -> BTreeMap<String, Record> {
-        match fs::read_to_string(self.skillz_dir().join("state.json")) {
-            Ok(text) => serde_json::from_str(&text).unwrap(),
-            Err(_) => BTreeMap::new(),
-        }
-    }
-
-    pub fn ledger_exists(&self) -> bool {
-        self.skillz_dir().join("state.json").exists()
-    }
-
-    pub fn applied_profiles(&self) -> Vec<String> {
-        self.ledger().into_values().map(|r| r.profile).collect()
-    }
-
-    pub fn applied_item_names(&self) -> Vec<String> {
-        self.ledger()
-            .into_values()
-            .flat_map(|r| r.entries)
-            .flat_map(|e| e.items)
-            .map(|i| i.name)
-            .collect()
     }
 }
 
@@ -360,13 +333,23 @@ pub fn reset_forced(filter: Filter) -> Command {
     })
 }
 
-pub fn use_cmd(profile: Option<&str>, dry_run: bool) -> Command {
+pub fn use_cmd(profile: &str, dry_run: bool) -> Command {
     Command::Use(UseArgs {
-        profile: profile.map(String::from),
-        none: profile.is_none(),
+        profile: profile.into(),
+        exact: false,
         project: Some(PathBuf::from(".")),
         yes: true,
         dry_run,
+    })
+}
+
+pub fn use_exact_cmd(profile: &str) -> Command {
+    Command::Use(UseArgs {
+        exact: true,
+        ..match use_cmd(profile, false) {
+            Command::Use(args) => args,
+            _ => unreachable!(),
+        }
     })
 }
 

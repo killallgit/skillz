@@ -1,4 +1,4 @@
-//! Subagent definitions copied in by a profile, tracked in the ledger and removed with it.
+//! Subagent definitions copied in by a profile and removed by an exact apply.
 
 mod common;
 
@@ -31,11 +31,12 @@ fn world_with_team_profile() -> (World, PathBuf) {
 }
 
 fn use_team(d: &Deps) {
-    run_quiet(use_cmd(Some("team"), false), d).unwrap();
+    run_quiet(use_cmd("team", false), d).unwrap();
 }
 
-fn unload(d: &Deps) {
-    run_quiet(use_cmd(None, false), d).unwrap();
+fn unload(w: &World, d: &Deps) {
+    w.write_profile("empty", "");
+    run_quiet(use_exact_cmd("empty"), d).unwrap();
 }
 
 fn manifest(agents: &Path) -> BTreeMap<String, String> {
@@ -83,18 +84,6 @@ fn a_local_source_needs_no_commands() {
 }
 
 #[test]
-fn the_ledger_records_the_copied_definitions_by_their_agent_names() {
-    let (w, _agents) = world_with_team_profile();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-
-    use_team(&deps(&w, &r, &p));
-
-    let mut names = w.applied_item_names();
-    names.sort();
-    assert_eq!(names, ["Frontend Developer", "UI Designer"]);
-}
-
-#[test]
 fn copied_definitions_are_listed_with_where_they_came_from() {
     let (w, _agents) = world_with_team_profile();
     let (r, p) = (Recorder::default(), Scripted::yes());
@@ -108,26 +97,26 @@ fn copied_definitions_are_listed_with_where_they_came_from() {
 }
 
 #[test]
-fn unloading_the_profile_removes_the_copied_files() {
+fn an_exact_empty_profile_removes_the_copied_files() {
     let (w, agents) = world_with_team_profile();
     let (r, p) = (Recorder::default(), Scripted::yes());
     let d = deps(&w, &r, &p);
     use_team(&d);
 
-    unload(&d);
+    unload(&w, &d);
 
     assert!(!agents.join("eng-frontend.md").exists());
     assert!(!agents.join("ui.md").exists());
 }
 
 #[test]
-fn unloading_the_profile_forgets_the_sources_of_the_removed_files() {
+fn removing_the_copied_files_forgets_their_sources() {
     let (w, agents) = world_with_team_profile();
     let (r, p) = (Recorder::default(), Scripted::yes());
     let d = deps(&w, &r, &p);
     use_team(&d);
 
-    unload(&d);
+    unload(&w, &d);
 
     assert!(!manifest(&agents).contains_key("ui.md"));
 }
@@ -138,7 +127,7 @@ fn a_file_that_was_already_there_makes_the_copy_fail() {
     write(&agents.join("ui.md"), "mine");
     let (r, p) = (Recorder::default(), Scripted::yes());
 
-    let res = run_quiet(use_cmd(Some("team"), false), &deps(&w, &r, &p));
+    let res = run_quiet(use_cmd("team", false), &deps(&w, &r, &p));
 
     assert!(res.is_err());
 }
@@ -149,7 +138,7 @@ fn a_file_that_was_already_there_is_never_overwritten() {
     write(&agents.join("ui.md"), "mine");
     let (r, p) = (Recorder::default(), Scripted::yes());
 
-    let _ = run_quiet(use_cmd(Some("team"), false), &deps(&w, &r, &p));
+    let _ = run_quiet(use_cmd("team", false), &deps(&w, &r, &p));
 
     assert_eq!(fs::read_to_string(agents.join("ui.md")).unwrap(), "mine");
 }

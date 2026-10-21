@@ -39,9 +39,9 @@ fn delete_mine() -> Command {
     })
 }
 
-fn apply_all(d: &Deps, profiles: &[Option<&str>]) {
+fn apply_all(d: &Deps, profiles: &[&str]) {
     for profile in profiles {
-        run_quiet(use_cmd(*profile, false), d).unwrap();
+        run_quiet(use_cmd(profile, false), d).unwrap();
     }
 }
 
@@ -52,19 +52,9 @@ fn a_dry_run_use_runs_no_command() {
     let w = world_with_web();
     let (r, p) = (Recorder::default(), Scripted::yes());
 
-    run_quiet(use_cmd(Some("web"), true), &deps(&w, &r, &p)).unwrap();
+    run_quiet(use_cmd("web", true), &deps(&w, &r, &p)).unwrap();
 
     assert_eq!(r.count(), 0);
-}
-
-#[test]
-fn a_dry_run_use_records_nothing() {
-    let w = world_with_web();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-
-    run_quiet(use_cmd(Some("web"), true), &deps(&w, &r, &p)).unwrap();
-
-    assert!(!w.ledger_exists());
 }
 
 #[test]
@@ -72,59 +62,19 @@ fn using_a_profile_installs_its_skills_once() {
     let w = world_with_web();
     let (r, p) = (Recorder::default(), Scripted::yes());
 
-    apply_all(&deps(&w, &r, &p), &[Some("web")]);
+    apply_all(&deps(&w, &r, &p), &["web"]);
 
     assert_eq!(r.count(), 1);
 }
 
 #[test]
-fn using_a_profile_records_it_in_the_ledger() {
-    let w = world_with_web();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-
-    apply_all(&deps(&w, &r, &p), &[Some("web")]);
-
-    assert_eq!(w.applied_profiles(), ["web"]);
-}
-
-#[test]
-fn using_the_same_profile_again_installs_nothing() {
-    let w = world_with_web();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-
-    apply_all(&deps(&w, &r, &p), &[Some("web"), Some("web")]);
-
-    assert_eq!(r.count(), 1);
-}
-
-#[test]
-fn switching_profiles_installs_only_the_new_profiles_skills() {
+fn using_two_profiles_installs_each_ones_skills() {
     let w = world_with_web_and_api();
     let (r, p) = (Recorder::default(), Scripted::yes());
 
-    apply_all(&deps(&w, &r, &p), &[Some("web"), Some("api")]);
+    apply_all(&deps(&w, &r, &p), &["web", "api"]);
 
     assert_eq!(r.count(), 2);
-}
-
-#[test]
-fn switching_profiles_replaces_the_recorded_profile() {
-    let w = world_with_web_and_api();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-
-    apply_all(&deps(&w, &r, &p), &[Some("web"), Some("api")]);
-
-    assert_eq!(w.applied_profiles(), ["api"]);
-}
-
-#[test]
-fn using_none_forgets_the_applied_profile() {
-    let w = world_with_web_and_api();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-
-    apply_all(&deps(&w, &r, &p), &[Some("api"), None]);
-
-    assert!(w.applied_profiles().is_empty());
 }
 
 #[test]
@@ -132,7 +82,7 @@ fn using_a_missing_profile_fails() {
     let w = world_with_web();
     let (r, p) = (Recorder::default(), Scripted::yes());
 
-    let res = run_quiet(use_cmd(Some("missing"), false), &deps(&w, &r, &p));
+    let res = run_quiet(use_cmd("missing", false), &deps(&w, &r, &p));
 
     assert!(res.is_err());
 }
@@ -238,23 +188,4 @@ fn deleting_a_missing_profile_fails() {
     let res = run_quiet(delete_mine(), &d);
 
     assert!(res.is_err());
-}
-
-// --- the project's .skillz directory
-
-#[test]
-fn the_first_save_creates_a_gitignore_for_the_local_state() {
-    let (w, _) = saved_profile();
-
-    assert!(w.skillz_dir().join(".gitignore").is_file());
-}
-
-#[test]
-fn the_applied_profile_is_remembered_in_the_projects_state_file() {
-    let w = world_with_web();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-
-    apply_all(&deps(&w, &r, &p), &[Some("web")]);
-
-    assert!(w.skillz_dir().join("state.json").is_file());
 }

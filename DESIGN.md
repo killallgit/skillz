@@ -10,8 +10,8 @@ the README; this file is the structure behind them.
 - **Discovery is read-only and plans removal up front.** Each discovered `Augmentation`
   carries `removal: Vec<Action>`. Uninstall = concatenate the selected plans, execute.
 - **A profile is the same machinery run forwards.** `provision` turns entries into install
-  `Action`s; `apply` diffs a ledger of what earlier entries added against the target profile and
-  reuses the removal plans for the difference.
+  `Action`s; `apply` compares the profile's entries with the live inventory (nothing is stored), installs
+  what is missing and, only on request, reuses the removal plans for the rest.
 - **Effects at the edges.** `action::apply_edit` is a pure `&str -> String`. Only
   `action::execute`, `runner::SystemRunner`, the `atomic` and `subagent_store` writers and `tui`
   touch the outside world.
@@ -69,7 +69,6 @@ Top level (`src/`):
 | `info` | the lines of the info modal, built before the terminal opens |
 | `review` | typed plan, progress and outcome of a switch (`PlanView`, `Verdict`, `Outcome`), shared by screens and flows |
 | `prompt` | `Prompter` trait (pickers, browser, workspace, plan, progress, outcome) and `AssumeYes` |
-| `workspace` | the registered projects (`workspace.toml`) |
 
 Directories:
 
@@ -86,8 +85,8 @@ Directories:
 | `install` | `skillz install`: `install()` dispatch, `InstallRequest`, `SkillSelection`; `source` (local path or clone, rejects empty/option-like sources), `skills` (scan, selection, npx `add`) |
 | `profile` | `Profile` (toml), `Entry` (skill, plugin, subagent, hook, mcp), `Store` of `<name>.toml` with `load_flat` for `extends`; `validate` (every value non-empty, not option-like), `spec` (the one-line typed form), `identity` (which entries are the same thing; `overlay`) |
 | `snapshot` | installed items -> a `Profile` through one collector per kind (`skills`, `plugins`, `subagents`, `hooks`, `mcp`); what cannot be reinstalled comes back as `Skipped` with a `Reason` |
-| `apply` | `Ledger` (what each entry added, per scope; locked, atomic), `Applier::plan` (`switch`: keep / drop / add), `Applier::run` (remove dropped items via `remove`, install added entries one at a time, record each by inventory diff) |
-| `cli` | `args` (clap), `deps` (`Deps`), `scope` (scope and target rules), `run` (dispatch), one module per command group (`list`, `removal` for uninstall and reset, `prune`, `use_profile`, `isolate` for `run`, `profile`, `project`); the workspace side: `workspace` (the loop), `switch` (plan, progress, result of one switch), `screen`, `detail`, `plan_view`, `notice`; `cli::main` wires real dependencies |
+| `apply` | `standing` (pure: `compare` a profile's entries with the inventory into present / missing / extras; `loaded` picks the matching profile), `Applier::plan` (`Switch`: present, installs, and with `exact` the removals), `Applier::run` (remove via `remove`, then run the install steps) |
+| `cli` | `args` (clap), `deps` (`Deps`), `scope` (scope and target rules), `run` (dispatch), one module per command group (`list`, `removal` for uninstall and reset, `prune`, `use_profile`, `isolate` for `run`, `profile`); the workspace side: `workspace` (the loop), `switch` (plan, progress, result of one switch), `screen`, `detail`, `plan_view`, `notice`; `cli::main` wires real dependencies |
 | `tui` | below |
 
 `tui` (ratatui + crossterm): `theme` (semantic colour roles), `glyphs` (Unicode and ASCII sets),
@@ -157,10 +156,6 @@ All of this lives in `npx_skills`; discovery, install and the Codex adapter go t
 - `profiles/<name>.toml`: a `Profile`: `description`, `extends`, `agents` (default
   `["claude","codex"]`) and `[[entry]]` tables tagged by `kind` (`skill`, `plugin`, `subagent`,
   `hook`, `mcp`), each with optional `agents`. Examples are in the README.
-- `applied.json`: the ledger, a map from a scope key (project path or `global`, plus
-  ` CLAUDE_CONFIG_DIR=...`/` CODEX_HOME=...` when redirected) to `{profile, entries: [{entry,
-  items: [{id, name, kind}]}]}`. A sibling `applied.lock` serializes writers.
-- `workspace.toml`: `projects = ["/abs/path", ...]`.
 - `envs/<profile>/{claude,codex}`: the config dirs `skillz run` points the command at.
 - `.skillz-sources.json` inside an agent's `agents/` dir: `{"<file>": "<source>"}` for subagents
   skillz copied.
@@ -198,20 +193,23 @@ subagents). Removal uses this to pick the tool's own uninstall.
 - **`extends`.** `Store::load_flat` folds bases in order with `identity::overlay`: the child's
   entries replace inherited ones with the same key and go last; a partly overlapping skill or
   subagent entry keeps its other names; each base's entries are resolved with its own agents.
-- **Switch.** `Applier::plan` reads the ledger record for the scope and diffs its entries against
-  the target's resolved entries (`keep` = equal entry; `drop` = recorded only; `add` = wanted
-  only). The removals are the installed items the dropped entries recorded, planned with their
-  normal removal `Action`s via `remove::Plan::from_owned`.
-- **Run.** `Applier::run` removes first, then installs each added entry alone: it lists the
-  inventory ids before, executes the entry's steps, lists again, and records the new ids with the
-  entry. The ledger is rewritten after the removals and after every entry. A dropped entry whose
-  items survive removal stays recorded with just those items. If the inventory cannot be read
-  nothing is installed, since new items could not be told from old ones.
-- **Isolation.** `skillz run` is a switch to scope `Global` of an `Env` whose `claude_config` and
+- **Standing.** `apply::compare` turns each wanted (resolved) entry and each installed item into
+  claims (an identity key from `profile::identity` per agent; installed items go through
+  `snapshot`). An entry is `present` when all its claims are installed, otherwise `missing` is the
+  entry cut down to the names still lacking. An installed item is an `extra` unless one of its
+  claims is wanted (a marketplace: unless a wanted plugin comes from it); `sourced` is false when
+  no profile could reinstall it. A project matches a profile when nothing is missing; `loaded`
+  picks the matching profile with the most claims in place. Nothing about this is persisted.
+- **Switch.** `Applier::plan` reads the inventory, compares, and plans the install steps of the
+  missing entries. With `exact` the extras become removals, planned with their normal removal
+  `Action`s via `remove::Plan::from_owned`; unsourced ones are flagged in the plan.
+- **Run.** `Applier::run` removes first, then executes the install steps. If the inventory cannot be
+  read nothing is planned.
+- **Isolation.** `skillz run` is an additive switch to scope `Global` of an `Env` whose `claude_config` and
   `codex_home` are `envs/<profile>/...`, followed by `CommandRunner::launch`.
 - **Workspace.** `Home::handle` (pure) returns an `Act`; `cli::workspace` performs it, using the
-  same planner. `switch` shows the plan screen, then progress, then the result (retry replans).
-  The undo key replays the previous profile (or unload) as another `Act`.
+  same planner (additive only). `switch` shows the plan screen, then progress, then the result
+  (retry replans). The current directory is the only project.
 
 ## Removal semantics (complete removal, no backups)
 
@@ -316,14 +314,13 @@ skillz list [QUERY|PATH] [-p PATH] [--all] [--json] [-g] [kind flags] [-a <agent
 skillz uninstall|rm|delete [QUERY] [-p PATH] [-g] [kind flags] [-a <agent>]... [-y] [--dry-run]
 skillz reset [PATH] [-g] [kind flags] [-a <agent>]... [--keep NAME]... [--dry-run | -f/--force]
 skillz prune [PATH] [-g] [kind flags] [-a <agent>]... [--dry-run | -f/--force]
-skillz install|add <org/repo | url | path> [-g] [-p PATH] [-a <agent>]... [--all | --skill 'a,b,*commit']... [-y]
-skillz use <profile> | --none [-g] [-p PATH] [-y] [--dry-run]
+skillz install|add <org/repo | url | path> [-p PATH] [-a <agent>]... [--all | --skill 'a,b,*commit']... [-y]
+skillz use <profile> [--exact] [-p PATH] [-y] [--dry-run]
 skillz run <profile> [-p PATH] [-y] -- <command>...
-skillz profile list|show <name> | save <name> [-g] [-p PATH] [--force] | delete <name>
-skillz project list | add [PATH] | remove <PATH>
+skillz profile list|show <name> | save <name> [--force] | delete <name>   (all take -p PATH)
 ```
 Kind flags: `--skills --hooks --plugins --marketplaces --mcp --subagents` (singular aliases).
-- Scope (`cli::scope::resolve`): `PATH` only -> project at PATH; `-g` only -> global; neither ->
+- Scope (`cli::scope::resolve`, only for list, uninstall, reset and prune; `use`, `install`, `run` and `profile` always act on the project via `resolve_project`): `PATH` only -> project at PATH; `-g` only -> global; neither ->
   both (project = cwd). A project that is the home dir is global only. `use` and `profile save`
   take exactly one scope (`-g` or the project).
 - No kind flag = all kinds. `-a` filters by agent.
@@ -358,8 +355,7 @@ Kind flags: `--skills --hooks --plugins --marketplaces --mcp --subagents` (singu
   selected agents.
 - `use`: load the profile (`load_flat`), `Applier::plan`, print `keep`/`remove`/`install`/`skip`
   lines and the steps, stop on `--dry-run`, ask `Proceed?` (skipped by `-y`), run with a
-  `switching` spinner, register the project in the workspace (a failure only warns), and fail if
-  something removed is still installed.
+  `switching` spinner, and fail if something removed is still installed.
 - `run`: `use` into the isolated global config (above), then `launch` the command in the
   project and return its exit code.
 - `profile save` refuses an existing name without `--force`.
@@ -393,12 +389,11 @@ data on `Node::info`, built before the terminal opens by `info::item_lines` and
 Show / Remove… / Cancel menu. `enter` opens that menu for the marks (or the row under the cursor);
 in a picker it accepts them (`Prompter::select_items` returns `Node::item` indices).
 
-**Workspace.** `tui::home`: projects, profiles and a detail pane. `home::layout` picks three
+**Workspace.** `tui::home`: the current project, profiles and a detail pane. `home::layout` picks three
 panes (width >= 100), two (>= 60: lists stacked beside the detail), one behind tabs (>= 40) or
-"too small" (below 40x10). `Home::handle` returns an `Act` (`Apply`, `Unload`, `AddProject`,
-`ForgetProject`, `AddInstalled`, `RemoveEntries`, `AddTyped`, ...); `cli::workspace` performs it
+"too small" (below 40x10). `Home::handle` returns an `Act` (`Apply`, `AddInstalled`, `RemoveEntries`, `AddTyped`, ...); `cli::workspace` performs it
 and rebuilds the model (`cli::screen`, `cli::detail`), carrying a typed `Notice` for the footer.
-A switch's notice carries the undo `Act`. Mouse: click focuses and selects, double-click applies,
+Mouse: click focuses and selects, double-click applies,
 the wheel scrolls (`home::mouse`).
 
 **Switch screens.** `plan` shows the `PlanView` (keep `=`, remove `-`, install `+`, skip `~`;
