@@ -1,8 +1,9 @@
 use std::io::Write;
 
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
-use anyhow::bail;
+use anyhow::{Context, bail};
 
 use super::args::ProfileCommand;
 use super::deps::Deps;
@@ -21,6 +22,7 @@ pub(super) fn profile_command(
     match action {
         ProfileCommand::List => list_profiles(&store, out),
         ProfileCommand::Show { name } => Ok(write!(out, "{}", store.load(&name)?.to_text()?)?),
+        ProfileCommand::Import { file } => import_profile(&store, &file, out),
         ProfileCommand::Delete { name } => {
             store.load(&name)?;
             store.delete(&name)
@@ -31,6 +33,14 @@ pub(super) fn profile_command(
             print_saved(out, &name, &snap)
         }
     }
+}
+
+fn import_profile(store: &profile::Store, file: &Path, out: &mut dyn Write) -> anyhow::Result<()> {
+    let text = fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?;
+    let profile = profile::Profile::from_text(&text)?;
+    store.save(&profile)?;
+    writeln!(out, "imported {}", profile.name)?;
+    Ok(())
 }
 
 fn list_profiles(store: &profile::Store, out: &mut dyn Write) -> anyhow::Result<()> {

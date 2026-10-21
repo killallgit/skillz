@@ -74,6 +74,13 @@ impl Profile {
         Ok(profile)
     }
 
+    /// A profile as `to_text` wrote it, named by its own `name`.
+    pub fn from_text(text: &str) -> anyhow::Result<Profile> {
+        let profile: Profile = toml_edit::de::from_str(text).context("invalid profile")?;
+        profile.validate()?;
+        Ok(profile)
+    }
+
     pub fn to_text(&self) -> anyhow::Result<String> {
         toml_edit::ser::to_string_pretty(self).context("writing profile")
     }
