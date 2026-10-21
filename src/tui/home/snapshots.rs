@@ -24,7 +24,6 @@ fn model() -> Model {
         broken: false,
     };
     Model {
-        places: Default::default(),
         current: None,
         projects: vec![project("a"), project("b")],
         profiles: vec![profile("x")],

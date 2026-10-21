@@ -59,9 +59,9 @@ impl Env {
         }
     }
 
-    /// skillz's own config: profiles and the workspace registry.
+    /// skillz's own files for the project: its profiles and local state.
     pub fn skillz_dir(&self) -> PathBuf {
-        self.home.join(".config/skillz")
+        self.project.join(".skillz")
     }
 
     pub fn root(&self, scope: Scope) -> &Path {

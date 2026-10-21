@@ -106,7 +106,6 @@ mod tests {
 
     fn model() -> Model {
         Model {
-            places: Default::default(),
             current: Some(Current {
                 short: "~/work/app".into(),
                 profile: Some("web".into()),

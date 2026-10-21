@@ -1,5 +1,5 @@
 //! `run`: a command in config dirs of its own. A profile is loaded into
-//! `<skillz dir>/envs/<profile>/{claude,codex}` and the command starts with `CLAUDE_CONFIG_DIR`
+//! `<project>/.skillz/envs/<profile>/{claude,codex}` and the command starts with `CLAUDE_CONFIG_DIR`
 //! and `CODEX_HOME` pointing there, so it sees that profile and nothing else, and nothing has
 //! to be uninstalled to switch. The dirs are separate, so the agent logs in again once.
 
@@ -11,7 +11,7 @@ use anyhow::Context;
 
 use super::args::RunArgs;
 use super::deps::Deps;
-use super::scope::resolve;
+use super::scope::resolve_project;
 use super::use_profile::{Switching, Target, use_profile};
 use crate::env::Env;
 use crate::model::Scope;
@@ -19,7 +19,7 @@ use crate::profile;
 
 pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> anyhow::Result<i32> {
     profile::check_name(&args.profile)?;
-    let (env, _) = resolve(deps, args.project.as_deref(), false)?;
+    let env = resolve_project(deps, args.project.as_deref())?;
     let isolated = isolated_env(&env, &args.profile);
     create_dirs(&isolated)?;
 
@@ -88,11 +88,11 @@ mod tests {
 
         assert_eq!(
             web.claude_dir(),
-            PathBuf::from("/h/.config/skillz/envs/web/claude")
+            PathBuf::from("/p/.skillz/envs/web/claude")
         );
         assert_eq!(
             web.codex_dir(),
-            PathBuf::from("/h/.config/skillz/envs/web/codex")
+            PathBuf::from("/p/.skillz/envs/web/codex")
         );
         assert_eq!(web.project, env.project);
     }

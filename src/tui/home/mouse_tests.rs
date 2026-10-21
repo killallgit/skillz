@@ -21,7 +21,6 @@ fn model() -> Model {
         broken: false,
     };
     Model {
-        places: Default::default(),
         current: None,
         projects: ["a", "b", "c"].into_iter().map(project).collect(),
         profiles: ["x", "y"].into_iter().map(profile).collect(),
@@ -147,7 +146,7 @@ fn the_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
 #[test]
 fn the_mouse_does_nothing_while_a_popup_is_open() {
     let mut home = drawn();
-    for k in keys("a") {
+    for k in keys("n") {
         home.handle(k);
     }
 

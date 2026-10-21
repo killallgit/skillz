@@ -7,6 +7,7 @@ use super::identity::overlay;
 use super::{Entry, Profile, check_name};
 use crate::atomic::write_atomic;
 use crate::env::Env;
+use crate::skillz_dir;
 
 /// A profile cannot be removed while others start from it.
 #[derive(Debug, PartialEq, Eq)]
@@ -38,7 +39,7 @@ impl Store {
         Store { dir }
     }
 
-    /// `<skillz dir>/profiles`.
+    /// `<project>/.skillz/profiles`.
     pub fn in_env(env: &Env) -> Self {
         Store::new(env.skillz_dir().join("profiles"))
     }
@@ -107,6 +108,9 @@ impl Store {
     pub fn save(&self, profile: &Profile) -> anyhow::Result<()> {
         profile.validate()?;
         let path = self.path(&profile.name)?;
+        if let Some(skillz_dir) = self.dir.parent() {
+            skillz_dir::ensure(skillz_dir)?;
+        }
         write_atomic(&path, &profile.to_text()?)
     }
 

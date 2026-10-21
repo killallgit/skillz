@@ -5,7 +5,6 @@ use anyhow::bail;
 use super::deps::Deps;
 use crate::env::Env;
 use crate::model::Scope;
-use crate::workspace::Workspace;
 use crate::{apply, profile, remove, spinner};
 
 /// Where a profile is loaded: one scope of one project's environment.
@@ -50,9 +49,6 @@ pub(super) fn use_profile(
         return Ok(());
     }
     let done = execute(deps, &applier, &switch)?;
-    if let Err(e) = remember_project(target) {
-        writeln!(out, "warning: could not remember this project: {e:#}")?;
-    }
     report(out, &switch, &done)
 }
 
@@ -126,15 +122,6 @@ fn execute(
     result
 }
 
-/// Remembering the project is a convenience: a failure is reported, not fatal, since the
-/// switch itself already worked.
-fn remember_project(target: &Target) -> anyhow::Result<()> {
-    if target.scope == Scope::Project {
-        Workspace::in_env(target.env).add(&target.env.project)?;
-    }
-    Ok(())
-}
-
 fn report(out: &mut dyn Write, switch: &apply::Switch, done: &apply::Done) -> anyhow::Result<()> {
     writeln!(
         out,
@@ -153,24 +140,4 @@ fn report(out: &mut dyn Write, switch: &apply::Switch, done: &apply::Done) -> an
         );
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_workspace_that_cannot_be_updated_is_an_error_not_silence() {
-        let home = tempfile::tempdir().unwrap();
-        let project = tempfile::tempdir().unwrap();
-        let env = Env::new(home.path().into(), project.path().into());
-        std::fs::create_dir_all(env.skillz_dir()).unwrap();
-        std::fs::write(env.skillz_dir().join("workspace.toml"), "projects = 3").unwrap();
-        let target = Target {
-            env: &env,
-            scope: Scope::Project,
-        };
-
-        assert!(remember_project(&target).is_err());
-    }
 }

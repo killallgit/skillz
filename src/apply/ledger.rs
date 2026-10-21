@@ -13,6 +13,7 @@ use crate::env::Env;
 use crate::model::{Augmentation, Kind, Scope};
 use crate::profile::Entry;
 use crate::read_optional::read_optional;
+use crate::skillz_dir;
 
 /// One item a profile added.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,9 +57,9 @@ impl Ledger {
         Ledger { path }
     }
 
-    /// `<skillz dir>/applied.json`.
+    /// `<project>/.skillz/state.json`.
     pub fn in_env(env: &Env) -> Self {
-        Ledger::new(env.skillz_dir().join("applied.json"))
+        Ledger::new(env.skillz_dir().join("state.json"))
     }
 
     /// Which scope a record is about: the project's path, or `global`, plus the config dirs
@@ -106,7 +107,7 @@ impl Ledger {
     /// Held for a read-modify-write, so two skillz runs do not overwrite each other's scopes.
     fn lock(&self) -> anyhow::Result<fs::File> {
         if let Some(dir) = self.path.parent() {
-            fs::create_dir_all(dir)?;
+            skillz_dir::ensure(dir)?;
         }
         let file = fs::OpenOptions::new()
             .create(true)
@@ -124,7 +125,7 @@ mod tests {
 
     fn ledger() -> (tempfile::TempDir, Ledger) {
         let dir = tempfile::tempdir().unwrap();
-        let ledger = Ledger::new(dir.path().join("applied.json"));
+        let ledger = Ledger::new(dir.path().join("state.json"));
         (dir, ledger)
     }
 

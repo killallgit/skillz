@@ -1,44 +1,43 @@
-//! The workspace: pick a project and a profile and apply, unload, add, save or delete, with the
-//! plan and progress of each change shown as for `use`.
+//! The home screen for the current project: pick a profile and apply, unload, save or delete,
+//! with the plan and progress of each change shown as for `use`.
 
 use std::path::{Path, PathBuf};
 
 use super::deps::Deps;
 use super::notice::Notice;
 use super::profile::save_profile;
-use super::scope::{installed, project_env};
+use super::scope::{installed, project_env, resolve_project};
 use super::screen::screen_model;
 use super::switch::switch;
 use crate::model::Scope;
 use crate::profile;
 use crate::snapshot;
 use crate::tui::home::{Act, Pos};
-use crate::workspace::Workspace;
 
 /// What an action tells the user in the footer, if anything.
 type Reply = Option<Notice>;
 
-/// The projects, profiles and prompts one workspace session works with.
+/// The project, profiles and prompts one session works with.
 struct Session<'a, 'd> {
     deps: &'a Deps<'d>,
     store: profile::Store,
-    registry: Workspace,
+    project: PathBuf,
 }
 
 /// A step that fails shows its error in the footer and the workspace stays open. The terminal
 /// is entered once and kept until the workspace closes.
 pub fn workspace(deps: &Deps) -> anyhow::Result<()> {
     let _held = deps.prompter.hold();
-    let base = project_env(deps, &deps.cwd);
+    let env = resolve_project(deps, None)?;
     let session = Session {
         deps,
-        store: profile::Store::in_env(&base),
-        registry: Workspace::in_env(&base),
+        store: profile::Store::in_env(&env),
+        project: env.project,
     };
     let mut pos = Pos::default();
     let mut notice = None;
     loop {
-        let model = screen_model(deps, &session.store, &session.registry, notice.take())?;
+        let model = screen_model(deps, &session.store, &session.project, notice.take())?;
         let (act, next) = deps.prompter.home(model, pos)?;
         pos = next;
         if act == Act::Quit {
@@ -56,8 +55,6 @@ impl Session<'_, '_> {
             Act::Quit => Ok(None),
             Act::Apply { project, profile } => self.switch(&project, Some(&profile)),
             Act::Unload { project } => self.switch(&project, None),
-            Act::AddProject(text) => self.add_project(text),
-            Act::ForgetProject(dir) => self.forget_project(&dir),
             Act::NewProfile(name) => self.new_profile(name),
             Act::SaveProfile { name, project } => self.save_setup(name, &project),
             Act::DeleteProfile(name) => self.delete_profile(&name),
@@ -67,11 +64,10 @@ impl Session<'_, '_> {
         }
     }
 
-    /// The registered project at `dir`; an error when it was forgotten in the meantime.
+    /// The session's project; an error for any other directory.
     fn project(&self, dir: &Path) -> anyhow::Result<PathBuf> {
-        let known = self.registry.projects()?.into_iter().any(|p| p == dir);
-        anyhow::ensure!(known, "{} is not a registered project", dir.display());
-        Ok(dir.to_path_buf())
+        anyhow::ensure!(dir == self.project, "{} is not the project", dir.display());
+        Ok(self.project.clone())
     }
 
     /// The stored profile `name`; an error when it was deleted in the meantime.
@@ -87,16 +83,6 @@ impl Session<'_, '_> {
         let dir = self.project(dir)?;
         let profile = profile.map(|name| self.profile(name)).transpose()?;
         switch(self.deps, &dir, profile.as_deref())
-    }
-
-    fn add_project(&self, text: String) -> anyhow::Result<Reply> {
-        self.registry.add(&self.deps.cwd.join(text))?;
-        Ok(None)
-    }
-
-    fn forget_project(&self, dir: &Path) -> anyhow::Result<Reply> {
-        self.registry.remove(&self.project(dir)?)?;
-        Ok(None)
     }
 
     fn new_profile(&self, name: String) -> anyhow::Result<Reply> {

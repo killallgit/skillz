@@ -329,7 +329,7 @@ fn a_partial_install_is_recorded_so_it_can_be_unloaded() {
 fn a_corrupt_ledger_stops_planning() {
     let fx = Fx::new();
     fs::create_dir_all(fx.env.skillz_dir()).unwrap();
-    fs::write(fx.env.skillz_dir().join("applied.json"), "{nope").unwrap();
+    fs::write(fx.env.skillz_dir().join("state.json"), "{nope").unwrap();
 
     assert!(fx.applier().plan(None).is_err());
 }
