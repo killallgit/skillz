@@ -1,55 +1,22 @@
 //! The workspace: pick a project and a profile and apply, unload, add, save or delete, with the
 //! plan and progress of each change shown as for `use`.
 
-use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::deps::Deps;
 use super::notice::Notice;
 use super::profile::save_profile;
 use super::scope::{installed, project_env};
 use super::screen::screen_model;
-use super::use_profile::{Switching, Target, use_profile};
+use super::switch::switch;
 use crate::model::Scope;
 use crate::profile;
 use crate::snapshot;
 use crate::tui::home::{Act, Pos};
 use crate::workspace::Workspace;
 
-/// What the workspace does after an action.
-enum Flow {
-    Stay,
-    Leave,
-}
-
-/// An action's result: whether to carry on, and what to tell the user in the footer.
-struct Reply {
-    flow: Flow,
-    notice: Option<Notice>,
-}
-
-impl Reply {
-    fn done() -> Self {
-        Reply {
-            flow: Flow::Stay,
-            notice: None,
-        }
-    }
-
-    fn said(notice: Notice) -> Self {
-        Reply {
-            flow: Flow::Stay,
-            notice: Some(notice),
-        }
-    }
-
-    fn leave() -> Self {
-        Reply {
-            flow: Flow::Leave,
-            notice: None,
-        }
-    }
-}
+/// What an action tells the user in the footer, if anything.
+type Reply = Option<Notice>;
 
 /// The projects, profiles and prompts one workspace session works with.
 struct Session<'a, 'd> {
@@ -58,8 +25,10 @@ struct Session<'a, 'd> {
     registry: Workspace,
 }
 
-/// A step that fails shows its error in the footer and the workspace stays open.
-pub fn workspace(deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
+/// A step that fails shows its error in the footer and the workspace stays open. The terminal
+/// is entered once and kept until the workspace closes.
+pub fn workspace(deps: &Deps) -> anyhow::Result<()> {
+    let _held = deps.prompter.hold();
     let base = project_env(deps, &deps.cwd);
     let session = Session {
         deps,
@@ -72,76 +41,63 @@ pub fn workspace(deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
         let model = screen_model(deps, &session.store, &session.registry, notice.take())?;
         let (act, next) = deps.prompter.home(model, pos)?;
         pos = next;
-        match session.perform(act, out) {
-            Ok(Reply {
-                flow: Flow::Leave, ..
-            }) => return Ok(()),
-            Ok(reply) => notice = reply.notice,
-            Err(e) => notice = Some(Notice::Failed(format!("{e:#}"))),
+        if act == Act::Quit {
+            return Ok(());
         }
+        notice = session
+            .perform(act)
+            .unwrap_or_else(|e| Some(Notice::Failed(format!("{e:#}"))));
     }
 }
 
 impl Session<'_, '_> {
-    fn perform(&self, act: Act, out: &mut dyn Write) -> anyhow::Result<Reply> {
+    fn perform(&self, act: Act) -> anyhow::Result<Reply> {
         match act {
-            Act::Quit => Ok(Reply::leave()),
-            Act::Apply { project, profile } => self.switch(project, self.profile(profile), out),
-            Act::Unload { project } => self.switch(project, None, out),
+            Act::Quit => Ok(None),
+            Act::Apply { project, profile } => self.switch(&project, Some(&profile)),
+            Act::Unload { project } => self.switch(&project, None),
             Act::AddProject(text) => self.add_project(text),
-            Act::ForgetProject(i) => self.forget_project(i),
+            Act::ForgetProject(dir) => self.forget_project(&dir),
             Act::NewProfile(name) => self.new_profile(name),
-            Act::SaveProfile { name, project } => self.save_setup(name, project),
-            Act::DeleteProfile(i) => self.delete_profile(i),
-            Act::AddInstalled { profile, project } => self.add_installed(profile, project),
-            Act::RemoveEntries { profile } => self.remove_entries(profile),
-            Act::AddTyped { profile, spec } => self.add_typed(profile, &spec),
+            Act::SaveProfile { name, project } => self.save_setup(name, &project),
+            Act::DeleteProfile(name) => self.delete_profile(&name),
+            Act::AddInstalled { profile, project } => self.add_installed(&profile, &project),
+            Act::RemoveEntries { profile } => self.remove_entries(&profile),
+            Act::AddTyped { profile, spec } => self.add_typed(&profile, &spec),
         }
     }
 
-    fn project(&self, i: usize) -> Option<PathBuf> {
-        self.registry.projects().ok()?.into_iter().nth(i)
+    /// The registered project at `dir`; an error when it was forgotten in the meantime.
+    fn project(&self, dir: &Path) -> anyhow::Result<PathBuf> {
+        let known = self.registry.projects()?.into_iter().any(|p| p == dir);
+        anyhow::ensure!(known, "{} is not a registered project", dir.display());
+        Ok(dir.to_path_buf())
     }
 
-    fn profile(&self, i: usize) -> Option<String> {
-        self.store.names().ok()?.into_iter().nth(i)
+    /// The stored profile `name`; an error when it was deleted in the meantime.
+    fn profile(&self, name: &str) -> anyhow::Result<String> {
+        anyhow::ensure!(
+            self.store.names()?.iter().any(|n| n == name),
+            "profile {name} does not exist"
+        );
+        Ok(name.to_string())
     }
 
-    /// Load `profile` into the project (or unload with `None`), then ask whether to come back.
-    fn switch(
-        &self,
-        project: usize,
-        profile: Option<String>,
-        out: &mut dyn Write,
-    ) -> anyhow::Result<Reply> {
-        let Some(dir) = self.project(project) else {
-            return Ok(Reply::done());
-        };
-        let env = project_env(self.deps, &dir);
-        let target = Target {
-            env: &env,
-            scope: Scope::Project,
-        };
-        let switching = Switching {
-            profile: profile.as_deref(),
-            dry_run: false,
-        };
-        use_profile(self.deps, &target, &switching, out)?;
-        out.flush()?;
-        let back = self.deps.prompter.confirm("Back to the workspace?")?;
-        Ok(if back { Reply::done() } else { Reply::leave() })
+    fn switch(&self, dir: &Path, profile: Option<&str>) -> anyhow::Result<Reply> {
+        let dir = self.project(dir)?;
+        let profile = profile.map(|name| self.profile(name)).transpose()?;
+        switch(self.deps, &dir, profile.as_deref())?;
+        Ok(None)
     }
 
     fn add_project(&self, text: String) -> anyhow::Result<Reply> {
         self.registry.add(&self.deps.cwd.join(text))?;
-        Ok(Reply::done())
+        Ok(None)
     }
 
-    fn forget_project(&self, i: usize) -> anyhow::Result<Reply> {
-        if let Some(dir) = self.project(i) {
-            self.registry.remove(&dir)?;
-        }
-        Ok(Reply::done())
+    fn forget_project(&self, dir: &Path) -> anyhow::Result<Reply> {
+        self.registry.remove(&self.project(dir)?)?;
+        Ok(None)
     }
 
     fn new_profile(&self, name: String) -> anyhow::Result<Reply> {
@@ -151,34 +107,28 @@ impl Session<'_, '_> {
             "profile {name} exists"
         );
         self.store.save(&profile::Profile::new(&name))?;
-        Ok(Reply::done())
+        Ok(None)
     }
 
-    fn save_setup(&self, name: String, project: usize) -> anyhow::Result<Reply> {
-        let Some(dir) = self.project(project) else {
-            return Ok(Reply::done());
-        };
+    fn save_setup(&self, name: String, project: &Path) -> anyhow::Result<Reply> {
+        let dir = self.project(project)?;
         let items = installed(self.deps, &project_env(self.deps, &dir), Scope::Project);
         let snap = save_profile(&self.store, &items, &name, false)?;
-        Ok(Reply::said(Notice::Saved {
+        Ok(Some(Notice::Saved {
             name,
             entries: snap.profile.entries.len(),
             skipped: snap.skipped.iter().map(|s| s.reason).collect(),
         }))
     }
 
-    fn delete_profile(&self, i: usize) -> anyhow::Result<Reply> {
-        if let Some(name) = self.profile(i) {
-            self.store.delete(&name)?;
-        }
-        Ok(Reply::done())
+    fn delete_profile(&self, name: &str) -> anyhow::Result<Reply> {
+        self.store.delete(&self.profile(name)?)?;
+        Ok(None)
     }
 
     /// Offer what the project has installed that the profile does not have yet.
-    fn add_installed(&self, profile: usize, project: usize) -> anyhow::Result<Reply> {
-        let (Some(name), Some(dir)) = (self.profile(profile), self.project(project)) else {
-            return Ok(Reply::done());
-        };
+    fn add_installed(&self, profile: &str, project: &Path) -> anyhow::Result<Reply> {
+        let (name, dir) = (self.profile(profile)?, self.project(project)?);
         let mut p = self.store.load(&name)?;
         let items = installed(self.deps, &project_env(self.deps, &dir), Scope::Project);
         let have = p.resolved();
@@ -193,13 +143,11 @@ impl Session<'_, '_> {
         p.entries
             .extend(picked.into_iter().map(|i| offered[i].clone()));
         self.store.save(&p)?;
-        Ok(Reply::said(Notice::Added { name, count: added }))
+        Ok(Some(Notice::Added { name, count: added }))
     }
 
-    fn remove_entries(&self, profile: usize) -> anyhow::Result<Reply> {
-        let Some(name) = self.profile(profile) else {
-            return Ok(Reply::done());
-        };
+    fn remove_entries(&self, profile: &str) -> anyhow::Result<Reply> {
+        let name = self.profile(profile)?;
         let mut p = self.store.load(&name)?;
         let picked = self.pick_entries(&format!("Remove from {name}"), &p.entries)?;
         let mut index = 0;
@@ -208,20 +156,17 @@ impl Session<'_, '_> {
             !picked.contains(&(index - 1))
         });
         self.store.save(&p)?;
-        Ok(Reply::said(Notice::Removed {
+        Ok(Some(Notice::Removed {
             name,
             count: picked.len(),
         }))
     }
 
-    fn add_typed(&self, profile: usize, spec: &str) -> anyhow::Result<Reply> {
-        let Some(name) = self.profile(profile) else {
-            return Ok(Reply::done());
-        };
-        let mut p = self.store.load(&name)?;
+    fn add_typed(&self, profile: &str, spec: &str) -> anyhow::Result<Reply> {
+        let mut p = self.store.load(&self.profile(profile)?)?;
         p.entries.push(profile::Entry::parse_spec(spec)?);
         self.store.save(&p)?;
-        Ok(Reply::done())
+        Ok(None)
     }
 
     /// Indices of the entries the user marks, valid for `entries`.

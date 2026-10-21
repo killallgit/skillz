@@ -41,8 +41,7 @@ impl Home {
         match field.handle(key) {
             Edit::Cancel => None,
             Edit::Submit if !answer.is_empty() => {
-                let pos = self.pos();
-                Some(ask.act(answer, pos.project, pos.profile))
+                ask.act(answer, self.project_id(), self.profile_id())
             }
             Edit::Submit | Edit::Editing => self.open(Popup::Input(ask, field)),
         }
@@ -50,7 +49,7 @@ impl Home {
 
     pub(super) fn handle_delete(
         &mut self,
-        profile: usize,
+        profile: String,
         mut dialog: ConfirmDialog,
         key: KeyEvent,
     ) -> Option<Act> {

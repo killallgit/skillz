@@ -1,10 +1,13 @@
 //! The workspace's state and its keys: a pure machine that only says what the user asked for.
 
+use std::path::PathBuf;
+
 use ratatui::crossterm::event::KeyEvent;
 
 use super::ask::Ask;
 use super::layout::Mode;
 use super::model::{Act, Focus, Model, Pos};
+use super::mouse::Click;
 use super::pane::Pane;
 use crate::tui::help::Help;
 use crate::tui::keymap::{self, Action, Scope};
@@ -23,8 +26,8 @@ pub(super) enum Popup {
     #[default]
     None,
     Input(Ask, InputField),
-    /// Deleting the profile at this index waits for a yes.
-    Delete(usize, ConfirmDialog),
+    /// Deleting the named profile waits for a yes.
+    Delete(String, ConfirmDialog),
     Help(Help),
     /// Typing into the focused pane's filter.
     Filter,
@@ -39,6 +42,7 @@ pub struct Home {
     pub(super) toasts: Toasts,
     pub(super) mode: Mode,
     pub(super) tabs: Tabs,
+    pub(super) last_click: Option<Click>,
 }
 
 impl Home {
@@ -62,6 +66,7 @@ impl Home {
             toasts,
             mode: Mode::default(),
             tabs,
+            last_click: None,
         }
     }
 
@@ -114,7 +119,7 @@ impl Home {
     }
 
     fn command(&mut self, action: Action) -> Option<Act> {
-        let profile = self.profiles.row();
+        let profile = self.profile_id();
         match action {
             Action::Unload => self.loaded_project().map(|project| Act::Unload { project }),
             Action::AddProject => self.ask(Ask::AddProject),
@@ -140,6 +145,11 @@ impl Home {
         self.focus = self.focus.other();
         self.tabs.select(tab_of(self.focus));
         None
+    }
+
+    pub(super) fn focus_on(&mut self, focus: Focus) {
+        self.focus = focus;
+        self.tabs.select(tab_of(focus));
     }
 
     fn focus_follows_tab(&mut self) {
@@ -186,34 +196,49 @@ impl Home {
         self.open(Popup::Input(ask, InputField::new(ask.placeholder())))
     }
 
-    fn usable_project(&self) -> Option<usize> {
+    pub(super) fn project_id(&self) -> Option<PathBuf> {
         let at = self.projects.row()?;
-        (!self.model.projects[at].missing).then_some(at)
+        Some(self.model.projects[at].path.clone())
     }
 
-    fn loaded_project(&self) -> Option<usize> {
-        let at = self.projects.row()?;
-        self.model.projects[at].loaded().then_some(at)
+    pub(super) fn profile_id(&self) -> Option<String> {
+        let at = self.profiles.row()?;
+        Some(self.model.profiles[at].name.clone())
     }
 
-    fn apply(&self) -> Option<Act> {
+    fn usable_project(&self) -> Option<PathBuf> {
+        let row = &self.model.projects[self.projects.row()?];
+        (!row.missing).then(|| row.path.clone())
+    }
+
+    fn loaded_project(&self) -> Option<PathBuf> {
+        let row = &self.model.projects[self.projects.row()?];
+        row.loaded().then(|| row.path.clone())
+    }
+
+    fn usable_profile(&self) -> Option<String> {
+        let row = &self.model.profiles[self.profiles.row()?];
+        (!row.broken).then(|| row.name.clone())
+    }
+
+    pub(super) fn apply(&self) -> Option<Act> {
         let project = self.usable_project()?;
-        let profile = self.profiles.row()?;
-        (!self.model.profiles[profile].broken).then_some(Act::Apply { project, profile })
+        let profile = self.usable_profile()?;
+        Some(Act::Apply { project, profile })
     }
 
     fn add_installed(&self) -> Option<Act> {
-        let profile = self.profiles.row()?;
+        let profile = self.profile_id()?;
         let project = self.usable_project()?;
         Some(Act::AddInstalled { profile, project })
     }
 
     fn delete(&mut self) -> Option<Act> {
         match self.focus {
-            Focus::Projects => self.projects.row().map(Act::ForgetProject),
+            Focus::Projects => self.project_id().map(Act::ForgetProject),
             Focus::Profiles => {
-                let profile = self.profiles.row()?;
-                let prompt = format!("Delete profile {}?", self.model.profiles[profile].name);
+                let profile = self.profile_id()?;
+                let prompt = format!("Delete profile {profile}?");
                 let dialog = ConfirmDialog::new("Delete profile", prompt).destructive();
                 self.open(Popup::Delete(profile, dialog))
             }

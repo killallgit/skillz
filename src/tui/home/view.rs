@@ -46,6 +46,8 @@ fn draw_pane(
         .focused(spec.focused)
         .badge(badge);
     let inner = panel.render(frame, area, theme);
+    pane.area = area;
+    pane.rows = inner;
     if pane.visible().is_empty() {
         let hint = welcome::pane_hint(spec.which, pane.is_filtered(), theme);
         return empty::render(frame, inner, hint);
@@ -63,6 +65,8 @@ impl Home {
     pub fn draw(&mut self, frame: &mut Frame, theme: &Theme) {
         let area = frame.area();
         self.mode = Mode::of(area);
+        self.projects.area = Rect::default();
+        self.profiles.area = Rect::default();
         if self.mode == Mode::TooSmall {
             return draw_too_small(frame, area, theme);
         }

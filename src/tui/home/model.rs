@@ -70,36 +70,37 @@ pub struct Pos {
     pub profile: usize,
 }
 
-/// What the user asked for. Indices are into the `Model`'s rows.
+/// What the user asked for. Projects are named by path and profiles by name, so a request still
+/// means the same thing if the lists changed while it was in flight.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Act {
     Quit,
     Apply {
-        project: usize,
-        profile: usize,
+        project: PathBuf,
+        profile: String,
     },
     Unload {
-        project: usize,
+        project: PathBuf,
     },
     AddProject(String),
-    ForgetProject(usize),
+    ForgetProject(PathBuf),
     NewProfile(String),
     SaveProfile {
         name: String,
-        project: usize,
+        project: PathBuf,
     },
-    DeleteProfile(usize),
+    DeleteProfile(String),
     /// Offer the project's installed items for the profile.
     AddInstalled {
-        profile: usize,
-        project: usize,
+        profile: String,
+        project: PathBuf,
     },
     /// Offer the profile's entries for removal.
     RemoveEntries {
-        profile: usize,
+        profile: String,
     },
     AddTyped {
-        profile: usize,
+        profile: String,
         spec: String,
     },
 }
