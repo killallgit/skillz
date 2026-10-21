@@ -1,20 +1,20 @@
 //! Whether an item is in place, by the same comparison a profile uses against the inventory.
 
-use crate::apply::compare;
+use crate::apply::holds;
 use crate::library::LibraryItem;
 use crate::model::Augmentation;
-use crate::profile::{Entry, Profile};
+use crate::profile::Entry;
 use crate::snapshot::snapshot;
 
 /// Whether the library item is already in place among `have`.
 pub(super) fn has_library_item(have: &[Augmentation], item: &LibraryItem) -> bool {
-    has_entry(have, &item.entry)
+    holds(have, &item.entry)
 }
 
 /// Whether what `item` puts in place is also in place among `have`; an item no profile could
 /// reproduce is never matched.
 pub(super) fn has_counterpart(have: &[Augmentation], item: &Augmentation) -> bool {
-    entry_of(item).is_some_and(|entry| has_entry(have, &entry))
+    entry_of(item).is_some_and(|entry| holds(have, &entry))
 }
 
 /// The entry that would install `item` again, when a profile can express it.
@@ -24,12 +24,6 @@ pub(super) fn entry_of(item: &Augmentation) -> Option<Entry> {
         .entries
         .into_iter()
         .next()
-}
-
-fn has_entry(have: &[Augmentation], entry: &Entry) -> bool {
-    let mut profile = Profile::new("presence");
-    profile.entries = vec![entry.clone()];
-    compare(&profile.resolved(), have).missing.is_empty()
 }
 
 #[cfg(test)]

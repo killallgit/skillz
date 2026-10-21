@@ -78,6 +78,13 @@ pub fn compare(wanted: &[Entry], installed: &[Augmentation]) -> Standing {
     }
 }
 
+/// Whether everything `entry` puts in place is in place among `installed`.
+pub fn holds(installed: &[Augmentation], entry: &Entry) -> bool {
+    let mut profile = Profile::new("holds");
+    profile.entries = vec![entry.clone()];
+    compare(&profile.resolved(), installed).missing.is_empty()
+}
+
 fn distinct(entries: &[Entry]) -> Vec<Entry> {
     let mut seen: Vec<Entry> = Vec::new();
     for entry in entries {

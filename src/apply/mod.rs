@@ -12,7 +12,7 @@ mod tests;
 
 pub use run::Done;
 pub use run_each::Each;
-pub use standing::{Standing, compare, loaded};
+pub use standing::{Standing, compare, holds, loaded};
 pub use switch::Switch;
 
 use crate::agents::{self, AgentAdapter};
