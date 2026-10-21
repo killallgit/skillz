@@ -5,10 +5,10 @@
 
 mod act;
 mod checks;
+mod installed;
 mod library;
 mod model;
 mod profiles;
-mod project;
 mod shell;
 mod tab;
 

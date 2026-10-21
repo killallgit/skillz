@@ -58,7 +58,6 @@ impl Pending {
                     remove: counts.remove + 1,
                     ..counts
                 },
-                State::Held { .. } => counts,
             })
     }
 
@@ -70,7 +69,6 @@ impl Pending {
                 match state {
                     State::Available(entry) => install.push(entry.clone()),
                     State::Installed(id) => remove.push(id.clone()),
-                    State::Held { .. } => {}
                 }
                 (install, remove)
             })

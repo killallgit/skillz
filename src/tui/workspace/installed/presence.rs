@@ -18,7 +18,7 @@ pub(super) fn has_counterpart(have: &[Augmentation], item: &Augmentation) -> boo
 }
 
 /// The entry that would install `item` again, when a profile can express it.
-pub(super) fn entry_of(item: &Augmentation) -> Option<Entry> {
+fn entry_of(item: &Augmentation) -> Option<Entry> {
     snapshot("installed", std::slice::from_ref(item))
         .profile
         .entries

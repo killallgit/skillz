@@ -1,15 +1,16 @@
-//! The Project tab's keys.
+//! The keys of the Project and Global tabs.
 
 use ratatui::crossterm::event::KeyEvent;
 
 use super::picker::{Pick, Picker};
-use super::rows::{Item, Row, State};
-use super::{Popup, ProjectTab};
-use crate::tui::keymap::{self, Action, Scope};
+use super::rows::{Item, Row};
+use super::{InstalledTab, Popup};
+use crate::tui::keymap::{self, Action};
 use crate::tui::widgets::input::Outcome as Edit;
+use crate::tui::workspace::Tab;
 use crate::tui::workspace::act::Act;
 
-impl ProjectTab {
+impl InstalledTab {
     pub(super) fn handle_key(&mut self, key: KeyEvent) -> Option<Act> {
         match std::mem::take(&mut self.popup) {
             Popup::None => self.handle_idle(key),
@@ -20,7 +21,7 @@ impl ProjectTab {
     }
 
     fn handle_idle(&mut self, key: KeyEvent) -> Option<Act> {
-        match keymap::resolve(Scope::Project, key)? {
+        match keymap::resolve_in(self.scopes(), key)? {
             Action::Filter => self.popup = Popup::Filter,
             Action::Back if !self.pending.is_empty() => self.pending.clear(),
             Action::Back if self.outline.is_filtered() => self.outline.clear_filter(),
@@ -42,7 +43,8 @@ impl ProjectTab {
     /// Anything that cannot be updated is left alone without a word.
     fn update(&self) -> Option<Act> {
         let ids = self.updatable_ids();
-        (!ids.is_empty()).then_some(Act::Update { ids })
+        let scope = self.scope;
+        (!ids.is_empty()).then_some(Act::Update { scope, ids })
     }
 
     fn open_picker(&mut self) {
@@ -52,7 +54,6 @@ impl ProjectTab {
 
     fn toggle(&mut self) {
         match self.current_item().map(|item| item.state.clone()) {
-            Some(State::Held { .. }) => {}
             Some(state) => self.pending.toggle(&state),
             None => self.fold(),
         }
@@ -86,7 +87,7 @@ impl ProjectTab {
 
     fn handle_filter(&mut self, key: KeyEvent) -> Option<Act> {
         self.popup = Popup::Filter;
-        if let Some(movement) = keymap::resolve(Scope::Filter, key) {
+        if let Some(movement) = keymap::resolve(keymap::Scope::Filter, key) {
             self.outline.step(movement);
             return None;
         }

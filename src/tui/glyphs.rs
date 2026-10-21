@@ -15,6 +15,8 @@ pub struct Glyphs {
     pub open: &'static str,
     pub closed: &'static str,
     pub failed: &'static str,
+    /// One cell of a horizontal rule.
+    pub rule: &'static str,
     /// The frames of the in-flight spinner, one cell wide.
     pub spinner: &'static [&'static str],
 }
@@ -33,6 +35,7 @@ impl Glyphs {
         open: "▾",
         closed: "▸",
         failed: "✗",
+        rule: "─",
         spinner: &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
     };
 
@@ -49,6 +52,7 @@ impl Glyphs {
         open: "-",
         closed: "+",
         failed: "x",
+        rule: "-",
         spinner: &["|", "/", "-", "\\"],
     };
 

@@ -4,6 +4,7 @@ use super::Session;
 use super::change::{Change, change};
 use super::notice::Notice;
 use super::selection::Selection;
+use crate::model::Scope;
 use crate::tui::workspace::Act;
 
 impl Session<'_, '_> {
@@ -11,15 +12,15 @@ impl Session<'_, '_> {
     pub(super) fn perform(&self, act: Act) -> anyhow::Result<Option<Notice>> {
         let what = match &act {
             Act::Quit => return Ok(None),
-            Act::Change { install, remove } => {
-                return change(
-                    self.deps,
-                    &self.store,
-                    &self.project,
-                    &Change::Selection(&Selection { install, remove }),
-                );
+            Act::Change {
+                scope,
+                install,
+                remove,
+            } => {
+                let picked = Selection { install, remove };
+                return change(self, *scope, &Change::Selection(&picked));
             }
-            Act::Update { ids } => Change::Update(ids),
+            Act::Update { scope, ids } => return change(self, *scope, &Change::Update(ids)),
             Act::Apply { profile } => Change::Apply(profile),
             Act::LibraryAdd { spec } => return self.library_add(spec),
             Act::LibraryImport => return self.library_import(),
@@ -32,6 +33,6 @@ impl Session<'_, '_> {
             }
             Act::DeleteProfile { name } => return self.delete_profile(name).map(Some),
         };
-        change(self.deps, &self.store, &self.project, &what)
+        change(self, Scope::Project, &what)
     }
 }

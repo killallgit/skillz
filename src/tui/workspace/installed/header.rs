@@ -1,4 +1,4 @@
-//! The line above the outline: the directory and how it compares with the chosen profile.
+//! The line above the outline: where the items are and how they compare with the chosen profile.
 
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -22,16 +22,25 @@ fn seg(text: impl Into<String>, style: Style) -> Segment {
     }
 }
 
+/// How the items stand against a profile, where a tab compares at all.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum Comparison<'a> {
+    Off,
+    Unchosen,
+    With(&'a Drift),
+}
+
 /// The pieces of the header, most important first.
-pub(super) fn segments(dir: &str, drift: Option<&Drift>, theme: &Theme) -> Vec<Segment> {
-    let mut shown = vec![seg(dir, theme.text)];
-    match drift {
-        None => shown.push(seg("no profile compared", theme.muted)),
-        Some(d) if d.matches() => shown.push(seg(
+pub(super) fn segments(heading: &str, comparison: Comparison, theme: &Theme) -> Vec<Segment> {
+    let mut shown = vec![seg(heading, theme.text)];
+    match comparison {
+        Comparison::Off => {}
+        Comparison::Unchosen => shown.push(seg("no profile compared", theme.muted)),
+        Comparison::With(d) if d.matches() => shown.push(seg(
             format!("{} matches {}", theme.glyphs.loaded, d.profile),
             theme.ok,
         )),
-        Some(d) => {
+        Comparison::With(d) => {
             if d.missing > 0 {
                 shown.push(seg(format!("{} missing", d.missing), theme.danger));
             }
@@ -58,9 +67,14 @@ fn fit(segments: Vec<Segment>, width: usize) -> Vec<Segment> {
     kept
 }
 
-pub(super) fn line(dir: &str, drift: Option<&Drift>, width: u16, theme: &Theme) -> Line<'static> {
+pub(super) fn line(
+    heading: &str,
+    comparison: Comparison,
+    width: u16,
+    theme: &Theme,
+) -> Line<'static> {
     let mut spans = Vec::new();
-    for (i, segment) in fit(segments(dir, drift, theme), width as usize)
+    for (i, segment) in fit(segments(heading, comparison, theme), width as usize)
         .into_iter()
         .enumerate()
     {
@@ -84,8 +98,8 @@ mod tests {
         }
     }
 
-    fn styles(drift: Option<&Drift>, theme: &Theme) -> Vec<Style> {
-        segments("~/app", drift, theme)
+    fn styles(comparison: Comparison, theme: &Theme) -> Vec<Style> {
+        segments("~/app", comparison, theme)
             .iter()
             .map(|s| s.style)
             .collect()
@@ -95,24 +109,28 @@ mod tests {
     fn a_match_is_ok_and_drift_names_what_is_missing_and_extra() {
         let theme = Theme::dark();
 
-        let matching = styles(Some(&drift(0, 0)), &theme);
-        let drifted = styles(Some(&drift(2, 1)), &theme);
+        let matching = styles(Comparison::With(&drift(0, 0)), &theme);
+        let drifted = styles(Comparison::With(&drift(2, 1)), &theme);
 
         assert_eq!(matching, [theme.text, theme.ok]);
         assert_eq!(drifted, [theme.text, theme.danger, theme.warn, theme.muted]);
     }
 
     #[test]
-    fn without_a_profile_the_badge_is_muted() {
+    fn without_a_profile_the_badge_is_muted_and_a_tab_that_does_not_compare_has_none() {
         let theme = Theme::dark();
 
-        assert_eq!(styles(None, &theme), [theme.text, theme.muted]);
+        assert_eq!(
+            styles(Comparison::Unchosen, &theme),
+            [theme.text, theme.muted]
+        );
+        assert_eq!(styles(Comparison::Off, &theme), [theme.text]);
     }
 
     #[test]
     fn segments_drop_from_the_end_and_the_directory_stays() {
         let theme = Theme::dark();
-        let all = segments("~/app", Some(&drift(2, 1)), &theme);
+        let all = segments("~/app", Comparison::With(&drift(2, 1)), &theme);
 
         let wide = fit(all.clone(), 200).len();
         let narrow = fit(all.clone(), 16).len();

@@ -9,6 +9,9 @@ pub enum Scope {
     Common,
     /// The tab bar and what works on every tab.
     Workspace,
+    /// The Project and Global tabs: the installed items and what the library could add.
+    Installed,
+    /// What only the Project tab has: comparing and applying a profile.
     Project,
     Library,
     Profiles,
@@ -24,7 +27,8 @@ impl Scope {
         match self {
             Scope::Common => "Everywhere",
             Scope::Workspace => "Tabs",
-            Scope::Project => "Project",
+            Scope::Installed => "Installed",
+            Scope::Project => "Profile",
             Scope::Library => "Library",
             Scope::Profiles => "Profiles",
             Scope::Picker => "Choose items",
@@ -119,7 +123,7 @@ const fn bind(
 }
 
 use Action as A;
-use Scope::{Common, Filter, Library, Picker, Profiles, Project, Tree, Workspace};
+use Scope::{Common, Filter, Installed, Library, Picker, Profiles, Project, Tree, Workspace};
 
 #[rustfmt::skip]
 pub const BINDINGS: &[Binding] = &[
@@ -138,19 +142,20 @@ pub const BINDINGS: &[Binding] = &[
     bind(Common, A::Help, &[ch('?')], "?", "help", 0),
     bind(Workspace, A::NextTab, &[plain(KeyCode::Tab)], "tab", "next tab", 20),
     bind(Workspace, A::PrevTab, &[plain(KeyCode::BackTab)], "shift-tab", "previous tab", 0),
-    bind(Workspace, A::GoTab(0), &[ch('1')], "1 2 3", "go to tab", 0),
+    bind(Workspace, A::GoTab(0), &[ch('1')], "1 2 3 4", "go to tab", 0),
     bind(Workspace, A::GoTab(1), &[ch('2')], "", "", 0),
     bind(Workspace, A::GoTab(2), &[ch('3')], "", "", 0),
-    bind(Project, A::Toggle, &[ch(' ')], "space", "pick", 1),
-    bind(Project, A::Select, &[plain(KeyCode::Enter)], "enter", "apply picks / fold", 2),
-    bind(Project, A::Install, &[ch('i')], "i", "install here", 3),
-    bind(Project, A::Remove, &[ch('r')], "r", "remove here", 4),
+    bind(Workspace, A::GoTab(3), &[ch('4')], "", "", 0),
+    bind(Installed, A::Toggle, &[ch(' ')], "space", "pick", 1),
+    bind(Installed, A::Select, &[plain(KeyCode::Enter)], "enter", "apply picks / fold", 2),
+    bind(Installed, A::Install, &[ch('i')], "i", "install", 3),
+    bind(Installed, A::Remove, &[ch('r')], "r", "remove", 4),
     bind(Project, A::PickProfile, &[ch('p')], "p", "compare", 5),
     bind(Project, A::ApplyProfile, &[ch('a')], "a", "apply profile", 6),
-    bind(Project, A::Update, &[ch('u')], "u", "update", 7),
-    bind(Project, A::Filter, &[ch('/')], "/", "filter", 8),
-    bind(Project, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
-    bind(Project, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
+    bind(Installed, A::Update, &[ch('u')], "u", "update", 7),
+    bind(Installed, A::Filter, &[ch('/')], "/", "filter", 8),
+    bind(Installed, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
+    bind(Installed, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
     bind(Library, A::Add, &[ch('a')], "a", "add", 1),
     bind(Library, A::Import, &[ch('i')], "i", "import installed", 2),
     bind(Library, A::Delete, &[ch('x')], "x", "remove", 3),
@@ -201,8 +206,14 @@ impl Binding {
 /// What `key` means in `scope`; the scope's own bindings win over the common ones.
 /// `Scope::Filter` is exclusive: typed characters are never navigation there.
 pub fn resolve(scope: Scope, key: KeyEvent) -> Option<Action> {
-    let own = |b: &&Binding| b.scope == scope && b.matches(key);
-    let common = |b: &&Binding| scope != Scope::Filter && b.scope == Common && b.matches(key);
+    resolve_in(&[scope], key)
+}
+
+/// What `key` means in the first of `scopes` that binds it, else in the common bindings.
+/// `Scope::Filter` is exclusive: typed characters are never navigation there.
+pub fn resolve_in(scopes: &[Scope], key: KeyEvent) -> Option<Action> {
+    let own = |b: &&Binding| scopes.contains(&b.scope) && b.matches(key);
+    let common = |b: &&Binding| !scopes.contains(&Filter) && b.scope == Common && b.matches(key);
     BINDINGS
         .iter()
         .find(own)
@@ -299,7 +310,7 @@ mod tests {
             resolve(Workspace, key(KeyCode::Tab)),
             resolve(Workspace, shift_tab),
             press(Workspace, '1'),
-            press(Workspace, '3'),
+            press(Workspace, '4'),
         ];
 
         assert_eq!(
@@ -308,9 +319,28 @@ mod tests {
                 Some(Action::NextTab),
                 Some(Action::PrevTab),
                 Some(Action::GoTab(0)),
-                Some(Action::GoTab(2))
+                Some(Action::GoTab(3))
             ]
         );
+    }
+
+    #[test]
+    fn a_tab_binds_the_keys_of_all_its_scopes_and_the_global_tab_has_no_profile_keys() {
+        let project = [Installed, Project];
+        let keys = ['i', 'p', 'a'];
+
+        let on_project = keys.map(|c| resolve_in(&project, key(KeyCode::Char(c))));
+        let on_global = keys.map(|c| resolve_in(&[Installed], key(KeyCode::Char(c))));
+
+        assert_eq!(
+            on_project,
+            [
+                Some(Action::Install),
+                Some(Action::PickProfile),
+                Some(Action::ApplyProfile)
+            ]
+        );
+        assert_eq!(on_global, [Some(Action::Install), None, None]);
     }
 
     #[test]
@@ -327,7 +357,7 @@ mod tests {
 
     #[test]
     fn hints_come_out_most_important_first_and_without_duplicates() {
-        for scope in [Project, Library, Tree] {
+        for scope in [Installed, Library, Tree] {
             let hints = hints(&[scope]);
             let mut sorted = hints.clone();
             sorted.dedup();
@@ -337,7 +367,7 @@ mod tests {
         }
         let ranks: Vec<u8> = BINDINGS
             .iter()
-            .filter(|b| matches!(b.scope, Project | Workspace) && b.rank > 0)
+            .filter(|b| matches!(b.scope, Installed | Project | Workspace) && b.rank > 0)
             .map(|b| b.rank)
             .collect();
         let mut distinct = ranks.clone();
@@ -348,7 +378,7 @@ mod tests {
 
     #[test]
     fn the_scopes_own_enter_replaces_the_common_one_in_help() {
-        let selects = help_sections(&[Project])
+        let selects = help_sections(&[Installed, Project])
             .into_iter()
             .flat_map(|(_, bindings)| bindings)
             .filter(|b| b.action == Action::Select);
@@ -384,10 +414,10 @@ mod tests {
 
     #[test]
     fn help_lists_the_scope_first_then_the_common_bindings() {
-        let sections = help_sections(&[Project]);
+        let sections = help_sections(&[Installed]);
 
         let scopes: Vec<Scope> = sections.iter().map(|(s, _)| *s).collect();
-        assert_eq!(scopes, [Project, Common]);
+        assert_eq!(scopes, [Installed, Common]);
         assert!(
             sections
                 .iter()

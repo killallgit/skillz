@@ -31,6 +31,16 @@ pub(super) fn skill_entry(name: &str) -> Entry {
     }
 }
 
+pub(super) fn session<'a, 'd>(deps: &'a Deps<'d>, project: &Path) -> Session<'a, 'd> {
+    let env = project_env(deps, project);
+    Session {
+        deps,
+        profiles: profile::Store::in_env(&env),
+        store: Store::in_env(&env),
+        project: project.to_path_buf(),
+    }
+}
+
 pub(super) fn run_change(
     dir: &Path,
     approve: bool,
@@ -39,8 +49,7 @@ pub(super) fn run_change(
     let runner = FakeRunner::new(|_| {});
     let prompter = ScriptedPrompter::new(&[], approve);
     let deps = Deps::for_test(dir, registry(), (&runner, &prompter));
-    let store = Store::in_env(&project_env(&deps, dir));
-    let result = change(&deps, &store, dir, what);
+    let result = change(&session(&deps, dir), Scope::Project, what);
     (result, runner)
 }
 

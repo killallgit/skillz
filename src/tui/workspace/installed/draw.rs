@@ -1,4 +1,4 @@
-//! Drawing the Project tab: the header line, then the outline in a panel.
+//! Drawing the Project and Global tabs: the header line, then the outline in a panel.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -6,26 +6,31 @@ use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::header;
-use super::rows::{Item, Row, State};
+use super::drift::Drift;
+use super::header::{self, Comparison};
+use super::rows::{Item, Part, Row, State};
 use super::status::Status;
-use super::{Popup, ProjectTab};
+use super::{InstalledTab, Popup};
+use crate::model::Scope;
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;
 use crate::tui::widgets::panel::Panel;
+use crate::tui::workspace::Tab;
 
-/// Room before a section's caret, under its group's.
-const SECTION_INDENT: &str = "  ";
-/// Room before an item's status mark: the section's indent.
-const ITEM_MARGIN: &str = "  ";
+/// Room per level of depth before a row's caret or status mark.
+const INDENT: &str = "  ";
+/// Cells of rule before and after the `Available` header's title.
+const RULE_LEAD: usize = 2;
+const RULE_TAIL: usize = 12;
+const GLOBAL_TAG: &str = "global";
 
-impl ProjectTab {
+impl InstalledTab {
     pub(super) fn draw_body(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let [head, body] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
         let drift = self.drift();
-        let line = header::line(&self.dir, drift.as_ref(), head.width, theme);
+        let line = header::line(self.heading(), self.comparison(&drift), head.width, theme);
         frame.render_widget(Paragraph::new(line), head);
         self.draw_outline(frame, body, theme);
         match &mut self.popup {
@@ -35,8 +40,23 @@ impl ProjectTab {
         }
     }
 
+    fn heading(&self) -> &str {
+        match self.scope {
+            Scope::Project => &self.dir,
+            Scope::Global => "Global (user-level)",
+        }
+    }
+
+    fn comparison<'a>(&self, drift: &'a Option<Drift>) -> Comparison<'a> {
+        match (self.scope, drift) {
+            (Scope::Global, _) => Comparison::Off,
+            (Scope::Project, None) => Comparison::Unchosen,
+            (Scope::Project, Some(drift)) => Comparison::With(drift),
+        }
+    }
+
     fn draw_outline(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let panel = Panel::new(filter::title("Project", self.outline.query()))
+        let panel = Panel::new(filter::title(self.title(), self.outline.query()))
             .focused(true)
             .badge(self.outline.badge());
         let inner = panel.render(frame, area, theme);
@@ -59,7 +79,7 @@ impl ProjectTab {
         vec![
             Line::styled("Nothing installed here", theme.text),
             Line::styled(
-                "Add skills to the library (tab 2) to install them",
+                "Add skills to the library (tab 3) to install them",
                 theme.muted,
             ),
         ]
@@ -67,16 +87,23 @@ impl ProjectTab {
 
     fn row_line(&self, id: usize, theme: &Theme) -> Line<'static> {
         match &self.rows[id] {
-            Row::Group { group, total } => {
+            Row::Available { total } => {
+                let rule = |cells| theme.glyphs.rule.repeat(cells);
                 let caret = self.outline.caret(id, &theme.glyphs);
+                let title = format!("{caret} {} Available", rule(RULE_LEAD));
                 Line::from(vec![
-                    Span::styled(format!("{caret} {}", group.title()), theme.title),
-                    Span::styled(format!("  {total}"), theme.muted),
+                    Span::styled(title, theme.title),
+                    Span::styled(format!("  {total} {}", rule(RULE_TAIL)), theme.muted),
                 ])
             }
-            Row::Section { kind, total, .. } => {
+            Row::Section { kind, total, part } => {
                 let caret = self.outline.caret(id, &theme.glyphs);
-                let title = format!("{SECTION_INDENT}{caret} {}", kind.title());
+                let indent = INDENT.repeat(self.outline.depth(id));
+                let lead = match part {
+                    Part::Installed => "",
+                    Part::Available => "Available ",
+                };
+                let title = format!("{indent}{caret} {lead}{}", kind.title());
                 let mut spans = vec![
                     Span::styled(title, theme.title),
                     Span::styled(format!("  {total}"), theme.muted),
@@ -126,13 +153,9 @@ impl ProjectTab {
             (State::Available(_), true) => {
                 (glyphs.to_install, theme.accent, theme.accent, "to install")
             }
-            (State::Held { in_project: true }, _) => (glyphs.checked, theme.ok, theme.text, ""),
-            (State::Held { in_project: false }, _) => {
-                (glyphs.unchecked, theme.muted, theme.muted, "")
-            }
         };
         let mut spans = vec![
-            Span::raw(ITEM_MARGIN),
+            Span::raw(INDENT.repeat(self.outline.depth(id))),
             self.status_mark(&item.state, theme),
             Span::styled(format!(" {box_glyph} "), box_style),
         ];
@@ -150,6 +173,9 @@ impl ProjectTab {
         ));
         if outdated {
             spans.push(Span::styled("*", text_style));
+        }
+        if item.global {
+            spans.push(Span::styled(format!("  {GLOBAL_TAG}"), theme.accent));
         }
         if !item.detail.is_empty() {
             spans.push(Span::styled(format!("  {}", item.detail), theme.muted));

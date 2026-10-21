@@ -2,6 +2,7 @@ use ratatui::crossterm::event::KeyCode;
 
 use super::tests::{GRILL, TDD, loaded, on_item, press};
 use super::*;
+use crate::model::Scope;
 
 fn u() -> KeyCode {
     KeyCode::Char('u')
@@ -17,13 +18,14 @@ fn u_on_an_installed_item_asks_to_update_it() {
     assert_eq!(
         act,
         Some(Act::Update {
+            scope: Scope::Project,
             ids: vec!["skill:tdd".into()]
         })
     );
 }
 
 #[test]
-fn u_on_a_group_asks_to_update_every_installed_item_in_it() {
+fn u_on_a_section_asks_to_update_every_installed_item_in_it() {
     let mut tab = loaded();
 
     let act = press(&mut tab, u());
@@ -31,6 +33,7 @@ fn u_on_a_group_asks_to_update_every_installed_item_in_it() {
     assert_eq!(
         act,
         Some(Act::Update {
+            scope: Scope::Project,
             ids: vec!["skill:tdd".into()]
         })
     );
@@ -50,7 +53,7 @@ fn u_on_a_library_item_that_is_not_installed_does_nothing() {
 fn u_on_an_item_without_an_update_does_nothing() {
     let mut model = super::tests::model();
     model.installed[0].installer = crate::model::Installer::Local;
-    let mut tab = ProjectTab::new();
+    let mut tab = InstalledTab::project();
     tab.load(&model);
     on_item(&mut tab, TDD);
 

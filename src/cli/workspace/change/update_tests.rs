@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::tests::{project_with_skill, run_change, skill_id};
+use super::tests::{project_with_skill, run_change, session, skill_id};
 use super::*;
 use crate::agents::registry;
 use crate::install::test_support::{FakeNpx, FakeRunner, ScriptedPrompter};
@@ -48,9 +48,12 @@ fn a_failing_update_is_reported() {
     let runner = FakeRunner::new(|_| {}).failing("npx");
     let prompter = ScriptedPrompter::new(&[], true);
     let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
-    let store = Store::in_env(&project_env(&deps, dir.path()));
 
-    let result = change(&deps, &store, dir.path(), &Change::Update(&ids));
+    let result = change(
+        &session(&deps, dir.path()),
+        Scope::Project,
+        &Change::Update(&ids),
+    );
 
     assert!(matches!(result.unwrap(), Some(Notice::Failed(_))));
 }
@@ -76,7 +79,12 @@ fn an_update_records_the_new_version_in_the_library() {
     let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
     let store = Store::in_env(&project_env(&deps, dir.path()));
 
-    change(&deps, &store, dir.path(), &Change::Update(&ids)).unwrap();
+    change(
+        &session(&deps, dir.path()),
+        Scope::Project,
+        &Change::Update(&ids),
+    )
+    .unwrap();
 
     let items = store.read().unwrap().items;
     let provenance = items.items()[0].provenance.clone().unwrap();

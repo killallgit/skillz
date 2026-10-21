@@ -3,8 +3,9 @@
 
 use ratatui::crossterm::event::KeyEvent;
 
-use super::rows::{Group, Row, State};
-use super::{Popup, ProjectTab};
+use super::rows::{Row, State};
+use super::{InstalledTab, Popup};
+use crate::model::Scope;
 use crate::profile::Entry;
 use crate::tui::widgets::confirm::{ConfirmDialog, Outcome as Answer};
 use crate::tui::workspace::act::Act;
@@ -12,6 +13,7 @@ use crate::tui::workspace::act::Act;
 /// A change waiting on the answer to the global-duplicate question.
 #[derive(Debug, Clone)]
 pub(super) struct Proposal {
+    scope: Scope,
     install: Vec<Entry>,
     remove: Vec<String>,
     /// The part of `install` that is installed globally already.
@@ -21,6 +23,7 @@ pub(super) struct Proposal {
 impl Proposal {
     fn everything(&self) -> Act {
         Act::Change {
+            scope: self.scope,
             install: self.install.clone(),
             remove: self.remove.clone(),
         }
@@ -35,30 +38,30 @@ impl Proposal {
             .collect();
         let anything = !install.is_empty() || !self.remove.is_empty();
         anything.then(|| Act::Change {
+            scope: self.scope,
             install,
             remove: self.remove.clone(),
         })
     }
 }
 
-impl ProjectTab {
+impl InstalledTab {
     /// Install the highlighted item into the project; anything else is left alone.
     pub(super) fn install_current(&mut self) -> Option<Act> {
         match self.current_item()?.state.clone() {
             State::Available(entry) => self.propose(vec![entry], vec![]),
-            State::Installed(_) | State::Held { .. } => None,
+            State::Installed(_) => None,
         }
     }
 
-    /// Remove the highlighted project item; global and library rows are left alone.
+    /// Remove the highlighted installed item; library rows are left alone.
     pub(super) fn remove_current(&mut self) -> Option<Act> {
-        let item = self.current_item()?;
-        match (&item.state, item.group) {
-            (State::Installed(id), Group::Project) => {
+        match &self.current_item()?.state {
+            State::Installed(id) => {
                 let remove = vec![id.clone()];
                 self.propose(vec![], remove)
             }
-            _ => None,
+            State::Available(_) => None,
         }
     }
 
@@ -71,6 +74,7 @@ impl ProjectTab {
             .cloned()
             .collect();
         let proposal = Proposal {
+            scope: self.scope,
             install,
             remove,
             held,
@@ -100,7 +104,7 @@ impl ProjectTab {
     fn is_global(&self, entry: &Entry) -> bool {
         self.rows.iter().any(|row| {
             matches!(row, Row::Item(item)
-                if item.group == Group::Global && item.state == State::Available(entry.clone()))
+                if item.global && item.state == State::Available(entry.clone()))
         })
     }
 
@@ -109,7 +113,7 @@ impl ProjectTab {
             .rows
             .iter()
             .filter_map(|row| match row {
-                Row::Item(item) if item.group == Group::Global => Some(item),
+                Row::Item(item) if item.global => Some(item),
                 _ => None,
             })
             .filter(|item| matches!(&item.state, State::Available(e) if proposal.held.contains(e)))
