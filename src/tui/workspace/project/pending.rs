@@ -2,7 +2,7 @@
 //! survives a reload for as long as the item is still there in that state.
 
 use super::rows::{Item, Row, State};
-use crate::tui::workspace::act::Act;
+use crate::profile::Entry;
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct Pending {
@@ -58,20 +58,21 @@ impl Pending {
                     remove: counts.remove + 1,
                     ..counts
                 },
+                State::Held { .. } => counts,
             })
     }
 
-    pub fn act(&self) -> Act {
-        let (install, remove) =
-            self.picked
-                .iter()
-                .fold((vec![], vec![]), |(mut install, mut remove), state| {
-                    match state {
-                        State::Available(entry) => install.push(entry.clone()),
-                        State::Installed(id) => remove.push(id.clone()),
-                    }
-                    (install, remove)
-                });
-        Act::Change { install, remove }
+    /// The entries to install and the ids to remove.
+    pub fn picks(&self) -> (Vec<Entry>, Vec<String>) {
+        self.picked
+            .iter()
+            .fold((vec![], vec![]), |(mut install, mut remove), state| {
+                match state {
+                    State::Available(entry) => install.push(entry.clone()),
+                    State::Installed(id) => remove.push(id.clone()),
+                    State::Held { .. } => {}
+                }
+                (install, remove)
+            })
     }
 }

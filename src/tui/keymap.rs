@@ -68,6 +68,8 @@ pub enum Action {
     SaveCurrent,
     Build,
     Update,
+    Install,
+    Remove,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -141,10 +143,12 @@ pub const BINDINGS: &[Binding] = &[
     bind(Workspace, A::GoTab(2), &[ch('3')], "", "", 0),
     bind(Project, A::Toggle, &[ch(' ')], "space", "pick", 1),
     bind(Project, A::Select, &[plain(KeyCode::Enter)], "enter", "apply picks / fold", 2),
-    bind(Project, A::PickProfile, &[ch('p')], "p", "compare", 3),
-    bind(Project, A::ApplyProfile, &[ch('a')], "a", "apply profile", 4),
-    bind(Project, A::Update, &[ch('u')], "u", "update", 5),
-    bind(Project, A::Filter, &[ch('/')], "/", "filter", 6),
+    bind(Project, A::Install, &[ch('i')], "i", "install here", 3),
+    bind(Project, A::Remove, &[ch('r')], "r", "remove here", 4),
+    bind(Project, A::PickProfile, &[ch('p')], "p", "compare", 5),
+    bind(Project, A::ApplyProfile, &[ch('a')], "a", "apply profile", 6),
+    bind(Project, A::Update, &[ch('u')], "u", "update", 7),
+    bind(Project, A::Filter, &[ch('/')], "/", "filter", 8),
     bind(Project, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
     bind(Project, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
     bind(Library, A::Add, &[ch('a')], "a", "add", 1),

@@ -1,6 +1,6 @@
 use crate::review::{Next, NoProgress, Outcome, PlanView, Progress, Verdict};
 use crate::tree::Node;
-use crate::tui::workspace::{Act, Workspace};
+use crate::tui::workspace::{Act, Shared};
 
 /// User interaction. Injected so flows are testable without a terminal.
 pub trait Prompter {
@@ -34,7 +34,7 @@ pub trait Prompter {
     }
     /// The workspace screen: show `workspace` until the user asks for something. Needs a
     /// terminal, so the default is an error.
-    fn workspace(&self, _workspace: &mut Workspace) -> anyhow::Result<Act> {
+    fn workspace(&self, _workspace: &Shared) -> anyhow::Result<Act> {
         anyhow::bail!("the workspace needs a terminal")
     }
     /// Keep the interactive session open across several prompts until the guard is dropped.
@@ -52,6 +52,11 @@ pub trait Prompter {
     /// Show progress through `total` steps until the returned guard is dropped.
     fn progress(&self, _title: &str, _total: usize) -> Box<dyn Progress + '_> {
         Box::new(NoProgress)
+    }
+    /// Like `progress`, but shown on the workspace when there is one: its rows show each item
+    /// in flight.
+    fn live(&self, title: &str, total: usize) -> Box<dyn Progress + '_> {
+        self.progress(title, total)
     }
     /// Show how a switch ended. Without a screen: nothing, and no retry.
     fn outcome(&self, _title: &str, _outcome: &Outcome) -> anyhow::Result<Next> {

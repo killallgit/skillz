@@ -14,6 +14,9 @@ pub struct Glyphs {
     pub to_remove: &'static str,
     pub open: &'static str,
     pub closed: &'static str,
+    pub failed: &'static str,
+    /// The frames of the in-flight spinner, one cell wide.
+    pub spinner: &'static [&'static str],
 }
 
 impl Glyphs {
@@ -29,6 +32,8 @@ impl Glyphs {
         to_remove: "⊖",
         open: "▾",
         closed: "▸",
+        failed: "✗",
+        spinner: &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
     };
 
     pub const ASCII: Glyphs = Glyphs {
@@ -43,7 +48,14 @@ impl Glyphs {
         to_remove: "~",
         open: "-",
         closed: "+",
+        failed: "x",
+        spinner: &["|", "/", "-", "\\"],
     };
+
+    /// The spinner frame to show at `tick`.
+    pub fn frame(&self, tick: usize) -> &'static str {
+        self.spinner[tick % self.spinner.len()]
+    }
 
     pub fn detect(lookup: &dyn Fn(&str) -> Option<String>) -> Self {
         if wants_ascii(lookup) {
@@ -82,6 +94,18 @@ mod tests {
                 .iter()
                 .find(|(k, _)| *k == key)
                 .map(|(_, v)| v.to_string())
+        }
+    }
+
+    #[test]
+    fn spinner_frames_are_one_cell_wide_and_the_spinner_wraps() {
+        use unicode_width::UnicodeWidthStr;
+
+        for set in [Glyphs::UNICODE, Glyphs::ASCII] {
+            let widths: Vec<usize> = set.spinner.iter().map(|f| f.width()).collect();
+
+            assert!(widths.iter().all(|&w| w == 1));
+            assert_eq!(set.frame(0), set.frame(set.spinner.len()));
         }
     }
 

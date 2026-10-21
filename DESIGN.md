@@ -248,6 +248,14 @@ as `updates`. What each tool supports was read off its `--help`:
 After a run, the usual recording path (`cli::recording`) compares the inventory before and after,
 so an item whose lock hash or version changed gets its provenance in the library rewritten.
 
+**Live progress.** `Applier::run_each` reports every item starting and ending (`review::ItemEvent`)
+besides every step. While a selection or update runs, `Prompter::live` hands the terminal to a
+painter thread (`tui::live`) that redraws the shared `Workspace` (an `Arc<Mutex<_>>`) every
+100 ms; the apply stays on the calling thread, which feeds the events in, so the Project tab's
+`Statuses` turn them into spinner, tick or cross on the rows. Without a workspace (the CLI),
+`live` is the plain progress gauge. The plan and result screens run on the calling thread
+before and after, when the painter has given the terminal back.
+
 **Update check.** The Project tab marks rows that have a newer version (bold, `*` after the
 name). `cli::workspace` starts `update::check::spawn` on a worker thread over the installed items
 and the tab takes ids off the channel when it draws (the shell redraws on every 200 ms tick, so

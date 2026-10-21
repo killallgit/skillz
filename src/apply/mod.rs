@@ -2,6 +2,8 @@
 //! to be exact, remove what it holds that the profile does not want. Which profile a directory
 //! has loaded is never stored; it is read off the inventory (`standing`).
 
+#[cfg(test)]
+mod each_tests;
 mod plan;
 mod run;
 mod run_each;
@@ -11,8 +13,8 @@ mod switch;
 mod tests;
 
 pub use run::Done;
-pub use run_each::Each;
-pub use standing::{Standing, compare, loaded};
+pub use run_each::{Each, Watch};
+pub use standing::{Standing, compare, holds, loaded};
 pub use switch::Switch;
 
 use crate::agents::{self, AgentAdapter};

@@ -7,6 +7,7 @@ use crate::npx_skills;
 use crate::prompt::Prompter;
 use crate::runner::run_checked;
 
+use super::global::confirm_duplicates;
 use super::{Ctx, InstallRequest, SkillSelection, Tree};
 
 /// Pick skills found under the tree and install them with `npx skills add <source>`.
@@ -20,6 +21,9 @@ pub(super) fn install(
     let Some(chosen) = choose(ctx.prompter, &req.selection, &names, tree.source)? else {
         return Ok(());
     };
+    if !confirm_duplicates(ctx, req, (tree.source, &chosen))? {
+        return Ok(());
+    }
     let (program, args) = npx_skills::add_command(tree.source, &chosen, agents, req.scope);
     run_checked(ctx.runner, &program, &args, &ctx.env.project)
 }

@@ -9,7 +9,7 @@ use super::plan_view::{plan_view, step_label};
 use super::selection::{Selection, outcome_of_each, selection_plan};
 use super::updates::update_plan;
 use crate::action::Action;
-use crate::apply::{self, Done, Switch};
+use crate::apply::{self, Done, Switch, Watch};
 use crate::cli::deps::Deps;
 use crate::cli::recording::record_since;
 use crate::cli::scope::{installed, project_env};
@@ -17,7 +17,7 @@ use crate::env::Env;
 use crate::model::Scope;
 use crate::profile;
 use crate::remove;
-use crate::review::{Next, Outcome, Verdict};
+use crate::review::{ItemEvent, Next, Outcome, Phase, Verdict};
 use crate::store::Store;
 
 /// What the user asked to change.
@@ -125,26 +125,40 @@ impl Job<'_> {
     }
 
     fn apply(&self, applier: &apply::Applier, switch: &Switch, what: &Change) -> Outcome {
-        let progress = self
-            .deps
-            .prompter
-            .progress(what.title(), switch.steps().len());
+        let progress = self.deps.prompter.live(what.title(), switch.steps().len());
         let removal = remove::Plan::from_owned(&switch.removals);
         let mut log = Vec::new();
+        let mut items = Vec::new();
         let mut on_step = |step: &Action| {
             let label = step_label(switch, &removal, step);
             progress.step(&label);
             log.push(label);
         };
+        let mut on_item = |event: ItemEvent| {
+            progress.item(&event);
+            if event.phase != Phase::Started {
+                items.push(event);
+            }
+        };
         let outcome = match what {
-            Change::Selection(_) | Change::Update(_) => outcome_of_each(
-                switch,
-                applier.run_each(switch, self.deps.runner, &mut on_step),
-            ),
+            Change::Selection(_) | Change::Update(_) => {
+                let mut watch = Watch {
+                    step: &mut on_step,
+                    item: &mut on_item,
+                };
+                outcome_of_each(
+                    switch,
+                    applier.run_each(switch, self.deps.runner, &mut watch),
+                )
+            }
             _ => outcome_of(switch, applier.run(switch, self.deps.runner, &mut on_step)),
         };
         drop(progress);
-        Outcome { log, ..outcome }
+        Outcome {
+            log,
+            items,
+            ..outcome
+        }
     }
 
     fn notice(

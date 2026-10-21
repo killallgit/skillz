@@ -13,13 +13,14 @@ mod updates;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use super::deps::Deps;
 use super::scope::resolve_project;
 use crate::model::Augmentation;
 use crate::profile;
 use crate::store;
-use crate::tui::workspace::{Act, Workspace};
+use crate::tui::workspace::{Act, Shared, Workspace};
 use crate::update::check;
 use model::snapshot;
 use notice::Notice;
@@ -44,27 +45,31 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
         store: store::Store::in_env(&env),
         project: env.project,
     };
-    let mut screen = Workspace::standard();
+    let screen: Shared = Arc::new(Mutex::new(Workspace::standard()));
     let (found, results) = mpsc::channel();
-    screen.watch_updates(results);
+    lock(&screen).watch_updates(results);
     let mut notice = None;
     let mut to_check = None;
     loop {
         let model = snapshot(&session, notice.take())?;
         check_in_background(deps, &model.installed, to_check.take(), &found);
-        screen.load(model);
-        let act = deps.prompter.workspace(&mut screen)?;
+        lock(&screen).load(model);
+        let act = deps.prompter.workspace(&screen)?;
         if act == Act::Quit {
             return Ok(());
         }
         if let Act::Update { ids } = &act {
-            screen.forget_updates(ids);
+            lock(&screen).forget_updates(ids);
             to_check = Some(ids.clone());
         }
         notice = session
             .perform(act)
             .unwrap_or_else(|e| Some(Notice::Failed(format!("{e:#}"))));
     }
+}
+
+fn lock(screen: &Shared) -> MutexGuard<'_, Workspace> {
+    screen.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Look for newer versions of `only` those installed items (all of them on the first call).

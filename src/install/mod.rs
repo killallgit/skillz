@@ -2,6 +2,7 @@
 //! plugins (`AgentAdapter::install_plugins`) and send the rest of the skills through npx
 //! `skills` (`skills`).
 
+mod global;
 mod skills;
 mod source;
 #[cfg(test)]

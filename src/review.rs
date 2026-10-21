@@ -1,6 +1,8 @@
 //! What a switch shows the user before, while and after it runs, as typed data. Screens decide
 //! how to draw it; flows decide how to build it.
 
+use crate::profile::Entry;
+
 /// The kinds of line in a plan, in the order they are shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Group {
@@ -64,6 +66,8 @@ pub struct Outcome {
     pub still_installed: Vec<String>,
     /// The step labels that ran, in order.
     pub log: Vec<String>,
+    /// How each item ended, in order.
+    pub items: Vec<ItemEvent>,
 }
 
 impl Outcome {
@@ -94,9 +98,60 @@ pub enum Next {
     Retry,
 }
 
-/// Told about each step as it starts.
+/// What a change to one item works on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Target {
+    Install(Entry),
+    /// The id of the installed item.
+    Remove(String),
+    /// The id of the installed item.
+    Update(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Phase {
+    Started,
+    Succeeded,
+    /// Why it did not work.
+    Failed(String),
+}
+
+/// One item's change starting or ending.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ItemEvent {
+    pub target: Target,
+    /// The item's name as the user knows it.
+    pub label: String,
+    pub phase: Phase,
+}
+
+impl ItemEvent {
+    pub fn started(target: Target, label: String) -> Self {
+        ItemEvent {
+            target,
+            label,
+            phase: Phase::Started,
+        }
+    }
+
+    /// The same item, now ended with `result`.
+    pub fn ended(&self, result: Result<(), String>) -> Self {
+        let phase = match result {
+            Ok(()) => Phase::Succeeded,
+            Err(reason) => Phase::Failed(reason),
+        };
+        ItemEvent {
+            phase,
+            ..self.clone()
+        }
+    }
+}
+
+/// Told about each step, and each item, as it starts and ends.
 pub trait Progress {
     fn step(&self, label: &str);
+
+    fn item(&self, _event: &ItemEvent) {}
 }
 
 /// For prompters with nowhere to show progress.

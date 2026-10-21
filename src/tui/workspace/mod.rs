@@ -17,14 +17,20 @@ pub use model::Model;
 pub use shell::Workspace;
 pub use tab::Tab;
 
+use std::sync::{Arc, Mutex, PoisonError};
+
 use super::closure::event_loop;
 use super::shell::Ui;
 
+/// The workspace, shared with whatever redraws it while a change runs.
+pub type Shared = Arc<Mutex<Workspace>>;
+
 /// Show the workspace until the user asks for something. Errors when there is no terminal.
-pub fn run(workspace: &mut Workspace, ui: &Ui) -> anyhow::Result<Act> {
+pub fn run(shared: &Shared, ui: &Ui) -> anyhow::Result<Act> {
+    let mut workspace = shared.lock().unwrap_or_else(PoisonError::into_inner);
     let act = event_loop(
         ui,
-        workspace,
+        &mut *workspace,
         |w, frame, theme| w.draw(frame, theme),
         |w, key| w.handle(key),
     )?;

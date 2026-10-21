@@ -15,6 +15,7 @@ use super::model::Model;
 use super::profiles::ProfilesTab;
 use super::project::ProjectTab;
 use super::tab::Tab;
+use crate::review::ItemEvent;
 use crate::tui::filter;
 use crate::tui::help::{Help, Verdict};
 use crate::tui::keymap::{self, Action, Scope};
@@ -58,6 +59,16 @@ impl Workspace {
     /// Drop the marks of items that were just updated.
     pub fn forget_updates(&mut self, ids: &[String]) {
         self.checks.forget(ids);
+    }
+
+    /// Show where an item's change stands on every tab.
+    pub fn note(&mut self, event: &ItemEvent) {
+        self.tabs.iter_mut().for_each(|tab| tab.note(event));
+    }
+
+    /// Move the animations on a frame.
+    pub fn tick(&mut self) {
+        self.tabs.iter_mut().for_each(|tab| tab.tick());
     }
 
     /// Project, Library and Profiles.

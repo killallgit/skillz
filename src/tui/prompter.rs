@@ -1,9 +1,12 @@
 //! The interactive prompter: the shared tree for pickers, the workspace screen, a y/n line.
 
+use std::cell::RefCell;
 use std::io::Write;
+use std::sync::Arc;
 
 use super::app::{App, Screen};
 use super::dialogs::Ask;
+use super::live::LiveProgress;
 use super::plan::PlanScreen;
 use super::progress::TuiProgress;
 use super::result::ResultScreen;
@@ -11,7 +14,7 @@ use super::shell::{Shell, Ui};
 use super::theme::Theme;
 use super::tree_view;
 use super::widgets::confirm::ConfirmDialog;
-use super::workspace::{self, Act, Workspace};
+use super::workspace::{self, Act, Shared};
 use crate::prompt::{Choice, Hold, Picked, Prompter};
 use crate::review::{Next, Outcome, PlanView, Progress, Verdict};
 use crate::tree::{self, Node};
@@ -21,6 +24,8 @@ use crate::tree::{self, Node};
 pub struct TuiPrompter {
     theme: Theme,
     shell: Shell,
+    /// The workspace on screen, once one has been shown.
+    shown: RefCell<Option<Shared>>,
 }
 
 impl TuiPrompter {
@@ -28,6 +33,7 @@ impl TuiPrompter {
         TuiPrompter {
             theme,
             shell: Shell::new(mouse),
+            shown: RefCell::default(),
         }
     }
 
@@ -57,7 +63,8 @@ impl Prompter for TuiPrompter {
         tree_view::browse(title, groups, &self.ui())
     }
 
-    fn workspace(&self, screen: &mut Workspace) -> anyhow::Result<Act> {
+    fn workspace(&self, screen: &Shared) -> anyhow::Result<Act> {
+        *self.shown.borrow_mut() = Some(Arc::clone(screen));
         workspace::run(screen, &self.ui())
     }
 
@@ -75,6 +82,13 @@ impl Prompter for TuiPrompter {
 
     fn progress(&self, title: &str, total: usize) -> Box<dyn Progress + '_> {
         Box::new(TuiProgress::start(self.ui(), title, total))
+    }
+
+    fn live(&self, title: &str, total: usize) -> Box<dyn Progress + '_> {
+        match self.shown.borrow().clone() {
+            Some(screen) => Box::new(LiveProgress::start(&self.shell, &self.theme, screen)),
+            None => self.progress(title, total),
+        }
     }
 
     fn outcome(&self, title: &str, outcome: &Outcome) -> anyhow::Result<Next> {

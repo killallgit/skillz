@@ -22,6 +22,7 @@ pub(super) fn snapshot(session: &Session, notice: Option<Notice>) -> anyhow::Res
     Ok(Model {
         dir: short_path(&session.project, &deps.home),
         installed: installed(deps, &env, Scope::Project),
+        global: installed(deps, &env, Scope::Global),
         library,
         profiles: readable_profiles(&session.profiles).unwrap_or_default(),
         notice: notice.or(problem).map(|n| n.to_string()),

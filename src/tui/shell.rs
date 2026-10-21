@@ -82,6 +82,17 @@ impl Shell {
         Ok(())
     }
 
+    /// Hand the entered terminal to a painter on another thread; `take_back` returns it.
+    pub fn lend_terminal(&self) -> anyhow::Result<DefaultTerminal> {
+        self.enter()?;
+        let lent = self.term.borrow_mut().take();
+        lent.ok_or_else(|| anyhow::anyhow!("the terminal is already lent"))
+    }
+
+    pub fn take_back(&self, terminal: DefaultTerminal) {
+        *self.term.borrow_mut() = Some(terminal);
+    }
+
     /// Drop the keys pressed while nothing was reading them, so they answer no later question.
     pub fn discard_input(&self) {
         while event::poll(Duration::ZERO).unwrap_or(false) {
