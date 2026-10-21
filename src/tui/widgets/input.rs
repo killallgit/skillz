@@ -1,4 +1,4 @@
-//! A single-line text field with a real cursor, readline-style editing and an optional error.
+//! A single-line text field with a real cursor, readline-style editing.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -23,7 +23,6 @@ pub struct InputField {
     /// Cursor position in characters, `0..=value.chars().count()`.
     cursor: usize,
     placeholder: String,
-    error: Option<String>,
 }
 
 impl InputField {
@@ -34,26 +33,13 @@ impl InputField {
         }
     }
 
-    pub fn with_value(mut self, value: impl Into<String>) -> Self {
-        self.value = value.into();
-        self.cursor = self.value.chars().count();
-        self
-    }
-
     pub fn value(&self) -> &str {
         &self.value
     }
 
+    #[cfg(test)]
     pub fn cursor(&self) -> usize {
         self.cursor
-    }
-
-    pub fn set_error(&mut self, error: Option<String>) {
-        self.error = error;
-    }
-
-    pub fn error(&self) -> Option<&str> {
-        self.error.as_deref()
     }
 
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
@@ -79,7 +65,6 @@ impl InputField {
             KeyCode::Delete => self.delete_forward(),
             _ => {}
         }
-        self.error = None;
     }
 
     fn char_count(&self) -> usize {
@@ -94,7 +79,6 @@ impl InputField {
     fn insert(&mut self, c: char) {
         self.value.insert(self.byte_at(self.cursor), c);
         self.cursor += 1;
-        self.error = None;
     }
 
     fn backspace(&mut self) {
@@ -113,7 +97,6 @@ impl InputField {
     fn delete_to_start(&mut self) {
         self.value.drain(..self.byte_at(self.cursor));
         self.cursor = 0;
-        self.error = None;
     }
 
     fn delete_word_back(&mut self) {
@@ -128,7 +111,6 @@ impl InputField {
         self.value
             .drain(self.byte_at(start)..self.byte_at(self.cursor));
         self.cursor = start;
-        self.error = None;
     }
 
     /// First visible character and the cursor column, so the cursor stays inside `width`.
@@ -148,19 +130,12 @@ impl InputField {
         chars.map(|c| c.width().unwrap_or(0)).sum()
     }
 
-    /// Draw the field on the first row of `area`, the error beneath it, and place the terminal
+    /// Draw the field on the first row of `area`, and place the terminal
     /// cursor. Call only for the focused field.
     pub fn render(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let (start, col) = self.window(area.width);
         frame.render_widget(Paragraph::new(self.content_line(start, theme)), area);
         frame.set_cursor_position(Position::new(area.x + col, area.y));
-        if let (Some(error), true) = (&self.error, area.height > 1) {
-            let line = Line::from(Span::styled(error.clone(), theme.danger));
-            frame.render_widget(
-                Paragraph::new(line),
-                Rect::new(area.x, area.y + 1, area.width, 1),
-            );
-        }
     }
 
     fn content_line(&self, start: usize, theme: &Theme) -> Line<'static> {
@@ -272,28 +247,11 @@ mod tests {
     }
 
     #[test]
-    fn editing_clears_a_stale_error() {
-        let mut field = typed("a");
-        field.set_error(Some("bad".into()));
-        field.handle(key(KeyCode::Char('b')));
-        assert_eq!(field.error(), None);
-    }
-
-    #[test]
     fn empty_field_renders_the_placeholder_muted() {
         let theme = Theme::dark();
         let field = InputField::new("name");
         let buffer = render_to_buffer(10, 1, |f| field.render(f, f.area(), &theme));
         assert_eq!(buffer[(0, 0)].fg, theme.muted.fg.unwrap());
-    }
-
-    #[test]
-    fn error_renders_in_the_danger_style_below() {
-        let theme = Theme::dark();
-        let mut field = typed("a");
-        field.set_error(Some("bad".into()));
-        let buffer = render_to_buffer(10, 2, |f| field.render(f, f.area(), &theme));
-        assert_eq!(buffer[(0, 1)].fg, theme.danger.fg.unwrap());
     }
 
     #[test]

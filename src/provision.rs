@@ -7,7 +7,7 @@ use crate::agents::{AgentAdapter, adapter_for};
 use crate::env::Env;
 use crate::model::{Agent, Scope};
 use crate::npx_skills;
-use crate::profile::{Entry, Profile};
+use crate::profile::Entry;
 
 /// An entry one agent has no way to take.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,17 +20,6 @@ pub struct Unsupported {
 pub struct Provision {
     pub steps: Vec<Action>,
     pub unsupported: Vec<Unsupported>,
-}
-
-/// The steps that load `profile` into `scope`, in entry order.
-pub fn plan(
-    adapters: &[Box<dyn AgentAdapter>],
-    profile: &Profile,
-    scope: Scope,
-    env: &Env,
-) -> anyhow::Result<Provision> {
-    profile.validate()?;
-    Ok(plan_entries(adapters, &profile.resolved(), scope, env))
 }
 
 /// The steps that install `entries`, which already name the agents they are for.
@@ -100,6 +89,17 @@ fn provision_per_agent(
 mod tests {
     use super::*;
     use crate::agents::registry;
+    use crate::profile::Profile;
+
+    fn plan(
+        adapters: &[Box<dyn AgentAdapter>],
+        profile: &Profile,
+        scope: Scope,
+        env: &Env,
+    ) -> anyhow::Result<Provision> {
+        profile.validate()?;
+        Ok(plan_entries(adapters, &profile.resolved(), scope, env))
+    }
 
     fn env() -> Env {
         Env::new("/h".into(), "/p".into())

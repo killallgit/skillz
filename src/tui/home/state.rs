@@ -16,7 +16,7 @@ use crate::tui::widgets::Outcome as Moved;
 use crate::tui::widgets::confirm::ConfirmDialog;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::tabs::Tabs;
-use crate::tui::widgets::toast::{Level, Toasts};
+use crate::tui::widgets::toast::Toasts;
 
 /// The tab that shows the detail pane when only one pane fits.
 const DETAIL_TAB: usize = 2;
@@ -57,7 +57,7 @@ impl Home {
         let mut toasts = Toasts::default();
         let undo = model.undo.take();
         if let Some(notice) = model.notice.take() {
-            toasts.push(Level::Info, with_undo_hint(notice, undo.is_some()));
+            toasts.push(with_undo_hint(notice, undo.is_some()));
         }
         let mut tabs = Tabs::new(&["Projects", "Profiles", "Detail"]);
         tabs.select(tab_of(pos.focus));

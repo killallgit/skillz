@@ -2,13 +2,12 @@
 //! `↑ n more` / `↓ n more` hints when rows are cut off.
 
 use ratatui::Frame;
-use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::Outcome;
-use crate::tui::keymap::{self, Action, Scope};
+use crate::tui::keymap::Action;
 use crate::tui::theme::Theme;
 
 const DEFAULT_PAGE: usize = 10;
@@ -44,6 +43,7 @@ impl ListView {
         self.offset
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.len
     }
@@ -57,13 +57,6 @@ impl ListView {
         self.len = len;
         self.selected = self.selected.min(len.saturating_sub(1));
         self.offset = self.offset.min(self.selected);
-    }
-
-    pub fn handle(&mut self, key: KeyEvent) -> Outcome {
-        match keymap::resolve(Scope::Common, key) {
-            Some(action) => self.apply(action),
-            None => Outcome::Ignored,
-        }
     }
 
     /// Move the cursor as `action` says; any action that is not a movement is ignored.
@@ -202,8 +195,19 @@ pub fn thumb(len: usize, height: usize, offset: usize) -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::keymap::{self, Scope};
     use crate::tui::widgets::testing::{ctrl, key, render_to_buffer, row_text};
-    use ratatui::crossterm::event::KeyCode;
+    use ratatui::crossterm::event::{KeyCode, KeyEvent};
+
+    trait Press {
+        fn handle(&mut self, key: KeyEvent) -> Outcome;
+    }
+
+    impl Press for ListView {
+        fn handle(&mut self, key: KeyEvent) -> Outcome {
+            keymap::resolve(Scope::Common, key).map_or(Outcome::Ignored, |a| self.apply(a))
+        }
+    }
 
     fn rows(n: usize) -> Vec<Line<'static>> {
         (0..n).map(|i| Line::from(format!("row{i}"))).collect()
