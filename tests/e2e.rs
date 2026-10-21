@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use skillz::action::{Action, execute};
 use skillz::agents;
-use skillz::cli::{Command, Deps, Filter, ProfileCommand, run};
+use skillz::cli::{Command, Deps, Filter, ProfileCommand, ProjectCommand, run};
 use skillz::model::{Agent, Augmentation, Kind, Scope};
 use skillz::prompt::{Choice, Picked, Prompter};
 use skillz::runner::{CommandRunner, Output};
@@ -1023,4 +1023,58 @@ fn profile_save_snapshots_reinstallable_items_and_manages_the_file() {
     run(delete(), &d, &mut Vec::new()).unwrap();
     assert!(!file.exists());
     assert!(run(delete(), &d, &mut Vec::new()).is_err());
+}
+
+#[test]
+fn projects_are_registered_by_hand_or_by_using_a_profile() {
+    let w = world();
+    write(
+        &w.home.join(".config/skillz/profiles/web.toml"),
+        "[[entry]]\nkind = \"skill\"\nsource = \"o/r\"\nnames = [\"tdd\"]\n",
+    );
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let d = deps(&w, &r, &p);
+    let list = || {
+        let mut out = Vec::new();
+        let cmd = Command::Project {
+            action: ProjectCommand::List,
+        };
+        run(cmd, &d, &mut out).unwrap();
+        String::from_utf8(out).unwrap()
+    };
+    assert!(list().is_empty());
+
+    run(use_cmd(Some("web"), false), &d, &mut Vec::new()).unwrap();
+    let shown = list();
+    assert!(shown.contains("web") && shown.contains("proj"), "{shown}");
+
+    let project = |action| Command::Project { action };
+    run(
+        project(ProjectCommand::Remove { path: ".".into() }),
+        &d,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert!(list().is_empty());
+    assert!(
+        run(
+            project(ProjectCommand::Remove { path: ".".into() }),
+            &d,
+            &mut Vec::new()
+        )
+        .is_err()
+    );
+    run(
+        project(ProjectCommand::Add { path: None }),
+        &d,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert!(list().contains("web"), "the ledger still knows the profile");
 }

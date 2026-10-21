@@ -18,6 +18,7 @@ use crate::runner::{CommandRunner, SystemRunner};
 use crate::snapshot;
 use crate::tree;
 use crate::usage;
+use crate::workspace::Workspace;
 use crate::{info, remove, spinner};
 
 #[derive(Debug, Parser)]
@@ -122,6 +123,11 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Register projects so the workspace can show and switch them
+    Project {
+        #[command(subcommand)]
+        action: ProjectCommand,
+    },
     /// Create, inspect and delete profiles
     Profile {
         #[command(subcommand)]
@@ -151,6 +157,18 @@ pub enum Command {
         #[arg(short, long)]
         yes: bool,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProjectCommand {
+    /// List registered projects and the profile each has loaded
+    #[command(visible_alias = "ls")]
+    List,
+    /// Register a project (default: the current directory)
+    Add { path: Option<PathBuf> },
+    /// Forget a project (nothing installed there changes)
+    #[command(visible_alias = "rm")]
+    Remove { path: PathBuf },
 }
 
 #[derive(Debug, Subcommand)]
@@ -362,6 +380,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
             use_profile(deps, &env, scope, profile.as_deref(), dry_run, out)
         }
         Command::Profile { action } => profile_command(deps, action, out),
+        Command::Project { action } => project_command(deps, action, out),
         Command::Install {
             source,
             global,
@@ -801,6 +820,42 @@ fn single_scope(scopes: &[Scope], global: bool) -> Scope {
     }
 }
 
+fn project_command(deps: &Deps, action: ProjectCommand, out: &mut dyn Write) -> anyhow::Result<()> {
+    let home_env = Env {
+        claude_config: deps.claude_config.clone(),
+        codex_home: deps.codex_home.clone(),
+        ..Env::new(deps.home.clone(), deps.cwd.clone())
+    };
+    let workspace = Workspace::in_env(&home_env);
+    match action {
+        ProjectCommand::List => {
+            let ledger = apply::Ledger::in_env(&home_env);
+            for dir in workspace.projects()? {
+                let env = Env {
+                    project: dir.clone(),
+                    ..home_env.clone()
+                };
+                let loaded = ledger.get(&apply::Ledger::key(&env, Scope::Project))?;
+                let state = loaded.map_or("-".to_string(), |r| r.profile);
+                let gone = if dir.is_dir() { "" } else { "  (missing)" };
+                writeln!(out, "{state:<16} {}{gone}", dir.display())?;
+            }
+        }
+        ProjectCommand::Add { path } => {
+            let dir = deps.cwd.join(path.unwrap_or_else(|| PathBuf::from(".")));
+            if workspace.add(&dir)? {
+                writeln!(out, "added {}", dir.canonicalize()?.display())?;
+            }
+        }
+        ProjectCommand::Remove { path } => {
+            if !workspace.remove(&deps.cwd.join(path))? {
+                bail!("not a registered project");
+            }
+        }
+    }
+    Ok(())
+}
+
 fn profile_command(deps: &Deps, action: ProfileCommand, out: &mut dyn Write) -> anyhow::Result<()> {
     let home_env = Env::new(deps.home.clone(), deps.cwd.clone());
     let store = profile::Store::in_env(&home_env);
@@ -924,6 +979,10 @@ fn use_profile(
     );
     drop(spinner);
     let done = result?;
+    if scope == Scope::Project {
+        // Remembering the project is a convenience; the switch itself already worked.
+        let _ = Workspace::in_env(env).add(&env.project);
+    }
     writeln!(
         out,
         "removed {} items, installed {} items",

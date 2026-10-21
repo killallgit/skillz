@@ -67,12 +67,22 @@ impl Ledger {
         Ledger::new(env.skillz_dir().join("applied.json"))
     }
 
-    /// Which scope a record is about: the project's path, or `global`.
+    /// Which scope a record is about: the project's path, or `global`, plus the config dirs
+    /// the environment redirects, since another `CLAUDE_CONFIG_DIR` is another set of installs.
     pub fn key(env: &Env, scope: Scope) -> String {
-        match scope {
-            Scope::Global => "global".into(),
+        let mut key = match scope {
+            Scope::Global => "global".to_string(),
             Scope::Project => env.project.display().to_string(),
+        };
+        for (name, dir) in [
+            ("CLAUDE_CONFIG_DIR", &env.claude_config),
+            ("CODEX_HOME", &env.codex_home),
+        ] {
+            if let Some(dir) = dir {
+                key.push_str(&format!(" {name}={}", dir.display()));
+            }
         }
+        key
     }
 
     fn read(&self) -> anyhow::Result<BTreeMap<String, Record>> {
@@ -633,6 +643,19 @@ mod tests {
         fs::write(fx.env.skillz_dir().join("applied.json"), "{nope").unwrap();
         assert!(fx.ledger.get("x").is_err());
         assert!(plan(&registry(), None, Scope::Project, &fx.env, &fx.ledger).is_err());
+    }
+
+    #[test]
+    fn a_redirected_config_dir_is_its_own_scope() {
+        let mut env = Env::new("/h".into(), "/p".into());
+        let plain = Ledger::key(&env, Scope::Project);
+        env.claude_config = Some("/c".into());
+        let claude = Ledger::key(&env, Scope::Project);
+        env.codex_home = Some("/x".into());
+        let both = Ledger::key(&env, Scope::Global);
+        assert_ne!(plain, claude);
+        assert_ne!(claude, both);
+        assert!(plain.starts_with("/p") && both.starts_with("global"));
     }
 
     #[test]
