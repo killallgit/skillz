@@ -31,6 +31,14 @@ pub enum Entry {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         agents: Vec<Agent>,
     },
+    /// Subagent definitions (`name.md` for Claude, `name.toml` for Codex) copied from a repo or
+    /// directory; `names` are file names or the agents' own names.
+    Subagent {
+        source: String,
+        names: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        agents: Vec<Agent>,
+    },
     /// An MCP server, launched by `command` or reached at `url`. Env vars and headers are
     /// secrets and cannot be part of a profile, so servers that need them are not supported.
     Mcp {
@@ -55,7 +63,8 @@ impl Entry {
         match self {
             Entry::Skill { agents, .. }
             | Entry::Plugin { agents, .. }
-            | Entry::Mcp { agents, .. } => agents,
+            | Entry::Mcp { agents, .. }
+            | Entry::Subagent { agents, .. } => agents,
         }
     }
 
@@ -65,6 +74,15 @@ impl Entry {
         let words: Vec<&str> = spec.split_whitespace().collect();
         let entry = match words.as_slice() {
             ["skill" | "skills", source, names] => Entry::Skill {
+                source: source.to_string(),
+                names: names
+                    .split(',')
+                    .filter(|n| !n.is_empty())
+                    .map(String::from)
+                    .collect(),
+                agents: vec![],
+            },
+            ["subagent" | "subagents", source, names] => Entry::Subagent {
                 source: source.to_string(),
                 names: names
                     .split(',')
@@ -105,11 +123,8 @@ impl Entry {
     /// Every value here ends up as a command-line argument, so none may be empty or option-like.
     pub fn validate(&self) -> anyhow::Result<()> {
         let args: Vec<&str> = match self {
-            Entry::Skill { source, names, .. } => {
-                anyhow::ensure!(
-                    !names.is_empty(),
-                    "skill entry for {source} names no skills"
-                );
+            Entry::Skill { source, names, .. } | Entry::Subagent { source, names, .. } => {
+                anyhow::ensure!(!names.is_empty(), "entry for {source} names nothing");
                 std::iter::once(source.as_str())
                     .chain(names.iter().map(String::as_str))
                     .collect()
@@ -162,6 +177,9 @@ impl std::fmt::Display for Entry {
         match self {
             Entry::Skill { source, names, .. } => {
                 write!(f, "skills {} [{source}]", names.join(","))
+            }
+            Entry::Subagent { source, names, .. } => {
+                write!(f, "subagents {} [{source}]", names.join(","))
             }
             Entry::Plugin {
                 marketplace, name, ..
@@ -223,7 +241,8 @@ impl Profile {
                 let mut e = e.clone();
                 let (Entry::Skill { agents, .. }
                 | Entry::Plugin { agents, .. }
-                | Entry::Mcp { agents, .. }) = &mut e;
+                | Entry::Mcp { agents, .. }
+                | Entry::Subagent { agents, .. }) = &mut e;
                 *agents = resolved;
                 e
             })

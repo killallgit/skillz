@@ -54,7 +54,7 @@ the selected project (the plan is shown and confirmed first), `u` unloads a proj
 `a` adds a project, `n` creates an empty profile, `s` saves what the project has installed as a
 profile, `d` deletes, `q` quits. On a profile: `i` adds items the selected project has installed,
 `t` types an entry (`skill SOURCE NAMES`, `plugin SOURCE MARKETPLACE NAME` or
-`mcp NAME COMMAND|URL [ARGS]`), `r` removes entries.
+`mcp NAME COMMAND|URL [ARGS]` or `subagent SOURCE NAMES`), `r` removes entries.
 
 The same from the command line:
 
@@ -94,9 +94,23 @@ args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
 # or: url = "https://example.com/mcp", transport = "sse"   (default http)
 ```
 
+```toml
+[[entry]]
+kind = "subagent"
+source = "msitarzewski/agency-agents"    # a repo, or a directory relative to the project
+names = ["frontend-developer", "ui-designer"]   # file names or the agents' own names
+agents = ["claude"]                      # Claude copies .md files, Codex .toml files
+```
+
+Subagents are the definition files in `.claude/agents` / `~/.claude/agents` (Claude) and
+`.codex/agents` / `~/.codex/agents` (Codex). skillz copies them from the source and remembers where
+each came from (`.skillz-sources.json` beside them), so `list --subagents` groups them by source,
+a snapshot can save them, and unloading deletes exactly those files. It never overwrites a file it
+did not put there.
+
 MCP servers are listed too (`skillz list --mcp`; read from Claude's `.claude.json` and
 `.mcp.json`, and Codex's `config.toml`) and removed with their agent's own `mcp remove`. They are
-spared by `reset` unless you pass `--mcp`. A server that needs env vars or headers is not saved in
+spared by `reset` unless you pass `--mcp` (subagents: `--subagents`). A server that needs env vars or headers is not saved in
 a profile (it would have to carry secrets); a snapshot lists it as skipped. Codex only installs MCP
 servers globally, and has no SSE transport.
 

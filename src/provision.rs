@@ -280,6 +280,37 @@ mod tests {
     }
 
     #[test]
+    fn subagents_copy_into_each_agents_own_directory() {
+        let entry = || Entry::Subagent {
+            source: "o/agents".into(),
+            names: vec!["frontend".into()],
+            agents: vec![],
+        };
+        let copy_to = |agent: Agent, scope: Scope| {
+            let mut p = profile(vec![entry()]);
+            p.agents = vec![agent];
+            let planned = plan(&registry(), &p, scope, &env()).unwrap();
+            planned.steps.first().map(|s| match s {
+                Action::CopyAgents { to, ext, .. } => (to.clone(), ext.clone()),
+                other => panic!("{other:?}"),
+            })
+        };
+        assert_eq!(
+            copy_to(Agent::Claude, Scope::Project),
+            Some(("/p/.claude/agents".into(), "md".into()))
+        );
+        assert_eq!(
+            copy_to(Agent::Claude, Scope::Global),
+            Some(("/h/.claude/agents".into(), "md".into()))
+        );
+        assert_eq!(
+            copy_to(Agent::Codex, Scope::Project),
+            Some(("/p/.codex/agents".into(), "toml".into()))
+        );
+        assert_eq!(copy_to(Agent::Cursor, Scope::Global), None);
+    }
+
+    #[test]
     fn an_invalid_profile_plans_nothing() {
         let mut p = profile(vec![skills(vec![])]);
         p.agents.clear();

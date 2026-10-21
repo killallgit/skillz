@@ -4,7 +4,7 @@
 
 mod skills;
 mod source;
-pub(crate) use source::run_checked;
+pub(crate) use source::{clone_command, run_checked, unique_name};
 #[cfg(test)]
 pub(crate) mod test_support;
 

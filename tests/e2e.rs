@@ -1375,3 +1375,68 @@ fn reset_leaves_mcp_servers_unless_asked() {
             .is_none()
     );
 }
+
+#[test]
+fn subagents_are_copied_in_by_a_profile_tracked_and_removed_with_it() {
+    let w = world();
+    let src = w.project.join("agents-src");
+    for (rel, name) in [
+        ("engineering/eng-frontend.md", "Frontend Developer"),
+        ("design/ui.md", "UI Designer"),
+    ] {
+        write(
+            &src.join(rel),
+            &format!("---\nname: {name}\ndescription: d\n---\nbody\n"),
+        );
+    }
+    write(
+        &w.home.join(".config/skillz/profiles/team.toml"),
+        "agents = [\"claude\"]\n[[entry]]\nkind = \"subagent\"\nsource = \"agents-src\"\nnames = [\"frontend-developer\", \"ui\"]\n",
+    );
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let d = deps(&w, &r, &p);
+    let agents = w.project.join(".claude/agents");
+
+    run(use_cmd(Some("team"), false), &d, &mut Vec::new()).unwrap();
+    assert!(agents.join("eng-frontend.md").exists() && agents.join("ui.md").exists());
+    assert!(r.0.borrow().is_empty(), "a local source needs no commands");
+    let ledger = fs::read_to_string(w.home.join(".config/skillz/applied.json")).unwrap();
+    assert!(ledger.contains("Frontend Developer"));
+
+    // The files are listed with where they came from, and a snapshot can name them again.
+    let mut out = Vec::new();
+    let list = Command::List {
+        target: None,
+        project: Some(PathBuf::from(".")),
+        all: true,
+        json: true,
+        filter: Filter {
+            subagents: true,
+            ..Filter::default()
+        },
+        interactive: false,
+    };
+    run(list, &d, &mut out).unwrap();
+    let items: Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(items.as_array().unwrap().len(), 2);
+    assert_eq!(items[0]["source"], "agents-src");
+
+    run(use_cmd(None, false), &d, &mut Vec::new()).unwrap();
+    assert!(!agents.join("eng-frontend.md").exists() && !agents.join("ui.md").exists());
+    assert!(
+        !fs::read_to_string(agents.join(".skillz-sources.json"))
+            .unwrap()
+            .contains("ui.md")
+    );
+
+    // A file that was already there is never overwritten.
+    write(&agents.join("ui.md"), "mine");
+    assert!(run(use_cmd(Some("team"), false), &d, &mut Vec::new()).is_err());
+    assert_eq!(fs::read_to_string(agents.join("ui.md")).unwrap(), "mine");
+}

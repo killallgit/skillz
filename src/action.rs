@@ -29,6 +29,16 @@ pub enum Action {
     RemovePath(RemovalTarget),
     /// Rewrite a config file in place. Missing files are skipped.
     Edit { file: PathBuf, edit: Edit },
+    /// Install subagent definitions: fetch `source` (a directory relative to `cwd`, else a git
+    /// repo), copy the `ext` files called `names` into `to`, note the source beside them.
+    /// Runs with the commands, before any edit.
+    CopyAgents {
+        source: String,
+        cwd: PathBuf,
+        names: Vec<String>,
+        ext: String,
+        to: PathBuf,
+    },
     /// `RemovePath`, but only when, after every edit is written, the JSON `file` (missing =
     /// empty) has nothing at `key` (e.g. `["plugins", "x@y"]`): a shared resource goes with
     /// its last reference, whichever selected items dropped it.
@@ -70,6 +80,13 @@ impl Action {
     pub fn describe(&self) -> String {
         match self {
             Action::Run { program, args, .. } => format!("run {program} {}", args.join(" ")),
+            Action::CopyAgents {
+                source, names, to, ..
+            } => format!(
+                "copy {} from {source} into {}",
+                names.join(","),
+                to.display()
+            ),
             Action::RemovePath(t) => format!("rm {}", t.path().display()),
             Action::RemovePathIfJsonAbsent { target, file, key } => format!(
                 "rm {} (if {} then has no {})",
@@ -164,6 +181,8 @@ pub struct Report {
     pub skipped: Vec<String>,
     pub removed: Vec<PathBuf>,
     pub edited: Vec<PathBuf>,
+    /// Subagent files written.
+    pub copied: Vec<PathBuf>,
 }
 
 /// Apply `edit` to `contents` of `file` (whose extension picks the format where the edit
@@ -276,6 +295,27 @@ pub fn execute_with(
     // (an edit of an absent key is a no-op), and a failure here leaves everything else alone.
     let mut report = Report::default();
     for action in &unique {
+        if let Action::CopyAgents {
+            source,
+            cwd,
+            names,
+            ext,
+            to,
+        } = action
+        {
+            on_step(action);
+            let req = crate::subagents::Copy {
+                source,
+                cwd,
+                names,
+                ext,
+                to,
+            };
+            let written = crate::subagents::copy(runner, &req)
+                .with_context(|| format!("already ran: {:?}", report.ran))?;
+            report.copied.extend(written);
+            continue;
+        }
         let Action::Run {
             program,
             args,
@@ -349,7 +389,7 @@ pub fn execute_with(
     commit(&staged)?;
     for action in unique {
         let (target, wanted) = match action {
-            Action::Edit { .. } | Action::Run { .. } => continue,
+            Action::Edit { .. } | Action::Run { .. } | Action::CopyAgents { .. } => continue,
             Action::RemovePath(target) => (target, Ok(true)),
             Action::RemovePathIfJsonAbsent { target, file, key } => {
                 (target, json_has(file, key).map(|has| !has))

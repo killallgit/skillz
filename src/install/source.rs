@@ -39,7 +39,7 @@ fn clone_url(source: &str) -> String {
     }
 }
 
-fn clone_command(source: &str, dest: &Path) -> Cmd {
+pub(crate) fn clone_command(source: &str, dest: &Path) -> Cmd {
     let args = [
         "clone",
         "--depth",
@@ -52,7 +52,7 @@ fn clone_command(source: &str, dest: &Path) -> Cmd {
     ("git".into(), args)
 }
 
-fn unique_name() -> String {
+pub(crate) fn unique_name() -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos());

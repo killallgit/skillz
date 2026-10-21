@@ -34,6 +34,7 @@ pub enum Kind {
     Skill,
     Hook,
     Mcp,
+    Subagent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
@@ -131,6 +132,7 @@ impl fmt::Display for Kind {
             Kind::Skill => "skill",
             Kind::Hook => "hook",
             Kind::Mcp => "mcp",
+            Kind::Subagent => "subagent",
         })
     }
 }

@@ -25,6 +25,7 @@ pub mod runner;
 pub mod skills;
 pub mod snapshot;
 pub mod spinner;
+pub mod subagents;
 pub mod tree;
 pub mod tui;
 pub mod usage;

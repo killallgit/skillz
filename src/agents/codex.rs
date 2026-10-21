@@ -14,6 +14,7 @@ use crate::mcp::Server;
 use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
 use crate::npx_skills;
 use crate::profile::Entry;
+use crate::subagents;
 
 pub struct Codex;
 
@@ -53,6 +54,10 @@ impl AgentAdapter for Codex {
         if let Entry::Mcp { .. } = entry {
             return provision_mcp(entry, scope, env);
         }
+        if let Entry::Subagent { .. } = entry {
+            let to = env.codex_scope_dir(scope).join("agents");
+            return subagents::provision(entry, to, "toml", env);
+        }
         let (
             Entry::Plugin {
                 source,
@@ -78,8 +83,14 @@ impl AgentAdapter for Codex {
 
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
         let config = env.codex_scope_dir(scope).join("config.toml");
+        let agents = subagents::discover(
+            &env.codex_scope_dir(scope).join("agents"),
+            "toml",
+            Agent::Codex,
+            scope,
+        );
         let Some(doc) = read_config(&config)? else {
-            return Ok(vec![]);
+            return Ok(agents);
         };
         let cache = env.codex_dir().join("plugins/cache");
         let in_project = project_plugin_ids(env, &config);
@@ -110,7 +121,12 @@ impl AgentAdapter for Codex {
             })
             .collect::<Vec<_>>();
         let servers = mcp_servers(&doc, scope, &config);
-        Ok(mps.into_iter().chain(plugins).chain(servers).collect())
+        Ok(mps
+            .into_iter()
+            .chain(plugins)
+            .chain(servers)
+            .chain(agents)
+            .collect())
     }
 
     /// Codex keeps no counters: a tool call in a session log under

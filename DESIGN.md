@@ -61,6 +61,7 @@ All agent knowledge lives in `src/agents/<name>.rs`. Steps:
 | `workspace` | the registered projects (`workspace.toml`) |
 | `tui/home` | the workspace screen: a pure state machine that returns an `Act`; `cli::workspace` performs it and shows the screen again |
 | `mcp` | MCP servers: `Server`/`Launch`, read from json (Claude) or toml (Codex), shown as `Augmentation::children` lines (secret names only, never values) and read back by `snapshot` |
+| `subagents` | subagent definition files: `discover` (name from frontmatter/toml, source from `.skillz-sources.json`), `copy` (local dir or shallow clone, match by file stem or agent name, never overwrite a foreign file), `Action::CopyAgents` runs it with the commands |
 | `prune` | pure checks: duplicate loose skills, never-used and 7+ days unused skills/plugins |
 | `cli` | clap definitions, wiring, list/uninstall/install commands |
 

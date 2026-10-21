@@ -22,6 +22,7 @@ pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
     let mut skills: BTreeMap<(String, Vec<Agent>), Vec<String>> = BTreeMap::new();
     let mut plugins: BTreeMap<(String, String, String), Vec<Agent>> = BTreeMap::new();
     let mut servers: BTreeMap<ServerKey, Vec<Agent>> = BTreeMap::new();
+    let mut subagents: BTreeMap<(String, Vec<Agent>), Vec<String>> = BTreeMap::new();
     let mut skipped = vec![];
     for item in items {
         let mut agents = item.agents.clone();
@@ -40,6 +41,15 @@ pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
                 all.extend(agents);
                 all.sort();
                 all.dedup();
+            }
+            (Kind::Subagent, _, Some(source)) => {
+                // The file name is what a copy finds the definition by.
+                let file = item.children.iter().find_map(|c| c.strip_prefix("file: "));
+                let stem = file.and_then(|f| f.rsplit_once('.').map(|(s, _)| s));
+                subagents
+                    .entry((source.clone(), agents))
+                    .or_default()
+                    .push(stem.unwrap_or(&item.name).to_string());
             }
             (Kind::Mcp, ..) => match Server::from_item(item) {
                 Some(server) if server.secrets.is_empty() => {
@@ -89,6 +99,15 @@ pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
             source,
             marketplace,
             name,
+            agents: own(agents),
+        });
+    }
+    for ((source, agents), mut names) in subagents {
+        names.sort();
+        names.dedup();
+        entries.push(Entry::Subagent {
+            source,
+            names,
             agents: own(agents),
         });
     }
@@ -323,6 +342,39 @@ mod tests {
             panic!()
         };
         assert_eq!(transport, None);
+    }
+
+    #[test]
+    fn subagents_with_a_source_are_saved_by_file_stem() {
+        let agent = |name: &str, file: &str, source: Option<&str>| {
+            let mut i = item(
+                name,
+                Kind::Subagent,
+                Installer::Local,
+                "g",
+                source,
+                &[Agent::Claude],
+            );
+            i.children = vec![format!("file: {file}")];
+            i
+        };
+        let snap = snapshot(
+            "p",
+            &[
+                agent("Frontend Developer", "eng-frontend.md", Some("o/agents")),
+                agent("UI Designer", "ui.md", Some("o/agents")),
+                agent("Mine", "mine.md", None),
+            ],
+        );
+        assert_eq!(snap.skipped.len(), 1);
+        assert_eq!(
+            snap.profile.entries,
+            [Entry::Subagent {
+                source: "o/agents".into(),
+                names: vec!["eng-frontend".into(), "ui".into()],
+                agents: vec![Agent::Claude],
+            }]
+        );
     }
 
     #[test]

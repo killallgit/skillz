@@ -12,6 +12,7 @@ use crate::env::Env;
 use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
 use crate::profile::Entry;
 use crate::runner::CommandRunner;
+use crate::subagents;
 
 pub struct Claude;
 
@@ -48,6 +49,12 @@ impl AgentAdapter for Claude {
         let markets = marketplaces_from(&read_json(&marketplaces_file(&env.claude_dir()))?);
         let mut out = plugins(env, scope, &installs, &markets);
         out.extend(claude_mcp::discover(env, scope)?);
+        out.extend(subagents::discover(
+            &agents_dir(env, scope),
+            "md",
+            Agent::Claude,
+            scope,
+        ));
         if scope == Scope::Global {
             out.extend(
                 markets
@@ -81,6 +88,9 @@ impl AgentAdapter for Claude {
     fn provision(&self, entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
         if let Entry::Mcp { .. } = entry {
             return claude_mcp::provision(entry, scope, env);
+        }
+        if let Entry::Subagent { .. } = entry {
+            return subagents::provision(entry, agents_dir(env, scope), "md", env);
         }
         let Entry::Plugin {
             source,
@@ -141,6 +151,14 @@ fn installed_file(claude: &Path) -> PathBuf {
 
 fn marketplaces_file(claude: &Path) -> PathBuf {
     claude.join("plugins/known_marketplaces.json")
+}
+
+/// Where Claude loads subagent definitions from.
+fn agents_dir(env: &Env, scope: Scope) -> PathBuf {
+    match scope {
+        Scope::Global => env.claude_dir().join("agents"),
+        Scope::Project => env.project.join(".claude/agents"),
+    }
 }
 
 fn settings_files(env: &Env, scope: Scope) -> Vec<PathBuf> {

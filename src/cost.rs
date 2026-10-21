@@ -22,7 +22,7 @@ impl Costs {
         let key = match item.kind {
             Kind::Skill => format!("skill:{}", item.name),
             Kind::Plugin => format!("plugin:{}", item.name.split('@').next()?),
-            Kind::Marketplace | Kind::Hook | Kind::Mcp => return None,
+            Kind::Marketplace | Kind::Hook | Kind::Mcp | Kind::Subagent => return None,
         };
         let found: Vec<u32> = item
             .agents
