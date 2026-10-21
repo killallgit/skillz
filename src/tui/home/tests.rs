@@ -1,5 +1,6 @@
 use super::state::Popup;
 use super::*;
+use crate::tui::theme::Theme;
 use crate::tui::widgets::testing::{ctrl, key, keys, render_to_buffer};
 use ratatui::crossterm::event::KeyCode;
 
@@ -68,8 +69,8 @@ fn enter_applies_the_selected_profile_to_the_selected_project() {
     assert_eq!(
         act,
         Some(Act::Apply {
-            project: 1,
-            profile: 1
+            project: "b".into(),
+            profile: "y".into()
         })
     );
 }
@@ -110,15 +111,20 @@ fn editing_keys_name_the_selected_profile() {
     assert_eq!(
         installed,
         Some(Act::AddInstalled {
-            profile: 1,
-            project: 1
+            profile: "y".into(),
+            project: "b".into()
         })
     );
-    assert_eq!(removal, Some(Act::RemoveEntries { profile: 1 }));
+    assert_eq!(
+        removal,
+        Some(Act::RemoveEntries {
+            profile: "y".into()
+        })
+    );
     assert_eq!(
         typed,
         Some(Act::AddTyped {
-            profile: 1,
+            profile: "y".into(),
             spec: "skill o/r a".into()
         })
     );
@@ -145,7 +151,12 @@ fn unload_needs_a_loaded_profile() {
 
     assert_eq!(
         (on_unloaded, on_loaded),
-        (None, Some(Act::Unload { project: 1 }))
+        (
+            None,
+            Some(Act::Unload {
+                project: "b".into()
+            })
+        )
     );
 }
 
@@ -172,7 +183,7 @@ fn typing_a_name_asks_for_the_matching_action() {
         saved,
         Some(Act::SaveProfile {
             name: "snap".into(),
-            project: 1
+            project: "b".into()
         })
     );
 }
@@ -200,9 +211,9 @@ fn deleting_a_profile_waits_for_a_yes_but_forgetting_a_project_does_not() {
     let declined = press(&mut h, "dn");
     let confirmed = press(&mut h, "dy");
 
-    assert_eq!(forgotten, Some(Act::ForgetProject(0)));
+    assert_eq!(forgotten, Some(Act::ForgetProject("a".into())));
     assert_eq!(declined, None);
-    assert_eq!(confirmed, Some(Act::DeleteProfile(0)));
+    assert_eq!(confirmed, Some(Act::DeleteProfile("x".into())));
 }
 
 #[test]
@@ -359,8 +370,8 @@ fn slash_filters_the_focused_pane_and_requests_name_model_rows() {
     assert_eq!(
         applied,
         Some(Act::Apply {
-            project: 1,
-            profile: 0
+            project: "b".into(),
+            profile: "x".into()
         })
     );
 }

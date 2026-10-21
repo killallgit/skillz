@@ -1,5 +1,7 @@
 //! The questions the workspace asks in a text popup, and the request each answer becomes.
 
+use std::path::PathBuf;
+
 use super::model::Act;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,19 +30,25 @@ impl Ask {
         }
     }
 
-    /// The request for `answer`, given the project and profile the cursors are on.
-    pub fn act(self, answer: String, project: usize, profile: usize) -> Act {
-        match self {
+    /// The request for `answer`, given the project and profile the cursors are on; `None`
+    /// when it needs one of them and the cursor is on neither.
+    pub fn act(
+        self,
+        answer: String,
+        project: Option<PathBuf>,
+        profile: Option<String>,
+    ) -> Option<Act> {
+        Some(match self {
             Ask::AddProject => Act::AddProject(answer),
             Ask::NewProfile => Act::NewProfile(answer),
             Ask::SaveProfile => Act::SaveProfile {
                 name: answer,
-                project,
+                project: project?,
             },
             Ask::AddEntry => Act::AddTyped {
-                profile,
+                profile: profile?,
                 spec: answer,
             },
-        }
+        })
     }
 }

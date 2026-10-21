@@ -12,6 +12,7 @@ mod removal;
 mod run;
 mod scope;
 mod screen;
+mod switch;
 mod use_profile;
 mod workspace;
 
@@ -39,7 +40,8 @@ use crate::tui::theme::Theme;
 /// Returns the process exit code.
 pub fn main() -> anyhow::Result<i32> {
     let cli = Cli::parse();
-    let tui = TuiPrompter::new(Theme::detect(&|name| std::env::var(name).ok()));
+    let theme = Theme::detect(&|name| std::env::var(name).ok());
+    let tui = TuiPrompter::new(theme, std::env::var_os("SKILLZ_NO_MOUSE").is_none());
     let prompter: &dyn Prompter = if cli.command.as_ref().is_some_and(wants_auto_yes) {
         &AssumeYes
     } else {
@@ -61,7 +63,7 @@ pub fn main() -> anyhow::Result<i32> {
     };
     match cli.command {
         Some(command) => run(command, &deps, &mut std::io::stdout()),
-        None => workspace(&deps, &mut std::io::stdout()).map(|()| 0),
+        None => workspace(&deps).map(|()| 0),
     }
 }
 

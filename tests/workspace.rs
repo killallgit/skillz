@@ -79,7 +79,7 @@ fn world_with_project_skill() -> World {
 fn play(w: &World, home: &Home) {
     let r = Recorder::default();
     let d = deps(w, &r, home);
-    workspace(&d, &mut Vec::new()).unwrap();
+    workspace(&d).unwrap();
 }
 
 fn screens_after(w: &World, acts: Vec<Act>) -> Vec<Screen> {
@@ -88,9 +88,13 @@ fn screens_after(w: &World, acts: Vec<Act>) -> Vec<Screen> {
     home.seen.into_inner()
 }
 
-fn plugin_spec(profile: usize) -> Act {
+fn proj(w: &World) -> std::path::PathBuf {
+    w.project.canonicalize().unwrap()
+}
+
+fn plugin_spec(profile: &str) -> Act {
     Act::AddTyped {
-        profile,
+        profile: profile.into(),
         spec: "plugin o/mp mp pp".into(),
     }
 }
@@ -123,7 +127,10 @@ fn a_project_added_in_the_workspace_is_shown() {
 fn a_project_forgotten_in_the_workspace_disappears() {
     let w = world_with_web();
 
-    let seen = screens_after(&w, vec![Act::AddProject(".".into()), Act::ForgetProject(0)]);
+    let seen = screens_after(
+        &w,
+        vec![Act::AddProject(".".into()), Act::ForgetProject(proj(&w))],
+    );
 
     assert_eq!(seen[2].projects, 0);
 }
@@ -156,7 +163,10 @@ fn a_profile_deleted_in_the_workspace_disappears() {
 
     let seen = screens_after(
         &w,
-        vec![Act::NewProfile("tmp".into()), Act::DeleteProfile(0)],
+        vec![
+            Act::NewProfile("tmp".into()),
+            Act::DeleteProfile("tmp".into()),
+        ],
     );
 
     assert_eq!(seen[2].profiles, ["web"]);
@@ -171,8 +181,8 @@ fn applying_a_profile_records_it_for_the_project() {
         vec![
             Act::AddProject(".".into()),
             Act::Apply {
-                project: 0,
-                profile: 0,
+                project: proj(&w),
+                profile: "web".into(),
             },
         ],
     );
@@ -189,10 +199,10 @@ fn unloading_forgets_the_projects_profile() {
         vec![
             Act::AddProject(".".into()),
             Act::Apply {
-                project: 0,
-                profile: 0,
+                project: proj(&w),
+                profile: "web".into(),
             },
-            Act::Unload { project: 0 },
+            Act::Unload { project: proj(&w) },
         ],
     );
 
@@ -209,7 +219,7 @@ fn saving_the_projects_setup_adds_a_profile() {
             Act::AddProject(".".into()),
             Act::SaveProfile {
                 name: "snap".into(),
-                project: 0,
+                project: proj(&w),
             },
         ],
     );
@@ -227,8 +237,8 @@ fn installed_items_can_be_added_to_a_profile() {
             Act::AddProject(".".into()),
             Act::NewProfile("p".into()),
             Act::AddInstalled {
-                profile: 0,
-                project: 0,
+                profile: "p".into(),
+                project: proj(&w),
             },
         ],
         vec![vec![0]],
@@ -246,7 +256,7 @@ fn installed_items_can_be_added_to_a_profile() {
 fn a_typed_line_adds_an_entry() {
     let w = world_with_web();
 
-    screens_after(&w, vec![Act::NewProfile("p".into()), plugin_spec(0)]);
+    screens_after(&w, vec![Act::NewProfile("p".into()), plugin_spec("p")]);
 
     assert!(matches!(
         w.profile("p").entries.as_slice(),
@@ -264,7 +274,7 @@ fn a_bad_typed_line_is_reported_not_fatal() {
         vec![
             Act::NewProfile("p".into()),
             Act::AddTyped {
-                profile: 0,
+                profile: "p".into(),
                 spec: "nonsense".into(),
             },
         ],
@@ -283,7 +293,7 @@ fn a_bad_typed_line_adds_nothing() {
         vec![
             Act::NewProfile("p".into()),
             Act::AddTyped {
-                profile: 0,
+                profile: "p".into(),
                 spec: "nonsense".into(),
             },
         ],
@@ -300,11 +310,13 @@ fn picked_entries_are_removed_from_a_profile() {
             Act::AddProject(".".into()),
             Act::NewProfile("p".into()),
             Act::AddInstalled {
-                profile: 0,
-                project: 0,
+                profile: "p".into(),
+                project: proj(&w),
             },
-            plugin_spec(0),
-            Act::RemoveEntries { profile: 0 },
+            plugin_spec("p"),
+            Act::RemoveEntries {
+                profile: "p".into(),
+            },
         ],
         vec![vec![0], vec![0]],
     );
@@ -315,4 +327,41 @@ fn picked_entries_are_removed_from_a_profile() {
         w.profile("p").entries.as_slice(),
         [Entry::Plugin { .. }]
     ));
+}
+
+// --- stale ids
+
+#[test]
+fn forgetting_a_project_that_is_not_registered_is_reported() {
+    let w = world_with_web();
+
+    let seen = screens_after(&w, vec![Act::ForgetProject(proj(&w))]);
+
+    assert!(seen[1].has_notice);
+}
+
+#[test]
+fn deleting_a_profile_that_is_gone_is_reported_and_touches_nothing() {
+    let w = world_with_web();
+
+    let seen = screens_after(&w, vec![Act::DeleteProfile("ghost".into())]);
+
+    assert!(seen[1].has_notice);
+    assert_eq!(seen[1].profiles, ["web"]);
+}
+
+#[test]
+fn applying_to_a_project_that_is_not_registered_is_reported_and_applies_nothing() {
+    let w = world_with_web();
+
+    let seen = screens_after(
+        &w,
+        vec![Act::Apply {
+            project: proj(&w),
+            profile: "web".into(),
+        }],
+    );
+
+    assert!(seen[1].has_notice);
+    assert!(w.applied_profiles().is_empty());
 }

@@ -1,6 +1,7 @@
 //! One list pane's state: a cursor over the rows that pass the pane's filter.
 
 use ratatui::crossterm::event::KeyEvent;
+use ratatui::layout::{Position, Rect};
 
 use crate::matcher::fuzzy_rank;
 use crate::tui::widgets::input::{InputField, Outcome as Edit};
@@ -15,6 +16,9 @@ pub(super) struct Pane {
     /// Model row indices that pass the filter, best match first.
     visible: Vec<usize>,
     total: usize,
+    /// Where the pane and its rows were last drawn; empty when it was not drawn.
+    pub area: Rect,
+    pub rows: Rect,
 }
 
 impl Pane {
@@ -24,6 +28,8 @@ impl Pane {
             filter: InputField::new(PLACEHOLDER),
             visible: (0..total).collect(),
             total,
+            area: Rect::default(),
+            rows: Rect::default(),
         }
     }
 
@@ -39,6 +45,15 @@ impl Pane {
         let nearest = row.min(self.visible.len().saturating_sub(1));
         let at = self.visible.iter().position(|&v| v == row);
         self.list.select(at.unwrap_or(nearest));
+    }
+
+    /// The shown-row index under the screen position, if a row is drawn there.
+    pub fn shown_at(&self, at: Position) -> Option<usize> {
+        if !self.rows.contains(at) {
+            return None;
+        }
+        let shown = self.list.offset() + usize::from(at.y - self.rows.y);
+        (shown < self.visible.len()).then_some(shown)
     }
 
     pub fn visible(&self) -> &[usize] {

@@ -26,6 +26,13 @@ pub fn ctrl(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
 }
 
+/// True when the cell shows everything `style` sets: its colours and its modifiers.
+pub fn has_style(cell: &ratatui::buffer::Cell, style: ratatui::style::Style) -> bool {
+    style.fg.is_none_or(|c| cell.fg == c)
+        && style.bg.is_none_or(|c| cell.bg == c)
+        && cell.modifier.contains(style.add_modifier)
+}
+
 /// One key press per character of `s`.
 pub fn keys(s: &str) -> Vec<KeyEvent> {
     s.chars().map(|c| key(KeyCode::Char(c))).collect()

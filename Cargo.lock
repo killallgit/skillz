@@ -847,6 +847,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shell-words",
+ "signal-hook",
  "tempfile",
  "toml_edit",
  "unicode-width",

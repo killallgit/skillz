@@ -1,6 +1,7 @@
 use super::marks::Mark;
 use super::model::Overlay;
 use super::*;
+use crate::tui::theme::Theme;
 use crate::tui::widgets::testing::{key, keys, render_to_buffer, row_text};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 

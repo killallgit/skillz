@@ -36,6 +36,42 @@ pub trait Prompter {
     fn home(&self, _model: Model, _pos: Pos) -> anyhow::Result<(Act, Pos)> {
         anyhow::bail!("the workspace needs a terminal")
     }
+    /// Keep the interactive session open across several prompts until the guard is dropped.
+    fn hold(&self) -> Hold<'_> {
+        Hold::none()
+    }
+    /// Give the terminal back for work that talks to it directly; the next prompt retakes it.
+    fn release_terminal(&self) {}
+    /// Show `body` and ask `question` about it. Without a screen: just the question.
+    fn review(&self, _title: &str, body: &str, question: &str) -> anyhow::Result<bool> {
+        let _ = body;
+        self.confirm(question)
+    }
+    /// Show `body` until the user dismisses it. Without a screen: nothing.
+    fn report(&self, _title: &str, _body: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+/// Runs its release when dropped; what `Prompter::hold` returns.
+pub struct Hold<'a>(Option<Box<dyn FnOnce() + 'a>>);
+
+impl<'a> Hold<'a> {
+    pub fn none() -> Self {
+        Hold(None)
+    }
+
+    pub fn new(release: impl FnOnce() + 'a) -> Self {
+        Hold(Some(Box::new(release)))
+    }
+}
+
+impl Drop for Hold<'_> {
+    fn drop(&mut self) {
+        if let Some(release) = self.0.take() {
+            release();
+        }
+    }
 }
 
 /// What to do with the items picked in `Prompter::browse`.
@@ -87,6 +123,17 @@ impl Prompter for AssumeYes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hold_releases_once_when_dropped() {
+        let released = std::cell::Cell::new(0);
+
+        let hold = Hold::new(|| released.set(released.get() + 1));
+        let before = released.get();
+        drop(hold);
+
+        assert_eq!((before, released.get()), (0, 1));
+    }
 
     #[test]
     fn assume_yes_selects_all_and_confirms() {
