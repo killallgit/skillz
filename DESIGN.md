@@ -129,6 +129,9 @@ this to pick the tool's own uninstall (see the native-removal epic).
   first, in plan order. A non-zero exit aborts the plan before any file is touched; a program
   that is not installed is skipped (reported in `Report::skipped`). The file steps below then
   finish whatever the tool left, and the final inventory check confirms the item is gone.
+  Commands run through `CommandRunner::run_quiet` (stdout and stdin detached, stderr kept
+  for errors) so their banners do not print over the one `⠋ removing <name>` spinner line
+  (`spinner::Spinner`, stderr, only on a terminal) that `action::execute_with` drives.
   Names from config files that are empty or option-like (`-x`) never become command args
   (`Action::native`).
 

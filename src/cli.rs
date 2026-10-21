@@ -9,7 +9,6 @@ use crate::action::{self, Action};
 use crate::agents::{self, AgentAdapter};
 use crate::cost;
 use crate::env::Env;
-use crate::info;
 use crate::install::{self, InstallRequest, SkillSelection};
 use crate::matcher;
 use crate::model::{Agent, Augmentation, Kind, Scope};
@@ -18,6 +17,7 @@ use crate::prune;
 use crate::runner::{CommandRunner, SystemRunner};
 use crate::tree;
 use crate::usage;
+use crate::{info, spinner};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -754,7 +754,21 @@ fn remove(
         return Ok(());
     }
 
-    let report = action::execute(&plan, deps.runner)?;
+    // One status line while it works: the thing being removed, not each command's chatter.
+    let spinner = spinner::Spinner::start("removing");
+    let owner = |step: &Action| {
+        chosen
+            .iter()
+            .find(|c| c.removal.contains(step))
+            .map_or_else(String::new, |c| c.name.clone())
+    };
+    let result = action::execute_with(&plan, deps.runner, &mut |step| {
+        if let Some(s) = &spinner {
+            s.set(&format!("removing {}", owner(step)));
+        }
+    });
+    drop(spinner);
+    let report = result?;
     writeln!(
         out,
         "ran {} commands, removed {} paths, edited {} files",

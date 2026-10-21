@@ -14,6 +14,12 @@ pub struct Output {
 pub trait CommandRunner {
     fn run(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output>;
 
+    /// Like `run`, but the child's stdout and stdin are not the terminal's: its progress chatter
+    /// would otherwise print over our own status line. Runners that cannot tell just `run`.
+    fn run_quiet(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output> {
+        self.run(program, args, cwd)
+    }
+
     /// Run and return stdout; a non-zero exit is an error. Runners that cannot capture say so.
     fn capture(&self, program: &str, _args: &[String], _cwd: &Path) -> anyhow::Result<String> {
         anyhow::bail!("cannot capture the output of `{program}` here")
@@ -51,6 +57,26 @@ impl CommandRunner for SystemRunner {
         Ok(Output {
             success: out.status.success(),
             stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        })
+    }
+
+    fn run_quiet(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output> {
+        let out = Command::new(program)
+            .args(args)
+            .envs(self.envs.iter().map(|(k, v)| (k, v)))
+            .current_dir(cwd)
+            .stdin(Stdio::null())
+            .output()
+            .with_context(|| format!("failed to run `{program}` in {}", cwd.display()))?;
+        // Some tools report failures on stdout, which we are not showing.
+        let said = if out.stderr.is_empty() {
+            &out.stdout
+        } else {
+            &out.stderr
+        };
+        Ok(Output {
+            success: out.status.success(),
+            stderr: String::from_utf8_lossy(said).into_owned(),
         })
     }
 
@@ -101,6 +127,21 @@ mod tests {
         let args = ["-c".into(), "printf %s \"$SKILLZ_TEST_DIR\"".into()];
         let out = runner.capture("sh", &args, dir.path()).unwrap();
         assert_eq!(out, dir.path().to_string_lossy());
+    }
+
+    #[test]
+    fn quiet_runs_swallow_stdout_but_keep_stderr() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = ["-c".into(), "echo noise; echo oops >&2; exit 2".into()];
+        let out = SystemRunner::default()
+            .run_quiet("sh", &args, dir.path())
+            .unwrap();
+        assert_eq!((out.success, out.stderr.trim()), (false, "oops"));
+        let args = ["-c".into(), "echo only-stdout; exit 1".into()];
+        let out = SystemRunner::default()
+            .run_quiet("sh", &args, dir.path())
+            .unwrap();
+        assert_eq!(out.stderr.trim(), "only-stdout");
     }
 
     #[test]

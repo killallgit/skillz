@@ -242,6 +242,16 @@ type Plan = Option<(String, String)>;
 /// touched), then write all edited files or none, then remove paths in their original order
 /// (checking each `RemovePathIfJsonAbsent` condition against the written files).
 pub fn execute(actions: &[Action], runner: &dyn CommandRunner) -> anyhow::Result<Report> {
+    execute_with(actions, runner, &mut |_| {})
+}
+
+/// `execute`, calling `on_step` before each step so a caller can show progress. Commands run
+/// quietly: their own output would scribble over a status line.
+pub fn execute_with(
+    actions: &[Action],
+    runner: &dyn CommandRunner,
+    on_step: &mut dyn FnMut(&Action),
+) -> anyhow::Result<Report> {
     let mut unique: Vec<&Action> = Vec::new();
     for action in actions {
         if !unique.contains(&action) {
@@ -267,7 +277,8 @@ pub fn execute(actions: &[Action], runner: &dyn CommandRunner) -> anyhow::Result
             .chain(args.iter().map(String::as_str))
             .collect::<Vec<_>>()
             .join(" ");
-        let out = match runner.run(program, args, cwd) {
+        on_step(action);
+        let out = match runner.run_quiet(program, args, cwd) {
             Ok(out) => out,
             Err(_) if *fallback => {
                 report.skipped.push(line);
@@ -287,6 +298,7 @@ pub fn execute(actions: &[Action], runner: &dyn CommandRunner) -> anyhow::Result
         let Action::Edit { file, edit } = action else {
             continue;
         };
+        on_step(action);
         let real = fs::canonicalize(file).unwrap_or_else(|_| file.clone());
         let i = match plans.iter().position(|(r, _, _)| *r == real) {
             Some(i) => i,
@@ -330,6 +342,7 @@ pub fn execute(actions: &[Action], runner: &dyn CommandRunner) -> anyhow::Result
                 (target, json_has(file, key).map(|has| !has))
             }
         };
+        on_step(action);
         let removed = wanted
             .and_then(|wanted| {
                 if wanted {
@@ -1156,5 +1169,16 @@ enabled = false
         assert!(at("ok").is_some());
         assert!(at("").is_none());
         assert!(at("-x").is_none());
+    }
+
+    #[test]
+    fn execute_with_reports_every_unique_step_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("f");
+        std::fs::write(&file, "x").unwrap();
+        let rm = rm(&file);
+        let mut seen = 0;
+        execute_with(&[rm.clone(), rm], &NoCommands, &mut |_| seen += 1).unwrap();
+        assert_eq!(seen, 1);
     }
 }

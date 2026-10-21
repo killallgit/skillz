@@ -18,6 +18,7 @@ pub mod prompt;
 pub mod prune;
 pub mod runner;
 pub mod skills;
+pub mod spinner;
 pub mod tree;
 pub mod tui;
 pub mod usage;
