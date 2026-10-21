@@ -9,7 +9,7 @@ use serde_json::json;
 use super::recording::record_since;
 use super::removal::{Pick, choose};
 use super::scope::{Scene, installed};
-use crate::apply::{Applier, Switch};
+use crate::apply::{Applier, Switch, Watch};
 use crate::model::{Augmentation, Scope};
 use crate::store::Store;
 use crate::{remove, update};
@@ -77,7 +77,14 @@ fn run(scene: &Scene, switch: &Switch, out: &mut dyn Write) -> anyhow::Result<()
         env,
         scope: Scope::Project,
     };
-    let done = applier.run_each(switch, deps.runner, &mut |_| {});
+    let done = applier.run_each(
+        switch,
+        deps.runner,
+        &mut Watch {
+            step: &mut |_| {},
+            item: &mut |_| {},
+        },
+    );
     let recorded = record_since(deps, &Store::in_env(env), (env, Scope::Project), &before);
     writeln!(out, "updated {} of {}", done.updated, switch.updates.len())?;
     if !done.failures.is_empty() {

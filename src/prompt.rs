@@ -53,6 +53,11 @@ pub trait Prompter {
     fn progress(&self, _title: &str, _total: usize) -> Box<dyn Progress + '_> {
         Box::new(NoProgress)
     }
+    /// Like `progress`, but shown on the workspace when there is one: its rows show each item
+    /// in flight.
+    fn live(&self, title: &str, total: usize) -> Box<dyn Progress + '_> {
+        self.progress(title, total)
+    }
     /// Show how a switch ended. Without a screen: nothing, and no retry.
     fn outcome(&self, _title: &str, _outcome: &Outcome) -> anyhow::Result<Next> {
         Ok(Next::Done)
