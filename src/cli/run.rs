@@ -2,7 +2,8 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use super::args::{
-    Command, InstallArgs, ListArgs, PruneArgs, ResetArgs, UninstallArgs, UpdateArgs, UseArgs,
+    Command, Filter, InstallArgs, ListArgs, PruneArgs, ResetArgs, SyncArgs, UninstallArgs,
+    UpdateArgs, UseArgs,
 };
 use super::deps::Deps;
 use super::isolate::run_isolated;
@@ -12,6 +13,7 @@ use super::prune::prune;
 use super::recording::record_since;
 use super::removal::{UninstallRequest, reset, uninstall};
 use super::scope::{Scene, installed, resolve, resolve_project, split_target};
+use super::sync::{SyncRequest, sync};
 use super::update::{UpdateRequest, check, update};
 use super::use_profile::{Switching, Target, use_profile};
 use crate::install::{self, InstallRequest, SkillSelection};
@@ -29,6 +31,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         Command::Prune(args) => succeeded(run_prune(deps, args, out)),
         Command::Reset(args) => succeeded(run_reset(deps, args, out)),
         Command::Use(args) => succeeded(run_use(deps, args, out)),
+        Command::Sync(args) => succeeded(run_sync(deps, args, out)),
         Command::Install(args) => succeeded(run_install(deps, args)),
         Command::Profile { action, project } => {
             succeeded(profile_command(deps, action, project, out))
@@ -111,6 +114,17 @@ fn run_use(deps: &Deps, args: UseArgs, out: &mut dyn Write) -> anyhow::Result<()
         dry_run: args.dry_run,
     };
     use_profile(deps, &target, &switching, out)
+}
+
+fn run_sync(deps: &Deps, args: SyncArgs, out: &mut dyn Write) -> anyhow::Result<()> {
+    let (env, scopes) = resolve(deps, args.project.as_deref(), args.global)?;
+    let filter = Filter::default();
+    let scene = Scene::new(deps, &env, &scopes, &filter);
+    let request = SyncRequest {
+        dry_run: args.dry_run,
+        json: args.json,
+    };
+    sync(&scene, &request, out)
 }
 
 fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {

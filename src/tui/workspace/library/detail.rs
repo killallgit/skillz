@@ -4,6 +4,27 @@ use crate::library::{ItemKind, LibraryItem, Provenance};
 use crate::model::Agent;
 use crate::profile::Entry;
 
+/// How an item came to be in the library.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Cue {
+    /// Typed in by hand.
+    Manual,
+    /// Found already installed by a scan.
+    Detected,
+    /// Recorded when skillz installed it.
+    Skillz,
+}
+
+impl Cue {
+    fn of(provenance: Option<&Provenance>) -> Cue {
+        match provenance {
+            None => Cue::Manual,
+            Some(p) if p.detected => Cue::Detected,
+            Some(_) => Cue::Skillz,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Detail {
     pub kind: ItemKind,
@@ -13,6 +34,7 @@ pub(super) struct Detail {
     pub agents: Vec<Agent>,
     /// How it was installed; `None` for an item typed in by hand.
     pub provenance: Option<Provenance>,
+    pub cue: Cue,
 }
 
 pub(super) fn detail(item: &LibraryItem) -> Detail {
@@ -28,6 +50,7 @@ pub(super) fn detail(item: &LibraryItem) -> Detail {
         source,
         agents: item.entry.agents().to_vec(),
         provenance: item.provenance.clone(),
+        cue: Cue::of(item.provenance.as_ref()),
     }
 }
 
@@ -58,11 +81,33 @@ mod tests {
             engine: crate::model::Installer::Npx,
             version: None,
             recorded_at: 1,
+            detected: false,
         };
         let item = skill("o/r", "tdd").with_provenance(provenance.clone());
 
         assert_eq!(detail(&item).provenance, Some(provenance));
         assert_eq!(detail(&skill("o/r", "tdd")).provenance, None);
+    }
+
+    #[test]
+    fn the_cue_tells_typed_detected_and_skillz_installed_items_apart() {
+        let recorded = |detected| {
+            skill("o/r", "tdd").with_provenance(Provenance {
+                link: None,
+                engine: crate::model::Installer::Npx,
+                version: None,
+                recorded_at: 1,
+                detected,
+            })
+        };
+
+        let cues = [
+            detail(&skill("o/r", "tdd")).cue,
+            detail(&recorded(true)).cue,
+            detail(&recorded(false)).cue,
+        ];
+
+        assert_eq!(cues, [Cue::Manual, Cue::Detected, Cue::Skillz]);
     }
 
     #[test]

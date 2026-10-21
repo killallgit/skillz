@@ -10,6 +10,7 @@ mod recording;
 mod removal;
 mod run;
 mod scope;
+mod sync;
 mod update;
 mod use_profile;
 mod workspace;
@@ -23,7 +24,7 @@ use clap::Parser;
 
 use args::wants_auto_yes;
 pub use args::{
-    Cli, Command, Filter, InstallArgs, ListArgs, ProfileCommand, PruneArgs, ResetArgs,
+    Cli, Command, Filter, InstallArgs, ListArgs, ProfileCommand, PruneArgs, ResetArgs, SyncArgs,
     UninstallArgs, UpdateArgs, UseArgs,
 };
 pub use deps::Deps;
@@ -33,6 +34,7 @@ pub use workspace::workspace;
 use crate::agents;
 use crate::prompt::{AssumeYes, Prompter};
 use crate::runner::SystemRunner;
+use crate::sync::{InstalledScanner, Scanner};
 use crate::tui::prompter::TuiPrompter;
 use crate::tui::theme::Theme;
 use crate::update::check::{ClaudeMarketplaces, NoCheck, UpdateCheck};
@@ -62,11 +64,19 @@ pub fn main() -> anyhow::Result<i32> {
         // Pickers and the browser read keys from stdin and draw on stdout.
         interactive: std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
         checker,
+        scanner: background_scanner(),
     };
     match cli.command {
         Some(command) => run(command, &deps, &mut std::io::stdout()),
         None => workspace(&deps, cli.path.as_deref()).map(|()| 0),
     }
+}
+
+/// The startup scan that fills the library, unless `SKILLZ_NO_SYNC` is set.
+fn background_scanner() -> Option<Arc<dyn Scanner>> {
+    std::env::var_os("SKILLZ_NO_SYNC")
+        .is_none()
+        .then(|| Arc::new(InstalledScanner) as Arc<dyn Scanner>)
 }
 
 /// The network check for newer versions, unless `SKILLZ_NO_UPDATE_CHECK` is set.

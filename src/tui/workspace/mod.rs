@@ -10,11 +10,13 @@ mod library;
 mod model;
 mod profiles;
 mod shell;
+mod syncs;
 mod tab;
 
 pub use act::Act;
 pub use model::Model;
 pub use shell::Workspace;
+pub use syncs::Synced;
 pub use tab::Tab;
 
 use std::sync::{Arc, Mutex, PoisonError};

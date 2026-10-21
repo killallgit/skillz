@@ -27,7 +27,7 @@ pub enum Act {
     LibraryAdd {
         spec: String,
     },
-    /// Add what the project has installed to the library.
+    /// Add what is installed, in the project and at user level, to the library.
     LibraryImport,
     LibraryRemove(Entry),
     /// Make the project hold exactly what the profile has, removing the rest.

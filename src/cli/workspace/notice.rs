@@ -2,8 +2,6 @@
 
 use std::fmt;
 
-use crate::snapshot::Skipped;
-
 #[derive(Debug)]
 pub(super) enum Notice {
     Failed(String),
@@ -20,10 +18,11 @@ pub(super) enum Notice {
     Applied(String),
     LibraryAdded(String),
     LibraryRemoved(String),
-    /// How many items the library gained, and what was left out.
-    Imported {
+    /// How many items the library gained from what is installed, and how many installed
+    /// items were left out for needing secrets.
+    Synced {
         added: usize,
-        skipped: Vec<Skipped>,
+        secrets: usize,
     },
     Created(String),
     /// A profile saved from the project, with the installed items it could not hold.
@@ -48,7 +47,13 @@ impl fmt::Display for Notice {
             Notice::Applied(profile) => write!(f, "applied {profile}"),
             Notice::LibraryAdded(what) => write!(f, "added {what} to the library"),
             Notice::LibraryRemoved(what) => write!(f, "removed {what} from the library"),
-            Notice::Imported { added, skipped } => write_imported(f, *added, skipped),
+            Notice::Synced { added, secrets: 0 } => write!(f, "library: {added} new"),
+            Notice::Synced { added, secrets } => {
+                write!(
+                    f,
+                    "library: {added} new, {secrets} left out for needing secrets"
+                )
+            }
             Notice::Created(name) => write!(f, "created {name}"),
             Notice::Saved { name, skipped } if skipped.is_empty() => write!(f, "saved {name}"),
             Notice::Saved { name, skipped } => {
@@ -58,16 +63,4 @@ impl fmt::Display for Notice {
             Notice::Deleted(name) => write!(f, "deleted {name}"),
         }
     }
-}
-
-fn write_imported(f: &mut fmt::Formatter<'_>, added: usize, skipped: &[Skipped]) -> fmt::Result {
-    write!(f, "imported {added}")?;
-    if skipped.is_empty() {
-        return Ok(());
-    }
-    let left_out: Vec<String> = skipped
-        .iter()
-        .map(|s| format!("{} ({})", s.label, s.reason))
-        .collect();
-    write!(f, ", skipped {}: {}", skipped.len(), left_out.join("; "))
 }

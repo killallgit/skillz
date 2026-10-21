@@ -16,6 +16,7 @@ fn items_shown_picking(w: &World, query: &str, pick: Vec<usize>, json: bool) -> 
     let d = Deps {
         interactive: true,
         checker: std::sync::Arc::new(skillz::update::check::NoCheck),
+        scanner: None,
         ..deps(w, &r, &p)
     };
     let out = run_captured(list_cmd(Some(query), false, json), &d);

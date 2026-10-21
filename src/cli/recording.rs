@@ -3,17 +3,12 @@
 use super::deps::Deps;
 use super::scope::installed;
 use crate::env::Env;
-use crate::library::record_installed;
+use crate::library::{now_secs, record_installed, sync_installed};
 use crate::model::{Augmentation, Scope};
 use crate::store::Store;
 
-pub(super) fn now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
-}
-
-/// Add to the library what is installed now but was not, or was different, in `before`.
+/// Add to the library what is installed now but was not, or was different, in `before`, then
+/// sync it with everything else installed in both scopes.
 pub(super) fn record_since(
     deps: &Deps,
     store: &Store,
@@ -21,8 +16,38 @@ pub(super) fn record_since(
     before: &[Augmentation],
 ) -> anyhow::Result<()> {
     let after = installed(deps, env, scope);
+    let everything = [Scope::Project, Scope::Global]
+        .map(|s| installed(deps, env, s))
+        .concat();
     store.update(|document| {
         record_installed(&mut document.items, (before, &after), now_secs());
+        sync_installed(&mut document.items, &everything, now_secs());
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agents::registry;
+    use crate::cli::scope::project_env;
+    use crate::install::test_support::{FakeRunner, ScriptedPrompter};
+
+    #[test]
+    fn recording_an_install_also_picks_up_what_else_is_installed_at_user_level() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = dir.path().join(".claude/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        let hook = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"fmt"}]}]}}"#;
+        std::fs::write(&settings, hook).unwrap();
+        let (runner, prompter) = (FakeRunner::new(|_| {}), ScriptedPrompter::new(&[], true));
+        let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+        let env = project_env(&deps, &dir.path().join("proj"));
+        let store = Store::in_env(&env);
+
+        record_since(&deps, &store, (&env, Scope::Project), &[]).unwrap();
+
+        // Assert the global hook, which the install did not touch, is in the library.
+        assert_eq!(store.read().unwrap().items.items().len(), 1);
+    }
 }

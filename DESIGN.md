@@ -86,7 +86,8 @@ Directories:
 | `agents/cursor` | skills and hooks only |
 | `install` | `skillz install`: `install()` dispatch, `InstallRequest`, `SkillSelection`; `source` (local path or clone, rejects empty/option-like sources), `skills` (scan, selection, npx `add`) |
 | `profile` | `Profile` (toml), `Entry` (skill, plugin, subagent, hook, mcp), `Store`, a facade over the `store` document, with `load_flat` for `extends`; `validate` (every value non-empty, not option-like), `spec` (the one-line typed form), `identity` (which entries are the same thing; `overlay`) |
-| `library` | `Catalog` of `LibraryItem`s (label, `Entry`, optional `Provenance`: link, engine = `Installer`, version, `recorded_at`); `import_installed` / `record_installed` turn installed `Augmentation`s into items with their `Origin`; `Catalog::installable` swaps a skill's source for its recorded link |
+| `library` | `Catalog` of `LibraryItem`s (label, `Entry`, optional `Provenance`: link, engine = `Installer`, version, `recorded_at`); `import_installed` / `record_installed` turn installed `Augmentation`s into items with their `Origin`; `sync_installed` adds only what the catalog lacks (`Catalog::add_if_new`), with `Provenance::detected` set, and reports the rest as `Synced`; `Catalog::installable` swaps a skill's source for its recorded link |
+| `sync` | `Scanner` (what is installed in both scopes; `InstalledScanner` reads every adapter), `sync_library` (scan result into the store under its lock, or a dry run), `spawn` (scan and sync on a thread, then call back) |
 | `snapshot` | installed items -> a `Profile` through one collector per kind (`skills`, `plugins`, `subagents`, `hooks`, `mcp`); what cannot be reinstalled comes back as `Skipped` with a `Reason` |
 | `apply` | `standing` (pure: `compare` a profile's entries with the inventory into present / missing / extras; `loaded` picks the matching profile), `Applier::plan` (`Switch`: present, installs, and with `exact` the removals), `Applier::run` (remove via `remove`, then run the install steps) |
 | `cli` | `args` (clap), `deps` (`Deps`), `scope` (scope and target rules), `run` (dispatch), one module per command group (`list`, `removal` for uninstall and reset, `prune`, `use_profile`, `isolate` for `run`, `profile`); the workspace side, a directory `workspace` (`mod` the loop, `model` the snapshot the tabs show, `perform`, `change` (plan, progress, result of one change), `plan_view`, `notice`); `cli::main` wires real dependencies |
@@ -229,8 +230,25 @@ subagents). Removal uses this to pick the tool's own uninstall.
   (retry replans). One directory (cwd or `skillz PATH`) is the only project and nothing is stored
   for it: the Project and Global tabs are derived from the native config, the library and the profiles. After
   each install (`install`, `use`, workspace changes) `cli::recording` adds the installed items
-  that are new or changed since before the run to the library, with their provenance; a picked
+  that are new or changed since before the run to the library, with their provenance, then syncs everything installed in both scopes; a picked
   library item is installed from its recorded link (`Catalog::installable`).
+
+## Library sync
+
+The library is the master record of everything seen, so syncing is additive: `sync_installed`
+appends installed items the catalog does not know (`add_if_new` leaves a known item, its label and
+its provenance as they are) and nothing in the sync path removes. Removal from the library is the
+explicit `LibraryRemove` act only. Found items carry `Provenance::detected`; items recorded by an
+install do not, and a detected item that skillz installs later is rewritten without the flag.
+
+Scanning never holds the store: `sync::Scanner` reads the inventory first, then `sync_library`
+takes the store lock for the merge alone. The workspace starts `sync::spawn` on a thread (the
+`Scanner` is `None` with `SKILLZ_NO_SYNC`), whose callback sends a `tui::workspace::Synced` (the new
+library, a toast only when something was added or left out for secrets, or a quiet failure toast)
+over a channel. `Workspace::draw` takes finished syncs, reloads the tabs from its last `Model` with
+the new library and toasts. `skillz sync` runs the same merge over `Scene::gather`, and
+`cli::recording` runs it after every recorded change. The Library tab derives per-row `Presence`
+(project, global) from the model's installed lists with `snapshot` and `same_thing`.
 
 ## Updating
 

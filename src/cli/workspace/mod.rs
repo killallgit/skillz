@@ -9,6 +9,7 @@ mod perform;
 mod plan_view;
 mod profiles;
 mod selection;
+mod sync;
 mod updates;
 
 use std::path::{Path, PathBuf};
@@ -39,6 +40,8 @@ struct Session<'a, 'd> {
 pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
     let _held = deps.prompter.hold();
     let env = resolve_project(deps, path)?;
+    let (synced, syncs) = mpsc::channel();
+    sync::start(deps, &env, synced);
     let session = Session {
         deps,
         profiles: profile::Store::in_env(&env),
@@ -48,6 +51,7 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
     let screen: Shared = Arc::new(Mutex::new(Workspace::standard()));
     let (found, results) = mpsc::channel();
     lock(&screen).watch_updates(results);
+    lock(&screen).watch_syncs(syncs);
     let mut notice = None;
     let mut to_check = None;
     loop {

@@ -14,6 +14,7 @@ use super::installed::InstalledTab;
 use super::library::LibraryTab;
 use super::model::Model;
 use super::profiles::ProfilesTab;
+use super::syncs::{Synced, Syncs};
 use super::tab::Tab;
 use crate::review::ItemEvent;
 use crate::tui::filter;
@@ -37,6 +38,8 @@ pub struct Workspace {
     toasts: Toasts,
     help: Option<Help>,
     checks: Checks,
+    syncs: Syncs,
+    model: Model,
 }
 
 impl Workspace {
@@ -48,12 +51,19 @@ impl Workspace {
             toasts: Toasts::default(),
             help: None,
             checks: Checks::default(),
+            syncs: Syncs::default(),
+            model: Model::default(),
         }
     }
 
     /// Mark the items whose ids arrive on `found` as having an update.
     pub fn watch_updates(&mut self, found: Receiver<String>) {
         self.checks.watch(found);
+    }
+
+    /// Show the outcome of each library sync that arrives on `done`.
+    pub fn watch_syncs(&mut self, done: Receiver<Synced>) {
+        self.syncs.watch(done);
     }
 
     /// Drop the marks of items that were just updated.
@@ -87,6 +97,19 @@ impl Workspace {
             self.toasts.push(notice);
         }
         self.tabs.iter_mut().for_each(|tab| tab.load(&model));
+        self.model = model;
+    }
+
+    fn take_syncs(&mut self) {
+        for synced in self.syncs.finished() {
+            if let Some(library) = synced.library {
+                self.model.library = library;
+                self.tabs.iter_mut().for_each(|tab| tab.load(&self.model));
+            }
+            if let Some(notice) = synced.notice {
+                self.toasts.push(notice);
+            }
+        }
     }
 
     fn tab(&self) -> &dyn Tab {
@@ -140,6 +163,7 @@ impl Workspace {
     }
 
     pub fn draw(&mut self, frame: &mut Frame, theme: &Theme) {
+        self.take_syncs();
         let area = frame.area();
         if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
             return draw_too_small(frame, area, theme);

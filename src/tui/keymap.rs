@@ -157,7 +157,7 @@ pub const BINDINGS: &[Binding] = &[
     bind(Installed, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
     bind(Installed, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
     bind(Library, A::Add, &[ch('a')], "a", "add", 1),
-    bind(Library, A::Import, &[ch('i')], "i", "import installed", 2),
+    bind(Library, A::Import, &[ch('i')], "i", "sync installed", 2),
     bind(Library, A::Delete, &[ch('x')], "x", "remove", 3),
     bind(Library, A::Filter, &[ch('/')], "/", "filter", 4),
     bind(Library, A::Toggle, &[ch(' ')], "space", "expand", 0),

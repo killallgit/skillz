@@ -200,3 +200,36 @@ fn the_standard_workspace_has_four_tabs_and_digit_four_reaches_the_last() {
 
     assert_eq!((tabs, ws.bar.selected()), (4, 3));
 }
+
+#[test]
+fn a_finished_sync_reloads_every_tab_and_toasts_its_notice() {
+    let (mut ws, seen) = workspace(false);
+    let (tx, rx) = std::sync::mpsc::channel();
+    ws.watch_syncs(rx);
+    ws.load(Model::default());
+    tx.send(Synced {
+        library: Some(Default::default()),
+        notice: Some("library: 2 new".into()),
+    })
+    .unwrap();
+    let theme = Theme::dark();
+
+    render_to_buffer(60, 12, |f| ws.draw(f, &theme));
+
+    // Assert each tab loaded twice (the snapshot, then the sync) and one toast is up.
+    assert!(seen.iter().all(|s| s.lock().unwrap().loads == 2));
+    assert_eq!(ws.toasts.len(), 1);
+}
+
+#[test]
+fn a_sync_with_nothing_to_say_toasts_nothing() {
+    let (mut ws, _) = workspace(false);
+    let (tx, rx) = std::sync::mpsc::channel();
+    ws.watch_syncs(rx);
+    tx.send(Synced::default()).unwrap();
+    let theme = Theme::dark();
+
+    render_to_buffer(60, 12, |f| ws.draw(f, &theme));
+
+    assert_eq!(ws.toasts.len(), 0);
+}
