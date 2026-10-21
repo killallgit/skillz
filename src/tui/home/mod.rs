@@ -22,7 +22,9 @@ mod tests;
 mod view;
 mod welcome;
 
-pub use model::{Act, Current, DetailLine, EntryKind, Focus, Model, Pos, ProfileRow, ProjectRow};
+pub use model::{
+    Act, Current, DetailLine, EntryKind, Focus, Model, Places, Pos, ProfileRow, ProjectRow,
+};
 pub use screen::HomeScreen;
 pub use state::Home;
 

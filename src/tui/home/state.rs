@@ -7,7 +7,7 @@ use ratatui::crossterm::event::KeyEvent;
 use super::ask::Ask;
 use super::detail::Detail;
 use super::layout::Mode;
-use super::model::{Act, Focus, Model, Pos, ProjectRow};
+use super::model::{Act, Focus, Model, Places, Pos, ProjectRow};
 use super::mouse::Click;
 use super::pane::Pane;
 use crate::tui::help::Help;
@@ -15,6 +15,7 @@ use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::Outcome as Moved;
 use crate::tui::widgets::confirm::ConfirmDialog;
 use crate::tui::widgets::input::InputField;
+use crate::tui::widgets::path_picker::PathPicker;
 use crate::tui::widgets::tabs::Tabs;
 use crate::tui::widgets::toast::Toasts;
 
@@ -27,6 +28,8 @@ pub(super) enum Popup {
     #[default]
     None,
     Input(Ask, InputField),
+    /// Choosing the directory of a project to add.
+    Path(PathPicker),
     /// Deleting the named profile waits for a yes.
     Delete(String, ConfirmDialog),
     Help(Help),
@@ -92,6 +95,7 @@ impl Home {
         match std::mem::take(&mut self.popup) {
             Popup::None => self.handle_idle(key),
             Popup::Input(ask, field) => self.handle_input(ask, field, key),
+            Popup::Path(picker) => self.handle_path(picker, key),
             Popup::Delete(profile, dialog) => self.handle_delete(profile, dialog, key),
             Popup::Help(help) => self.handle_help(help, key),
             Popup::Filter => self.handle_filter(key),
@@ -129,7 +133,7 @@ impl Home {
         let profile = self.profile_id();
         match action {
             Action::Unload => self.loaded_project().map(|project| Act::Unload { project }),
-            Action::AddProject => self.ask(Ask::AddProject),
+            Action::AddProject => self.open_path_picker(),
             Action::NewProfile => self.ask(Ask::NewProfile),
             Action::SaveProfile if self.usable_project().is_some() => self.ask(Ask::SaveProfile),
             Action::AddTyped if profile.is_some() => self.ask(Ask::AddEntry),
@@ -203,6 +207,12 @@ impl Home {
     pub(super) fn open(&mut self, popup: Popup) -> Option<Act> {
         self.popup = popup;
         None
+    }
+
+    fn open_path_picker(&mut self) -> Option<Act> {
+        let Places { start, home } = &self.model.places;
+        let picker = PathPicker::new("Add project", start, home);
+        self.open(Popup::Path(picker))
     }
 
     pub(super) fn ask(&mut self, ask: Ask) -> Option<Act> {

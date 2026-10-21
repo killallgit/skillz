@@ -74,8 +74,17 @@ pub struct Current {
     pub profile: Option<String>,
 }
 
+/// Directories the path picker starts from and abbreviates.
+#[derive(Default)]
+pub struct Places {
+    /// Where skillz was run.
+    pub start: PathBuf,
+    pub home: PathBuf,
+}
+
 #[derive(Default)]
 pub struct Model {
+    pub places: Places,
     pub current: Option<Current>,
     pub projects: Vec<ProjectRow>,
     pub profiles: Vec<ProfileRow>,

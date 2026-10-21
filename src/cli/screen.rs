@@ -9,7 +9,7 @@ use super::scope::project_env;
 use crate::apply;
 use crate::model::Scope;
 use crate::profile;
-use crate::tui::home::{Current, Model, ProfileRow, ProjectRow};
+use crate::tui::home::{Current, Model, Places, ProfileRow, ProjectRow};
 use crate::workspace::Workspace;
 
 /// Builds the project and profile rows from one ledger and profile store.
@@ -87,6 +87,10 @@ pub(super) fn screen_model(
     let rows = Rows::new(deps, store);
     let here = rows.project(deps.cwd.clone())?;
     Ok(Model {
+        places: Places {
+            start: deps.cwd.clone(),
+            home: deps.home.clone(),
+        },
         current: Some(Current {
             short: here.short,
             profile: here.profile,

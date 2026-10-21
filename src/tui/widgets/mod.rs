@@ -7,6 +7,7 @@ pub(crate) mod keybar;
 pub(crate) mod list;
 pub(crate) mod modal;
 pub(crate) mod panel;
+pub(crate) mod path_picker;
 pub(crate) mod scroll;
 pub(crate) mod table;
 pub(crate) mod tabs;

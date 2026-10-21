@@ -21,6 +21,7 @@ fn model() -> Model {
         broken: false,
     };
     Model {
+        places: Default::default(),
         current: None,
         projects: ["a", "b", "c"].into_iter().map(project).collect(),
         profiles: ["x", "y"].into_iter().map(profile).collect(),

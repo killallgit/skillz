@@ -194,6 +194,7 @@ impl Home {
             Popup::None | Popup::Filter => {}
             Popup::Help(help) => help.render(frame, theme),
             Popup::Delete(_, dialog) => dialog.render(frame, theme),
+            Popup::Path(picker) => picker.render(frame, theme),
             Popup::Input(ask, field) => {
                 let size = ModalSize {
                     width: 64,
