@@ -58,6 +58,9 @@ skillz install mattpocock/skills --all
 skillz install killallgit/killall-skills                 # has a marketplace: pick Claude plugins
 ```
 
+If a skill you ask for is already installed globally and not in the project, `install` says so
+and asks before installing it into the project too (`-y` goes ahead).
+
 Scope for `list`, `uninstall`, `reset` and `prune`: a `PATH` (or `-p PATH`) means that project only,
 `-g` means global only, neither means both (project = cwd). `install`, `use`, `run`, `profile` and
 the TUI always act on one project. A project that is your home directory counts as global. A `list` PATH must
@@ -201,11 +204,17 @@ never `~/.claude` or `~/.codex`. The variable is also set on every command skill
 per project: what is installed is read from the agents' own config each time. It needs a terminal
 at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
 
-- **Project**: what the directory has installed, grouped as Skills, Plugins, MCP servers, Hooks and
-  Subagents with `n of m` counts, followed in each group by library items it does not have yet
-  (shown unchecked). A header shows the directory and how it compares with a profile you chose:
-  matching, or `N missing` / `N extra`. Picked rows get their own marker and a `to install` /
-  `to remove` note, and each group shows its count of picks.
+- **Project**: three groups, each split into Skills, Plugins, MCP servers, Hooks and Subagents
+  with counts. **Project** is what this directory has installed (checked); **Global** is what you
+  have installed at user level, outside any project; **Available** is library items installed
+  nowhere. An item installed both ways is in both groups. A global row is checked only when the
+  project has it too, and `i` on it installs it into the project. Every installed row shows where
+  it lives on disk (the skill's directory, or the config file), so you can see why it counts as
+  project or global; for example `.agents/skills/NAME` inside the directory is project scope. A
+  header shows the directory and how it compares with a profile you chose: matching, or `N missing` /
+  `N extra`. Picked rows get their own marker and a `to install` / `to remove` note, and each
+  section shows its count of picks. A filter keeps the group and kind structure and hides groups
+  with no match.
   In the background the tab checks whether installed Claude marketplaces have a newer version
   (a read-only `ls-remote`) and shows those in bold with a `*` after the name. Other kinds have
   no reliable check and are never marked. `SKILLZ_NO_UPDATE_CHECK=1` turns the check off;
@@ -221,6 +230,8 @@ at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
 | --- | --- |
 | `space` | pick the item under the cursor: a library item to install, an installed item to remove; again to unpick (on a group header: open or close it) |
 | `enter` | apply all picks as one change, with one plan to review; with nothing picked, open or close the group |
+| `i` | install the item under the cursor into the project at once (after the plan); does nothing on a project row, a group header or a row nothing can install |
+| `r` | remove the item under the cursor from the project at once (after the plan); does nothing on a global or available row. Global installs are never removed from here |
 | `esc` | clear the picks (with none, clear the filter) |
 | `u` | update the installed item under the cursor, or every installed item of the group, after a plan to review; library items that are not installed and kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
 | `p` | choose the profile the header compares with |
@@ -236,6 +247,15 @@ installed, `^` updated, `~` skipped, framed in red when it removes something. `e
 `s` shows the raw steps, `esc` cancels. A progress screen follows, then a result with counts and
 any failures: `c` copies them (through the terminal, so it works over ssh), `r` retries, `enter`
 closes. A toast says what happened.
+
+While a change runs, the Project tab stays on screen and each affected row shows a spinner at
+its left (`⠋`, or `|/-\` in ASCII mode), then a tick or a cross when that item finishes, until the
+next key. The result screen lists what was done (`Installed X`, `Removed Y`, `Updated Z`) and
+every failure with its reason.
+
+Installing an item that is already installed globally (by `i`, or by `enter` on picks) first asks
+whether to also install it into this project, defaulting to No. With several picks it asks once,
+naming the global ones; No drops only those.
 
 The browser (`list -i`, multi-group queries) and every picker (`uninstall`, `prune`, `install`)
 share one list:
