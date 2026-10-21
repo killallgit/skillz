@@ -99,7 +99,7 @@ pub struct UninstallArgs {
 
 #[derive(Debug, Args)]
 pub struct ResetArgs {
-    /// Project directory (default: the current one).
+    /// Project directory (default: the current one). With `-g`, only global unless given.
     #[arg(value_name = "PATH")]
     pub project: Option<PathBuf>,
     #[command(flatten)]
@@ -191,6 +191,9 @@ pub enum ProfileCommand {
 
 #[derive(Debug, Args, Default, Clone)]
 pub struct Filter {
+    /// Global scope only
+    #[arg(short, long)]
+    pub global: bool,
     #[arg(long, visible_alias = "skill")]
     pub skills: bool,
     #[arg(long, visible_alias = "hook")]

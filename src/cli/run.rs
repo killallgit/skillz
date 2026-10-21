@@ -23,7 +23,9 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         Command::Reset(args) => succeeded(run_reset(deps, args, out)),
         Command::Use(args) => succeeded(run_use(deps, args, out)),
         Command::Install(args) => succeeded(run_install(deps, args)),
-        Command::Profile { action, project } => succeeded(profile_command(deps, action, project, out)),
+        Command::Profile { action, project } => {
+            succeeded(profile_command(deps, action, project, out))
+        }
     }
 }
 
@@ -33,7 +35,7 @@ fn succeeded(result: anyhow::Result<()>) -> anyhow::Result<i32> {
 
 fn run_list(deps: &Deps, args: ListArgs, out: &mut dyn Write) -> anyhow::Result<()> {
     let (path, query) = split_target(args.project, args.target);
-    let (env, scopes) = resolve(deps, path.as_deref())?;
+    let (env, scopes) = resolve(deps, path.as_deref(), args.filter.global)?;
     let view = ListView {
         query: query.as_deref(),
         all: args.all,
@@ -44,7 +46,7 @@ fn run_list(deps: &Deps, args: ListArgs, out: &mut dyn Write) -> anyhow::Result<
 }
 
 fn run_uninstall(deps: &Deps, args: UninstallArgs, out: &mut dyn Write) -> anyhow::Result<()> {
-    let (env, scopes) = resolve(deps, args.project.as_deref())?;
+    let (env, scopes) = resolve(deps, args.project.as_deref(), args.filter.global)?;
     let scene = Scene::new(deps, &env, &scopes, &args.filter);
     let request = UninstallRequest {
         query: args.query.as_deref(),
@@ -55,15 +57,17 @@ fn run_uninstall(deps: &Deps, args: UninstallArgs, out: &mut dyn Write) -> anyho
 }
 
 fn run_prune(deps: &Deps, args: PruneArgs, out: &mut dyn Write) -> anyhow::Result<()> {
-    let (env, scopes) = resolve(deps, args.project.as_deref())?;
+    let (env, scopes) = resolve(deps, args.project.as_deref(), args.filter.global)?;
     let scene = Scene::new(deps, &env, &scopes, &args.filter);
     prune(&scene, args.dry_run, out)
 }
 
-/// Destructive, so only the project's own installs, never the user-level ones.
+/// Destructive, so the project you are in is the default; `-g` alone is global.
 fn run_reset(deps: &Deps, args: ResetArgs, out: &mut dyn Write) -> anyhow::Result<()> {
-    let path = args.project.unwrap_or_else(|| PathBuf::from("."));
-    let (env, scopes) = resolve(deps, Some(&path))?;
+    let path = args
+        .project
+        .or_else(|| (!args.filter.global).then(|| PathBuf::from(".")));
+    let (env, scopes) = resolve(deps, path.as_deref(), args.filter.global)?;
     let scene = Scene::new(deps, &env, &scopes, &args.filter);
     reset(&scene, &args.keep, args.dry_run, out)
 }

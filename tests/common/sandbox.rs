@@ -44,7 +44,7 @@ impl Sandbox {
     }
 
     pub fn skillz_dir(&self) -> PathBuf {
-        self.home.join(".config/skillz")
+        self.project.join(".skillz")
     }
 
     pub fn write_profile(&self, name: &str, text: &str) {

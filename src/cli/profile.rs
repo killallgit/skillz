@@ -42,11 +42,7 @@ fn list_profiles(store: &profile::Store, out: &mut dyn Write) -> anyhow::Result<
     Ok(())
 }
 
-fn print_saved(
-    out: &mut dyn Write,
-    name: &str,
-    snap: &snapshot::Snapshot,
-) -> anyhow::Result<()> {
+fn print_saved(out: &mut dyn Write, name: &str, snap: &snapshot::Snapshot) -> anyhow::Result<()> {
     writeln!(out, "saved {name} from the project config:")?;
     for entry in &snap.profile.entries {
         writeln!(out, "  {entry}")?;

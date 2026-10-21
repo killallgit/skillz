@@ -27,14 +27,18 @@ pub(super) fn resolve_project(deps: &Deps, path: Option<&Path>) -> anyhow::Resul
     })
 }
 
-/// What discovery covers: a path means that project alone, no path also the user-level
-/// installs. In the home dir "project" files are the global ones, so that project is global.
-pub(super) fn resolve(deps: &Deps, path: Option<&Path>) -> anyhow::Result<(Env, Vec<Scope>)> {
+/// Scope rule for discovery: a path alone means that project, `-g` alone means global, neither
+/// means both. In the home dir "project" files are the global ones, so that project is global.
+pub(super) fn resolve(
+    deps: &Deps,
+    path: Option<&Path>,
+    global: bool,
+) -> anyhow::Result<(Env, Vec<Scope>)> {
     let env = resolve_project(deps, path)?;
-    let scopes = match (env.project == env.home, path.is_some()) {
-        (true, _) => vec![Scope::Global],
-        (false, true) => vec![Scope::Project],
-        (false, false) => vec![Scope::Global, Scope::Project],
+    let scopes = match (env.project == env.home, path.is_some(), global) {
+        (true, _, _) | (false, false, true) => vec![Scope::Global],
+        (false, true, false) => vec![Scope::Project],
+        _ => vec![Scope::Global, Scope::Project],
     };
     Ok((env, scopes))
 }
@@ -135,16 +139,17 @@ mod tests {
         }
     }
 
-    fn scopes(deps: &Deps, path: Option<&str>) -> Vec<Scope> {
-        resolve(deps, path.map(Path::new)).unwrap().1
+    fn scopes(deps: &Deps, path: Option<&str>, global: bool) -> Vec<Scope> {
+        resolve(deps, path.map(Path::new), global).unwrap().1
     }
 
     #[test]
     fn resolve_home_as_project_is_global() {
         let home = tempfile::tempdir().unwrap();
         let deps = deps_at(home.path(), home.path());
-        assert_eq!(scopes(&deps, None), [Scope::Global]);
-        assert_eq!(scopes(&deps, Some(".")), [Scope::Global]);
+        assert_eq!(scopes(&deps, None, false), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("."), false), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("."), true), [Scope::Global]);
     }
 
     #[test]
@@ -153,11 +158,13 @@ mod tests {
         std::fs::create_dir(cwd.path().join("sub")).unwrap();
         let deps = deps_at(home.path(), cwd.path());
         let both = [Scope::Global, Scope::Project];
-        assert_eq!(scopes(&deps, None), both);
-        assert_eq!(scopes(&deps, Some("sub")), [Scope::Project]);
-        let (env, _) = resolve(&deps, Some(Path::new("sub"))).unwrap();
+        assert_eq!(scopes(&deps, None, false), both);
+        assert_eq!(scopes(&deps, None, true), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("sub"), false), [Scope::Project]);
+        assert_eq!(scopes(&deps, Some("sub"), true), both);
+        let (env, _) = resolve(&deps, Some(Path::new("sub")), false).unwrap();
         assert_eq!(env.project, cwd.path().join("sub").canonicalize().unwrap());
-        assert!(resolve(&deps, Some(Path::new("missing"))).is_err());
+        assert!(resolve(&deps, Some(Path::new("missing")), false).is_err());
     }
 
     fn split(project: Option<&str>, target: &str) -> (Option<PathBuf>, Option<String>) {

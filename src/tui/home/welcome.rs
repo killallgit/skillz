@@ -28,7 +28,11 @@ pub(super) fn welcome(theme: &Theme) -> Vec<Line<'static>> {
     vec![
         Line::styled("Welcome to skillz", theme.title),
         Line::raw(""),
-        step("1", Action::SaveProfile, "save the project's setup as a profile"),
+        step(
+            "1",
+            Action::SaveProfile,
+            "save the project's setup as a profile",
+        ),
         step("2", Action::Select, "apply a profile to the project"),
     ]
 }
@@ -81,8 +85,7 @@ mod tests {
 
         assert_eq!(
             keys,
-            [Action::SaveProfile, Action::Select]
-                .map(|a| keys_for(Scope::Home, a))
+            [Action::SaveProfile, Action::Select].map(|a| keys_for(Scope::Home, a))
         );
     }
 

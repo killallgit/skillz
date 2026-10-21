@@ -90,10 +90,7 @@ mod tests {
             web.claude_dir(),
             PathBuf::from("/p/.skillz/envs/web/claude")
         );
-        assert_eq!(
-            web.codex_dir(),
-            PathBuf::from("/p/.skillz/envs/web/codex")
-        );
+        assert_eq!(web.codex_dir(), PathBuf::from("/p/.skillz/envs/web/codex"));
         assert_eq!(web.project, env.project);
     }
 

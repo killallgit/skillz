@@ -1,9 +1,9 @@
-//! `skillz use`, `skillz profile ...` and `skillz project ...`.
+//! `skillz use` and `skillz profile ...`.
 
 mod common;
 
 use common::*;
-use skillz::cli::{Command, Deps, ProfileCommand, ProjectCommand};
+use skillz::cli::{Command, Deps, ProfileCommand};
 use skillz::profile::Entry;
 
 fn world_with_web_and_api() -> World {
@@ -20,18 +20,15 @@ fn world_with_web() -> World {
 }
 
 fn profile_cmd(action: ProfileCommand) -> Command {
-    Command::Profile { action }
-}
-
-fn project_cmd(action: ProjectCommand) -> Command {
-    Command::Project { action }
+    Command::Profile {
+        action,
+        project: None,
+    }
 }
 
 fn save(force: bool) -> Command {
     profile_cmd(ProfileCommand::Save {
         name: "mine".into(),
-        global: true,
-        project: None,
         force,
     })
 }
@@ -46,11 +43,6 @@ fn apply_all(d: &Deps, profiles: &[Option<&str>]) {
     for profile in profiles {
         run_quiet(use_cmd(*profile, false), d).unwrap();
     }
-}
-
-fn listed_project_lines(d: &Deps) -> usize {
-    let out = run_captured(project_cmd(ProjectCommand::List), d);
-    String::from_utf8(out).unwrap().lines().count()
 }
 
 // --- use
@@ -148,7 +140,7 @@ fn using_a_missing_profile_fails() {
 // --- profile save / show / list / delete
 
 fn saved_profile() -> (World, String) {
-    let w = world();
+    let w = world_with_project_setup();
     let (r, p) = (Recorder::default(), Scripted::yes());
     run_quiet(save(false), &deps(&w, &r, &p)).unwrap();
     let text = std::fs::read_to_string(w.skillz_dir().join("profiles/mine.toml")).unwrap();
@@ -248,83 +240,21 @@ fn deleting_a_missing_profile_fails() {
     assert!(res.is_err());
 }
 
-// --- projects
+// --- the project's .skillz directory
 
 #[test]
-fn no_project_is_registered_at_first() {
-    let w = world_with_web();
-    let (r, p) = (Recorder::default(), Scripted::yes());
+fn the_first_save_creates_a_gitignore_for_the_local_state() {
+    let (w, _) = saved_profile();
 
-    assert_eq!(listed_project_lines(&deps(&w, &r, &p)), 0);
+    assert!(w.skillz_dir().join(".gitignore").is_file());
 }
 
 #[test]
-fn using_a_profile_registers_the_project() {
+fn the_applied_profile_is_remembered_in_the_projects_state_file() {
     let w = world_with_web();
     let (r, p) = (Recorder::default(), Scripted::yes());
 
     apply_all(&deps(&w, &r, &p), &[Some("web")]);
 
-    assert_eq!(w.registered_projects(), [w.project.canonicalize().unwrap()]);
-}
-
-#[test]
-fn the_registered_project_is_listed() {
-    let w = world_with_web();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-    let d = deps(&w, &r, &p);
-    apply_all(&d, &[Some("web")]);
-
-    assert_eq!(listed_project_lines(&d), 1);
-}
-
-#[test]
-fn removing_a_project_unregisters_it() {
-    let w = world_with_web();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-    let d = deps(&w, &r, &p);
-    apply_all(&d, &[Some("web")]);
-
-    run_quiet(project_cmd(ProjectCommand::Remove { path: ".".into() }), &d).unwrap();
-
-    assert!(w.registered_projects().is_empty());
-}
-
-#[test]
-fn removing_an_unregistered_project_fails() {
-    let w = world_with_web();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-
-    let res = run_quiet(
-        project_cmd(ProjectCommand::Remove { path: ".".into() }),
-        &deps(&w, &r, &p),
-    );
-
-    assert!(res.is_err());
-}
-
-#[test]
-fn adding_without_a_path_registers_the_cwd() {
-    let w = world_with_web();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-
-    run_quiet(
-        project_cmd(ProjectCommand::Add { path: None }),
-        &deps(&w, &r, &p),
-    )
-    .unwrap();
-
-    assert_eq!(w.registered_projects(), [w.project.canonicalize().unwrap()]);
-}
-
-#[test]
-fn a_forgotten_project_still_has_its_profile_in_the_ledger() {
-    let w = world_with_web();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-    let d = deps(&w, &r, &p);
-    apply_all(&d, &[Some("web")]);
-
-    run_quiet(project_cmd(ProjectCommand::Remove { path: ".".into() }), &d).unwrap();
-
-    assert_eq!(w.applied_profiles(), ["web"]);
+    assert!(w.skillz_dir().join("state.json").is_file());
 }

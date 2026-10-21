@@ -173,40 +173,6 @@ fn a_project_hook_does_not_touch_the_global_settings() {
 }
 
 #[test]
-fn global_scope_writes_to_the_claude_config_dir_settings() {
-    // Assemble
-    let sb = Sandbox::new();
-    sb.write_profile("notify", &stop_hook("say done"));
-
-    // Act
-    let out = sb.skillz(&["use", "-y", "-g", "notify"]);
-
-    // Assert: the hook is in $CLAUDE_CONFIG_DIR/settings.json and not in the project
-    assert!(out.status.success());
-    assert_eq!(
-        hook_commands(&sb.claude.join("settings.json"), "Stop"),
-        ["say done"]
-    );
-    assert!(!present(sb.project_claude_hooks()));
-}
-
-#[test]
-fn unloading_a_global_profile_removes_only_its_hook() {
-    // Assemble
-    let sb = Sandbox::new();
-    let before = json!({"model": "opus", "hooks": {"Stop": [handler("mine")]}});
-    write(&sb.claude.join("settings.json"), &before.to_string());
-    sb.write_profile("notify", &stop_hook("say done"));
-    sb.skillz(&["use", "-y", "-g", "notify"]);
-
-    // Act
-    sb.skillz(&["use", "-y", "-g", "--none"]);
-
-    // Assert: the user's own hook and model remain
-    assert_eq!(read_json(&sb.claude.join("settings.json")), before);
-}
-
-#[test]
 fn a_codex_hook_goes_to_the_project_hooks_json() {
     // Assemble
     let sb = Sandbox::new();
@@ -283,26 +249,26 @@ fn saving_a_profile_keeps_the_hooks_in_the_config() {
     // Assemble
     let sb = Sandbox::new();
     write(
-        &sb.home.join(".agents/skills/tdd/SKILL.md"),
+        &sb.project.join(".agents/skills/tdd/SKILL.md"),
         "---\nname: tdd\n---\n",
     );
     write(
-        &sb.home.join(".agents/.skill-lock.json"),
+        &sb.project.join("skills-lock.json"),
         &json!({"version": 3, "skills": {"tdd": {"source": "mattpocock/skills"}}}).to_string(),
     );
-    std::fs::create_dir_all(sb.claude.join("skills")).unwrap();
+    std::fs::create_dir_all(sb.project.join(".claude/skills")).unwrap();
     std::os::unix::fs::symlink(
-        sb.home.join(".agents/skills/tdd"),
-        sb.claude.join("skills/tdd"),
+        sb.project.join(".agents/skills/tdd"),
+        sb.project.join(".claude/skills/tdd"),
     )
     .unwrap();
     write(
-        &sb.claude.join("settings.json"),
+        &sb.project_claude_hooks(),
         &json!({"hooks": {"Stop": [handler("say done")]}}).to_string(),
     );
 
     // Act
-    let out = sb.skillz(&["profile", "save", "-g", "mine"]);
+    let out = sb.skillz(&["profile", "save", "mine"]);
 
     // Assert: the profile holds the skill and the hook
     let saved = skillz::profile::Store::new(sb.skillz_dir().join("profiles"))

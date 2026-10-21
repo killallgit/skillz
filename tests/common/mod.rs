@@ -19,7 +19,6 @@ use skillz::env::Env;
 use skillz::profile::{Profile, Store};
 use skillz::prompt::Prompter;
 use skillz::runner::{CommandRunner, Output};
-use skillz::workspace::Workspace;
 
 pub type Call = (String, Vec<String>);
 
@@ -133,17 +132,11 @@ impl World {
     }
 
     pub fn skillz_dir(&self) -> PathBuf {
-        self.home.join(".config/skillz")
+        self.project.join(".skillz")
     }
 
     pub fn profiles(&self) -> Store {
         Store::new(self.skillz_dir().join("profiles"))
-    }
-
-    pub fn registered_projects(&self) -> Vec<PathBuf> {
-        Workspace::new(self.skillz_dir().join("workspace.toml"))
-            .projects()
-            .unwrap()
     }
 
     pub fn profile(&self, name: &str) -> Profile {
@@ -167,14 +160,14 @@ impl World {
 
     /// What each applied scope holds, keyed as the ledger keys it.
     pub fn ledger(&self) -> BTreeMap<String, Record> {
-        match fs::read_to_string(self.skillz_dir().join("applied.json")) {
+        match fs::read_to_string(self.skillz_dir().join("state.json")) {
             Ok(text) => serde_json::from_str(&text).unwrap(),
             Err(_) => BTreeMap::new(),
         }
     }
 
     pub fn ledger_exists(&self) -> bool {
-        self.skillz_dir().join("applied.json").exists()
+        self.skillz_dir().join("state.json").exists()
     }
 
     pub fn applied_profiles(&self) -> Vec<String> {
@@ -246,6 +239,31 @@ pub fn world() -> World {
         home,
         project,
     }
+}
+
+/// A project that has a skill (from a lock file) and a Claude hook installed in it.
+pub fn world_with_project_setup() -> World {
+    let w = world();
+    write(
+        &w.project.join(".agents/skills/tdd/SKILL.md"),
+        "---\nname: tdd\n---\n",
+    );
+    write(
+        &w.project.join("skills-lock.json"),
+        &json!({"version": 3, "skills": {"tdd": {"source": "mattpocock/skills"}}}).to_string(),
+    );
+    fs::create_dir_all(w.project.join(".claude/skills")).unwrap();
+    std::os::unix::fs::symlink(
+        w.project.join(".agents/skills/tdd"),
+        w.project.join(".claude/skills/tdd"),
+    )
+    .unwrap();
+    write(
+        &w.project.join(".claude/settings.local.json"),
+        &json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]}})
+            .to_string(),
+    );
+    w
 }
 
 /// Servers in every place the agents keep them: Claude user and local scope in `.claude.json`,
@@ -346,7 +364,6 @@ pub fn use_cmd(profile: Option<&str>, dry_run: bool) -> Command {
     Command::Use(UseArgs {
         profile: profile.map(String::from),
         none: profile.is_none(),
-        global: false,
         project: Some(PathBuf::from(".")),
         yes: true,
         dry_run,
