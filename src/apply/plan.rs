@@ -24,6 +24,7 @@ impl Applier<'_> {
             removals: extras.into_iter().map(|e| e.item).collect(),
             installs,
             unsupported,
+            updates: vec![],
         })
     }
 

@@ -27,6 +27,8 @@ pub enum Command {
     /// Completely remove augmentations (fuzzy match, then pick)
     #[command(visible_aliases = ["rm", "delete"])]
     Uninstall(UninstallArgs),
+    /// Update installed items with the tool that installed them (`--check` only lists the ones with a newer version)
+    Update(UpdateArgs),
     /// Remove every skill, plugin and marketplace in scope (hooks, MCP servers and subagents only when asked: `--hooks`, `--mcp`, `--subagents`)
     Reset(ResetArgs),
     /// Find duplicate skills and skills/plugins unused for 7+ days, then remove the ones picked
@@ -98,6 +100,29 @@ pub struct UninstallArgs {
     /// Print the removal plan without changing anything
     #[arg(long)]
     pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct UpdateArgs {
+    /// Fuzzy query over name, group and source, or a project path (`.`, `./dir`, `/abs`)
+    pub target: Option<String>,
+    /// Project directory (default: cwd)
+    #[arg(short = 'p', long)]
+    pub project: Option<PathBuf>,
+    #[command(flatten)]
+    pub filter: Filter,
+    /// Don't prompt; requires an unambiguous query
+    #[arg(short, long)]
+    pub yes: bool,
+    /// Print the update plan without changing anything
+    #[arg(long, conflicts_with = "check")]
+    pub dry_run: bool,
+    /// List the items with a newer version available instead of updating
+    #[arg(long)]
+    pub check: bool,
+    /// With --check, print the items as JSON
+    #[arg(long, requires = "check")]
+    pub json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -243,6 +268,7 @@ pub(super) fn wants_auto_yes(command: &Command) -> bool {
     match command {
         Command::Uninstall(a) => a.yes,
         Command::Install(a) => a.yes,
+        Command::Update(a) => a.yes,
         Command::Use(a) => a.yes,
         Command::Run(a) => a.yes,
         Command::Prune(a) => a.force,
@@ -271,6 +297,10 @@ mod tests {
             );
         }
         assert!(Cli::try_parse_from(["skillz", "use"]).is_err());
+        assert!(Cli::try_parse_from(["skillz", "update", "tdd", "-y", "--dry-run"]).is_ok());
+        assert!(Cli::try_parse_from(["skillz", "update", "--check", "--json"]).is_ok());
+        assert!(Cli::try_parse_from(["skillz", "update", "--json"]).is_err());
+        assert!(Cli::try_parse_from(["skillz", "update", "--check", "--dry-run"]).is_err());
     }
 
     #[test]

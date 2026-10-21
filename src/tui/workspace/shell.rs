@@ -6,7 +6,10 @@ use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::Line;
 
+use std::sync::mpsc::Receiver;
+
 use super::act::Act;
+use super::checks::Checks;
 use super::library::LibraryTab;
 use super::model::Model;
 use super::profiles::ProfilesTab;
@@ -32,6 +35,7 @@ pub struct Workspace {
     bar: Tabs,
     toasts: Toasts,
     help: Option<Help>,
+    checks: Checks,
 }
 
 impl Workspace {
@@ -42,7 +46,18 @@ impl Workspace {
             tabs,
             toasts: Toasts::default(),
             help: None,
+            checks: Checks::default(),
         }
+    }
+
+    /// Mark the items whose ids arrive on `found` as having an update.
+    pub fn watch_updates(&mut self, found: Receiver<String>) {
+        self.checks.watch(found);
+    }
+
+    /// Drop the marks of items that were just updated.
+    pub fn forget_updates(&mut self, ids: &[String]) {
+        self.checks.forget(ids);
     }
 
     /// Project, Library and Profiles.
@@ -123,6 +138,10 @@ impl Workspace {
             Constraint::Length(1),
         ])
         .areas(area);
+        let outdated = self.checks.outdated().clone();
+        self.tabs
+            .iter_mut()
+            .for_each(|tab| tab.mark_outdated(&outdated));
         self.bar.render(frame, bar, theme);
         self.tabs[self.bar.selected()].draw(frame, body, theme);
         self.draw_footer(frame, foot, theme);

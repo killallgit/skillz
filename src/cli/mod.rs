@@ -10,11 +10,13 @@ mod recording;
 mod removal;
 mod run;
 mod scope;
+mod update;
 mod use_profile;
 mod workspace;
 
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::Context;
 use clap::Parser;
@@ -22,7 +24,7 @@ use clap::Parser;
 use args::wants_auto_yes;
 pub use args::{
     Cli, Command, Filter, InstallArgs, ListArgs, ProfileCommand, PruneArgs, ResetArgs,
-    UninstallArgs, UseArgs,
+    UninstallArgs, UpdateArgs, UseArgs,
 };
 pub use deps::Deps;
 pub use run::run;
@@ -33,6 +35,7 @@ use crate::prompt::{AssumeYes, Prompter};
 use crate::runner::SystemRunner;
 use crate::tui::prompter::TuiPrompter;
 use crate::tui::theme::Theme;
+use crate::update::check::{ClaudeMarketplaces, NoCheck, UpdateCheck};
 
 pub fn main() -> anyhow::Result<i32> {
     let cli = Cli::parse();
@@ -46,8 +49,10 @@ pub fn main() -> anyhow::Result<i32> {
     let claude_config = redirected_dir("CLAUDE_CONFIG_DIR");
     let codex_home = redirected_dir("CODEX_HOME");
     let runner = child_runner(&claude_config, &codex_home);
+    let home = std::env::home_dir().context("cannot find home directory")?;
+    let checker = update_checker(&home, &claude_config);
     let deps = Deps {
-        home: std::env::home_dir().context("cannot find home directory")?,
+        home,
         claude_config,
         codex_home,
         cwd: std::env::current_dir()?,
@@ -56,11 +61,28 @@ pub fn main() -> anyhow::Result<i32> {
         prompter,
         // Pickers and the browser read keys from stdin and draw on stdout.
         interactive: std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
+        checker,
     };
     match cli.command {
         Some(command) => run(command, &deps, &mut std::io::stdout()),
         None => workspace(&deps, cli.path.as_deref()).map(|()| 0),
     }
+}
+
+/// The network check for newer versions, unless `SKILLZ_NO_UPDATE_CHECK` is set.
+fn update_checker(home: &Path, claude_config: &Option<PathBuf>) -> Arc<dyn UpdateCheck> {
+    if std::env::var_os("SKILLZ_NO_UPDATE_CHECK").is_some() {
+        return Arc::new(NoCheck);
+    }
+    let claude = claude_config
+        .clone()
+        .unwrap_or_else(|| home.join(".claude"));
+    Arc::new(ClaudeMarketplaces {
+        runner: SystemRunner {
+            envs: vec![("GIT_TERMINAL_PROMPT", PathBuf::from("0"))],
+        },
+        clones: claude.join("plugins/marketplaces"),
+    })
 }
 
 fn redirected_dir(variable: &str) -> Option<PathBuf> {

@@ -144,7 +144,7 @@ impl Shell {
     }
 
     /// The next event worth giving to a screen; `None` when a signal or a suspend interrupted
-    /// the wait and the screen should be drawn again.
+    /// the wait or a tick went by quietly, and the screen should be drawn again.
     fn next_event(&self) -> anyhow::Result<Option<Event>> {
         loop {
             if self.terminated() {
@@ -155,7 +155,7 @@ impl Shell {
                 return Ok(None);
             }
             if !event::poll(TICK)? {
-                continue;
+                return Ok(None);
             }
             match event::read()? {
                 event if is_suspend(&event) => {

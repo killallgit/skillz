@@ -39,4 +39,5 @@ pub(crate) mod subagent_store;
 pub(crate) mod subagents;
 pub mod tree;
 pub mod tui;
+pub mod update;
 pub mod usage;

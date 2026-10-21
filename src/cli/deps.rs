@@ -1,9 +1,11 @@
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::agents::AgentAdapter;
 use crate::prompt::Prompter;
 use crate::runner::CommandRunner;
+use crate::update::check::UpdateCheck;
 
 /// External effects the commands need; real ones in `main`, fakes in tests.
 pub struct Deps<'a> {
@@ -17,6 +19,8 @@ pub struct Deps<'a> {
     pub runner: &'a dyn CommandRunner,
     pub prompter: &'a dyn Prompter,
     pub interactive: bool,
+    /// Finds out whether installed items have a newer version.
+    pub checker: Arc<dyn UpdateCheck>,
 }
 
 #[cfg(test)]
@@ -36,6 +40,7 @@ impl<'a> Deps<'a> {
             runner,
             prompter,
             interactive: false,
+            checker: Arc::new(crate::update::check::NoCheck),
         }
     }
 }
@@ -57,6 +62,7 @@ impl<'a> Deps<'a> {
             runner,
             prompter: self.prompter,
             interactive: self.interactive,
+            checker: Arc::clone(&self.checker),
         }
     }
 }

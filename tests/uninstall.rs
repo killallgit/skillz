@@ -266,6 +266,7 @@ fn after_browser_removes_the_skills_group() -> World {
     let prompter = RemoveGroups(vec![3]);
     let d = Deps {
         interactive: true,
+        checker: std::sync::Arc::new(skillz::update::check::NoCheck),
         ..deps(&w, &runner, &prompter)
     };
     let cmd = Command::List(ListArgs {

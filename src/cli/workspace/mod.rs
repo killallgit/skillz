@@ -9,14 +9,18 @@ mod perform;
 mod plan_view;
 mod profiles;
 mod selection;
+mod updates;
 
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Sender};
 
 use super::deps::Deps;
 use super::scope::resolve_project;
+use crate::model::Augmentation;
 use crate::profile;
 use crate::store;
 use crate::tui::workspace::{Act, Workspace};
+use crate::update::check;
 use model::snapshot;
 use notice::Notice;
 
@@ -41,15 +45,39 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
         project: env.project,
     };
     let mut screen = Workspace::standard();
+    let (found, results) = mpsc::channel();
+    screen.watch_updates(results);
     let mut notice = None;
+    let mut to_check = None;
     loop {
-        screen.load(snapshot(&session, notice.take())?);
+        let model = snapshot(&session, notice.take())?;
+        check_in_background(deps, &model.installed, to_check.take(), &found);
+        screen.load(model);
         let act = deps.prompter.workspace(&mut screen)?;
         if act == Act::Quit {
             return Ok(());
+        }
+        if let Act::Update { ids } = &act {
+            screen.forget_updates(ids);
+            to_check = Some(ids.clone());
         }
         notice = session
             .perform(act)
             .unwrap_or_else(|e| Some(Notice::Failed(format!("{e:#}"))));
     }
+}
+
+/// Look for newer versions of `only` those installed items (all of them on the first call).
+fn check_in_background(
+    deps: &Deps,
+    installed: &[Augmentation],
+    only: Option<Vec<String>>,
+    found: &Sender<String>,
+) {
+    let due = installed
+        .iter()
+        .filter(|item| only.as_ref().is_none_or(|ids| ids.contains(&item.id)))
+        .cloned()
+        .collect();
+    check::spawn(deps.checker.clone(), due, found.clone());
 }

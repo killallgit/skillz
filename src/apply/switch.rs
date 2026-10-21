@@ -20,11 +20,29 @@ pub struct Switch {
     /// Entries (or the parts of them) not in place yet, each with its install steps.
     pub installs: Vec<(Entry, Vec<Action>)>,
     pub unsupported: Vec<Unsupported>,
+    /// Installed items to bring to their latest version, each with the steps that do it.
+    pub updates: Vec<(Augmentation, Vec<Action>)>,
 }
 
 impl Switch {
     pub fn is_empty(&self) -> bool {
-        self.removals.is_empty() && self.installs.is_empty() && self.unsupported.is_empty()
+        self.removals.is_empty()
+            && self.installs.is_empty()
+            && self.unsupported.is_empty()
+            && self.updates.is_empty()
+    }
+
+    /// A switch that only updates `items`.
+    pub fn updating(items: Vec<(Augmentation, Vec<Action>)>) -> Self {
+        Switch {
+            to: "update".into(),
+            present: vec![],
+            removals: vec![],
+            unsourced: vec![],
+            installs: vec![],
+            unsupported: vec![],
+            updates: items,
+        }
     }
 
     /// The removal and install steps in the order `run` takes them.
@@ -33,6 +51,7 @@ impl Switch {
             .steps
             .into_iter()
             .chain(self.installs.iter().flat_map(|(_, steps)| steps.clone()))
+            .chain(self.updates.iter().flat_map(|(_, steps)| steps.clone()))
             .collect()
     }
 
@@ -47,14 +66,7 @@ mod tests {
 
     #[test]
     fn an_empty_switch_has_nothing_to_show_or_run() {
-        let switch = Switch {
-            to: "p".into(),
-            present: vec![],
-            removals: vec![],
-            unsourced: vec![],
-            installs: vec![],
-            unsupported: vec![],
-        };
+        let switch = Switch::updating(vec![]);
 
         assert!(switch.is_empty());
         assert!(switch.steps().is_empty());

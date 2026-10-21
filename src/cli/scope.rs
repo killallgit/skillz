@@ -136,6 +136,7 @@ mod tests {
             runner: &NO_ENVS,
             prompter: &AssumeYes,
             interactive: false,
+            checker: std::sync::Arc::new(crate::update::check::NoCheck),
         }
     }
 

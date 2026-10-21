@@ -27,11 +27,19 @@ impl ProjectTab {
             Action::ApplyProfile => {
                 return self.compare.clone().map(|profile| Act::Apply { profile });
             }
+            Action::Update => return self.update(),
             Action::Toggle => self.toggle(),
             Action::Select => return self.select(),
             movement => self.outline.navigate(movement),
         }
         None
+    }
+
+    /// Update the highlighted installed item, or the installed items of the highlighted section.
+    /// Anything that cannot be updated is left alone without a word.
+    fn update(&self) -> Option<Act> {
+        let ids = self.updatable_ids();
+        (!ids.is_empty()).then_some(Act::Update { ids })
     }
 
     fn open_picker(&mut self) {

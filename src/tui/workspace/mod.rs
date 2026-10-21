@@ -4,6 +4,7 @@
 //! performs before the screen is shown again.
 
 mod act;
+mod checks;
 mod library;
 mod model;
 mod profiles;

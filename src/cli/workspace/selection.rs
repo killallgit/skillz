@@ -44,6 +44,7 @@ pub(super) fn outcome_of_each(switch: &Switch, each: Each) -> Outcome {
     Outcome {
         removed: switch.removals.len(),
         installed: each.installed,
+        updated: each.updated,
         skipped: switch.unsupported.len(),
         still_installed: each
             .removed

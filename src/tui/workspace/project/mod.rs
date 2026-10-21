@@ -13,6 +13,11 @@ mod picking_tests;
 mod rows;
 #[cfg(test)]
 mod tests;
+mod update;
+#[cfg(test)]
+mod update_tests;
+
+use std::collections::BTreeSet;
 
 use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
@@ -51,6 +56,8 @@ pub struct ProjectTab {
     /// The profile the header compares the project with.
     compare: Option<String>,
     popup: Popup,
+    /// Ids of installed items the background check found newer versions of.
+    outdated: BTreeSet<String>,
 }
 
 impl ProjectTab {
@@ -64,6 +71,7 @@ impl ProjectTab {
             pending: Pending::default(),
             compare: None,
             popup: Popup::None,
+            outdated: BTreeSet::new(),
         }
     }
 
@@ -90,6 +98,10 @@ impl Tab for ProjectTab {
         self.rows = build(&model.installed, &model.library);
         self.pending.keep_existing(&self.rows);
         self.outline.reshape(shape(&self.rows));
+    }
+
+    fn mark_outdated(&mut self, ids: &BTreeSet<String>) {
+        self.outdated.clone_from(ids);
     }
 
     fn handle(&mut self, key: KeyEvent) -> Option<Act> {

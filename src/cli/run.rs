@@ -1,7 +1,9 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use super::args::{Command, InstallArgs, ListArgs, PruneArgs, ResetArgs, UninstallArgs, UseArgs};
+use super::args::{
+    Command, InstallArgs, ListArgs, PruneArgs, ResetArgs, UninstallArgs, UpdateArgs, UseArgs,
+};
 use super::deps::Deps;
 use super::isolate::run_isolated;
 use super::list::{ListView, list};
@@ -10,6 +12,7 @@ use super::prune::prune;
 use super::recording::record_since;
 use super::removal::{UninstallRequest, reset, uninstall};
 use super::scope::{Scene, installed, resolve, resolve_project, split_target};
+use super::update::{UpdateRequest, check, update};
 use super::use_profile::{Switching, Target, use_profile};
 use crate::install::{self, InstallRequest, SkillSelection};
 use crate::model::Scope;
@@ -22,6 +25,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         Command::Run(args) => run_isolated(deps, args, out),
         Command::List(args) => succeeded(run_list(deps, args, out)),
         Command::Uninstall(args) => succeeded(run_uninstall(deps, args, out)),
+        Command::Update(args) => succeeded(run_update(deps, args, out)),
         Command::Prune(args) => succeeded(run_prune(deps, args, out)),
         Command::Reset(args) => succeeded(run_reset(deps, args, out)),
         Command::Use(args) => succeeded(run_use(deps, args, out)),
@@ -57,6 +61,22 @@ fn run_uninstall(deps: &Deps, args: UninstallArgs, out: &mut dyn Write) -> anyho
         dry_run: args.dry_run,
     };
     uninstall(&scene, &request, out)
+}
+
+/// Acts on the one project: `-p`, or a path as the target, or the current directory.
+fn run_update(deps: &Deps, args: UpdateArgs, out: &mut dyn Write) -> anyhow::Result<()> {
+    let (path, query) = split_target(args.project, args.target);
+    let env = resolve_project(deps, path.as_deref())?;
+    let scene = Scene::new(deps, &env, &[Scope::Project], &args.filter);
+    if args.check {
+        return check(&scene, query.as_deref(), args.json, out);
+    }
+    let request = UpdateRequest {
+        query: query.as_deref(),
+        yes: args.yes,
+        dry_run: args.dry_run,
+    };
+    update(&scene, &request, out)
 }
 
 fn run_prune(deps: &Deps, args: PruneArgs, out: &mut dyn Write) -> anyhow::Result<()> {

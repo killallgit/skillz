@@ -17,6 +17,11 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
         })
         .collect();
     let install = switch.installs.iter().map(|(e, _)| e.to_string()).collect();
+    let update = switch
+        .updates
+        .iter()
+        .map(|(item, _)| item.label(true))
+        .collect();
     let skip = switch
         .unsupported
         .iter()
@@ -31,6 +36,7 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
         (Group::Keep, kept),
         (Group::Remove, remove),
         (Group::Install, install),
+        (Group::Update, update),
         (Group::Skip, skip),
     ];
     PlanView {
@@ -45,6 +51,13 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
 
 /// What `step` is for: installing an entry or removing an installed item.
 pub(super) fn step_label(switch: &Switch, removal: &Plan, step: &Action) -> String {
+    let updating = switch
+        .updates
+        .iter()
+        .find(|(_, steps)| steps.contains(step));
+    if let Some((item, _)) = updating {
+        return format!("updating {}", item.name);
+    }
     let installing = switch
         .installs
         .iter()
@@ -94,6 +107,7 @@ mod tests {
             unsourced: vec![],
             installs: vec![(skill("b"), vec![])],
             unsupported: vec![],
+            updates: vec![],
         }
     }
 

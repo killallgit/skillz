@@ -7,6 +7,7 @@ use std::path::Path;
 use super::notice::Notice;
 use super::plan_view::{plan_view, step_label};
 use super::selection::{Selection, outcome_of_each, selection_plan};
+use super::updates::update_plan;
 use crate::action::Action;
 use crate::apply::{self, Done, Switch};
 use crate::cli::deps::Deps;
@@ -27,6 +28,8 @@ pub(super) enum Change<'a> {
     ApplyExact(&'a str),
     /// Install and remove the items the user picked, one at a time.
     Selection(&'a Selection<'a>),
+    /// Update the installed items with these ids, one at a time.
+    Update(&'a [String]),
 }
 
 impl Change<'_> {
@@ -34,6 +37,7 @@ impl Change<'_> {
         match self {
             Change::Apply(_) | Change::ApplyExact(_) => "Apply",
             Change::Selection(_) => "Change",
+            Change::Update(_) => "Update",
         }
     }
 
@@ -44,6 +48,7 @@ impl Change<'_> {
                 installed: switch.installs.len(),
                 removed: switch.removals.len(),
             },
+            Change::Update(_) => Notice::ItemsUpdated(switch.updates.len()),
         }
     }
 }
@@ -105,6 +110,7 @@ impl Job<'_> {
                 let library = self.store.read()?.items;
                 selection_plan(self.deps, &self.env, applier, (picked, &library))
             }
+            Change::Update(ids) => Ok(update_plan(self.deps, &self.env, ids)),
         }
     }
 
@@ -131,7 +137,7 @@ impl Job<'_> {
             log.push(label);
         };
         let outcome = match what {
-            Change::Selection(_) => outcome_of_each(
+            Change::Selection(_) | Change::Update(_) => outcome_of_each(
                 switch,
                 applier.run_each(switch, self.deps.runner, &mut on_step),
             ),
@@ -183,3 +189,5 @@ mod provenance_tests;
 mod selection_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod update_tests;

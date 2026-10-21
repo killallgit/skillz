@@ -67,6 +67,7 @@ pub enum Action {
     ApplyExact,
     SaveCurrent,
     Build,
+    Update,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -142,7 +143,8 @@ pub const BINDINGS: &[Binding] = &[
     bind(Project, A::Select, &[plain(KeyCode::Enter)], "enter", "apply picks / fold", 2),
     bind(Project, A::PickProfile, &[ch('p')], "p", "compare", 3),
     bind(Project, A::ApplyProfile, &[ch('a')], "a", "apply profile", 4),
-    bind(Project, A::Filter, &[ch('/')], "/", "filter", 5),
+    bind(Project, A::Update, &[ch('u')], "u", "update", 5),
+    bind(Project, A::Filter, &[ch('/')], "/", "filter", 6),
     bind(Project, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
     bind(Project, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
     bind(Library, A::Add, &[ch('a')], "a", "add", 1),

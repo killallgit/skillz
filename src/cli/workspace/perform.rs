@@ -19,6 +19,7 @@ impl Session<'_, '_> {
                     &Change::Selection(&Selection { install, remove }),
                 );
             }
+            Act::Update { ids } => Change::Update(ids),
             Act::Apply { profile } => Change::Apply(profile),
             Act::LibraryAdd { spec } => return self.library_add(spec),
             Act::LibraryImport => return self.library_import(),
