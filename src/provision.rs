@@ -30,35 +30,68 @@ pub fn plan(
     env: &Env,
 ) -> anyhow::Result<Provision> {
     profile.validate()?;
+    Ok(plan_entries(adapters, &profile.resolved(), scope, env))
+}
+
+/// The steps that install `entries`, which already name the agents they are for.
+pub fn plan_entries(
+    adapters: &[Box<dyn AgentAdapter>],
+    entries: &[Entry],
+    scope: Scope,
+    env: &Env,
+) -> Provision {
     let mut out = Provision::default();
-    for entry in &profile.entries {
-        let agents = profile.agents_for(entry);
-        if let Entry::Skill { source, names, .. } = entry {
-            let known: Vec<Agent> = agents
-                .iter()
-                .copied()
-                .filter(|a| adapters.iter().any(|ad| ad.agent() == *a))
-                .collect();
-            let (program, args) = npx_skills::add_command(source, names, &known, scope);
-            out.steps
-                .push(Action::required(&program, args, &env.project));
-            continue;
-        }
-        for &agent in agents {
-            let steps = adapters
-                .iter()
-                .find(|a| a.agent() == agent)
-                .and_then(|a| a.provision(entry, scope, env));
-            match steps {
-                Some(steps) => out.steps.extend(steps),
-                None => out.unsupported.push(Unsupported {
-                    entry: entry.clone(),
-                    agent,
-                }),
-            }
+    for entry in entries {
+        match skills_step(adapters, entry, scope, env) {
+            Some(step) => out.steps.push(step),
+            None => provision_per_agent(adapters, entry, scope, env, &mut out),
         }
     }
-    Ok(out)
+    out
+}
+
+/// One `npx skills add` for all the entry's agents that this build knows; `None` unless the
+/// entry is a skill.
+fn skills_step(
+    adapters: &[Box<dyn AgentAdapter>],
+    entry: &Entry,
+    scope: Scope,
+    env: &Env,
+) -> Option<Action> {
+    let Entry::Skill { source, names, .. } = entry else {
+        return None;
+    };
+    let known: Vec<Agent> = entry
+        .agents()
+        .iter()
+        .copied()
+        .filter(|a| adapters.iter().any(|ad| ad.agent() == *a))
+        .collect();
+    let (program, args) = npx_skills::add_command(source, names, &known, scope);
+    Some(Action::required(&program, args, &env.project))
+}
+
+/// Ask each of the entry's agents for its own steps; the ones that cannot are reported.
+fn provision_per_agent(
+    adapters: &[Box<dyn AgentAdapter>],
+    entry: &Entry,
+    scope: Scope,
+    env: &Env,
+    out: &mut Provision,
+) {
+    for &agent in entry.agents() {
+        let steps = adapters
+            .iter()
+            .find(|a| a.agent() == agent)
+            .and_then(|a| a.provision(entry, scope, env));
+        match steps {
+            Some(steps) => out.steps.extend(steps),
+            None => out.unsupported.push(Unsupported {
+                entry: entry.clone(),
+                agent,
+            }),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -161,7 +194,7 @@ mod tests {
         assert_eq!(
             p.unsupported,
             [Unsupported {
-                entry: plugin(vec![]),
+                entry: plugin(vec![Agent::Claude, Agent::Codex]),
                 agent: Agent::Codex
             }]
         );

@@ -34,13 +34,8 @@ pub(super) fn use_profile(
         .profile
         .map(|name| profile::Store::in_env(target.env).load(name))
         .transpose()?;
-    let switch = apply::plan(
-        &deps.adapters,
-        profile.as_ref(),
-        target.scope,
-        target.env,
-        &ledger,
-    )?;
+    let applier = make_applier(deps, target, &ledger);
+    let switch = applier.plan(profile.as_ref())?;
 
     print_switch(out, &switch, target.scope)?;
     if switch.is_empty() {
@@ -55,7 +50,7 @@ pub(super) fn use_profile(
         writeln!(out, "aborted")?;
         return Ok(());
     }
-    let done = execute(deps, target, &switch, &ledger)?;
+    let done = execute(deps, &applier, &switch)?;
     remember_project(target);
     report(out, &switch, &done)
 }
@@ -95,34 +90,38 @@ fn print_steps(out: &mut dyn Write, switch: &apply::Switch) -> anyhow::Result<()
     Ok(())
 }
 
+fn make_applier<'a>(
+    deps: &'a Deps,
+    target: &'a Target,
+    ledger: &'a apply::Ledger,
+) -> apply::Applier<'a> {
+    apply::Applier {
+        adapters: &deps.adapters,
+        env: target.env,
+        scope: target.scope,
+        ledger,
+    }
+}
+
 fn execute(
     deps: &Deps,
-    target: &Target,
+    applier: &apply::Applier,
     switch: &apply::Switch,
-    ledger: &apply::Ledger,
 ) -> anyhow::Result<apply::Done> {
     let spinner = spinner::Spinner::start("switching");
     let refs: Vec<&Augmentation> = switch.removals.iter().collect();
     let removal = remove::Plan::new(&refs, &[]);
-    let result = apply::run(
-        &deps.adapters,
-        switch,
-        target.scope,
-        target.env,
-        ledger,
-        deps.runner,
-        &mut |step| {
-            let Some(s) = &spinner else { return };
-            let installing = switch
-                .installs
-                .iter()
-                .find(|(_, steps)| steps.contains(step));
-            match installing {
-                Some((entry, _)) => s.set(&format!("installing {entry}")),
-                None => s.set(&format!("removing {}", removal.owner(step))),
-            }
-        },
-    );
+    let result = applier.run(switch, deps.runner, &mut |step| {
+        let Some(s) = &spinner else { return };
+        let installing = switch
+            .installs
+            .iter()
+            .find(|(_, steps)| steps.contains(step));
+        match installing {
+            Some((entry, _)) => s.set(&format!("installing {entry}")),
+            None => s.set(&format!("removing {}", removal.owner(step))),
+        }
+    });
     drop(spinner);
     result
 }
