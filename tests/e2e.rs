@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use skillz::action::{Action, execute};
 use skillz::agents;
-use skillz::cli::{Command, Deps, Filter, run};
+use skillz::cli::{Command, Deps, Filter, ProfileCommand, run};
 use skillz::model::{Agent, Augmentation, Kind, Scope};
 use skillz::prompt::{Choice, Picked, Prompter};
 use skillz::runner::{CommandRunner, Output};
@@ -967,4 +967,60 @@ fn use_profile_installs_once_then_swaps_and_unloads() {
     assert!(!fs::read_to_string(&ledger).unwrap().contains("api"));
 
     assert!(run(use_cmd(Some("missing"), false), &d, &mut Vec::new()).is_err());
+}
+
+#[test]
+fn profile_save_snapshots_reinstallable_items_and_manages_the_file() {
+    let w = world();
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let d = deps(&w, &r, &p);
+    let profile = |action| Command::Profile { action };
+    let save = |force| {
+        profile(ProfileCommand::Save {
+            name: "mine".into(),
+            global: true,
+            project: None,
+            force,
+        })
+    };
+    let file = w.home.join(".config/skillz/profiles/mine.toml");
+
+    let mut out = Vec::new();
+    run(save(false), &d, &mut out).unwrap();
+    let text = fs::read_to_string(&file).unwrap();
+    assert!(text.contains("mattpocock/skills") && text.contains("tdd"));
+    assert!(!text.contains("rtk"), "hooks are not reproducible");
+    assert!(String::from_utf8(out).unwrap().contains("not saved"));
+
+    assert!(run(save(false), &d, &mut Vec::new()).is_err());
+    run(save(true), &d, &mut Vec::new()).unwrap();
+
+    let mut out = Vec::new();
+    run(profile(ProfileCommand::List), &d, &mut out).unwrap();
+    assert!(String::from_utf8(out).unwrap().contains("mine"));
+    let mut out = Vec::new();
+    run(
+        profile(ProfileCommand::Show {
+            name: "mine".into(),
+        }),
+        &d,
+        &mut out,
+    )
+    .unwrap();
+    assert_eq!(String::from_utf8(out).unwrap(), text);
+
+    let delete = || {
+        profile(ProfileCommand::Delete {
+            name: "mine".into(),
+        })
+    };
+    run(delete(), &d, &mut Vec::new()).unwrap();
+    assert!(!file.exists());
+    assert!(run(delete(), &d, &mut Vec::new()).is_err());
 }

@@ -22,6 +22,7 @@ pub mod prune;
 pub mod remove;
 pub mod runner;
 pub mod skills;
+pub mod snapshot;
 pub mod spinner;
 pub mod tree;
 pub mod tui;

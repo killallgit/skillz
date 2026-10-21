@@ -15,6 +15,7 @@ use crate::profile;
 use crate::prompt::{AssumeYes, Choice, Prompter, TuiPrompter};
 use crate::prune;
 use crate::runner::{CommandRunner, SystemRunner};
+use crate::snapshot;
 use crate::tree;
 use crate::usage;
 use crate::{info, remove, spinner};
@@ -121,6 +122,11 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Create, inspect and delete profiles
+    Profile {
+        #[command(subcommand)]
+        action: ProfileCommand,
+    },
     /// Install skills (via `npx skills`) or a Claude plugin marketplace
     #[command(visible_alias = "add")]
     Install {
@@ -145,6 +151,31 @@ pub enum Command {
         #[arg(short, long)]
         yes: bool,
     },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProfileCommand {
+    /// List profiles
+    #[command(visible_alias = "ls")]
+    List,
+    /// Print a profile's file
+    Show { name: String },
+    /// Save what is installed in the project (or globally) as a profile
+    Save {
+        name: String,
+        /// Read the global config instead of the project
+        #[arg(short, long)]
+        global: bool,
+        /// Project directory (default: cwd)
+        #[arg(short = 'p', long)]
+        project: Option<PathBuf>,
+        /// Replace a profile of that name
+        #[arg(long)]
+        force: bool,
+    },
+    /// Delete a profile (what it installed stays until you `use` another)
+    #[command(visible_alias = "rm")]
+    Delete { name: String },
 }
 
 #[derive(Debug, Args, Default, Clone)]
@@ -327,14 +358,10 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
             dry_run,
         } => {
             let (env, scopes) = resolve(deps, project.as_deref(), global)?;
-            // One scope at a time: the project, unless asked for global or this is the home dir.
-            let scope = if global || !scopes.contains(&Scope::Project) {
-                Scope::Global
-            } else {
-                Scope::Project
-            };
+            let scope = single_scope(&scopes, global);
             use_profile(deps, &env, scope, profile.as_deref(), dry_run, out)
         }
+        Command::Profile { action } => profile_command(deps, action, out),
         Command::Install {
             source,
             global,
@@ -765,6 +792,59 @@ fn confirm_and_remove(
     Ok(())
 }
 
+/// One scope at a time: the project, unless asked for global or this is the home dir.
+fn single_scope(scopes: &[Scope], global: bool) -> Scope {
+    if global || !scopes.contains(&Scope::Project) {
+        Scope::Global
+    } else {
+        Scope::Project
+    }
+}
+
+fn profile_command(deps: &Deps, action: ProfileCommand, out: &mut dyn Write) -> anyhow::Result<()> {
+    let home_env = Env::new(deps.home.clone(), deps.cwd.clone());
+    let store = profile::Store::in_env(&home_env);
+    match action {
+        ProfileCommand::List => {
+            for name in store.names()? {
+                match store.load(&name) {
+                    Ok(p) => writeln!(out, "{name}  ({} entries)", p.entries.len())?,
+                    Err(e) => writeln!(out, "{name}  (unreadable: {e:#})")?,
+                }
+            }
+        }
+        ProfileCommand::Show { name } => write!(out, "{}", store.load(&name)?.to_text()?)?,
+        ProfileCommand::Delete { name } => {
+            store.load(&name)?;
+            store.delete(&name)?;
+        }
+        ProfileCommand::Save {
+            name,
+            global,
+            project,
+            force,
+        } => {
+            profile::check_name(&name)?;
+            if !force && store.names()?.contains(&name) {
+                bail!("profile {name} exists; use --force to replace it");
+            }
+            let (env, scopes) = resolve(deps, project.as_deref(), global)?;
+            let scope = single_scope(&scopes, global);
+            let items = gather(deps, &env, &[scope], &Filter::default());
+            let snap = snapshot::snapshot(&name, &items);
+            store.save(&snap.profile)?;
+            writeln!(out, "saved {name} from the {scope} config:")?;
+            for entry in &snap.profile.entries {
+                writeln!(out, "  {entry}")?;
+            }
+            for label in &snap.skipped {
+                writeln!(out, "  not saved (nothing to reinstall it from): {label}")?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// `use`: show what moving `scope` to the named profile (`None` = no profile) changes, ask, then
 /// do it with one status line.
 fn use_profile(
@@ -904,6 +984,25 @@ mod tests {
         let (env, _) = resolve(&deps, Some(Path::new("sub")), false).unwrap();
         assert_eq!(env.project, cwd.path().join("sub").canonicalize().unwrap());
         assert!(resolve(&deps, Some(Path::new("missing")), false).is_err());
+    }
+
+    #[test]
+    fn the_command_tree_is_valid_and_profile_commands_parse() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert();
+        for args in [
+            &["profile", "save", "x", "-g"][..],
+            &["profile", "rm", "x"],
+            &["use", "x", "--dry-run"],
+            &["use", "--none"],
+        ] {
+            assert!(
+                Cli::try_parse_from([&["skillz"], args].concat()).is_ok(),
+                "{args:?}"
+            );
+        }
+        assert!(Cli::try_parse_from(["skillz", "use"]).is_err());
+        assert!(Cli::try_parse_from(["skillz", "use", "x", "--none"]).is_err());
     }
 
     #[test]
