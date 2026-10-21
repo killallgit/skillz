@@ -2,7 +2,6 @@
 //! line in `registry()`.
 
 pub mod claude;
-mod claude_marketplace;
 pub mod codex;
 pub mod cursor;
 
