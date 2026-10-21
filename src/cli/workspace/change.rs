@@ -2,8 +2,7 @@
 //! the steps run, then report how it ended. The terminal stays up throughout, since the tools
 //! run with their output captured.
 
-use std::path::Path;
-
+use super::Session;
 use super::notice::Notice;
 use super::plan_view::{plan_view, step_label};
 use super::selection::{Selection, outcome_of_each, selection_plan};
@@ -53,25 +52,27 @@ impl Change<'_> {
     }
 }
 
-/// What one change works on: the project's environment and the effects.
+/// What one change works on: the scope of the project's environment and the effects.
 struct Job<'a> {
     deps: &'a Deps<'a>,
     store: &'a Store,
     env: Env,
+    scope: Scope,
 }
 
 /// Make the change once the user approves the plan. A failed run can be retried from its
 /// result screen; the plan is made again each time.
 pub(super) fn change(
-    deps: &Deps,
-    store: &Store,
-    project: &Path,
+    session: &Session,
+    scope: Scope,
     what: &Change,
 ) -> anyhow::Result<Option<Notice>> {
+    let (deps, store) = (session.deps, &session.store);
     let job = Job {
         deps,
         store,
-        env: project_env(deps, project),
+        env: project_env(deps, &session.project),
+        scope,
     };
     loop {
         let applier = job.applier();
@@ -79,14 +80,14 @@ pub(super) fn change(
         if switch.is_empty() {
             return Ok(Some(Notice::UpToDate));
         }
-        match deps.prompter.plan(&plan_view(&switch, Scope::Project))? {
+        match deps.prompter.plan(&plan_view(&switch, job.scope))? {
             Verdict::Cancel => return Ok(None),
             Verdict::DryRun => return Ok(Some(Notice::DryRun(switch.steps().len()))),
             Verdict::Apply => {}
         }
-        let before = installed(deps, &job.env, Scope::Project);
+        let before = installed(deps, &job.env, job.scope);
         let outcome = job.apply(&applier, &switch, what);
-        let recorded = record_since(deps, store, (&job.env, Scope::Project), &before);
+        let recorded = record_since(deps, store, (&job.env, job.scope), &before);
         if deps.prompter.outcome(what.title(), &outcome)? != Next::Retry {
             return Ok(Some(job.notice(what, &switch, &outcome, recorded)));
         }
@@ -98,7 +99,7 @@ impl Job<'_> {
         apply::Applier {
             adapters: &self.deps.adapters,
             env: &self.env,
-            scope: Scope::Project,
+            scope: self.scope,
         }
     }
 
@@ -110,7 +111,7 @@ impl Job<'_> {
                 let library = self.store.read()?.items;
                 selection_plan(self.deps, &self.env, applier, (picked, &library))
             }
-            Change::Update(ids) => Ok(update_plan(self.deps, &self.env, ids)),
+            Change::Update(ids) => Ok(update_plan(self.deps, &self.env, self.scope, ids)),
         }
     }
 
@@ -199,6 +200,8 @@ fn outcome_of(switch: &Switch, result: anyhow::Result<Done>) -> Outcome {
 
 #[cfg(test)]
 mod provenance_tests;
+#[cfg(test)]
+mod scope_tests;
 #[cfg(test)]
 mod selection_tests;
 #[cfg(test)]

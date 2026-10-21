@@ -18,6 +18,7 @@ pub(super) struct UpdateRequest<'a> {
     pub query: Option<&'a str>,
     pub yes: bool,
     pub dry_run: bool,
+    pub scope: Scope,
 }
 
 pub(super) fn update(
@@ -54,7 +55,7 @@ pub(super) fn update(
         writeln!(out, "aborted")?;
         return Ok(());
     }
-    run(scene, &switch, out)
+    run(scene, (&switch, request.scope), out)
 }
 
 fn print_plan(out: &mut dyn Write, switch: &Switch) -> anyhow::Result<()> {
@@ -69,13 +70,17 @@ fn print_plan(out: &mut dyn Write, switch: &Switch) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run(scene: &Scene, switch: &Switch, out: &mut dyn Write) -> anyhow::Result<()> {
+fn run(
+    scene: &Scene,
+    (switch, scope): (&Switch, Scope),
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
     let (deps, env) = (scene.deps, scene.env);
-    let before = installed(deps, env, Scope::Project);
+    let before = installed(deps, env, scope);
     let applier = Applier {
         adapters: &deps.adapters,
         env,
-        scope: Scope::Project,
+        scope,
     };
     let done = applier.run_each(
         switch,
@@ -85,7 +90,7 @@ fn run(scene: &Scene, switch: &Switch, out: &mut dyn Write) -> anyhow::Result<()
             item: &mut |_| {},
         },
     );
-    let recorded = record_since(deps, &Store::in_env(env), (env, Scope::Project), &before);
+    let recorded = record_since(deps, &Store::in_env(env), (env, scope), &before);
     writeln!(out, "updated {} of {}", done.updated, switch.updates.len())?;
     if !done.failures.is_empty() {
         bail!("{}", done.failures.join("\n"));

@@ -4,15 +4,16 @@ use super::rows::tests::{global, installed, library_skill};
 use super::tests::{GRILL, TDD, loaded, on_item, press, space};
 use super::*;
 use crate::library::Catalog;
-use crate::model::Kind;
+use crate::model::{Kind, Scope};
 use crate::profile::Entry;
 use crate::tui::widgets::testing::keys;
 
-const GLOBAL_GRILL: usize = 5;
-const ZOOM: usize = 8;
+/// A library skill that is installed globally too, and one that is not.
+const GLOBAL_GRILL: usize = 4;
+const ZOOM: usize = 5;
 
-fn with_global_grill() -> ProjectTab {
-    let mut tab = ProjectTab::new();
+fn with_global_grill() -> InstalledTab {
+    let mut tab = InstalledTab::project();
     tab.load(&Model {
         installed: vec![installed("tdd", Kind::Skill, Some("o/r"))],
         global: vec![global("grill", Kind::Skill, Some("o/r"))],
@@ -31,10 +32,14 @@ fn entry(name: &str) -> Entry {
 
 fn change(install: Vec<Entry>, remove: Vec<&str>) -> Option<Act> {
     let remove = remove.into_iter().map(String::from).collect();
-    Some(Act::Change { install, remove })
+    Some(Act::Change {
+        scope: Scope::Project,
+        install,
+        remove,
+    })
 }
 
-fn answer(tab: &mut ProjectTab, code: KeyCode) -> Option<Act> {
+fn answer(tab: &mut InstalledTab, code: KeyCode) -> Option<Act> {
     press(tab, code)
 }
 
@@ -62,7 +67,14 @@ fn r_removes_the_highlighted_project_item_at_once() {
 #[test]
 fn i_and_r_do_nothing_where_they_do_not_apply() {
     let mut tab = loaded();
-    let cases = [(TDD, 'i'), (GRILL, 'r'), (0, 'i'), (0, 'r'), (1, 'r')];
+    let cases = [
+        (TDD, 'i'),
+        (GRILL, 'r'),
+        (0, 'i'),
+        (0, 'r'),
+        (2, 'i'),
+        (2, 'r'),
+    ];
 
     let acts: Vec<Option<Act>> = cases
         .into_iter()
@@ -74,16 +86,6 @@ fn i_and_r_do_nothing_where_they_do_not_apply() {
 
     assert!(acts.iter().all(Option::is_none));
     assert!(!tab.captures_keys());
-}
-
-#[test]
-fn r_never_removes_a_global_row() {
-    let mut tab = with_global_grill();
-    on_item(&mut tab, GLOBAL_GRILL);
-
-    let act = press(&mut tab, KeyCode::Char('r'));
-
-    assert_eq!(act, None);
 }
 
 #[test]
@@ -150,23 +152,6 @@ fn a_batch_without_global_items_goes_straight_to_the_plan() {
     let act = press(&mut tab, KeyCode::Enter);
 
     assert_eq!(act, change(vec![entry("zoom")], vec![]));
-}
-
-#[test]
-fn space_on_a_global_row_that_is_already_in_the_project_picks_nothing() {
-    let mut tab = ProjectTab::new();
-    tab.load(&Model {
-        installed: vec![installed("tdd", Kind::Skill, Some("o/r"))],
-        global: vec![global("tdd", Kind::Skill, Some("o/r"))],
-        ..Model::default()
-    });
-    on_item(&mut tab, GLOBAL_GRILL);
-
-    press(&mut tab, space());
-    let act = press(&mut tab, KeyCode::Char('i'));
-
-    assert!(tab.pending.is_empty());
-    assert_eq!(act, None);
 }
 
 #[test]

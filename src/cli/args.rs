@@ -192,6 +192,9 @@ pub struct InstallArgs {
     /// Project directory (default: cwd)
     #[arg(short = 'p', long)]
     pub project: Option<PathBuf>,
+    /// Install for the user instead of the project
+    #[arg(short, long, conflicts_with = "project")]
+    pub global: bool,
     /// Don't prompt; pick everything matched
     #[arg(short, long)]
     pub yes: bool,

@@ -190,3 +190,13 @@ fn item_events_and_ticks_reach_every_tab_not_just_the_shown_one() {
         .collect();
     assert_eq!(counts, [(1, 2); 3]);
 }
+
+#[test]
+fn the_standard_workspace_has_four_tabs_and_digit_four_reaches_the_last() {
+    let mut ws = Workspace::standard();
+
+    let tabs = ws.tabs.len();
+    press(&mut ws, KeyCode::Char('4'));
+
+    assert_eq!((tabs, ws.bar.selected()), (4, 3));
+}

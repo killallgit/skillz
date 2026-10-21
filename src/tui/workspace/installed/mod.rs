@@ -1,12 +1,14 @@
-//! The Project tab: what the directory has installed, by kind, and the library items it could
-//! have. Nothing is stored here: the rows are derived from the agents' own config and the
-//! library each time the workspace loads a new snapshot.
+//! The Project and Global tabs, one implementation over a scope: what the scope has installed,
+//! by kind, and the library items it could have. Nothing is stored here: the rows are derived
+//! from the agents' own config and the library each time the workspace loads a new snapshot.
 
 mod direct;
 #[cfg(test)]
 mod direct_tests;
 mod draw;
 mod drift;
+#[cfg(test)]
+mod global_tests;
 mod header;
 mod keys;
 mod location;
@@ -40,10 +42,10 @@ use self::status::Statuses;
 use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
-use crate::model::Augmentation;
+use crate::model::{Augmentation, Scope};
 use crate::profile::Profile;
 use crate::review::ItemEvent;
-use crate::tui::keymap::Scope;
+use crate::tui::keymap;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::confirm::ConfirmDialog;
 use crate::tui::widgets::input::InputField;
@@ -59,7 +61,8 @@ enum Popup {
     AlsoGlobal(ConfirmDialog, Proposal),
 }
 
-pub struct ProjectTab {
+pub struct InstalledTab {
+    scope: Scope,
     dir: String,
     installed: Vec<Augmentation>,
     profiles: Vec<Profile>,
@@ -74,9 +77,18 @@ pub struct ProjectTab {
     statuses: Statuses,
 }
 
-impl ProjectTab {
-    pub fn new() -> Self {
-        ProjectTab {
+impl InstalledTab {
+    pub fn project() -> Self {
+        Self::new(Scope::Project)
+    }
+
+    pub fn global() -> Self {
+        Self::new(Scope::Global)
+    }
+
+    fn new(scope: Scope) -> Self {
+        InstalledTab {
+            scope,
             dir: String::new(),
             installed: vec![],
             profiles: vec![],
@@ -97,22 +109,32 @@ impl ProjectTab {
     }
 }
 
-impl Tab for ProjectTab {
+impl Tab for InstalledTab {
     fn title(&self) -> &'static str {
-        "Project"
+        match self.scope {
+            Scope::Project => "Project",
+            Scope::Global => "Global",
+        }
     }
 
-    fn scopes(&self) -> &'static [Scope] {
-        &[Scope::Project]
+    fn scopes(&self) -> &'static [keymap::Scope] {
+        match self.scope {
+            Scope::Project => &[keymap::Scope::Installed, keymap::Scope::Project],
+            Scope::Global => &[keymap::Scope::Installed],
+        }
     }
 
     fn load(&mut self, model: &Model) {
         self.dir = model.dir.clone();
-        self.installed = model.installed.clone();
+        let (here, also_global) = match self.scope {
+            Scope::Project => (&model.installed, &model.global[..]),
+            Scope::Global => (&model.global, &[][..]),
+        };
+        self.installed = here.clone();
         self.profiles = model.profiles.clone();
         self.rows = build(&Sources {
-            project: &model.installed,
-            global: &model.global,
+            here,
+            also_global,
             library: &model.library,
         });
         self.pending.keep_existing(&self.rows);

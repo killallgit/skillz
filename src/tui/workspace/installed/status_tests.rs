@@ -22,7 +22,7 @@ fn event(phase: Phase) -> ItemEvent {
 }
 
 /// The text of the screen row that shows `label`.
-fn row_of(tab: &mut ProjectTab, glyphs: Glyphs, label: &str) -> String {
+fn row_of(tab: &mut InstalledTab, glyphs: Glyphs, label: &str) -> String {
     let theme = Theme {
         glyphs,
         ..Theme::dark()

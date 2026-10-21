@@ -10,10 +10,10 @@ use std::sync::mpsc::Receiver;
 
 use super::act::Act;
 use super::checks::Checks;
+use super::installed::InstalledTab;
 use super::library::LibraryTab;
 use super::model::Model;
 use super::profiles::ProfilesTab;
-use super::project::ProjectTab;
 use super::tab::Tab;
 use crate::review::ItemEvent;
 use crate::tui::filter;
@@ -71,10 +71,11 @@ impl Workspace {
         self.tabs.iter_mut().for_each(|tab| tab.tick());
     }
 
-    /// Project, Library and Profiles.
+    /// Project, Global, Library and Profiles.
     pub fn standard() -> Self {
         Workspace::new(vec![
-            Box::new(ProjectTab::new()),
+            Box::new(InstalledTab::project()),
+            Box::new(InstalledTab::global()),
             Box::new(LibraryTab::new()),
             Box::new(ProfilesTab::new()),
         ])

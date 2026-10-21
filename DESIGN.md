@@ -99,7 +99,8 @@ screens), `app` (screen stack), `prompter` (`TuiPrompter`), `closure` and `dialo
 screens), `plan`, `progress` and `result` (the three screens of a switch), `tree_view` (the picker and
 browser list: `model`, `input`, `draw`, `marks`, `menu`), `workspace` (the tabbed workspace: `shell`
 is the `Workspace` around its tabs, `tab` the `Tab` trait, `model` and `act` the shared data and
-requests, one directory per tab: `project`, `library`, `profiles`), `widgets` (`outline`, `panel`,
+requests, one directory per tab kind: `installed` (the Project and Global tabs), `library`,
+`profiles`), `widgets` (`outline`, `panel`,
 `list`, `tabs`, `keybar`, `input`, `modal`, `confirm`, `toast`, `scroll`, `empty`).
 
 ## On-disk formats (observed on a real machine)
@@ -220,10 +221,13 @@ subagents). Removal uses this to pick the tool's own uninstall.
 - **Isolation.** `skillz run` is an additive switch to scope `Global` of an `Env` whose `claude_config` and
   `codex_home` are `envs/<profile>/...`, followed by `CommandRunner::launch`.
 - **Workspace.** `Workspace::handle` (pure) returns an `Act`; `cli::workspace` performs it as a
-  `Change` (install an entry, remove an installed item, apply a profile), each a `Switch` from the
-  same planner (additive only). `change` shows the plan screen, then progress, then the result
+  `Change` (install an entry, remove an installed item, update, apply a profile), each a `Switch`
+  from the same planner (additive only). `Act::Change` and `Act::Update` carry the `Scope` they
+  work in, which becomes the `Applier`'s scope, the plan heading, the inventory read before and
+  after, and so the npx `-g`, Claude `--scope user` and Codex user config of the install steps;
+  profiles apply to the project only. `change` shows the plan screen, then progress, then the result
   (retry replans). One directory (cwd or `skillz PATH`) is the only project and nothing is stored
-  for it: the Project tab is derived from the native config, the library and the profiles. After
+  for it: the Project and Global tabs are derived from the native config, the library and the profiles. After
   each install (`install`, `use`, workspace changes) `cli::recording` adds the installed items
   that are new or changed since before the run to the library, with their provenance; a picked
   library item is installed from its recorded link (`Catalog::installable`).
@@ -251,14 +255,14 @@ so an item whose lock hash or version changed gets its provenance in the library
 **Live progress.** `Applier::run_each` reports every item starting and ending (`review::ItemEvent`)
 besides every step. While a selection or update runs, `Prompter::live` hands the terminal to a
 painter thread (`tui::live`) that redraws the shared `Workspace` (an `Arc<Mutex<_>>`) every
-100 ms; the apply stays on the calling thread, which feeds the events in, so the Project tab's
+100 ms; the apply stays on the calling thread, which feeds the events in, so the Project and Global tabs'
 `Statuses` turn them into spinner, tick or cross on the rows. Without a workspace (the CLI),
 `live` is the plain progress gauge. The plan and result screens run on the calling thread
 before and after, when the painter has given the terminal back.
 
-**Update check.** The Project tab marks rows that have a newer version (bold, `*` after the
-name). `cli::workspace` starts `update::check::spawn` on a worker thread over the installed items
-and the tab takes ids off the channel when it draws (the shell redraws on every 200 ms tick, so
+**Update check.** The Project and Global tabs mark rows that have a newer version (bold, `*` after the
+name). `cli::workspace` starts `update::check::spawn` on a worker thread over the installed items of both
+scopes and the tab takes ids off the channel when it draws (the shell redraws on every 200 ms tick, so
 results show without a key press). The cache is the `Workspace`'s, per session, never written to
 disk; applying an update forgets the ids and checks those items again. A checker is a
 `Deps::checker` (`NoCheck` in tests). Only one kind can be told without side effects: a Claude
@@ -379,7 +383,7 @@ skillz run <profile> [-p PATH] [-y] -- <command>...
 skillz profile list|show <name> | save <name> [--force] | delete <name>   (all take -p PATH)
 ```
 Kind flags: `--skills --hooks --plugins --marketplaces --mcp --subagents` (singular aliases).
-- Scope (`cli::scope::resolve`, only for list, uninstall, reset and prune; `use`, `install`, `run` and `profile` always act on the project via `resolve_project`): `PATH` only -> project at PATH; `-g` only -> global; neither ->
+- Scope (`cli::scope::resolve`, only for list, uninstall, reset and prune; `install` and `update` take the project via `resolve_project`, or the user's installs with `-g`; `use`, `run` and `profile` always act on the project): `PATH` only -> project at PATH; `-g` only -> global; neither ->
   both (project = cwd). A project that is the home dir is global only. `use` and `profile save`
   take exactly one scope (`-g` or the project).
 - No kind flag = all kinds. `-a` filters by agent.
@@ -438,7 +442,7 @@ filter scope passes no letters through. The key bar and `?` are generated from t
 **Lists.** `widgets::outline` is the one collapsible outline: rows in preorder with parents, which
 are open, a fuzzy filter and a scrolling cursor, with no idea what a row means. `tui::tree_view`
 builds the picker and browser on it (`skillz list`, `uninstall`, `prune`, the install pickers; a
-flat list is a tree with no children, `tree::flat`) and the Project tab builds its sections on it,
+flat list is a tree with no children, `tree::flat`) and the Project and Global tabs build their sections on it,
 so the Library and Profiles tabs can too. `TreeState::handle` is a pure state machine tested
 without a terminal.
 Rows are `tree::Node`s (`label`, `cells`: KIND, AGENTS, SCOPE, ITEMS, `info`, `item`);
@@ -451,20 +455,25 @@ data on `Node::info`, built before the terminal opens by `info::item_lines` and
 Show / Remove… / Cancel menu. `enter` opens that menu for the marks (or the row under the cursor);
 in a picker it accepts them (`Prompter::select_items` returns `Node::item` indices).
 
-**Workspace.** `tui::workspace`: `Workspace` owns the tab bar (`tab`, `shift-tab`, `1`-`3`, from
+**Workspace.** `tui::workspace`: `Workspace` owns the tab bar (`tab`, `shift-tab`, `1`-`4`, from
 `Scope::Workspace`), key bar, `?` help and toasts, and gives every `Tab` the same `Model` (the
-directory, what it has installed, the library, the readable profiles) after each act. A `Tab`
+directory, what it and the user have installed, the library, the readable profiles) after each act. A `Tab`
 has `title`, `scopes` (its key scopes, which the key bar and help are generated from), `load`
 (take a snapshot, keeping cursor, open groups and filter), `handle` (a key to an optional `Act`),
 `draw`, and `captures_keys` / `prompt` for a filter or popup that must get every key. Adding a tab
 is a directory under `workspace/`, an entry in `Workspace::standard`, and `Act` variants for what
-it asks `cli::workspace` to do; the Project code is not touched. **Project** (`project/`):
-`rows` builds a section per kind from the installed items plus the library items not installed
-(`apply::compare` decides which are), `drift` is `apply::compare` against the chosen profile,
-`picker` the compare-with popup, `header`, `keys`, `draw`. `space` on an item asks for `Act::Install`
-or `Act::Remove`; `cli::workspace::change` turns it into a one-entry or one-removal `Switch` and
+it asks `cli::workspace` to do; the installed tabs are not touched. The tabs are Project, Global,
+Library and Profiles. **Project and Global** are one `InstalledTab` (`installed/`) built with a
+`Scope`; the scope picks which half of the `Model` it shows, whether it compares profiles and
+whether it tags what is also installed globally, and is sent on in every `Act`. Its key scopes
+are `Installed` (shared) plus `Project` (compare, apply profile) on the Project tab, resolved with
+`keymap::resolve_in`. `rows` builds flat sections per kind from the scope's installed items,
+then an `Available` header with a section per kind of the library items not installed in that
+scope (`apply::holds` decides which are), `drift` is `apply::compare` against the chosen profile,
+`picker` the compare-with popup, `header`, `keys`, `draw`. `space` on an item asks for
+`Act::Change`; `cli::workspace::change` turns it into a one-entry or one-removal `Switch` and
 shows the plan, progress and result before anything changes. Wheel scrolling works; there is no
-other mouse handling. The Library and Profiles tabs are placeholders.
+other mouse handling.
 
 **Switch screens.** `plan` shows the `PlanView` (keep `=`, remove `-`, install `+`, skip `~`;
 danger frame if anything is removed) with keys to toggle the raw steps and a dry run; `progress`

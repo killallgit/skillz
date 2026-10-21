@@ -1,18 +1,22 @@
 //! What the user asked the workspace to do. Things are named by id, entry or profile name, so
 //! a request still means the same if the lists changed while it was in flight.
 
+use crate::model::Scope;
 use crate::profile::Entry;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Act {
     Quit,
-    /// Install these entries and remove the installed items with these ids, as one plan.
+    /// Install these entries and remove the installed items with these ids in `scope`, as one
+    /// plan.
     Change {
+        scope: Scope,
         install: Vec<Entry>,
         remove: Vec<String>,
     },
-    /// Bring the installed items with these ids to their latest version, as one plan.
+    /// Bring the installed items with these ids in `scope` to their latest version, as one plan.
     Update {
+        scope: Scope,
         ids: Vec<String>,
     },
     /// Install what the profile has that the project lacks.

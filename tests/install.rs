@@ -25,6 +25,7 @@ fn install_args(source: &str) -> InstallArgs {
         all: true,
         skill: vec![],
         project: None,
+        global: false,
         yes: true,
     }
 }
@@ -83,7 +84,7 @@ fn a_skill_pattern_selects_only_the_matching_skills() {
 }
 
 #[test]
-fn an_install_is_never_global() {
+fn an_install_is_project_scoped_unless_asked_otherwise() {
     let calls = install_commit_skills();
 
     assert!(!calls.last().unwrap().1.contains(&"-g".to_string()));

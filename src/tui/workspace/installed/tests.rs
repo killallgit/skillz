@@ -24,13 +24,13 @@ pub(super) fn model() -> Model {
     }
 }
 
-pub(super) fn loaded() -> ProjectTab {
-    let mut tab = ProjectTab::new();
+pub(super) fn loaded() -> InstalledTab {
+    let mut tab = InstalledTab::project();
     tab.load(&model());
     tab
 }
 
-pub(super) fn press(tab: &mut ProjectTab, code: KeyCode) -> Option<Act> {
+pub(super) fn press(tab: &mut InstalledTab, code: KeyCode) -> Option<Act> {
     tab.handle(key(code))
 }
 
@@ -38,23 +38,23 @@ pub(super) fn space() -> KeyCode {
     KeyCode::Char(' ')
 }
 
-/// The row of the installed skill in `model()`; the group and section rows come first.
-pub(super) const TDD: usize = 2;
-/// The row of the library skill in `model()`.
-pub(super) const GRILL: usize = 5;
+/// The row of the installed skill in `model()`; its section comes first.
+pub(super) const TDD: usize = 1;
+/// The row of the library skill in `model()`, after the `Available` header and its section.
+pub(super) const GRILL: usize = 4;
 
-pub(super) fn on_item(tab: &mut ProjectTab, row: usize) {
+pub(super) fn on_item(tab: &mut InstalledTab, row: usize) {
     tab.outline.select_row(row);
 }
 
 #[test]
-fn enter_on_a_group_closes_and_reopens_it_without_asking_for_anything() {
+fn enter_on_a_section_closes_and_reopens_it_without_asking_for_anything() {
     let mut tab = loaded();
 
     let closed = (press(&mut tab, KeyCode::Enter), tab.outline.visible().len());
     let opened = (press(&mut tab, KeyCode::Enter), tab.outline.visible().len());
 
-    assert_eq!((closed, opened), ((None, 4), (None, 6)));
+    assert_eq!((closed, opened), ((None, 4), (None, 5)));
 }
 
 #[test]
@@ -100,11 +100,11 @@ fn the_filter_prompt_is_offered_while_typing_and_narrows_the_rows() {
     press(&mut tab, KeyCode::Enter);
 
     assert!(typing && tab.prompt().is_none());
-    assert_eq!(tab.outline.visible(), [3, 4, GRILL]);
+    assert_eq!(tab.outline.visible(), [2, 3, GRILL]);
 }
 
 #[test]
-fn a_new_snapshot_keeps_the_cursor_and_the_closed_groups() {
+fn a_new_snapshot_keeps_the_cursor_and_the_closed_sections() {
     let mut tab = loaded();
     press(&mut tab, KeyCode::Enter);
 
@@ -113,7 +113,7 @@ fn a_new_snapshot_keeps_the_cursor_and_the_closed_groups() {
     assert_eq!(tab.outline.visible().len(), 4);
 }
 
-fn checkboxes(tab: &mut ProjectTab, width: u16, height: u16) -> (usize, usize) {
+fn checkboxes(tab: &mut InstalledTab, width: u16, height: u16) -> (usize, usize) {
     let theme = Theme::dark();
     let buffer = render_to_buffer(width, height, |f| tab.draw(f, f.area(), &theme));
     let glyphs = theme.glyphs;

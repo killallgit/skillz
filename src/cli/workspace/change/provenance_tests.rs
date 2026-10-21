@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::tests::skill_entry;
+use super::tests::{session, skill_entry};
 use super::*;
 use crate::agents::registry;
 use crate::install::test_support::{FakeNpx, LOCKED_LINK, ScriptedPrompter};
@@ -25,7 +25,12 @@ fn install_picked(dir: &Path, library: &[LibraryItem]) -> (FakeNpx, Store) {
         install: &entries,
         remove: &[],
     };
-    change(&deps, &store, dir, &Change::Selection(&picked)).unwrap();
+    change(
+        &session(&deps, dir),
+        Scope::Project,
+        &Change::Selection(&picked),
+    )
+    .unwrap();
     (runner, store)
 }
 

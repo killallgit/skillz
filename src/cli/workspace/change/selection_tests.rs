@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::tests::{project_with_skill, run_change, skill_entry, skill_id};
+use super::tests::{project_with_skill, run_change, session, skill_entry, skill_id};
 use super::*;
 use crate::agents::registry;
 use crate::install::test_support::ScriptedPrompter;
@@ -126,12 +126,11 @@ fn one_failing_install_is_reported_and_the_others_still_run() {
     let prompter = ScriptedPrompter::new(&[], true);
     let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
 
-    let store = Store::in_env(&project_env(&deps, dir.path()));
+    let picked = selection(&entries, &[]);
     let result = change(
-        &deps,
-        &store,
-        dir.path(),
-        &Change::Selection(&selection(&entries, &[])),
+        &session(&deps, dir.path()),
+        Scope::Project,
+        &Change::Selection(&picked),
     );
 
     let tried_good = runner

@@ -1,5 +1,5 @@
-//! The workspace for one directory: what it has installed, the library and the profiles, with
-//! installs, removals and profile applies shown as a plan first, as for `use`.
+//! The workspace for one directory: what it and the user have installed, the library and the
+//! profiles, with installs, removals and profile applies shown as a plan first, as for `use`.
 
 mod change;
 mod library_change;
@@ -52,13 +52,14 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
     let mut to_check = None;
     loop {
         let model = snapshot(&session, notice.take())?;
-        check_in_background(deps, &model.installed, to_check.take(), &found);
+        let held: Vec<Augmentation> = [&model.installed[..], &model.global[..]].concat();
+        check_in_background(deps, held, to_check.take(), &found);
         lock(&screen).load(model);
         let act = deps.prompter.workspace(&screen)?;
         if act == Act::Quit {
             return Ok(());
         }
-        if let Act::Update { ids } = &act {
+        if let Act::Update { ids, .. } = &act {
             lock(&screen).forget_updates(ids);
             to_check = Some(ids.clone());
         }
@@ -72,17 +73,17 @@ fn lock(screen: &Shared) -> MutexGuard<'_, Workspace> {
     screen.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Look for newer versions of `only` those installed items (all of them on the first call).
+/// Look for newer versions of `only` those installed items, project and global alike (all of
+/// them on the first call).
 fn check_in_background(
     deps: &Deps,
-    installed: &[Augmentation],
+    installed: Vec<Augmentation>,
     only: Option<Vec<String>>,
     found: &Sender<String>,
 ) {
     let due = installed
-        .iter()
+        .into_iter()
         .filter(|item| only.as_ref().is_none_or(|ids| ids.contains(&item.id)))
-        .cloned()
         .collect();
     check::spawn(deps.checker.clone(), due, found.clone());
 }

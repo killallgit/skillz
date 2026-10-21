@@ -7,7 +7,6 @@ use crate::cli::deps::Deps;
 use crate::cli::scope::installed;
 use crate::env::Env;
 use crate::library::Catalog;
-use crate::model::Scope;
 use crate::profile::{Entry, Profile};
 use crate::review::Outcome;
 
@@ -33,7 +32,7 @@ pub(super) fn selection_plan(
         .map(|entry| library.installable(entry))
         .collect();
     let mut switch = applier.plan(&wanted, false).context("planning installs")?;
-    switch.removals = installed(deps, env, Scope::Project)
+    switch.removals = installed(deps, env, applier.scope)
         .into_iter()
         .filter(|item| picked.remove.contains(&item.id))
         .collect();

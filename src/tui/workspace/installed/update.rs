@@ -1,10 +1,10 @@
 //! Which rows `u` updates, and which rows are known to have an update.
 
-use super::ProjectTab;
+use super::InstalledTab;
 use super::rows::{Row, State};
 use crate::update::can_update;
 
-impl ProjectTab {
+impl InstalledTab {
     pub(super) fn is_outdated(&self, state: &State) -> bool {
         matches!(state, State::Installed(id) if self.outdated.contains(id))
     }

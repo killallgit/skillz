@@ -3,12 +3,13 @@ use ratatui::crossterm::event::KeyCode;
 use super::rows::tests::{installed, library_skill};
 use super::tests::{GRILL, TDD, loaded, model, on_item, press, space};
 use super::*;
-use crate::model::Kind;
+use crate::model::{Kind, Scope};
 use crate::profile::Entry;
 use crate::tui::widgets::testing::render_to_buffer;
 
 fn change(install: Vec<Entry>, remove: Vec<&str>) -> Act {
     Act::Change {
+        scope: Scope::Project,
         install,
         remove: remove.into_iter().map(String::from).collect(),
     }
@@ -63,7 +64,7 @@ fn escape_clears_the_picks_before_anything_else() {
 }
 
 #[test]
-fn space_on_a_group_folds_it_and_picks_nothing() {
+fn space_on_a_section_folds_it_and_picks_nothing() {
     let mut tab = loaded();
 
     press(&mut tab, space());
@@ -122,7 +123,7 @@ fn a_section_counts_what_is_picked_in_it() {
 }
 
 fn picked_glyphs(glyphs: crate::tui::glyphs::Glyphs) -> (usize, usize) {
-    let mut tab = ProjectTab::new();
+    let mut tab = InstalledTab::project();
     tab.load(&Model {
         dir: "app".into(),
         ..model()

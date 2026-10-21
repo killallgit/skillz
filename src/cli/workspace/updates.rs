@@ -8,8 +8,8 @@ use crate::model::Scope;
 use crate::update;
 
 /// An update step list for each picked item that can be updated; the rest drop out.
-pub(super) fn update_plan(deps: &Deps, env: &Env, ids: &[String]) -> Switch {
-    let updates = installed(deps, env, Scope::Project)
+pub(super) fn update_plan(deps: &Deps, env: &Env, scope: Scope, ids: &[String]) -> Switch {
+    let updates = installed(deps, env, scope)
         .into_iter()
         .filter(|item| ids.contains(&item.id))
         .map(|item| (update::steps(&item, &env.project), item))
