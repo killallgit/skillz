@@ -11,8 +11,8 @@ fn name(profile: &Option<String>) -> &str {
 }
 
 pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
-    let keep = switch.keep.iter().map(|l| l.entry.to_string()).collect();
-    let remove = switch.drop.iter().map(|l| l.entry.to_string()).collect();
+    let kept = switch.kept.iter().map(|l| l.entry.to_string()).collect();
+    let remove = switch.dropped.iter().map(|l| l.entry.to_string()).collect();
     let install = switch.installs.iter().map(|(e, _)| e.to_string()).collect();
     let skip = switch
         .unsupported
@@ -25,7 +25,7 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
         })
         .collect();
     let groups = [
-        (Group::Keep, keep),
+        (Group::Keep, kept),
         (Group::Remove, remove),
         (Group::Install, install),
         (Group::Skip, skip),
@@ -71,8 +71,8 @@ mod tests {
         Switch {
             from: Some("old".into()),
             to: None,
-            keep: vec![],
-            drop: vec![Loaded {
+            kept: vec![],
+            dropped: vec![Loaded {
                 entry: skill("a"),
                 items: vec![],
             }],

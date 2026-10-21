@@ -29,7 +29,7 @@ impl Applier<'_> {
         on_step: &mut dyn FnMut(&Action),
     ) -> anyhow::Result<Done> {
         let (removed, leftover) = self.remove_dropped(switch, runner, on_step)?;
-        let mut entries = switch.keep.clone();
+        let mut entries = switch.kept.clone();
         entries.extend(leftover);
         self.save(switch, &entries, false)?;
 
@@ -76,7 +76,7 @@ impl Applier<'_> {
             runner,
         };
         let outcome = remove::run(&Plan::from_owned(&switch.removals), &removal, on_step)?;
-        let leftover = still_installed(&switch.drop, &outcome);
+        let leftover = still_installed(&switch.dropped, &outcome);
         Ok((Some(outcome), leftover))
     }
 

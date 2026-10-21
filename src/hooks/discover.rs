@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::io::ErrorKind;
 use std::path::Path;
 
 use anyhow::Context;
@@ -8,6 +7,7 @@ use super::group::{GroupHints, hook_group};
 use crate::action::{Action, Edit};
 use crate::hook_text::{Format, HookEntry, parse};
 use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
+use crate::read_optional::read_optional;
 
 /// The config file a hook was read from, and whose it is.
 struct Source<'a> {
@@ -24,7 +24,7 @@ pub fn discover(
     scope: Scope,
     hints: &GroupHints,
 ) -> anyhow::Result<Vec<Augmentation>> {
-    let Some(text) = read_config(file)? else {
+    let Some(text) = read_optional(file)? else {
         return Ok(Vec::new());
     };
     let entries =
@@ -34,15 +34,6 @@ pub fn discover(
         .into_iter()
         .map(|(name, entries)| augmentation(&source, name, &entries))
         .collect())
-}
-
-fn read_config(file: &Path) -> anyhow::Result<Option<String>> {
-    match std::fs::read_to_string(file) {
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
-        other => Ok(Some(
-            other.with_context(|| format!("read {}", file.display()))?,
-        )),
-    }
 }
 
 fn group_entries(entries: Vec<HookEntry>, hints: &GroupHints) -> BTreeMap<String, Vec<HookEntry>> {

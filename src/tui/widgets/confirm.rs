@@ -49,6 +49,7 @@ impl ConfirmDialog {
         self
     }
 
+    #[cfg(test)]
     pub fn yes_focused(&self) -> bool {
         self.focus == Button::Yes
     }

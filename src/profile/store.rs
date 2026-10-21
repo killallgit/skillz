@@ -8,6 +8,26 @@ use super::{Entry, Profile, check_name};
 use crate::atomic::write_atomic;
 use crate::env::Env;
 
+/// A profile cannot be removed while others start from it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct StillExtended {
+    pub name: String,
+    pub by: Vec<String>,
+}
+
+impl std::fmt::Display for StillExtended {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "profile {} is extended by {}",
+            self.name,
+            self.by.join(", ")
+        )
+    }
+}
+
+impl std::error::Error for StillExtended {}
+
 /// A directory of `<name>.toml` profiles.
 pub struct Store {
     dir: PathBuf,
@@ -90,8 +110,29 @@ impl Store {
         write_atomic(&path, &profile.to_text()?)
     }
 
-    /// Missing is fine.
+    /// The profiles that list `name` in `extends`. Unreadable ones are skipped.
+    fn extended_by(&self, name: &str) -> anyhow::Result<Vec<String>> {
+        Ok(self
+            .names()?
+            .into_iter()
+            .filter(|other| other != name)
+            .filter(|other| {
+                self.load(other)
+                    .is_ok_and(|p| p.extends.iter().any(|base| base == name))
+            })
+            .collect())
+    }
+
+    /// Missing is fine. A profile another one extends is refused with `StillExtended`.
     pub fn delete(&self, name: &str) -> anyhow::Result<()> {
+        let by = self.extended_by(name)?;
+        if !by.is_empty() {
+            return Err(StillExtended {
+                name: name.into(),
+                by,
+            }
+            .into());
+        }
         match fs::remove_file(self.path(name)?) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
             _ => Ok(()),
@@ -149,6 +190,24 @@ mod tests {
 
         assert!(store.names().unwrap().is_empty());
         assert!(store.load("web").is_err());
+    }
+
+    #[test]
+    fn a_profile_another_extends_cannot_be_removed_until_that_one_goes() {
+        let (_dir, store) = store();
+        store.save(&Profile::new("base")).unwrap();
+        let mut web = Profile::new("web");
+        web.extends = vec!["base".into()];
+        store.save(&web).unwrap();
+
+        let refused = store.delete("base").unwrap_err();
+        store.delete("web").unwrap();
+        store.delete("base").unwrap();
+
+        // The refusal is the typed error naming the dependents, and the store ends empty.
+        let typed = refused.downcast_ref::<StillExtended>().unwrap();
+        assert_eq!(typed.by, ["web"]);
+        assert!(store.names().unwrap().is_empty());
     }
 
     fn skill(name: &str) -> Entry {

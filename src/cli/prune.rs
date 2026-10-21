@@ -43,7 +43,6 @@ pub(super) fn prune(scene: &Scene, dry_run: bool, out: &mut dyn Write) -> anyhow
     confirm_and_remove(scene, &chosen, review, out)
 }
 
-/// The non-empty report sections: title and one line per item.
 fn prune_sections(found: &prune::Findings, now_ms: u64) -> Vec<(&'static str, Vec<String>)> {
     let days_ago = |ms: u64| now_ms.saturating_sub(ms) / (24 * 60 * 60 * 1000);
     let sections = [

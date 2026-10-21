@@ -4,16 +4,15 @@ use anyhow::Context;
 use toml_edit::{DocumentMut, Item};
 
 use crate::env::Env;
+use crate::read_optional::read_optional;
 
 pub(super) fn read_config(path: &Path) -> anyhow::Result<Option<DocumentMut>> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => text
-            .parse::<DocumentMut>()
-            .map(Some)
-            .with_context(|| format!("parsing {}", path.display())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e).with_context(|| format!("reading {}", path.display())),
-    }
+    read_optional(path)?
+        .map(|text| {
+            text.parse::<DocumentMut>()
+                .with_context(|| format!("parsing {}", path.display()))
+        })
+        .transpose()
 }
 
 pub(super) fn table_keys<'a>(doc: &'a DocumentMut, key: &str) -> Vec<(&'a str, &'a Item)> {

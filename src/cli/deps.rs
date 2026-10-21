@@ -19,6 +19,27 @@ pub struct Deps<'a> {
     pub interactive: bool,
 }
 
+#[cfg(test)]
+impl<'a> Deps<'a> {
+    /// Deps rooted in `dir` (home and cwd), with the given adapters and fakes.
+    pub(super) fn for_test(
+        dir: &std::path::Path,
+        adapters: Vec<Box<dyn AgentAdapter>>,
+        (runner, prompter): (&'a dyn CommandRunner, &'a dyn Prompter),
+    ) -> Deps<'a> {
+        Deps {
+            home: dir.to_path_buf(),
+            claude_config: None,
+            codex_home: None,
+            cwd: dir.to_path_buf(),
+            adapters: adapters.into(),
+            runner,
+            prompter,
+            interactive: false,
+        }
+    }
+}
+
 impl<'a> Deps<'a> {
     /// The same effects aimed at other config dirs, running commands with `runner`.
     pub(super) fn redirected(

@@ -2,6 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::read_optional::read_optional;
 use anyhow::Context;
 
 /// An edit written to a temp file beside the real file, ready to rename over it.
@@ -92,7 +93,7 @@ pub(super) fn commit(staged: &[Staged]) -> anyhow::Result<()> {
 fn ensure_unchanged(staged: &[Staged]) -> anyhow::Result<()> {
     for s in staged {
         anyhow::ensure!(
-            read_now(&s.target)? == s.original,
+            read_optional(&s.target)? == s.original,
             "{} changed while skillz was planning; nothing was written",
             s.target.display()
         );
@@ -100,17 +101,9 @@ fn ensure_unchanged(staged: &[Staged]) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn read_now(path: &Path) -> anyhow::Result<Option<String>> {
-    match fs::read_to_string(path) {
-        Ok(text) => Ok(Some(text)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e).with_context(|| format!("read {}", path.display())),
-    }
-}
-
 /// Put a committed file back as it was, unless it no longer holds what was committed.
 fn rollback(s: &Staged) {
-    if read_now(&s.target).ok().flatten().as_deref() != Some(&s.planned) {
+    if read_optional(&s.target).ok().flatten().as_deref() != Some(&s.planned) {
         return;
     }
     let _ = match &s.original {

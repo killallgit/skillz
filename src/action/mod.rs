@@ -2,7 +2,6 @@
 
 mod edit;
 mod execute;
-mod files;
 mod json;
 mod removal_target;
 mod stage;
@@ -12,14 +11,26 @@ mod toml;
 
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use serde_json::Value;
 
-use crate::redact::{redact, redact_line, redact_text};
+use crate::redact::{redact, redact_args, redact_line, redact_text};
 
 pub use edit::apply_edit;
 pub use execute::{execute, execute_with};
 pub use removal_target::RemovalTarget;
+
+fn redacted_args<S: Serializer>(args: &[String], s: S) -> Result<S::Ok, S::Error> {
+    s.collect_seq(redact_args(args))
+}
+
+fn redacted_arg<S: Serializer>(arg: &str, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&redact(arg))
+}
+
+fn redacted_text<S: Serializer>(text: &str, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&redact_text(text))
+}
 
 /// A single side effect of changing what is installed: removing an augmentation, or (from a
 /// profile) installing one.
@@ -32,6 +43,7 @@ pub enum Action {
     /// and the file steps of the plan do the removal.
     Run {
         program: String,
+        #[serde(serialize_with = "redacted_args")]
         args: Vec<String>,
         cwd: PathBuf,
         fallback: bool,
@@ -44,6 +56,7 @@ pub enum Action {
     /// repo), copy the `ext` files called `names` into `to`, note the source beside them.
     /// Runs with the commands, before any edit.
     CopyAgents {
+        #[serde(serialize_with = "redacted_arg")]
         source: String,
         cwd: PathBuf,
         names: Vec<String>,
@@ -119,7 +132,11 @@ impl Action {
 pub enum Edit {
     /// Remove every hook handler under `event` whose command equals `command`, in whichever
     /// layout the file uses (`hook_text::remove_hook`). Prunes emptied groups and events.
-    RemoveHook { event: String, command: String },
+    RemoveHook {
+        event: String,
+        #[serde(serialize_with = "redacted_text")]
+        command: String,
+    },
     /// Remove the object key at `path` (e.g. `["enabledPlugins", "x@y"]`). No-op if absent.
     JsonRemoveKey { path: Vec<String> },
     /// Remove every element of the array at `path` that `fields_match` `fields`. Removes the
@@ -133,6 +150,7 @@ pub enum Edit {
     AddHook {
         event: String,
         matcher: Option<String>,
+        #[serde(serialize_with = "redacted_text")]
         command: String,
     },
     /// Remove the TOML key/table at `path` (e.g. `["plugins", "x@y"]`), keeping formatting.
@@ -201,6 +219,29 @@ mod tests {
         for text in [run.describe(), format!("{failure:#}")] {
             assert!(!text.contains("s3cret") && !text.contains("p4ss"));
         }
+    }
+
+    #[test]
+    fn serialized_actions_hide_credentials() {
+        let run = Action::Run {
+            program: "tool".into(),
+            args: vec!["--token".into(), "s3cret".into()],
+            cwd: "/".into(),
+            fallback: false,
+        };
+        let hook = Action::Edit {
+            file: "/f".into(),
+            edit: Edit::AddHook {
+                event: "e".into(),
+                matcher: None,
+                command: "x --api-key=s3cret".into(),
+            },
+        };
+
+        let json = serde_json::to_string(&[run, hook]).unwrap();
+
+        // the --json plan must not carry the secrets either
+        assert!(!json.contains("s3cret"));
     }
 
     #[test]

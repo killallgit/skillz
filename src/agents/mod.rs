@@ -1,9 +1,9 @@
 //! One adapter per agent. Adding an agent = a new module implementing `AgentAdapter` plus a
 //! line in `registry()`.
 
-pub mod claude;
-pub mod codex;
-pub mod cursor;
+pub(crate) mod claude;
+pub(crate) mod codex;
+pub(crate) mod cursor;
 mod inventory;
 
 pub use inventory::{Inventory, inventory};

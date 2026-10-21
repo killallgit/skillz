@@ -6,7 +6,8 @@ use serde_json::Value;
 use toml_edit::{Item, TableLike};
 
 use crate::model::Augmentation;
-use crate::redact::credential_count;
+use crate::model::Kind;
+use crate::redact::{credential_count, redact, redact_args};
 
 const COMMAND: &str = "command: ";
 const ARG: &str = "arg: ";
@@ -137,6 +138,21 @@ impl Server {
         out
     }
 
+    /// The same server with credentials in its args or url hidden.
+    fn redacted(self) -> Server {
+        let launch = match self.launch {
+            Launch::Stdio { command, args } => Launch::Stdio {
+                command,
+                args: redact_args(&args),
+            },
+            Launch::Url { url, transport } => Launch::Url {
+                url: redact(&url),
+                transport,
+            },
+        };
+        Server { launch, ..self }
+    }
+
     /// The server an MCP item was discovered from.
     pub fn from_item(item: &Augmentation) -> Option<Server> {
         let lines = |prefix: &str| -> Vec<String> {
@@ -162,6 +178,14 @@ impl Server {
             launch,
             secrets: lines(SECRET),
         })
+    }
+}
+
+/// The item's children as safe to show: an MCP server's args and url with credentials hidden.
+pub fn shown_children(item: &Augmentation) -> Vec<String> {
+    match Server::from_item(item).filter(|_| item.kind == Kind::Mcp) {
+        Some(server) => server.redacted().children(),
+        None => item.children.clone(),
     }
 }
 
@@ -249,6 +273,33 @@ enabled = true
         assert_eq!(a.secrets, ["K"]);
         assert_eq!(get("b").unwrap().secrets, ["TOK"]);
         assert!(get("c").is_none());
+    }
+
+    #[test]
+    fn shown_children_hide_credentials_in_args_and_urls() {
+        let stdio = Server {
+            name: "s".into(),
+            launch: Launch::Stdio {
+                command: "npx".into(),
+                args: vec!["--token".into(), "s3cret".into()],
+            },
+            secrets: vec![],
+        };
+        let http = Server {
+            name: "h".into(),
+            launch: Launch::Url {
+                url: "https://u:p4ss@h/mcp?k=s3cret".into(),
+                transport: "http".into(),
+            },
+            secrets: vec![],
+        };
+
+        for server in [stdio, http] {
+            let shown = shown_children(&item(&server)).join("\n");
+            // shown lines are redacted while the stored children keep the originals
+            assert!(!shown.contains("s3cret") && !shown.contains("p4ss"));
+            assert!(item(&server).children.join("\n").contains("s3cret"));
+        }
     }
 
     #[test]

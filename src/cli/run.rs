@@ -17,22 +17,19 @@ use crate::install::{self, InstallRequest, SkillSelection};
 pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<i32> {
     match command {
         Command::Run(args) => run_isolated(deps, args, out),
-        other => run_managed(other, deps, out).map(|()| 0),
+        Command::List(args) => succeeded(run_list(deps, args, out)),
+        Command::Uninstall(args) => succeeded(run_uninstall(deps, args, out)),
+        Command::Prune(args) => succeeded(run_prune(deps, args, out)),
+        Command::Reset(args) => succeeded(run_reset(deps, args, out)),
+        Command::Use(args) => succeeded(run_use(deps, args, out)),
+        Command::Install(args) => succeeded(run_install(deps, args)),
+        Command::Profile { action } => succeeded(profile_command(deps, action, out)),
+        Command::Project { action } => succeeded(project_command(deps, action, out)),
     }
 }
 
-fn run_managed(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
-    match command {
-        Command::List(args) => run_list(deps, args, out),
-        Command::Uninstall(args) => run_uninstall(deps, args, out),
-        Command::Prune(args) => run_prune(deps, args, out),
-        Command::Reset(args) => run_reset(deps, args, out),
-        Command::Use(args) => run_use(deps, args, out),
-        Command::Install(args) => run_install(deps, args),
-        Command::Run(_) => unreachable!("run_isolated is dispatched before run_managed"),
-        Command::Profile { action } => profile_command(deps, action, out),
-        Command::Project { action } => project_command(deps, action, out),
-    }
+fn succeeded(result: anyhow::Result<()>) -> anyhow::Result<i32> {
+    result.map(|()| 0)
 }
 
 fn run_list(deps: &Deps, args: ListArgs, out: &mut dyn Write) -> anyhow::Result<()> {

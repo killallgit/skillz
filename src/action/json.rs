@@ -4,7 +4,7 @@ use anyhow::Context;
 
 use serde_json::{Map, Value};
 
-use super::files::read_existing;
+use crate::read_optional::read_optional;
 
 /// The object holding the last key of `path`, and that key.
 fn json_parent<'a>(
@@ -45,7 +45,7 @@ fn fields_match(item: &Value, fields: &[(String, Value)]) -> bool {
 
 /// True when the JSON `file` holds a value at `key`; a missing file holds nothing.
 pub(super) fn json_has(file: &Path, key: &[String]) -> anyhow::Result<bool> {
-    let Some(text) = read_existing(file)? else {
+    let Some(text) = read_optional(file)? else {
         return Ok(false);
     };
     let doc: Value =

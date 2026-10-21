@@ -1,18 +1,18 @@
 //! Reusable widgets. Each is a pure state type plus a render fn that takes a `Theme`.
 
-pub mod confirm;
-pub mod empty;
-pub mod input;
-pub mod keybar;
-pub mod list;
-pub mod modal;
-pub mod panel;
-pub mod scroll;
-pub mod table;
-pub mod tabs;
+pub(crate) mod confirm;
+pub(crate) mod empty;
+pub(crate) mod input;
+pub(crate) mod keybar;
+pub(crate) mod list;
+pub(crate) mod modal;
+pub(crate) mod panel;
+pub(crate) mod scroll;
+pub(crate) mod table;
+pub(crate) mod tabs;
 #[cfg(test)]
-pub mod testing;
-pub mod toast;
+pub(crate) mod testing;
+pub(crate) mod toast;
 
 /// What a navigation widget did with a key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

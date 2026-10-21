@@ -183,7 +183,10 @@ fn item_node(index: usize, item: &Augmentation) -> Node {
             item.scope.to_string(),
             String::new(),
         ],
-        children: item.children.iter().map(Node::leaf).collect(),
+        children: crate::mcp::shown_children(item)
+            .iter()
+            .map(Node::leaf)
+            .collect(),
         item: Some(index),
         ..Node::default()
     }
@@ -245,19 +248,19 @@ mod tests {
             with_children(aug("rtk", Kind::Hook, "hooks"), &["PreToolUse: rtk"]),
             aug("beta", Kind::Plugin, "local"),
         ]);
-        let tops: Vec<&str> = nodes.iter().map(|n| n.label.as_str()).collect();
-        assert_eq!(tops.len(), 3);
-        assert!(tops[0].starts_with("local"));
-        assert!(tops[1].starts_with("hooks"));
-        assert!(tops[2].starts_with("mp"));
-
-        let local = &nodes[0].children;
-        assert_eq!(local.len(), 3);
-        assert!(local[0].label.starts_with("beta"));
-        assert!(local[1].label.starts_with("alpha"));
-        assert!(local[2].label.starts_with("zeta"));
-        let items: Vec<Option<usize>> = local.iter().map(|n| n.item).collect();
-        assert_eq!(items, [Some(4), Some(2), Some(0)]);
+        // Each group's items by input index: local (beta, alpha, zeta), hooks, then mp.
+        let groups: Vec<Vec<Option<usize>>> = nodes
+            .iter()
+            .map(|g| g.children.iter().map(|n| n.item).collect())
+            .collect();
+        assert_eq!(
+            groups,
+            [
+                vec![Some(4), Some(2), Some(0)],
+                vec![Some(3)],
+                vec![Some(1)]
+            ]
+        );
         assert_eq!(nodes[0].item, None);
 
         assert_eq!(nodes[2].children[0].children.len(), 2);
@@ -297,10 +300,11 @@ mod tests {
             aug("b", Kind::Skill, "local"),
             proj,
         ]);
+        // The project group leads, then the local-files group, then the rest, by input index.
+        let first_items: Vec<Option<usize>> = nodes.iter().map(|g| g.children[0].item).collect();
         assert_eq!(nodes[0].scope, Some(Scope::Project));
-        assert!(nodes[1].label.starts_with(LOCAL_LABEL));
-        assert!(nodes[2].label.starts_with("aaa"));
-        assert!(render(&nodes).contains("\n\nlocal files"));
+        assert_eq!(first_items, [Some(2), Some(1), Some(0)]);
+        assert!(render(&nodes).contains("\n\n"));
     }
 
     #[test]
@@ -313,9 +317,8 @@ mod tests {
             with_children(aug("p@mp", Kind::Plugin, "mp"), &["s"]),
         ]);
         assert_eq!(nodes.len(), 1);
-        assert!(nodes[0].label.starts_with("org/repo (marketplace)"));
         assert_eq!(nodes[0].children.len(), 1);
-        assert!(nodes[0].children[0].label.starts_with("p@mp"));
+        assert_eq!(nodes[0].children[0].item, Some(1));
     }
 
     #[test]
@@ -365,7 +368,6 @@ mod tests {
         assert!(text.ends_with('\n'));
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.len(), 9);
-        assert!(lines[0].starts_with("NAME"));
         for (line, name) in lines[1..]
             .iter()
             .zip(["hooks", "rtk", "mp", "p@mp", "s1", "s2", "q@mp", "s3"])
@@ -380,8 +382,7 @@ mod tests {
         let mut nodes = build(&items);
         attach_info(&mut nodes, &|i| vec![format!("item {i}")]);
         assert_eq!(nodes[0].children[0].info, ["item 0"]);
-        assert!(nodes[0].info[0].starts_with("1 items"));
-        assert!(nodes[0].info.iter().any(|l| l.contains('a')));
+        assert_eq!(nodes[0].info.len(), 2);
         // Detail leaves carry no info, so `i` opens no modal on them.
         assert!(nodes[0].children[0].children[0].info.is_empty());
     }

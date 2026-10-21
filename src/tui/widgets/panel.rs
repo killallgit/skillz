@@ -32,11 +32,6 @@ impl Panel {
         self
     }
 
-    /// The `n/total` badge for a list position (one-based); empty lists show `0/0`.
-    pub fn position_badge(self, selected: Option<usize>, total: usize) -> Self {
-        self.badge(format!("{}/{total}", selected.map_or(0, |s| s + 1)))
-    }
-
     pub fn focused(mut self, focused: bool) -> Self {
         self.focused = focused;
         self
@@ -145,17 +140,5 @@ mod tests {
             inner = Panel::new("t").render(f, f.area(), &theme)
         });
         assert_eq!(inner, Rect::new(1, 1, 8, 3));
-    }
-
-    #[test]
-    fn position_badge_is_one_based() {
-        let panel = Panel::new("t").position_badge(Some(2), 12);
-        assert_eq!(panel.badge.as_deref(), Some("3/12"));
-    }
-
-    #[test]
-    fn empty_list_badge_is_zero_of_zero() {
-        let panel = Panel::new("t").position_badge(None, 0);
-        assert_eq!(panel.badge.as_deref(), Some("0/0"));
     }
 }

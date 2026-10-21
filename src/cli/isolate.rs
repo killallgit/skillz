@@ -17,7 +17,6 @@ use crate::env::Env;
 use crate::model::Scope;
 use crate::profile;
 
-/// Returns the exit code of the command.
 pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> anyhow::Result<i32> {
     profile::check_name(&args.profile)?;
     let (env, _) = resolve(deps, args.project.as_deref(), false)?;

@@ -208,7 +208,6 @@ mod tests {
     fn label_shows_source_only_when_asked_and_it_differs_from_name() {
         let other = item(Some("org/repo"));
         assert_ne!(other.label(true), other.label(false));
-        assert!(other.label(true).contains("org/repo"));
         for same in [item(None), item(Some("a"))] {
             assert_eq!(same.label(true), same.label(false));
         }

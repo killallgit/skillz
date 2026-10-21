@@ -12,6 +12,7 @@ use crate::atomic::write_atomic;
 use crate::env::Env;
 use crate::model::{Augmentation, Kind, Scope};
 use crate::profile::Entry;
+use crate::read_optional::read_optional;
 
 /// One item a profile added.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,11 +81,10 @@ impl Ledger {
     }
 
     fn read(&self) -> anyhow::Result<BTreeMap<String, Record>> {
-        match fs::read_to_string(&self.path) {
-            Ok(text) => serde_json::from_str(&text)
+        match read_optional(&self.path)? {
+            Some(text) => serde_json::from_str(&text)
                 .with_context(|| format!("invalid {}", self.path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
-            Err(e) => Err(e).with_context(|| format!("reading {}", self.path.display())),
+            None => Ok(BTreeMap::new()),
         }
     }
 

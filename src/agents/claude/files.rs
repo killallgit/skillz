@@ -1,7 +1,5 @@
 //! Where Claude keeps its plugin records and settings, and how to read them.
 
-use std::fs;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -9,6 +7,7 @@ use serde_json::Value;
 
 use crate::env::Env;
 use crate::model::Scope;
+use crate::read_optional::read_optional;
 
 pub(super) const ENABLED_PLUGINS: &str = "enabledPlugins";
 pub(super) const PLUGINS: &str = "plugins";
@@ -57,18 +56,18 @@ pub(super) fn project_settings(root: &Path) -> Vec<PathBuf> {
 
 /// Missing file = `Null` (no entries); malformed JSON is an error.
 pub(super) fn read_json(path: &Path) -> anyhow::Result<Value> {
-    match fs::read_to_string(path) {
-        Ok(text) => {
+    match read_optional(path)? {
+        Some(text) => {
             serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))
         }
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(Value::Null),
-        Err(e) => Err(e).with_context(|| format!("reading {}", path.display())),
+        None => Ok(Value::Null),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use tempfile::TempDir;
 
     #[test]

@@ -128,8 +128,8 @@ mod tests {
         Switch {
             from: None,
             to: None,
-            keep: vec![],
-            drop: vec![],
+            kept: vec![],
+            dropped: vec![],
             removals: vec![],
             installs: vec![],
             unsupported: vec![],

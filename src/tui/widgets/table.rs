@@ -1,13 +1,7 @@
 //! Aligned columns: fixed or flexible widths, ellipsis truncation by display width.
 //! Produces `Line`s, so rows can be drawn directly or fed to a `ListView`.
 
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
-
-use crate::tui::theme::Theme;
 
 const GAP: usize = 1;
 const ELLIPSIS: char = '…';
@@ -57,16 +51,6 @@ impl Table {
         widths
     }
 
-    pub fn header_line(&self, total: u16, theme: &Theme) -> Line<'static> {
-        let headers: Vec<&str> = self.columns.iter().map(|c| c.header.as_str()).collect();
-        self.line(&headers, total, theme.muted)
-    }
-
-    pub fn row_line<S: AsRef<str>>(&self, cells: &[S], total: u16, theme: &Theme) -> Line<'static> {
-        let cells: Vec<&str> = cells.iter().map(AsRef::as_ref).collect();
-        self.line(&cells, total, theme.text)
-    }
-
     /// One row as plain text, padded and truncated to the column widths.
     pub fn row_text<S: AsRef<str>>(&self, cells: &[S], total: u16) -> String {
         let widths = self.widths(total);
@@ -76,28 +60,6 @@ impl Table {
             .map(|(i, w)| pad(&truncate(cells.get(i).map_or("", AsRef::as_ref), *w), *w))
             .collect();
         padded.join(&" ".repeat(GAP))
-    }
-
-    fn line(&self, cells: &[&str], total: u16, style: ratatui::style::Style) -> Line<'static> {
-        Line::from(Span::styled(self.row_text(cells, total), style))
-    }
-
-    /// Draw the header on the first row and `rows` beneath it, as many as fit.
-    pub fn render<S: AsRef<str>>(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        rows: &[Vec<S>],
-        theme: &Theme,
-    ) {
-        let [head, body] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
-        frame.render_widget(Paragraph::new(self.header_line(area.width, theme)), head);
-        let lines: Vec<Line> = rows
-            .iter()
-            .map(|r| self.row_line(r, area.width, theme))
-            .collect();
-        frame.render_widget(Paragraph::new(lines), body);
     }
 }
 
@@ -169,7 +131,6 @@ fn pad(text: &str, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::widgets::testing::{render_to_buffer, row_text};
 
     fn table() -> Table {
         Table::new(vec![
@@ -227,29 +188,5 @@ mod tests {
     #[test]
     fn zero_width_yields_nothing() {
         assert_eq!(truncate("abc", 0), "");
-    }
-
-    #[test]
-    fn row_lines_have_the_requested_display_width() {
-        let theme = Theme::dark();
-        let line = table().row_line(&["日本語", "k", "somewhere long enough to cut"], 30, &theme);
-        assert_eq!(line.width(), 30);
-    }
-
-    #[test]
-    fn missing_cells_render_blank() {
-        let theme = Theme::dark();
-        let line = table().row_line(&["only"], 30, &theme);
-        assert_eq!(line.width(), 30);
-    }
-
-    #[test]
-    fn header_is_drawn_muted_above_the_rows() {
-        let theme = Theme::dark();
-        let rows = vec![vec!["a", "b", "c"]];
-        let buffer = render_to_buffer(30, 3, |f| table().render(f, f.area(), &rows, &theme));
-        assert_eq!(buffer[(0, 0)].fg, theme.muted.fg.unwrap());
-        assert_eq!(buffer[(0, 1)].symbol(), "a");
-        assert!(row_text(&buffer, 2).trim().is_empty());
     }
 }
