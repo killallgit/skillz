@@ -8,7 +8,7 @@ use crate::model::Scope;
 use crate::profile::{Entry, Profile};
 
 impl Session<'_, '_> {
-    pub(super) fn create_profile(&self, name: &str) -> anyhow::Result<Notice> {
+    pub(in crate::cli) fn create_profile(&self, name: &str) -> anyhow::Result<Notice> {
         let exists = self.profiles.names()?.iter().any(|n| n == name);
         anyhow::ensure!(!exists, "profile {name} exists");
         self.profiles.save(&Profile::new(name))?;
@@ -16,7 +16,7 @@ impl Session<'_, '_> {
     }
 
     /// A profile of what the project has installed; what cannot be reproduced is reported.
-    pub(super) fn save_current(&self, name: &str) -> anyhow::Result<Notice> {
+    pub(in crate::cli) fn save_current(&self, name: &str) -> anyhow::Result<Notice> {
         let env = project_env(self.deps, &self.project);
         let items = installed(self.deps, &env, Scope::Project);
         let saved = save_profile(&self.profiles, &items, name, false)?;
@@ -26,14 +26,14 @@ impl Session<'_, '_> {
         })
     }
 
-    pub(super) fn set_entries(&self, name: &str, entries: &[Entry]) -> anyhow::Result<Notice> {
+    pub(in crate::cli) fn set_entries(&self, name: &str, entries: &[Entry]) -> anyhow::Result<Notice> {
         let mut profile = self.profiles.load(name)?;
         profile.entries = entries.to_vec();
         self.profiles.save(&profile)?;
         Ok(Notice::Updated(name.into()))
     }
 
-    pub(super) fn delete_profile(&self, name: &str) -> anyhow::Result<Notice> {
+    pub(in crate::cli) fn delete_profile(&self, name: &str) -> anyhow::Result<Notice> {
         self.profiles.delete(name)?;
         Ok(Notice::Deleted(name.into()))
     }

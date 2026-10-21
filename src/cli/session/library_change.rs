@@ -10,7 +10,7 @@ use crate::sync::sync_library;
 
 impl Session<'_, '_> {
     /// Items typed in carry no provenance; one the library already knows keeps its own.
-    pub(super) fn library_add(&self, spec: &str) -> anyhow::Result<Option<Notice>> {
+    pub(in crate::cli) fn library_add(&self, spec: &str) -> anyhow::Result<Option<Notice>> {
         let entry = Entry::parse_spec(spec)?;
         let label = entry.to_string();
         self.store.update(|document| {
@@ -21,7 +21,7 @@ impl Session<'_, '_> {
     }
 
     /// Sync the library with everything installed in the project and at user level.
-    pub(super) fn library_import(&self) -> anyhow::Result<Option<Notice>> {
+    pub(in crate::cli) fn library_import(&self) -> anyhow::Result<Option<Notice>> {
         let env = project_env(self.deps, &self.project);
         let items = [Scope::Project, Scope::Global]
             .map(|scope| installed(self.deps, &env, scope))
@@ -33,7 +33,7 @@ impl Session<'_, '_> {
         }))
     }
 
-    pub(super) fn library_remove(&self, entry: &Entry) -> anyhow::Result<Option<Notice>> {
+    pub(in crate::cli) fn library_remove(&self, entry: &Entry) -> anyhow::Result<Option<Notice>> {
         let item = LibraryItem::from_entry(entry.clone());
         self.store.update(|document| {
             document.items.remove(&item);

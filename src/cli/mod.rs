@@ -10,6 +10,7 @@ mod recording;
 mod removal;
 mod run;
 mod scope;
+mod session;
 mod sync;
 mod update;
 mod use_profile;

@@ -3,7 +3,7 @@
 use std::fmt;
 
 #[derive(Debug)]
-pub(super) enum Notice {
+pub(in crate::cli) enum Notice {
     Failed(String),
     UpToDate,
     /// A dry run: nothing changed.

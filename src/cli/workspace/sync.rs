@@ -2,7 +2,7 @@
 
 use std::sync::mpsc::Sender;
 
-use super::notice::Notice;
+use crate::cli::session::Notice;
 use crate::cli::deps::Deps;
 use crate::env::Env;
 use crate::sync::{self, Report};

@@ -60,6 +60,15 @@ impl Store {
         Ok(profile)
     }
 
+    /// Every profile that loads, flattened as by `load_flat`; the unreadable ones are left out.
+    pub fn readable(&self) -> anyhow::Result<Vec<Profile>> {
+        let names = self.names()?;
+        Ok(names
+            .iter()
+            .filter_map(|name| self.load_flat(name).ok())
+            .collect())
+    }
+
     /// The profile with every profile it extends folded in: their entries first, in order, each
     /// with its own profile's agents filled in. An entry replaces any inherited one with the same
     /// identity (see `identity`). A base that is missing, or that leads back to itself, is an
