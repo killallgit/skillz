@@ -39,7 +39,7 @@ impl Usage {
         let key = match item.kind {
             Kind::Skill => format!("skill:{}", item.name),
             Kind::Plugin => format!("plugin:{}", item.name),
-            Kind::Marketplace | Kind::Hook => return None,
+            Kind::Marketplace | Kind::Hook | Kind::Mcp => return None,
         };
         item.agents
             .iter()

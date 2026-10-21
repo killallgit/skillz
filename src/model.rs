@@ -33,6 +33,7 @@ pub enum Kind {
     Plugin,
     Skill,
     Hook,
+    Mcp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
@@ -129,6 +130,7 @@ impl fmt::Display for Kind {
             Kind::Plugin => "plugin",
             Kind::Skill => "skill",
             Kind::Hook => "hook",
+            Kind::Mcp => "mcp",
         })
     }
 }

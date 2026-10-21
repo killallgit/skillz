@@ -3,6 +3,7 @@
 
 pub mod claude;
 mod claude_marketplace;
+mod claude_mcp;
 pub mod codex;
 pub mod cursor;
 

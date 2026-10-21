@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use serde_json::Value;
 
-use super::{AgentAdapter, PluginInstall, PluginOutcome, claude_marketplace};
+use super::{AgentAdapter, PluginInstall, PluginOutcome, claude_marketplace, claude_mcp};
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
@@ -47,6 +47,7 @@ impl AgentAdapter for Claude {
         let installs = installs_from(&read_json(&installed_file(&env.claude_dir()))?);
         let markets = marketplaces_from(&read_json(&marketplaces_file(&env.claude_dir()))?);
         let mut out = plugins(env, scope, &installs, &markets);
+        out.extend(claude_mcp::discover(env, scope)?);
         if scope == Scope::Global {
             out.extend(
                 markets
@@ -78,6 +79,9 @@ impl AgentAdapter for Claude {
     }
 
     fn provision(&self, entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+        if let Entry::Mcp { .. } = entry {
+            return claude_mcp::provision(entry, scope, env);
+        }
         let Entry::Plugin {
             source,
             marketplace,
@@ -156,7 +160,7 @@ fn project_settings(root: &Path) -> Vec<PathBuf> {
 }
 
 /// Missing file = `Null` (no entries); malformed JSON is an error.
-fn read_json(path: &Path) -> anyhow::Result<Value> {
+pub(super) fn read_json(path: &Path) -> anyhow::Result<Value> {
     match fs::read_to_string(path) {
         Ok(text) => {
             serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))

@@ -13,6 +13,7 @@ pub mod hooks;
 pub mod info;
 pub mod install;
 pub mod matcher;
+pub mod mcp;
 pub mod model;
 pub mod npx_skills;
 pub mod profile;

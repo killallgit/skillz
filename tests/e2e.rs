@@ -1225,3 +1225,153 @@ fn profiles_are_edited_from_installed_items_typed_lines_and_removals() {
     assert!(seen[3].2.as_deref().unwrap().contains("added 1"));
     assert!(seen[5].2.is_some(), "a bad line is reported, not fatal");
 }
+
+/// Servers in every place the agents keep them: Claude user and local scope in `.claude.json`,
+/// the project's shared `.mcp.json`, and Codex's config.
+fn mcp_world() -> World {
+    let w = world();
+    let proj = w.project.canonicalize().unwrap().display().to_string();
+    write(
+        &w.home.join(".claude.json"),
+        &json!({
+            "mcpServers": {"user-fs": {"type": "stdio", "command": "npx", "args": ["-y", "fs"]}},
+            "projects": {proj: {"mcpServers": {
+                "local-web": {"type": "http", "url": "https://x/mcp"},
+                "keyed": {"type": "stdio", "command": "srv", "env": {"TOKEN": "hunter2"}}
+            }}}
+        })
+        .to_string(),
+    );
+    write(
+        &w.project.join(".mcp.json"),
+        &json!({"mcpServers": {"shared": {"command": "node", "args": ["s.js"]}}}).to_string(),
+    );
+    write(
+        &w.home.join(".codex/config.toml"),
+        "[mcp_servers.cx]\ncommand = \"cx\"\nargs = [\"--serve\"]\n",
+    );
+    w
+}
+
+#[test]
+fn mcp_servers_are_listed_from_every_agent_file_and_secrets_stay_out() {
+    let w = mcp_world();
+    let r = Recorder::default();
+    let d = deps(
+        &w,
+        &r,
+        &Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let mut out = Vec::new();
+    let cmd = Command::List {
+        target: None,
+        project: None,
+        all: true,
+        json: true,
+        filter: Filter {
+            mcp: true,
+            ..Filter::default()
+        },
+        interactive: false,
+    };
+    run(cmd, &d, &mut out).unwrap();
+    let text = String::from_utf8(out).unwrap();
+    assert!(!text.contains("hunter2"));
+    let items: Value = serde_json::from_str(&text).unwrap();
+    let mut names: Vec<&str> = items
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["name"].as_str().unwrap())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["cx", "keyed", "local-web", "shared", "user-fs"]);
+}
+
+#[test]
+fn removing_mcp_servers_uses_the_native_command_and_cleans_the_file() {
+    let w = mcp_world();
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let d = deps(&w, &r, &p);
+    let mcp = Filter {
+        mcp: true,
+        ..Filter::default()
+    };
+    for name in ["user-fs", "local-web", "shared", "cx"] {
+        run(uninstall(name, mcp.clone(), true), &d, &mut Vec::new()).unwrap();
+    }
+    let calls = r.0.borrow();
+    let scopes: Vec<&str> = calls
+        .iter()
+        .filter(|(prog, args)| prog == "claude" && args[..2] == ["mcp", "remove"])
+        .map(|(_, args)| args.last().unwrap().as_str())
+        .collect();
+    assert_eq!(scopes, ["user", "local", "project"]);
+    assert!(
+        calls
+            .iter()
+            .any(|(prog, args)| prog == "codex" && args[..2] == ["mcp", "remove"])
+    );
+
+    let state = read_json(&w.home.join(".claude.json"));
+    assert!(state["mcpServers"].get("user-fs").is_none());
+    let proj = w.project.canonicalize().unwrap().display().to_string();
+    let local = &state["projects"][proj.as_str()]["mcpServers"];
+    assert!(local.get("local-web").is_none() && local.get("keyed").is_some());
+    assert!(
+        read_json(&w.project.join(".mcp.json"))["mcpServers"]
+            .get("shared")
+            .is_none()
+    );
+    assert!(
+        !fs::read_to_string(w.home.join(".codex/config.toml"))
+            .unwrap()
+            .contains("cx")
+    );
+}
+
+#[test]
+fn reset_leaves_mcp_servers_unless_asked() {
+    let w = mcp_world();
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    let d = deps(&w, &r, &p);
+    let reset = |filter| Command::Reset {
+        project: None,
+        filter,
+        keep: vec![],
+        dry_run: false,
+        force: true,
+    };
+    run(reset(global()), &d, &mut Vec::new()).unwrap();
+    assert!(
+        read_json(&w.home.join(".claude.json"))["mcpServers"]
+            .get("user-fs")
+            .is_some()
+    );
+    let mcp = Filter {
+        global: true,
+        mcp: true,
+        ..Filter::default()
+    };
+    run(reset(mcp), &d, &mut Vec::new()).unwrap();
+    assert!(
+        read_json(&w.home.join(".claude.json"))["mcpServers"]
+            .get("user-fs")
+            .is_none()
+    );
+}

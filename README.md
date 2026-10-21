@@ -26,7 +26,7 @@ skillz rm --hook bd -a cursor    # every hook that runs `bd`, for Cursor
 skillz rm caveman@caveman -y     # non-interactive: needs one exact name match
 skillz rm speckit --dry-run      # print the removal plan only
 
-skillz reset                    # remove every skill, plugin, marketplace in scope (hooks with --hooks)
+skillz reset                    # remove every skill, plugin, marketplace in scope (hooks with --hooks, MCP servers with --mcp)
 skillz reset --keep caveman     # spare items by name, group or source
 skillz reset --dry-run | --force
 skillz prune                    # duplicates + unused 7+ days -> pick -> confirm -> remove
@@ -53,7 +53,8 @@ the middle, details on the right. `Tab` switches pane, `Enter` applies the selec
 the selected project (the plan is shown and confirmed first), `u` unloads a project's profile,
 `a` adds a project, `n` creates an empty profile, `s` saves what the project has installed as a
 profile, `d` deletes, `q` quits. On a profile: `i` adds items the selected project has installed,
-`t` types an entry (`skill SOURCE NAMES` or `plugin SOURCE MARKETPLACE NAME`), `r` removes entries.
+`t` types an entry (`skill SOURCE NAMES`, `plugin SOURCE MARKETPLACE NAME` or
+`mcp NAME COMMAND|URL [ARGS]`), `r` removes entries.
 
 The same from the command line:
 
@@ -83,6 +84,21 @@ marketplace = "killallgit"
 name = "killall-skills"
 agents = ["claude"]
 ```
+
+```toml
+[[entry]]
+kind = "mcp"
+name = "filesystem"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
+# or: url = "https://example.com/mcp", transport = "sse"   (default http)
+```
+
+MCP servers are listed too (`skillz list --mcp`; read from Claude's `.claude.json` and
+`.mcp.json`, and Codex's `config.toml`) and removed with their agent's own `mcp remove`. They are
+spared by `reset` unless you pass `--mcp`. A server that needs env vars or headers is not saved in
+a profile (it would have to carry secrets); a snapshot lists it as skipped. Codex only installs MCP
+servers globally, and has no SSE transport.
 
 skillz records what each entry added (`~/.config/skillz/applied.json`, per project and per
 `CLAUDE_CONFIG_DIR`/`CODEX_HOME`), so swapping or unloading removes exactly that and never

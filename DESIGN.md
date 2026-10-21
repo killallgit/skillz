@@ -60,6 +60,7 @@ All agent knowledge lives in `src/agents/<name>.rs`. Steps:
 | `snapshot` | installed items -> a `Profile`; what cannot be reinstalled (no source) is reported as skipped |
 | `workspace` | the registered projects (`workspace.toml`) |
 | `tui/home` | the workspace screen: a pure state machine that returns an `Act`; `cli::workspace` performs it and shows the screen again |
+| `mcp` | MCP servers: `Server`/`Launch`, read from json (Claude) or toml (Codex), shown as `Augmentation::children` lines (secret names only, never values) and read back by `snapshot` |
 | `prune` | pure checks: duplicate loose skills, never-used and 7+ days unused skills/plugins |
 | `cli` | clap definitions, wiring, list/uninstall/install commands |
 
@@ -226,7 +227,7 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,
   same `remove` step as `uninstall` (Remove).
 - `uninstall`: filter -> fuzzy match QUERY over `name group source` -> grouped picker
   -> show plan -> confirm -> execute -> re-discover and verify.
-- `reset`: remove every skill, plugin and marketplace the filters leave (hooks only with `--hooks`:
+- `reset`: remove every skill, plugin and marketplace the filters leave (hooks only with `--hooks`, MCP servers only with `--mcp`:
   they belong to other tools), minus `--keep` matches by name/group/source; a marketplace stays
   while any of its plugins is spared. Same plan, confirm and verify as `uninstall`.
 - `prune`: report duplicates (a loose skill every one of whose agents also gets it from an

@@ -10,6 +10,7 @@ use toml_edit::{DocumentMut, Item};
 use super::AgentAdapter;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
+use crate::mcp::Server;
 use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
 use crate::npx_skills;
 use crate::profile::Entry;
@@ -49,6 +50,9 @@ impl AgentAdapter for Codex {
 
     /// `codex plugin …` only works on the user config, so project scope has no way in.
     fn provision(&self, entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+        if let Entry::Mcp { .. } = entry {
+            return provision_mcp(entry, scope, env);
+        }
         let (
             Entry::Plugin {
                 source,
@@ -105,7 +109,8 @@ impl AgentAdapter for Codex {
                 marketplace(m, scope, &config, &cache, &plugins, keep_cache)
             })
             .collect::<Vec<_>>();
-        Ok(mps.into_iter().chain(plugins).collect())
+        let servers = mcp_servers(&doc, scope, &config);
+        Ok(mps.into_iter().chain(plugins).chain(servers).collect())
     }
 
     /// Codex keeps no counters: a tool call in a session log under
@@ -298,6 +303,69 @@ fn marketplace(
         children: own.iter().map(|p| p.name.clone()).collect(),
         removal,
     }
+}
+
+/// The `[mcp_servers.<name>]` tables. Removed by `codex mcp remove` (user config only) and by
+/// deleting the table.
+fn mcp_servers(doc: &DocumentMut, scope: Scope, config: &Path) -> Vec<Augmentation> {
+    table_keys(doc, "mcp_servers")
+        .into_iter()
+        .filter_map(|(name, item)| Server::from_toml(name, item.as_table_like()?))
+        .map(|server| {
+            let mut removal = native(
+                scope,
+                config,
+                &["mcp", "remove", &server.name],
+                &server.name,
+            );
+            removal.push(toml_remove(config, &["mcp_servers", &server.name]));
+            Augmentation {
+                id: format!("mcp:codex:{scope}:{}", server.name),
+                name: server.name.clone(),
+                kind: Kind::Mcp,
+                agents: vec![Agent::Codex],
+                scope,
+                group: "mcp".into(),
+                source: None,
+                installer: Installer::CodexCli,
+                children: server.children(),
+                removal,
+            }
+        })
+        .collect()
+}
+
+/// `codex mcp add` for a profile entry. Like the plugin commands it only edits the user config,
+/// so a project has no way in; Codex has no SSE transport.
+fn provision_mcp(entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+    let (
+        Entry::Mcp {
+            name,
+            command,
+            args,
+            url,
+            transport,
+            ..
+        },
+        Scope::Global,
+    ) = (entry, scope)
+    else {
+        return None;
+    };
+    let mut cmd: Vec<String> = vec!["mcp".into(), "add".into(), name.clone()];
+    match (command, url) {
+        (Some(command), _) => {
+            cmd.extend(["--".into(), command.clone()]);
+            cmd.extend(args.iter().cloned());
+        }
+        (None, Some(url)) if transport.as_deref().unwrap_or("http") == "http" => {
+            cmd.extend(["--url".into(), url.clone()]);
+        }
+        _ => return None,
+    }
+    let cwd = env.codex_dir();
+    let cwd = cwd.parent().unwrap_or(&env.home).to_path_buf();
+    Some(vec![Action::required("codex", cmd, &cwd)])
 }
 
 /// `codex plugin …` always works on the user config, so only global items use it; a project's

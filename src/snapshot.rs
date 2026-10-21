@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::mcp::{Launch, Server};
 use crate::model::{Agent, Augmentation, Installer, Kind};
 use crate::profile::{Entry, Profile};
 
@@ -14,9 +15,13 @@ pub struct Snapshot {
     pub skipped: Vec<String>,
 }
 
+/// One MCP server across agents: name, args (or the transport of a url server), command, url.
+type ServerKey = (String, Vec<String>, Option<String>, Option<String>);
+
 pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
     let mut skills: BTreeMap<(String, Vec<Agent>), Vec<String>> = BTreeMap::new();
     let mut plugins: BTreeMap<(String, String, String), Vec<Agent>> = BTreeMap::new();
+    let mut servers: BTreeMap<ServerKey, Vec<Agent>> = BTreeMap::new();
     let mut skipped = vec![];
     for item in items {
         let mut agents = item.agents.clone();
@@ -36,6 +41,26 @@ pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
                 all.sort();
                 all.dedup();
             }
+            (Kind::Mcp, ..) => match Server::from_item(item) {
+                Some(server) if server.secrets.is_empty() => {
+                    let key = match server.launch {
+                        Launch::Stdio { command, args } => (server.name, args, Some(command), None),
+                        Launch::Url { url, transport } => {
+                            (server.name, vec![transport], None, Some(url))
+                        }
+                    };
+                    let all = servers.entry(key).or_default();
+                    all.extend(agents);
+                    all.sort();
+                    all.dedup();
+                }
+                Some(server) => skipped.push(format!(
+                    "{} (needs {}: secrets are not saved in a profile)",
+                    item.label(true),
+                    server.secrets.join(", ")
+                )),
+                None => skipped.push(item.label(true)),
+            },
             (Kind::Marketplace, ..) => {}
             _ => skipped.push(item.label(true)),
         }
@@ -64,6 +89,21 @@ pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
             source,
             marketplace,
             name,
+            agents: own(agents),
+        });
+    }
+    for ((name, args, command, url), agents) in servers {
+        // A url server keeps its transport where a command keeps its args.
+        let (args, transport) = match &url {
+            Some(_) => (vec![], args.into_iter().next().filter(|t| t != "http")),
+            None => (args, None),
+        };
+        entries.push(Entry::Mcp {
+            name,
+            command,
+            args,
+            url,
+            transport,
             agents: own(agents),
         });
     }
@@ -216,6 +256,73 @@ mod tests {
         );
         assert!(snap.profile.entries.is_empty());
         assert_eq!(snap.skipped.len(), 4);
+    }
+
+    #[test]
+    fn mcp_servers_are_saved_unless_they_need_secrets() {
+        let server = |name: &str, children: Vec<&str>, agent: Agent| {
+            let mut i = item(name, Kind::Mcp, Installer::ClaudeCli, "mcp", None, &[agent]);
+            i.children = children.into_iter().map(String::from).collect();
+            i
+        };
+        let snap = snapshot(
+            "p",
+            &[
+                server(
+                    "fs",
+                    vec!["command: npx", "arg: -y", "arg: fs"],
+                    Agent::Claude,
+                ),
+                server(
+                    "fs",
+                    vec!["command: npx", "arg: -y", "arg: fs"],
+                    Agent::Codex,
+                ),
+                server(
+                    "web",
+                    vec!["url: https://x/mcp", "transport: sse"],
+                    Agent::Claude,
+                ),
+                server(
+                    "plain",
+                    vec!["url: https://y/mcp", "transport: http"],
+                    Agent::Claude,
+                ),
+                server("keyed", vec!["command: srv", "needs: TOKEN"], Agent::Claude),
+                server("broken", vec![], Agent::Claude),
+            ],
+        );
+        assert_eq!(snap.skipped.len(), 2);
+        assert!(
+            snap.skipped
+                .iter()
+                .any(|s| s.contains("TOKEN") && !s.contains("secret="))
+        );
+        let get = |n: &str| {
+            snap.profile.entries.iter().find_map(|e| match e {
+                Entry::Mcp { name, .. } if name == n => Some(e.clone()),
+                _ => None,
+            })
+        };
+        assert_eq!(
+            get("fs"),
+            Some(Entry::Mcp {
+                name: "fs".into(),
+                command: Some("npx".into()),
+                args: vec!["-y".into(), "fs".into()],
+                url: None,
+                transport: None,
+                agents: vec![],
+            })
+        );
+        let Some(Entry::Mcp { transport, .. }) = get("web") else {
+            panic!()
+        };
+        assert_eq!(transport.as_deref(), Some("sse"));
+        let Some(Entry::Mcp { transport, .. }) = get("plain") else {
+            panic!()
+        };
+        assert_eq!(transport, None);
     }
 
     #[test]

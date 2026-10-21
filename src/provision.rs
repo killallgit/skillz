@@ -189,6 +189,96 @@ mod tests {
         assert_eq!(install, ["plugin", "install", "pp@mp", "--scope", "local"]);
     }
 
+    fn mcp(command: Option<&str>, url: Option<&str>, transport: Option<&str>) -> Entry {
+        Entry::Mcp {
+            name: "srv".into(),
+            command: command.map(String::from),
+            args: vec!["-y".into(), "pkg".into()],
+            url: url.map(String::from),
+            transport: transport.map(String::from),
+            agents: vec![],
+        }
+    }
+
+    fn args_for(entry: Entry, agent: Agent, scope: Scope) -> Option<Vec<String>> {
+        let mut p = profile(vec![entry]);
+        p.agents = vec![agent];
+        let planned = plan(&registry(), &p, scope, &env()).unwrap();
+        planned.steps.first().map(|s| match s {
+            Action::Run { args, .. } => args.clone(),
+            other => panic!("{other:?}"),
+        })
+    }
+
+    #[test]
+    fn mcp_servers_install_with_each_agents_own_command() {
+        let stdio = || mcp(Some("npx"), None, None);
+        assert_eq!(
+            args_for(stdio(), Agent::Claude, Scope::Project).unwrap(),
+            [
+                "mcp", "add", "--scope", "local", "srv", "--", "npx", "-y", "pkg"
+            ]
+        );
+        assert_eq!(
+            args_for(stdio(), Agent::Claude, Scope::Global).unwrap()[3],
+            "user"
+        );
+        assert_eq!(
+            args_for(
+                mcp(None, Some("https://x"), Some("sse")),
+                Agent::Claude,
+                Scope::Global
+            )
+            .unwrap(),
+            [
+                "mcp",
+                "add",
+                "--scope",
+                "user",
+                "--transport",
+                "sse",
+                "srv",
+                "https://x"
+            ]
+        );
+        assert_eq!(
+            args_for(
+                mcp(None, Some("https://x"), None),
+                Agent::Claude,
+                Scope::Global
+            )
+            .unwrap()[5],
+            "http"
+        );
+        assert_eq!(
+            args_for(stdio(), Agent::Codex, Scope::Global).unwrap(),
+            ["mcp", "add", "srv", "--", "npx", "-y", "pkg"]
+        );
+        assert_eq!(
+            args_for(
+                mcp(None, Some("https://x"), None),
+                Agent::Codex,
+                Scope::Global
+            )
+            .unwrap(),
+            ["mcp", "add", "srv", "--url", "https://x"]
+        );
+    }
+
+    #[test]
+    fn mcp_servers_an_agent_cannot_take_are_reported() {
+        assert!(args_for(mcp(Some("npx"), None, None), Agent::Codex, Scope::Project).is_none());
+        assert!(
+            args_for(
+                mcp(None, Some("https://x"), Some("sse")),
+                Agent::Codex,
+                Scope::Global
+            )
+            .is_none()
+        );
+        assert!(args_for(mcp(Some("npx"), None, None), Agent::Cursor, Scope::Global).is_none());
+    }
+
     #[test]
     fn an_invalid_profile_plans_nothing() {
         let mut p = profile(vec![skills(vec![])]);

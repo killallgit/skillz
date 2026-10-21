@@ -31,18 +31,36 @@ pub enum Entry {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         agents: Vec<Agent>,
     },
+    /// An MCP server, launched by `command` or reached at `url`. Env vars and headers are
+    /// secrets and cannot be part of a profile, so servers that need them are not supported.
+    Mcp {
+        name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        command: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        args: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        url: Option<String>,
+        /// `http` (the default) or `sse`; only with a `url`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        transport: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        agents: Vec<Agent>,
+    },
 }
 
 impl Entry {
     /// The entry's own agents; empty means "the profile's".
     pub fn agents(&self) -> &[Agent] {
         match self {
-            Entry::Skill { agents, .. } | Entry::Plugin { agents, .. } => agents,
+            Entry::Skill { agents, .. }
+            | Entry::Plugin { agents, .. }
+            | Entry::Mcp { agents, .. } => agents,
         }
     }
 
-    /// An entry from a line typed by hand: `skill SOURCE NAME[,NAME...]` or
-    /// `plugin SOURCE MARKETPLACE NAME`. It uses the profile's agents.
+    /// An entry from a line typed by hand: `skill SOURCE NAME[,NAME...]`,
+    /// `plugin SOURCE MARKETPLACE NAME` or `mcp NAME COMMAND|URL [ARGS...]`. It uses the profile's agents.
     pub fn parse_spec(spec: &str) -> anyhow::Result<Entry> {
         let words: Vec<&str> = spec.split_whitespace().collect();
         let entry = match words.as_slice() {
@@ -61,8 +79,23 @@ impl Entry {
                 name: name.to_string(),
                 agents: vec![],
             },
+            ["mcp", name, target, rest @ ..] => {
+                let is_url = target.starts_with("http://") || target.starts_with("https://");
+                Entry::Mcp {
+                    name: name.to_string(),
+                    command: (!is_url).then(|| target.to_string()),
+                    args: if is_url {
+                        vec![]
+                    } else {
+                        rest.iter().map(|a| a.to_string()).collect()
+                    },
+                    url: is_url.then(|| target.to_string()),
+                    transport: None,
+                    agents: vec![],
+                }
+            }
             _ => anyhow::bail!(
-                "expected `skill SOURCE NAME[,NAME]` or `plugin SOURCE MARKETPLACE NAME`"
+                "expected `skill SOURCE NAME[,NAME]`, `plugin SOURCE MARKETPLACE NAME` or `mcp NAME COMMAND|URL [ARGS]`"
             ),
         };
         entry.validate()?;
@@ -87,6 +120,32 @@ impl Entry {
                 name,
                 ..
             } => vec![source, marketplace, name],
+            Entry::Mcp {
+                name,
+                command,
+                url,
+                transport,
+                ..
+            } => {
+                anyhow::ensure!(
+                    command.is_some() != url.is_some(),
+                    "mcp entry {name} needs exactly one of command or url"
+                );
+                anyhow::ensure!(
+                    transport.is_none() || url.is_some(),
+                    "mcp entry {name}: transport only goes with a url"
+                );
+                if let Some(t) = transport {
+                    anyhow::ensure!(
+                        matches!(t.as_str(), "http" | "sse"),
+                        "unknown transport {t:?}"
+                    );
+                }
+                std::iter::once(name.as_str())
+                    .chain(command.as_deref())
+                    .chain(url.as_deref())
+                    .collect()
+            }
         };
         for arg in args {
             anyhow::ensure!(
@@ -107,6 +166,13 @@ impl std::fmt::Display for Entry {
             Entry::Plugin {
                 marketplace, name, ..
             } => write!(f, "plugin {name}@{marketplace}"),
+            Entry::Mcp {
+                name, command, url, ..
+            } => write!(
+                f,
+                "mcp {name} [{}]",
+                command.as_deref().or(url.as_deref()).unwrap_or("")
+            ),
         }
     }
 }
@@ -155,7 +221,9 @@ impl Profile {
             .map(|e| {
                 let resolved = self.agents_for(e).to_vec();
                 let mut e = e.clone();
-                let (Entry::Skill { agents, .. } | Entry::Plugin { agents, .. }) = &mut e;
+                let (Entry::Skill { agents, .. }
+                | Entry::Plugin { agents, .. }
+                | Entry::Mcp { agents, .. }) = &mut e;
                 *agents = resolved;
                 e
             })
@@ -308,6 +376,10 @@ mod tests {
             "[[entry]]\nkind = \"skill\"\nsource = \"o/r\"\nnames = [\"--all\"]\n",
             "[[entry]]\nkind = \"plugin\"\nsource = \"o/r\"\nmarketplace = \"\"\nname = \"p\"\n",
             "[[entry]]\nkind = \"nope\"\n",
+            "[[entry]]\nkind = \"mcp\"\nname = \"s\"\n",
+            "[[entry]]\nkind = \"mcp\"\nname = \"s\"\ncommand = \"a\"\nurl = \"b\"\n",
+            "[[entry]]\nkind = \"mcp\"\nname = \"s\"\ncommand = \"a\"\ntransport = \"http\"\n",
+            "[[entry]]\nkind = \"mcp\"\nname = \"s\"\nurl = \"b\"\ntransport = \"ws\"\n",
             "agents = []\n",
         ];
         for text in bad {
@@ -329,6 +401,21 @@ mod tests {
             Entry::parse_spec(" plugin o/mp mp pp ").unwrap(),
             Entry::Plugin { .. }
         ));
+        let Entry::Mcp {
+            command, args, url, ..
+        } = Entry::parse_spec("mcp s npx -y pkg").unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(
+            (command.as_deref(), args, url),
+            (Some("npx"), vec!["-y".to_string(), "pkg".to_string()], None)
+        );
+        let Entry::Mcp { command, url, .. } = Entry::parse_spec("mcp h https://x/mcp").unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!((command, url.as_deref()), (None, Some("https://x/mcp")));
         for bad in [
             "",
             "skill o/r",

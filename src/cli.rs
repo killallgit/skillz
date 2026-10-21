@@ -73,7 +73,7 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Remove every skill, plugin and marketplace in scope (hooks only with `--hooks`)
+    /// Remove every skill, plugin and marketplace in scope (hooks with `--hooks`, MCP servers with `--mcp`)
     Reset {
         /// Project directory (default: the current one). With `-g`, only global unless given.
         #[arg(value_name = "PATH")]
@@ -211,6 +211,8 @@ pub struct Filter {
     pub plugins: bool,
     #[arg(long, visible_alias = "marketplace")]
     pub marketplaces: bool,
+    #[arg(long)]
+    pub mcp: bool,
     /// Only items used by these agents
     #[arg(short, long = "agent", value_enum)]
     pub agents: Vec<Agent>,
@@ -223,6 +225,7 @@ impl Filter {
             (self.hooks, Kind::Hook),
             (self.plugins, Kind::Plugin),
             (self.marketplaces, Kind::Marketplace),
+            (self.mcp, Kind::Mcp),
         ]
         .into_iter()
         .filter_map(|(on, kind)| on.then_some(kind))
@@ -684,7 +687,7 @@ fn reset_set<'a>(
     items
         .iter()
         .filter(|i| filter.keeps(i))
-        .filter(|i| explicit_kinds || i.kind != Kind::Hook)
+        .filter(|i| explicit_kinds || !matches!(i.kind, Kind::Hook | Kind::Mcp))
         .filter(|i| !spared.contains(i))
         .filter(|i| !(i.kind == Kind::Marketplace && spared_groups.contains(&i.name.as_str())))
         .collect()
