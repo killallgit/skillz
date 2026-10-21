@@ -5,9 +5,8 @@ use std::path::Path;
 use anyhow::Context;
 
 use super::group::hook_group;
-use super::layout::parse;
-use super::{Format, HookEntry};
 use crate::action::{Action, Edit};
+use crate::hook_text::{Format, HookEntry, parse};
 use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
 
 /// The config file a hook was read from, and whose it is.
@@ -94,7 +93,7 @@ fn child_label(e: &HookEntry) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hooks::testutil::*;
+    use crate::hook_text::testutil::*;
     use serde_json::{Value, json};
 
     #[test]

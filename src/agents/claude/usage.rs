@@ -10,10 +10,9 @@ pub(super) fn claude_uses(json: &Value) -> Vec<(String, u64)> {
             .flatten()
             .filter_map(|(k, v)| Some((k.clone(), v.get("lastUsedAt")?.as_u64()?, v)))
     };
-    let skills = entries("skillUsage").map(|(k, ms, _)| match k.split_once(':') {
-        Some((plugin, skill)) => (format!("pskill:{plugin}:{skill}"), ms),
-        None => (format!("skill:{k}"), ms),
-    });
+    let skills = entries("skillUsage")
+        .filter(|(k, ..)| !k.contains(':'))
+        .map(|(k, ms, _)| (format!("skill:{k}"), ms));
     let plugins = entries("pluginUsage")
         .filter(|(_, _, v)| v.get("usageCount").and_then(Value::as_u64) > Some(0))
         .map(|(k, ms, _)| (format!("plugin:{k}"), ms));
@@ -46,7 +45,6 @@ mod tests {
             uses,
             [
                 ("plugin:caveman@caveman".into(), 30),
-                ("pskill:caveman:caveman".into(), 20),
                 ("skill:tdd".into(), 10)
             ]
         );

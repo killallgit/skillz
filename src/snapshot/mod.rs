@@ -1,144 +1,142 @@
 //! Turn what is installed into a profile. Only what a profile can install again is kept: skills
-//! `npx skills` fetched from a source, and plugins whose marketplace has one. Hand-made skills,
-//! hooks and marketplaces (a plugin brings its own) are reported as skipped.
+//! `npx skills` fetched from a source, plugins whose marketplace has one, subagents with a
+//! source, hooks, and MCP servers that need no secrets. Everything else is reported as skipped.
+//!
+//! Each kind of entry has its own `Collector`; `snapshot` only routes items to them.
 
-use std::collections::BTreeMap;
+mod hooks;
+mod mcp;
+mod plugins;
+mod skills;
+mod subagents;
 
-use crate::mcp::{Launch, Server};
-use crate::model::{Agent, Augmentation, Installer, Kind};
+use std::fmt;
+
+use crate::model::{Agent, Augmentation};
 use crate::profile::{Entry, Profile};
 
 #[derive(Debug)]
 pub struct Snapshot {
     pub profile: Profile,
-    /// Labels of installed items the profile cannot reproduce.
-    pub skipped: Vec<String>,
+    /// Installed items the profile cannot reproduce.
+    pub skipped: Vec<Skipped>,
 }
 
-/// One MCP server across agents: name, args (or the transport of a url server), command, url.
-type ServerKey = (String, Vec<String>, Option<String>, Option<String>);
+/// An installed item left out of a snapshot, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Skipped {
+    pub label: String,
+    pub reason: Reason,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reason {
+    /// Nothing to reinstall it from: a hand-made skill, a plugin without a marketplace.
+    NoSource,
+    /// An MCP server with this many env vars or headers, which a profile does not carry.
+    Secrets(usize),
+    /// The item's definition could not be read back into an entry.
+    Unreadable,
+    /// The entry built from it is not a valid profile entry.
+    Invalid,
+}
+
+impl fmt::Display for Reason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Reason::NoSource => write!(f, "nothing to reinstall it from"),
+            Reason::Secrets(n) => write!(f, "has {n} env vars or headers a profile does not carry"),
+            Reason::Unreadable => write!(f, "its definition cannot be read back"),
+            Reason::Invalid => write!(f, "not a valid profile entry"),
+        }
+    }
+}
+
+impl Skipped {
+    fn new(item: &Augmentation, reason: Reason) -> Self {
+        Skipped {
+            label: item.label(true),
+            reason,
+        }
+    }
+}
+
+/// What a collector made of one item.
+enum Accept {
+    Taken,
+    Skipped(Skipped),
+    /// Not this collector's kind of item.
+    Pass,
+}
+
+trait Collector {
+    fn accept(&mut self, item: &Augmentation, agents: Vec<Agent>) -> Accept;
+    /// The entries gathered so far; an entry for exactly the profile's agents names none.
+    fn finish(&mut self, default: &[Agent]) -> Vec<Entry>;
+}
+
+fn collectors() -> Vec<Box<dyn Collector>> {
+    vec![
+        Box::<skills::Skills>::default(),
+        Box::<plugins::Plugins>::default(),
+        Box::<subagents::Subagents>::default(),
+        Box::<mcp::McpServers>::default(),
+        Box::<hooks::Hooks>::default(),
+    ]
+}
 
 pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
-    let mut skills: BTreeMap<(String, Vec<Agent>), Vec<String>> = BTreeMap::new();
-    let mut plugins: BTreeMap<(String, String, String), Vec<Agent>> = BTreeMap::new();
-    let mut servers: BTreeMap<ServerKey, Vec<Agent>> = BTreeMap::new();
-    let mut subagents: BTreeMap<(String, Vec<Agent>), Vec<String>> = BTreeMap::new();
+    let mut collectors = collectors();
     let mut skipped = vec![];
     for item in items {
-        let mut agents = item.agents.clone();
-        agents.sort();
-        match (item.kind, item.installer, &item.source) {
-            (Kind::Skill, Installer::Npx, Some(source)) => {
-                skills
-                    .entry((source.clone(), agents))
-                    .or_default()
-                    .push(item.name.clone());
-            }
-            (Kind::Plugin, _, Some(source)) => {
-                let plugin = item.name.split('@').next().unwrap_or(&item.name);
-                let key = (source.clone(), item.group.clone(), plugin.to_string());
-                let all = plugins.entry(key).or_default();
-                all.extend(agents);
-                all.sort();
-                all.dedup();
-            }
-            (Kind::Subagent, _, Some(source)) => {
-                // The file name is what a copy finds the definition by.
-                let file = item.children.iter().find_map(|c| c.strip_prefix("file: "));
-                let stem = file.and_then(|f| f.rsplit_once('.').map(|(s, _)| s));
-                subagents
-                    .entry((source.clone(), agents))
-                    .or_default()
-                    .push(stem.unwrap_or(&item.name).to_string());
-            }
-            (Kind::Mcp, ..) => match Server::from_item(item) {
-                Some(server) if server.secrets.is_empty() => {
-                    let key = match server.launch {
-                        Launch::Stdio { command, args } => (server.name, args, Some(command), None),
-                        Launch::Url { url, transport } => {
-                            (server.name, vec![transport], None, Some(url))
-                        }
-                    };
-                    let all = servers.entry(key).or_default();
-                    all.extend(agents);
-                    all.sort();
-                    all.dedup();
-                }
-                Some(server) => skipped.push(format!(
-                    "{} (has {} env vars or headers, which a profile does not carry)",
-                    item.label(true),
-                    server.secrets.len()
-                )),
-                None => skipped.push(item.label(true)),
-            },
-            (Kind::Marketplace, ..) => {}
-            _ => skipped.push(item.label(true)),
+        if let Some(left_out) = route(&mut collectors, item) {
+            skipped.push(left_out);
         }
     }
-
     let mut profile = Profile::new(name);
-    let own = |agents: Vec<Agent>| {
-        if agents == profile.agents {
-            vec![]
-        } else {
-            agents
-        }
-    };
-    let mut entries = vec![];
-    for ((source, agents), mut names) in skills {
-        names.sort();
-        names.dedup();
-        entries.push(Entry::Skill {
-            source,
-            names,
-            agents: own(agents),
-        });
-    }
-    for ((source, marketplace, name), agents) in plugins {
-        entries.push(Entry::Plugin {
-            source,
-            marketplace,
-            name,
-            agents: own(agents),
-        });
-    }
-    for ((source, agents), mut names) in subagents {
-        names.sort();
-        names.dedup();
-        entries.push(Entry::Subagent {
-            source,
-            names,
-            agents: own(agents),
-        });
-    }
-    for ((name, args, command, url), agents) in servers {
-        // A url server keeps its transport where a command keeps its args.
-        let (args, transport) = match &url {
-            Some(_) => (vec![], args.into_iter().next().filter(|t| t != "http")),
-            None => (args, None),
-        };
-        entries.push(Entry::Mcp {
-            name,
-            command,
-            args,
-            url,
-            transport,
-            agents: own(agents),
-        });
-    }
-    for entry in entries {
-        match entry.validate() {
-            Ok(()) => profile.entries.push(entry),
-            Err(_) => skipped.push(entry.to_string()),
+    let default = profile.agents.clone();
+    for collector in &mut collectors {
+        for entry in collector.finish(&default) {
+            match entry.validate() {
+                Ok(()) => profile.entries.push(entry),
+                Err(_) => skipped.push(Skipped {
+                    label: entry.to_string(),
+                    reason: Reason::Invalid,
+                }),
+            }
         }
     }
     Snapshot { profile, skipped }
 }
 
+/// Hand `item` to the first collector that wants it; `Some` when none can keep it.
+fn route(collectors: &mut [Box<dyn Collector>], item: &Augmentation) -> Option<Skipped> {
+    let mut agents = item.agents.clone();
+    agents.sort();
+    for collector in collectors {
+        match collector.accept(item, agents.clone()) {
+            Accept::Taken => return None,
+            Accept::Skipped(skipped) => return Some(skipped),
+            Accept::Pass => {}
+        }
+    }
+    Some(Skipped::new(item, Reason::NoSource))
+}
+
+fn own(agents: Vec<Agent>, default: &[Agent]) -> Vec<Agent> {
+    if agents == default { vec![] } else { agents }
+}
+
+fn merge_agents(all: &mut Vec<Agent>, more: Vec<Agent>) {
+    all.extend(more);
+    all.sort();
+    all.dedup();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Scope;
+    use crate::model::{Installer, Kind, Scope};
 
     fn item(
         name: &str,
@@ -274,7 +272,49 @@ mod tests {
             ],
         );
         assert!(snap.profile.entries.is_empty());
-        assert_eq!(snap.skipped.len(), 4);
+        let reasons: Vec<Reason> = snap.skipped.iter().map(|s| s.reason).collect();
+        // Assert each left-out item carries why it was left out.
+        assert_eq!(
+            reasons,
+            [
+                Reason::NoSource,
+                Reason::Unreadable,
+                Reason::NoSource,
+                Reason::Invalid
+            ]
+        );
+    }
+
+    #[test]
+    fn hooks_are_read_back_from_their_children_and_merged_across_agents() {
+        let hook = |agent: Agent| {
+            let mut i = item("fmt", Kind::Hook, Installer::Local, "hooks", None, &[agent]);
+            i.children = vec![
+                "PostToolUse [Edit]: cargo fmt".into(),
+                "Stop: notify: done".into(),
+            ];
+            i
+        };
+        let snap = snapshot("p", &[hook(Agent::Claude), hook(Agent::Codex)]);
+        // Assert both handlers become hook entries owned by both agents.
+        assert_eq!(
+            snap.profile.entries,
+            [
+                Entry::Hook {
+                    event: "PostToolUse".into(),
+                    matcher: Some("Edit".into()),
+                    command: "cargo fmt".into(),
+                    agents: vec![],
+                },
+                Entry::Hook {
+                    event: "Stop".into(),
+                    matcher: None,
+                    command: "notify: done".into(),
+                    agents: vec![],
+                },
+            ]
+        );
+        assert!(snap.skipped.is_empty());
     }
 
     #[test]
@@ -311,12 +351,9 @@ mod tests {
                 server("broken", vec![], Agent::Claude),
             ],
         );
-        assert_eq!(snap.skipped.len(), 2);
-        assert!(
-            snap.skipped
-                .iter()
-                .any(|s| s.contains("has 1 env") && !s.contains("TOKEN"))
-        );
+        let reasons: Vec<Reason> = snap.skipped.iter().map(|s| s.reason).collect();
+        // Assert the secret-bearing and the unreadable server are skipped for their own reasons.
+        assert_eq!(reasons, [Reason::Secrets(1), Reason::Unreadable]);
         let get = |n: &str| {
             snap.profile.entries.iter().find_map(|e| match e {
                 Entry::Mcp { name, .. } if name == n => Some(e.clone()),
@@ -366,6 +403,8 @@ mod tests {
                 agent("Mine", "mine.md", None),
             ],
         );
+        // Assert only the source-less subagent is skipped.
+        assert_eq!(snap.skipped[0].reason, Reason::NoSource);
         assert_eq!(snap.skipped.len(), 1);
         assert_eq!(
             snap.profile.entries,

@@ -69,42 +69,26 @@ fn scope_key(scope: Scope) -> &'static str {
     }
 }
 
+type Member<'a> = (usize, &'a Augmentation);
+
 /// The group's header row. Its count is items; a group of lone marketplaces counts their plugins.
-fn group_node(group: &str, members: Vec<(usize, &Augmentation)>) -> Node {
+fn group_node(group: &str, members: Vec<Member>) -> Node {
     let (marketplaces, mut rest): (Vec<_>, Vec<_>) = members
         .iter()
         .copied()
         .partition(|(_, a)| a.kind == Kind::Marketplace && a.name == group);
     rest.sort_by(|(_, a), (_, b)| (a.kind, &a.name).cmp(&(b.kind, &b.name)));
-
-    // Skills with no recorded source: plain folders someone put in a skills dir.
-    let group = if group == LOCAL { LOCAL_LABEL } else { group };
-    let mut label = members
-        .iter()
-        .filter_map(|(_, a)| a.source.as_deref())
-        .find(|s| *s != group)
-        .unwrap_or(group)
-        .to_string();
-    if !marketplaces.is_empty() {
-        label.push_str(" (marketplace)");
-    }
-
-    let count = if rest.is_empty() {
-        marketplaces.iter().map(|(_, m)| m.children.len()).sum()
+    let (count, children) = if rest.is_empty() {
+        marketplace_children(&marketplaces)
     } else {
-        rest.len()
-    };
-    let children = if rest.is_empty() {
-        let mut leaves: Vec<&String> = marketplaces.iter().flat_map(|(_, m)| &m.children).collect();
-        leaves.sort();
-        leaves.dedup();
-        leaves.into_iter().map(Node::leaf).collect()
-    } else {
-        rest.into_iter().map(|(i, a)| item_node(i, a)).collect()
+        (
+            rest.len(),
+            rest.into_iter().map(|(i, a)| item_node(i, a)).collect(),
+        )
     };
     let scope = members[0].1.scope;
     Node {
-        label,
+        label: group_label(group, &members, !marketplaces.is_empty()),
         cells: [
             String::new(),
             String::new(),
@@ -116,6 +100,27 @@ fn group_node(group: &str, members: Vec<(usize, &Augmentation)>) -> Node {
         scope: Some(scope),
         ..Node::default()
     }
+}
+
+fn group_label(group: &str, members: &[Member], marketplace: bool) -> String {
+    // Skills with no recorded source: plain folders someone put in a skills dir.
+    let group = if group == LOCAL { LOCAL_LABEL } else { group };
+    let source = members
+        .iter()
+        .filter_map(|(_, a)| a.source.as_deref())
+        .find(|s| *s != group)
+        .unwrap_or(group);
+    let suffix = if marketplace { " (marketplace)" } else { "" };
+    format!("{source}{suffix}")
+}
+
+/// Lone marketplaces show their plugins as leaves.
+fn marketplace_children(marketplaces: &[Member]) -> (usize, Vec<Node>) {
+    let count = marketplaces.iter().map(|(_, m)| m.children.len()).sum();
+    let mut leaves: Vec<&String> = marketplaces.iter().flat_map(|(_, m)| &m.children).collect();
+    leaves.sort();
+    leaves.dedup();
+    (count, leaves.into_iter().map(Node::leaf).collect())
 }
 
 /// Fill every item row's modal text from `info(item index)`, and each group's with a summary

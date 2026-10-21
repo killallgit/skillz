@@ -28,16 +28,46 @@ pub(super) fn project_command(
     }
 }
 
-/// Each registered project with the profile it has loaded.
-fn list_projects(deps: &Deps, workspace: &Workspace, out: &mut dyn Write) -> anyhow::Result<()> {
+/// A registered project and the profile it has loaded.
+#[derive(Debug, PartialEq, Eq)]
+struct ProjectRow {
+    profile: Option<String>,
+    dir: PathBuf,
+    missing: bool,
+}
+
+fn project_row(dir: PathBuf, profile: Option<String>) -> ProjectRow {
+    ProjectRow {
+        profile,
+        missing: !dir.is_dir(),
+        dir,
+    }
+}
+
+fn project_rows(deps: &Deps, workspace: &Workspace) -> anyhow::Result<Vec<ProjectRow>> {
     let ledger = apply::Ledger::in_env(&project_env(deps, &deps.cwd));
-    for dir in workspace.projects()? {
-        let key = apply::Ledger::key(&project_env(deps, &dir), Scope::Project);
-        let state = ledger.get(&key)?.map_or("-".to_string(), |r| r.profile);
-        let gone = if dir.is_dir() { "" } else { "  (missing)" };
-        writeln!(out, "{state:<16} {}{gone}", dir.display())?;
+    workspace
+        .projects()?
+        .into_iter()
+        .map(|dir| {
+            let key = apply::Ledger::key(&project_env(deps, &dir), Scope::Project);
+            let profile = ledger.get(&key)?.map(|r| r.profile);
+            Ok(project_row(dir, profile))
+        })
+        .collect()
+}
+
+fn render_projects(rows: &[ProjectRow], out: &mut dyn Write) -> anyhow::Result<()> {
+    for row in rows {
+        let state = row.profile.as_deref().unwrap_or("-");
+        let gone = if row.missing { "  (missing)" } else { "" };
+        writeln!(out, "{state:<16} {}{gone}", row.dir.display())?;
     }
     Ok(())
+}
+
+fn list_projects(deps: &Deps, workspace: &Workspace, out: &mut dyn Write) -> anyhow::Result<()> {
+    render_projects(&project_rows(deps, workspace)?, out)
 }
 
 fn add_project(
@@ -51,4 +81,23 @@ fn add_project(
         writeln!(out, "added {}", dir.canonicalize()?.display())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_project_row_records_its_profile_and_whether_the_directory_is_gone() {
+        let here = tempfile::tempdir().unwrap();
+
+        let loaded = project_row(here.path().to_path_buf(), Some("web".into()));
+        let gone = project_row(here.path().join("gone"), None);
+
+        // Assert the typed rows carry the profile and the missing flag.
+        assert_eq!(loaded.profile.as_deref(), Some("web"));
+        assert!(!loaded.missing);
+        assert_eq!(gone.profile, None);
+        assert!(gone.missing);
+    }
 }

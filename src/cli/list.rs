@@ -101,7 +101,7 @@ pub(super) fn list(scene: &Scene, view: ListView, out: &mut dyn Write) -> anyhow
     if deps.interactive && (view.interactive || (view.query.is_some() && spans_groups(&items))) {
         return browse(scene, &items, out);
     }
-    print_tree(&items, &view, out)
+    render_listing(&listing(&items, &view), out)
 }
 
 /// A query spanning several groups opens the browser so the user can narrow it down.
@@ -126,18 +126,92 @@ fn print_json(scene: &Scene, items: &[Augmentation], out: &mut dyn Write) -> any
     Ok(())
 }
 
-fn print_tree(items: &[Augmentation], view: &ListView, out: &mut dyn Write) -> anyhow::Result<()> {
-    if items.is_empty() {
-        let msg = if view.query.is_some() {
-            "nothing installed matches"
-        } else {
-            "nothing installed"
-        };
-        writeln!(out, "{msg}")?;
-    }
+/// What `list` prints for a plain (non-json, non-interactive) run.
+#[derive(Debug, PartialEq, Eq)]
+struct Listing {
+    empty: Option<Empty>,
+    nodes: Vec<tree::Node>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Empty {
+    NothingInstalled,
+    NoMatch,
+}
+
+fn listing(items: &[Augmentation], view: &ListView) -> Listing {
+    let empty = match (items.is_empty(), view.query.is_some()) {
+        (false, _) => None,
+        (true, true) => Some(Empty::NoMatch),
+        (true, false) => Some(Empty::NothingInstalled),
+    };
     let nodes = tree::build(items);
     let expand = view.all || view.query.is_some();
     let nodes = if expand { nodes } else { tree::collapse(nodes) };
-    write!(out, "{}", tree::render(&nodes))?;
+    Listing { empty, nodes }
+}
+
+fn render_listing(listing: &Listing, out: &mut dyn Write) -> anyhow::Result<()> {
+    match listing.empty {
+        Some(Empty::NoMatch) => writeln!(out, "nothing installed matches")?,
+        Some(Empty::NothingInstalled) => writeln!(out, "nothing installed")?,
+        None => {}
+    }
+    write!(out, "{}", tree::render(&listing.nodes))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Agent, Installer, Scope};
+
+    fn skill(name: &str) -> Augmentation {
+        Augmentation {
+            id: name.into(),
+            name: name.into(),
+            kind: Kind::Skill,
+            agents: vec![Agent::Claude],
+            scope: Scope::Global,
+            group: "g".into(),
+            source: None,
+            installer: Installer::Local,
+            children: vec![],
+            removal: vec![],
+        }
+    }
+
+    fn view(query: Option<&str>, all: bool) -> ListView<'_> {
+        ListView {
+            query,
+            all,
+            json: false,
+            interactive: false,
+        }
+    }
+
+    #[test]
+    fn an_empty_listing_says_whether_a_query_was_given() {
+        let plain = listing(&[], &view(None, false));
+        let queried = listing(&[], &view(Some("x"), false));
+
+        // Assert the two empty cases are told apart by value.
+        assert_eq!(plain.empty, Some(Empty::NothingInstalled));
+        assert_eq!(queried.empty, Some(Empty::NoMatch));
+    }
+
+    #[test]
+    fn all_or_a_query_expands_the_groups() {
+        let items = [skill("a")];
+
+        let collapsed = listing(&items, &view(None, false));
+        let all = listing(&items, &view(None, true));
+        let by_query = listing(&items, &view(Some("a"), false));
+
+        // Assert only a collapsed listing hides the rows under the group header.
+        assert!(collapsed.nodes[0].children.is_empty());
+        assert_eq!(all, by_query);
+        assert_eq!(all.nodes[0].children.len(), 1);
+        assert_eq!(all.empty, None);
+    }
 }

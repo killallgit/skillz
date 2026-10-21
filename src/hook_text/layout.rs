@@ -2,7 +2,7 @@ use anyhow::Context;
 use serde_json::Value;
 
 use super::{Format, HookEntry};
-use crate::action::edit_json;
+use crate::json_edit::edit_json;
 
 /// Parse the hooks of a config file. JSON: the top-level `"hooks"` object, nested
 /// (Claude/Codex) or flat (Cursor) layout. TOML: the inline hooks of a Codex `config.toml`.
@@ -160,8 +160,8 @@ fn entry(event: &str, matcher: &Option<String>, command: &str) -> HookEntry {
 
 #[cfg(test)]
 mod tests {
+    use super::super::testutil::*;
     use super::*;
-    use crate::hooks::testutil::*;
     use serde_json::json;
 
     #[test]

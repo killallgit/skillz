@@ -87,10 +87,7 @@ fn use_keys(path: &str) -> Vec<String> {
         .windows(4)
         .find(|w| w[0] == "plugins" && w[1] == "cache")
     {
-        Some(w) => vec![
-            format!("plugin:{}@{}", w[3], w[2]),
-            format!("pskill:{}:{skill}", w[3]),
-        ],
+        Some(w) => vec![format!("plugin:{}@{}", w[3], w[2])],
         None => vec![format!("skill:{skill}")],
     }
 }
@@ -110,7 +107,7 @@ mod tests {
                     \"/h/.codex/plugins/cache/mp/review/1.0/skills/lint/SKILL.md\"";
         assert_eq!(
             codex_uses(&call("custom_tool_call", "input", read)),
-            ["skill:tdd", "plugin:review@mp", "pskill:review:lint"]
+            ["skill:tdd", "plugin:review@mp"]
         );
         let args = serde_json::json!({"cmd": "cat ~/.codex/skills/ship/SKILL.md"}).to_string();
         assert_eq!(
