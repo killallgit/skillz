@@ -5,6 +5,7 @@
 
 pub mod action;
 pub mod agents;
+pub mod apply;
 pub mod cli;
 pub mod cost;
 pub mod env;
