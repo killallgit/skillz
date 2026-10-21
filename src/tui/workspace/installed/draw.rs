@@ -8,7 +8,7 @@ use ratatui::widgets::Paragraph;
 
 use super::drift::Drift;
 use super::header::{self, Comparison};
-use super::rows::{Item, Part, Row, State};
+use super::rows::{self, Item, Owned, Part, Row, State};
 use super::status::Status;
 use super::{InstalledTab, Popup};
 use crate::model::Scope;
@@ -103,7 +103,7 @@ impl InstalledTab {
                     Part::Installed => "",
                     Part::Available => "Available ",
                 };
-                let title = format!("{indent}{caret} {lead}{}", kind.title());
+                let title = format!("{indent}{caret} {lead}{}", rows::title(*part, *kind));
                 let mut spans = vec![
                     Span::styled(title, theme.title),
                     Span::styled(format!("  {total}"), theme.muted),
@@ -112,14 +112,26 @@ impl InstalledTab {
                 Line::from(spans)
             }
             Row::Item(item) => self.item_line(id, item, theme),
+            Row::Owned(owned) => self.owned_line(id, owned, theme),
         }
     }
 
+    fn owned_line(&self, id: usize, owned: &Owned, theme: &Theme) -> Line<'static> {
+        Line::from(vec![
+            Span::raw(INDENT.repeat(self.outline.depth(id))),
+            Span::styled(format!("  {}", owned.label), theme.text),
+            Span::styled(format!("  {}", owned.detail), theme.muted),
+        ])
+    }
+
     fn pending_summary(&self, section: usize, theme: &Theme) -> Option<Span<'static>> {
-        let items = self.rows[section + 1..].iter().map_while(|row| match row {
-            Row::Item(item) => Some(item),
-            _ => None,
-        });
+        let items = self.rows[section + 1..]
+            .iter()
+            .take_while(|row| matches!(row, Row::Item(_) | Row::Owned(_)))
+            .filter_map(|row| match row {
+                Row::Item(item) => Some(item),
+                _ => None,
+            });
         let counts = self.pending.counts(items);
         let text = match (counts.install, counts.remove) {
             (0, 0) => return None,

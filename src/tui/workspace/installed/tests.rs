@@ -113,6 +113,38 @@ fn a_new_snapshot_keeps_the_cursor_and_the_closed_sections() {
     assert_eq!(tab.outline.visible().len(), 4);
 }
 
+#[test]
+fn keys_on_a_hook_a_plugin_owns_do_nothing_and_pick_nothing() {
+    let mut plugin = installed("p@mp", Kind::Plugin, Some("mp"));
+    plugin.hooks = vec![crate::hook_text::HookEntry {
+        event: "Stop".into(),
+        matcher: None,
+        command: "say done".into(),
+    }];
+    let mut tab = InstalledTab::project();
+    tab.load(&Model {
+        installed: vec![plugin],
+        ..model()
+    });
+    let owned = tab
+        .rows
+        .iter()
+        .position(|row| matches!(row, Row::Owned(_)))
+        .unwrap();
+    on_item(&mut tab, owned);
+    let visible = tab.outline.visible().len();
+
+    let acts: Vec<Option<Act>> = [space(), KeyCode::Enter]
+        .into_iter()
+        .chain("iru".chars().map(KeyCode::Char))
+        .map(|code| press(&mut tab, code))
+        .collect();
+
+    assert!(acts.iter().all(Option::is_none));
+    assert!(tab.pending.is_empty());
+    assert_eq!(tab.outline.visible().len(), visible);
+}
+
 fn checkboxes(tab: &mut InstalledTab, width: u16, height: u16) -> (usize, usize) {
     let theme = Theme::dark();
     let buffer = render_to_buffer(width, height, |f| tab.draw(f, f.area(), &theme));
