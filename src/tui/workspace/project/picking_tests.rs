@@ -1,7 +1,7 @@
 use ratatui::crossterm::event::KeyCode;
 
 use super::rows::tests::{installed, library_skill};
-use super::tests::{loaded, model, on_item, press, space};
+use super::tests::{GRILL, TDD, loaded, model, on_item, press, space};
 use super::*;
 use crate::model::Kind;
 use crate::profile::Entry;
@@ -17,10 +17,10 @@ fn change(install: Vec<Entry>, remove: Vec<&str>) -> Act {
 #[test]
 fn picking_asks_for_nothing_until_the_picks_are_applied() {
     let mut tab = loaded();
-    on_item(&mut tab, 1);
+    on_item(&mut tab, TDD);
 
     let first = press(&mut tab, space());
-    press(&mut tab, KeyCode::Down);
+    on_item(&mut tab, GRILL);
     let second = press(&mut tab, space());
 
     assert_eq!((first, second), (None, None));
@@ -29,9 +29,9 @@ fn picking_asks_for_nothing_until_the_picks_are_applied() {
 #[test]
 fn enter_applies_every_pick_as_one_change() {
     let mut tab = loaded();
-    on_item(&mut tab, 1);
+    on_item(&mut tab, TDD);
     press(&mut tab, space());
-    press(&mut tab, KeyCode::Down);
+    on_item(&mut tab, GRILL);
     press(&mut tab, space());
 
     let act = press(&mut tab, KeyCode::Enter);
@@ -43,7 +43,7 @@ fn enter_applies_every_pick_as_one_change() {
 #[test]
 fn picking_an_item_twice_cancels_the_pick() {
     let mut tab = loaded();
-    on_item(&mut tab, 2);
+    on_item(&mut tab, GRILL);
 
     press(&mut tab, space());
     press(&mut tab, space());
@@ -54,7 +54,7 @@ fn picking_an_item_twice_cancels_the_pick() {
 #[test]
 fn escape_clears_the_picks_before_anything_else() {
     let mut tab = loaded();
-    on_item(&mut tab, 2);
+    on_item(&mut tab, GRILL);
     press(&mut tab, space());
 
     press(&mut tab, KeyCode::Esc);
@@ -63,19 +63,19 @@ fn escape_clears_the_picks_before_anything_else() {
 }
 
 #[test]
-fn space_on_a_section_folds_it_and_picks_nothing() {
+fn space_on_a_group_folds_it_and_picks_nothing() {
     let mut tab = loaded();
 
     press(&mut tab, space());
 
-    assert_eq!(tab.outline.visible().len(), 1);
+    assert_eq!(tab.outline.visible().len(), 4);
     assert!(tab.pending.is_empty());
 }
 
 #[test]
 fn a_pick_survives_a_new_snapshot_while_the_item_is_unchanged() {
     let mut tab = loaded();
-    on_item(&mut tab, 2);
+    on_item(&mut tab, GRILL);
     press(&mut tab, space());
 
     tab.load(&model());
@@ -86,7 +86,7 @@ fn a_pick_survives_a_new_snapshot_while_the_item_is_unchanged() {
 #[test]
 fn a_pick_is_dropped_when_its_item_is_gone_or_has_changed() {
     let mut tab = loaded();
-    on_item(&mut tab, 2);
+    on_item(&mut tab, GRILL);
     press(&mut tab, space());
     let mut installed_now = model();
     installed_now
@@ -101,13 +101,13 @@ fn a_pick_is_dropped_when_its_item_is_gone_or_has_changed() {
 #[test]
 fn a_section_counts_what_is_picked_in_it() {
     let mut tab = loaded();
-    on_item(&mut tab, 1);
+    on_item(&mut tab, TDD);
     press(&mut tab, space());
-    press(&mut tab, KeyCode::Down);
+    on_item(&mut tab, GRILL);
     press(&mut tab, space());
     let items = tab.rows.iter().filter_map(|row| match row {
         Row::Item(item) => Some(item),
-        Row::Section { .. } => None,
+        _ => None,
     });
 
     let counts = tab.pending.counts(items);
@@ -127,9 +127,9 @@ fn picked_glyphs(glyphs: crate::tui::glyphs::Glyphs) -> (usize, usize) {
         dir: "app".into(),
         ..model()
     });
-    on_item(&mut tab, 1);
+    on_item(&mut tab, TDD);
     press(&mut tab, space());
-    press(&mut tab, KeyCode::Down);
+    on_item(&mut tab, GRILL);
     press(&mut tab, space());
     let mut theme = Theme::dark();
     theme.glyphs = glyphs;

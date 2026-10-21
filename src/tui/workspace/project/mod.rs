@@ -2,14 +2,19 @@
 //! have. Nothing is stored here: the rows are derived from the agents' own config and the
 //! library each time the workspace loads a new snapshot.
 
+mod direct;
+#[cfg(test)]
+mod direct_tests;
 mod draw;
 mod drift;
 mod header;
 mod keys;
+mod location;
 mod pending;
 mod picker;
 #[cfg(test)]
 mod picking_tests;
+mod presence;
 mod rows;
 #[cfg(test)]
 mod tests;
@@ -23,10 +28,11 @@ use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
+use self::direct::Proposal;
 use self::drift::{Drift, drift};
 use self::pending::Pending;
 use self::picker::Picker;
-use self::rows::{Row, build, shape};
+use self::rows::{Row, Sources, build, shape};
 use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
@@ -34,6 +40,7 @@ use crate::model::Augmentation;
 use crate::profile::Profile;
 use crate::tui::keymap::Scope;
 use crate::tui::theme::Theme;
+use crate::tui::widgets::confirm::ConfirmDialog;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
 
@@ -44,6 +51,7 @@ enum Popup {
     None,
     Filter,
     Profiles(Picker),
+    AlsoGlobal(ConfirmDialog, Proposal),
 }
 
 pub struct ProjectTab {
@@ -95,7 +103,11 @@ impl Tab for ProjectTab {
         self.dir = model.dir.clone();
         self.installed = model.installed.clone();
         self.profiles = model.profiles.clone();
-        self.rows = build(&model.installed, &model.library);
+        self.rows = build(&Sources {
+            project: &model.installed,
+            global: &model.global,
+            library: &model.library,
+        });
         self.pending.keep_existing(&self.rows);
         self.outline.reshape(shape(&self.rows));
     }

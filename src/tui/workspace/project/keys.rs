@@ -3,7 +3,7 @@
 use ratatui::crossterm::event::KeyEvent;
 
 use super::picker::{Pick, Picker};
-use super::rows::{Row, State};
+use super::rows::{Item, Row, State};
 use super::{Popup, ProjectTab};
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::input::Outcome as Edit;
@@ -15,6 +15,7 @@ impl ProjectTab {
             Popup::None => self.handle_idle(key),
             Popup::Filter => self.handle_filter(key),
             Popup::Profiles(picker) => self.handle_picker(picker, key),
+            Popup::AlsoGlobal(dialog, proposal) => self.handle_also_global(dialog, proposal, key),
         }
     }
 
@@ -28,6 +29,8 @@ impl ProjectTab {
                 return self.compare.clone().map(|profile| Act::Apply { profile });
             }
             Action::Update => return self.update(),
+            Action::Install => return self.install_current(),
+            Action::Remove => return self.remove_current(),
             Action::Toggle => self.toggle(),
             Action::Select => return self.select(),
             movement => self.outline.navigate(movement),
@@ -48,7 +51,8 @@ impl ProjectTab {
     }
 
     fn toggle(&mut self) {
-        match self.current_state() {
+        match self.current_item().map(|item| item.state.clone()) {
+            Some(State::Held { .. }) => {}
             Some(state) => self.pending.toggle(&state),
             None => self.fold(),
         }
@@ -60,13 +64,14 @@ impl ProjectTab {
             self.fold();
             return None;
         }
-        Some(self.pending.act())
+        let (install, remove) = self.pending.picks();
+        self.propose(install, remove)
     }
 
-    fn current_state(&self) -> Option<State> {
+    pub(super) fn current_item(&self) -> Option<&Item> {
         match &self.rows[self.outline.current()?] {
-            Row::Item(item) => Some(item.state.clone()),
-            Row::Section { .. } => None,
+            Row::Item(item) => Some(item),
+            _ => None,
         }
     }
 
@@ -74,7 +79,7 @@ impl ProjectTab {
         let Some(id) = self.outline.current() else {
             return;
         };
-        if matches!(self.rows[id], Row::Section { .. }) {
+        if !matches!(self.rows[id], Row::Item(_)) {
             self.outline.toggle_open(id);
         }
     }

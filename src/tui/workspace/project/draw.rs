@@ -14,8 +14,10 @@ use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;
 use crate::tui::widgets::panel::Panel;
 
-/// Room before an item's label: the list's cursor gutter, its indent, the checkbox.
-const ITEM_INDENT: &str = "  ";
+/// Room before a section's caret, under its group's.
+const SECTION_INDENT: &str = "  ";
+/// Room before an item's label: the section's indent, then the checkbox.
+const ITEM_INDENT: &str = "    ";
 
 impl ProjectTab {
     pub(super) fn draw_body(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -25,8 +27,10 @@ impl ProjectTab {
         let line = header::line(&self.dir, drift.as_ref(), head.width, theme);
         frame.render_widget(Paragraph::new(line), head);
         self.draw_outline(frame, body, theme);
-        if let Popup::Profiles(picker) = &mut self.popup {
-            picker.render(frame, theme);
+        match &mut self.popup {
+            Popup::Profiles(picker) => picker.render(frame, theme),
+            Popup::AlsoGlobal(dialog, _) => dialog.render(frame, theme),
+            Popup::None | Popup::Filter => {}
         }
     }
 
@@ -62,15 +66,19 @@ impl ProjectTab {
 
     fn row_line(&self, id: usize, theme: &Theme) -> Line<'static> {
         match &self.rows[id] {
-            Row::Section {
-                kind,
-                installed,
-                total,
-            } => {
+            Row::Group { group, total } => {
                 let caret = self.outline.caret(id, &theme.glyphs);
+                Line::from(vec![
+                    Span::styled(format!("{caret} {}", group.title()), theme.title),
+                    Span::styled(format!("  {total}"), theme.muted),
+                ])
+            }
+            Row::Section { kind, total, .. } => {
+                let caret = self.outline.caret(id, &theme.glyphs);
+                let title = format!("{SECTION_INDENT}{caret} {}", kind.title());
                 let mut spans = vec![
-                    Span::styled(format!("{caret} {}", kind.title()), theme.title),
-                    Span::styled(format!("  {installed} of {total}"), theme.muted),
+                    Span::styled(title, theme.title),
+                    Span::styled(format!("  {total}"), theme.muted),
                 ];
                 spans.extend(self.pending_summary(id, theme));
                 Line::from(spans)
@@ -82,7 +90,7 @@ impl ProjectTab {
     fn pending_summary(&self, section: usize, theme: &Theme) -> Option<Span<'static>> {
         let items = self.rows[section + 1..].iter().map_while(|row| match row {
             Row::Item(item) => Some(item),
-            Row::Section { .. } => None,
+            _ => None,
         });
         let counts = self.pending.counts(items);
         let text = match (counts.install, counts.remove) {
@@ -103,6 +111,10 @@ impl ProjectTab {
             (State::Installed(_), true) => (glyphs.to_remove, theme.warn, theme.warn, "to remove"),
             (State::Available(_), true) => {
                 (glyphs.to_install, theme.accent, theme.accent, "to install")
+            }
+            (State::Held { in_project: true }, _) => (glyphs.checked, theme.ok, theme.text, ""),
+            (State::Held { in_project: false }, _) => {
+                (glyphs.unchecked, theme.muted, theme.muted, "")
             }
         };
         let mut spans = vec![Span::styled(

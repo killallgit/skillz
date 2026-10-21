@@ -1,10 +1,11 @@
-//! The rows of the project outline: a section per kind, holding what the project has installed
-//! and then the library items it does not have yet.
+//! The rows of the project outline: a group each for what the project has, what the user has
+//! installed globally and what only the library offers, each split into a section per kind.
 
-use crate::apply::compare;
+use super::location::location;
+use super::presence::{entry_of, has_counterpart, has_library_item};
 use crate::library::{Catalog, ItemKind, LibraryItem};
 use crate::model::Augmentation;
-use crate::profile::{Entry, Profile};
+use crate::profile::Entry;
 use crate::tui::widgets::outline::Shape;
 
 /// The sections in the order they are shown.
@@ -16,215 +17,179 @@ const SECTIONS: [ItemKind; 5] = [
     ItemKind::Subagent,
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Group {
+    Project,
+    Global,
+    Available,
+}
+
+impl Group {
+    const ALL: [Group; 3] = [Group::Project, Group::Global, Group::Available];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Group::Project => "Project",
+            Group::Global => "Global",
+            Group::Available => "Available",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum State {
-    /// Installed; the id of the item to remove.
+    /// Installed in the project; the id of the item to remove.
     Installed(String),
-    /// In the library only; the entry that installs it.
+    /// Not in the project; the entry that installs it.
     Available(Entry),
+    /// Installed globally and nothing this tab can install or remove.
+    Held { in_project: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Item {
     pub label: String,
-    /// Where an installed item came from, shown beside its name.
+    /// Where an installed item lives, shown beside its name.
     pub detail: String,
     pub state: State,
+    pub group: Group,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Row {
+    Group {
+        group: Group,
+        total: usize,
+    },
     Section {
+        group: Group,
         kind: ItemKind,
-        installed: usize,
         total: usize,
     },
     Item(Item),
 }
 
-/// Every section that has something, each followed by its items, in preorder.
-pub(super) fn build(installed: &[Augmentation], library: &Catalog) -> Vec<Row> {
-    let available: Vec<&LibraryItem> = library
-        .items()
-        .iter()
-        .filter(|item| !is_installed(item, installed))
-        .collect();
-    SECTIONS
+/// What the rows are built from: what the project and the user have installed, and the library.
+pub(super) struct Sources<'a> {
+    pub project: &'a [Augmentation],
+    pub global: &'a [Augmentation],
+    pub library: &'a Catalog,
+}
+
+/// Every group that has something, each followed by its sections and their items, in preorder.
+pub(super) fn build(sources: &Sources) -> Vec<Row> {
+    Group::ALL
         .into_iter()
-        .flat_map(|kind| section(kind, installed, &available))
+        .flat_map(|group| group_rows(group, sources))
         .collect()
 }
 
-/// The outline's shape: items hang under the section before them.
+fn group_rows(group: Group, sources: &Sources) -> Vec<Row> {
+    let sections: Vec<(ItemKind, Vec<Item>)> = SECTIONS
+        .into_iter()
+        .map(|kind| (kind, items_of(group, kind, sources)))
+        .filter(|(_, items)| !items.is_empty())
+        .collect();
+    let total = sections.iter().map(|(_, items)| items.len()).sum();
+    if total == 0 {
+        return vec![];
+    }
+    let rows = sections.into_iter().flat_map(|(kind, items)| {
+        let header = Row::Section {
+            group,
+            kind,
+            total: items.len(),
+        };
+        std::iter::once(header).chain(items.into_iter().map(Row::Item))
+    });
+    std::iter::once(Row::Group { group, total })
+        .chain(rows)
+        .collect()
+}
+
+fn items_of(group: Group, kind: ItemKind, sources: &Sources) -> Vec<Item> {
+    let mut items = match group {
+        Group::Project => installed_items(sources.project, kind, project_item),
+        Group::Global => installed_items(sources.global, kind, |item| global_item(item, sources)),
+        Group::Available => available_items(kind, sources),
+    };
+    items.sort_by_key(|item| item.label.to_lowercase());
+    items
+}
+
+fn installed_items(
+    have: &[Augmentation],
+    kind: ItemKind,
+    make: impl Fn(&Augmentation) -> Item,
+) -> Vec<Item> {
+    have.iter()
+        .filter(|a| ItemKind::of(a.kind) == Some(kind))
+        .map(make)
+        .collect()
+}
+
+fn project_item(item: &Augmentation) -> Item {
+    Item {
+        label: item.name.clone(),
+        detail: location(item),
+        state: State::Installed(item.id.clone()),
+        group: Group::Project,
+    }
+}
+
+fn global_item(item: &Augmentation, sources: &Sources) -> Item {
+    let in_project = has_counterpart(sources.project, item);
+    let state = match (in_project, entry_of(item)) {
+        (false, Some(entry)) => State::Available(entry),
+        _ => State::Held { in_project },
+    };
+    Item {
+        label: item.name.clone(),
+        detail: location(item),
+        state,
+        group: Group::Global,
+    }
+}
+
+fn available_items(kind: ItemKind, sources: &Sources) -> Vec<Item> {
+    sources
+        .library
+        .items()
+        .iter()
+        .filter(|item| item.kind() == kind)
+        .filter(|item| !has_library_item(sources.project, item))
+        .filter(|item| !has_library_item(sources.global, item))
+        .map(available_item)
+        .collect()
+}
+
+fn available_item(item: &LibraryItem) -> Item {
+    Item {
+        label: item.label.clone(),
+        detail: String::new(),
+        state: State::Available(item.entry.clone()),
+        group: Group::Available,
+    }
+}
+
+/// The outline's shape: sections hang under their group, items under their section.
 pub(super) fn shape(rows: &[Row]) -> Vec<Shape> {
-    let mut section = None;
+    let (mut group, mut section) = (None, None);
     rows.iter()
         .enumerate()
         .map(|(id, row)| match row {
-            Row::Section { kind, .. } => {
+            Row::Group { group: g, .. } => {
+                group = Some(id);
+                (None, g.title().to_string())
+            }
+            Row::Section { group: g, kind, .. } => {
                 section = Some(id);
-                (None, kind.title().to_string())
+                (group, format!("{} {}", g.title(), kind.title()))
             }
             Row::Item(item) => (section, item.label.clone()),
         })
         .collect()
 }
 
-fn section(kind: ItemKind, installed: &[Augmentation], available: &[&LibraryItem]) -> Vec<Row> {
-    let mut have: Vec<&Augmentation> = installed
-        .iter()
-        .filter(|a| ItemKind::of(a.kind) == Some(kind))
-        .collect();
-    have.sort_by_key(|a| a.name.to_lowercase());
-    let mut lacking: Vec<&LibraryItem> = available
-        .iter()
-        .copied()
-        .filter(|item| item.kind() == kind)
-        .collect();
-    lacking.sort_by_key(|item| item.label.to_lowercase());
-    if have.is_empty() && lacking.is_empty() {
-        return vec![];
-    }
-    let header = Row::Section {
-        kind,
-        installed: have.len(),
-        total: have.len() + lacking.len(),
-    };
-    let items = have
-        .into_iter()
-        .map(installed_item)
-        .chain(lacking.into_iter().map(available_item));
-    std::iter::once(header).chain(items).collect()
-}
-
-fn installed_item(item: &Augmentation) -> Row {
-    Row::Item(Item {
-        label: item.name.clone(),
-        detail: item.source.clone().unwrap_or_default(),
-        state: State::Installed(item.id.clone()),
-    })
-}
-
-fn available_item(item: &LibraryItem) -> Row {
-    Row::Item(Item {
-        label: item.label.clone(),
-        detail: String::new(),
-        state: State::Available(item.entry.clone()),
-    })
-}
-
-/// Whether everything the library item would install is already in place.
-fn is_installed(item: &LibraryItem, installed: &[Augmentation]) -> bool {
-    let mut profile = Profile::new("library");
-    profile.entries = vec![item.entry.clone()];
-    compare(&profile.resolved(), installed).missing.is_empty()
-}
-
 #[cfg(test)]
-pub(super) mod tests {
-    use super::*;
-    use crate::model::{Agent, Installer, Kind, Scope};
-
-    pub fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
-        Augmentation {
-            hooks: vec![],
-            id: format!("{kind}:{name}"),
-            name: name.into(),
-            kind,
-            agents: vec![Agent::Claude, Agent::Codex],
-            scope: Scope::Project,
-            group: source.unwrap_or("local").into(),
-            source: source.map(Into::into),
-            installer: Installer::Npx,
-            origin: Default::default(),
-            children: vec![],
-            removal: vec![],
-        }
-    }
-
-    pub fn library_skill(source: &str, name: &str) -> LibraryItem {
-        LibraryItem::from_entry(Entry::Skill {
-            source: source.into(),
-            names: vec![name.into()],
-            agents: vec![],
-        })
-    }
-
-    fn sections_of(rows: &[Row]) -> Vec<(ItemKind, usize, usize)> {
-        rows.iter()
-            .filter_map(|row| match row {
-                Row::Section {
-                    kind,
-                    installed,
-                    total,
-                } => Some((*kind, *installed, *total)),
-                Row::Item(_) => None,
-            })
-            .collect()
-    }
-
-    #[test]
-    fn a_section_counts_what_is_installed_of_everything_it_offers() {
-        let installed = [installed("tdd", Kind::Skill, Some("o/r"))];
-        let library = Catalog::from_items(vec![library_skill("o/r", "grill")]);
-
-        let rows = build(&installed, &library);
-
-        assert_eq!(sections_of(&rows), [(ItemKind::Skill, 1, 2)]);
-    }
-
-    #[test]
-    fn a_library_item_that_is_installed_is_listed_once() {
-        let installed = [installed("tdd", Kind::Skill, Some("o/r"))];
-        let library = Catalog::from_items(vec![library_skill("o/r", "tdd")]);
-
-        let rows = build(&installed, &library);
-
-        assert_eq!(rows.len(), 2);
-        assert!(matches!(&rows[1], Row::Item(i) if matches!(i.state, State::Installed(_))));
-    }
-
-    #[test]
-    fn installed_items_come_before_available_ones() {
-        let installed = [installed("zed", Kind::Skill, None)];
-        let library = Catalog::from_items(vec![library_skill("o/r", "aaa")]);
-
-        let rows = build(&installed, &library);
-
-        let states: Vec<bool> = rows
-            .iter()
-            .filter_map(|r| match r {
-                Row::Item(i) => Some(matches!(i.state, State::Installed(_))),
-                Row::Section { .. } => None,
-            })
-            .collect();
-        assert_eq!(states, [true, false]);
-    }
-
-    #[test]
-    fn sections_follow_the_display_order_and_empty_ones_are_left_out() {
-        let installed = [
-            installed("h", Kind::Hook, None),
-            installed("s", Kind::Skill, None),
-            installed("m", Kind::Marketplace, None),
-        ];
-
-        let rows = build(&installed, &Catalog::default());
-
-        let kinds: Vec<ItemKind> = sections_of(&rows).into_iter().map(|s| s.0).collect();
-        assert_eq!(kinds, [ItemKind::Skill, ItemKind::Hook]);
-    }
-
-    #[test]
-    fn items_hang_under_the_section_before_them() {
-        let installed = [
-            installed("a", Kind::Skill, None),
-            installed("b", Kind::Hook, None),
-        ];
-
-        let shape = shape(&build(&installed, &Catalog::default()));
-
-        let parents: Vec<Option<usize>> = shape.iter().map(|(p, _)| *p).collect();
-        assert_eq!(parents, [None, Some(0), None, Some(2)]);
-    }
-}
+pub(super) mod tests;

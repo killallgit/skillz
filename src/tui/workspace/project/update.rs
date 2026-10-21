@@ -9,28 +9,21 @@ impl ProjectTab {
         matches!(state, State::Installed(id) if self.outdated.contains(id))
     }
 
-    /// The installed, updatable items of the highlighted row: itself, or its section's.
+    /// The installed, updatable items of the highlighted row: itself, or everything under it.
     pub(super) fn updatable_ids(&self) -> Vec<String> {
         let Some(current) = self.outline.current() else {
             return vec![];
         };
         let visible = self.outline.visible();
-        let covered: Vec<&Row> = match &self.rows[current] {
-            Row::Item(_) => vec![&self.rows[current]],
-            Row::Section { .. } => (current + 1..self.rows.len())
-                .take_while(|&at| matches!(self.rows[at], Row::Item(_)))
-                .filter(|at| visible.contains(at))
-                .map(|at| &self.rows[at])
-                .collect(),
-        };
-        covered
-            .into_iter()
-            .filter_map(|row| match row {
-                Row::Item(item) => match &item.state {
-                    State::Installed(id) => Some(id.clone()),
-                    State::Available(_) => None,
-                },
-                Row::Section { .. } => None,
+        let depth = self.outline.depth(current);
+        let under = (current + 1..self.rows.len())
+            .take_while(|&at| self.outline.depth(at) > depth)
+            .filter(|at| visible.contains(at));
+        std::iter::once(current)
+            .chain(under)
+            .filter_map(|at| match &self.rows[at] {
+                Row::Item(item) => installed_id(&item.state),
+                _ => None,
             })
             .filter(|id| {
                 self.installed
@@ -38,5 +31,12 @@ impl ProjectTab {
                     .any(|item| &item.id == id && can_update(item))
             })
             .collect()
+    }
+}
+
+fn installed_id(state: &State) -> Option<String> {
+    match state {
+        State::Installed(id) => Some(id.clone()),
+        _ => None,
     }
 }

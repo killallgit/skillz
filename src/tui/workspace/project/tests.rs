@@ -17,6 +17,7 @@ pub(super) fn model() -> Model {
     Model {
         dir: "~/app".into(),
         installed: vec![installed("tdd", Kind::Skill, Some("o/r"))],
+        global: vec![],
         library: Catalog::from_items(vec![library_skill("o/r", "grill")]),
         profiles: vec![web],
         notice: None,
@@ -37,21 +38,23 @@ pub(super) fn space() -> KeyCode {
     KeyCode::Char(' ')
 }
 
-/// Section, installed tdd, available grill; the cursor starts on the section.
+/// The row of the installed skill in `model()`; the group and section rows come first.
+pub(super) const TDD: usize = 2;
+/// The row of the library skill in `model()`.
+pub(super) const GRILL: usize = 5;
+
 pub(super) fn on_item(tab: &mut ProjectTab, row: usize) {
-    (0..row).for_each(|_| {
-        press(tab, KeyCode::Down);
-    });
+    tab.outline.select_row(row);
 }
 
 #[test]
-fn enter_on_a_section_closes_and_reopens_it_without_asking_for_anything() {
+fn enter_on_a_group_closes_and_reopens_it_without_asking_for_anything() {
     let mut tab = loaded();
 
     let closed = (press(&mut tab, KeyCode::Enter), tab.outline.visible().len());
     let opened = (press(&mut tab, KeyCode::Enter), tab.outline.visible().len());
 
-    assert_eq!((closed, opened), ((None, 1), (None, 3)));
+    assert_eq!((closed, opened), ((None, 4), (None, 6)));
 }
 
 #[test]
@@ -97,17 +100,17 @@ fn the_filter_prompt_is_offered_while_typing_and_narrows_the_rows() {
     press(&mut tab, KeyCode::Enter);
 
     assert!(typing && tab.prompt().is_none());
-    assert_eq!(tab.outline.visible(), [0, 2]);
+    assert_eq!(tab.outline.visible(), [3, 4, GRILL]);
 }
 
 #[test]
-fn a_new_snapshot_keeps_the_cursor_and_the_closed_sections() {
+fn a_new_snapshot_keeps_the_cursor_and_the_closed_groups() {
     let mut tab = loaded();
     press(&mut tab, KeyCode::Enter);
 
     tab.load(&model());
 
-    assert_eq!(tab.outline.visible().len(), 1);
+    assert_eq!(tab.outline.visible().len(), 4);
 }
 
 fn checkboxes(tab: &mut ProjectTab, width: u16, height: u16) -> (usize, usize) {
