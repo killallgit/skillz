@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::model::Kind;
 use crate::profile::{Entry, same_thing};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -9,6 +10,20 @@ pub enum ItemKind {
     Subagent,
     Mcp,
     Hook,
+}
+
+impl ItemKind {
+    /// The library kind of an installed item's kind; a marketplace is not an item of its own.
+    pub fn of(kind: Kind) -> Option<ItemKind> {
+        match kind {
+            Kind::Skill => Some(ItemKind::Skill),
+            Kind::Plugin => Some(ItemKind::Plugin),
+            Kind::Subagent => Some(ItemKind::Subagent),
+            Kind::Mcp => Some(ItemKind::Mcp),
+            Kind::Hook => Some(ItemKind::Hook),
+            Kind::Marketplace => None,
+        }
+    }
 }
 
 /// One available augmentation: an entry a profile can be given a copy of, with a display label.
@@ -65,6 +80,12 @@ pub(super) mod tests {
             command: command.into(),
             agents: vec![],
         })
+    }
+
+    #[test]
+    fn an_installed_marketplace_is_no_library_kind() {
+        assert_eq!(ItemKind::of(Kind::Mcp), Some(ItemKind::Mcp));
+        assert_eq!(ItemKind::of(Kind::Marketplace), None);
     }
 
     #[test]

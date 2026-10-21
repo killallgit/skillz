@@ -154,8 +154,8 @@ installed item the profile does not want, after showing the plan; items with no 
 shared with a wanted entry, such as a skill for two agents of which the profile wants one, stays.
 
 Which profile a project has loaded is never stored. A project matches a profile when nothing the
-profile wants is missing from the inventory; the home screen shows the matching profile with the
-most entries in place.
+profile wants is missing from the inventory; the Project tab compares the directory with the
+profile you choose.
 
 ## Running one profile in isolation
 
@@ -176,33 +176,32 @@ never `~/.claude` or `~/.codex`. The variable is also set on every command skill
 
 ## Workspace
 
-The current project on the left, profiles in the middle, details on the right. It needs a
-terminal. Wide terminals (100+ columns) show three panes, 60+ two, 40+ one behind tabs; anything
-smaller than 40x10 says so.
+`skillz [PATH]` opens a workspace for one directory (default: the current one). It keeps nothing
+per project: what is installed is read from the agents' own config each time. It needs a terminal
+at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
+
+- **Project**: what the directory has installed, grouped as Skills, Plugins, MCP servers, Hooks and
+  Subagents with `n of m` counts, followed in each group by library items it does not have yet
+  (shown unchecked). A header shows the directory and how it compares with a profile you chose:
+  matching, or `N missing` / `N extra`.
+- **Library** and **Profiles**: placeholders for now.
 
 | Key | Does |
 | --- | --- |
-| `tab`, `←` `→`, `h` `l` | switch pane (tabs: `1`-`9`, `[` `]` in the one-pane layout) |
+| `space`, `enter` | install the library item / remove the installed item under the cursor (on a group header: open or close it) |
+| `p` | choose the profile the header compares with |
+| `a` | install what the chosen profile has that the project lacks |
+| `←` `→`, `h` `l` | close / open a group (`←` on an item jumps to its group) |
 | `↑↓` `j` `k`, `PgUp` `PgDn`, `^u` `^d`, `g` `G` | move |
-| `enter` | install what the project lacks of the selected profile |
-| `n` | new empty profile |
-| `s` | save the project's installs as a profile |
-| `i` | add items the project has installed to the profile |
-| `t` | type an entry: `skill SOURCE NAMES`, `subagent SOURCE NAMES`, `plugin SOURCE MARKETPLACE NAME`, `hook EVENT COMMAND`, `mcp NAME COMMAND\|URL [ARGS]` |
-| `r` | remove entries from the profile |
-| `d` | delete the profile after a confirm (profiles pane) |
-| `[` `]` | scroll the details |
-| `/` | filter the focused pane; `esc` clears it |
+| `/` | filter; keeps matching rows and their group, `esc` clears it |
 | `?` | all keys for the screen |
-| `q`, `esc`, `^c` | quit |
+| `q`, `^c` | quit |
 
-The mouse clicks to focus and select, double-clicks to apply and scrolls with the wheel.
-
-Applying shows a plan first: `=` kept, `-` removed, `+` installed, `~` skipped, framed in red when
-it removes something. `enter` or `y` applies, `d` turns on dry run, `s` shows the raw steps, `esc`
-cancels. A progress screen follows, then a result with counts and any failures: `c` copies them
-(through the terminal, so it works over ssh), `r` retries a failed switch, `enter` closes. After a
-switch the footer offers `U` until the next notice.
+Installing, removing and applying show a plan first: `=` kept, `-` removed, `+` installed, `~`
+skipped, framed in red when it removes something. `enter` or `y` goes ahead, `d` turns on dry run,
+`s` shows the raw steps, `esc` cancels. A progress screen follows, then a result with counts and
+any failures: `c` copies them (through the terminal, so it works over ssh), `r` retries, `enter`
+closes. A toast says what happened.
 
 The browser (`list -i`, multi-group queries) and every picker (`uninstall`, `prune`, `install`)
 share one list:

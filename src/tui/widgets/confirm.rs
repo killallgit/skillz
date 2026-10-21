@@ -29,7 +29,6 @@ enum Button {
 pub struct ConfirmDialog {
     title: String,
     prompt: String,
-    destructive: bool,
     focus: Button,
 }
 
@@ -38,15 +37,8 @@ impl ConfirmDialog {
         ConfirmDialog {
             title: title.into(),
             prompt: prompt.into(),
-            destructive: false,
             focus: Button::No,
         }
-    }
-
-    /// Style the Yes button as dangerous.
-    pub fn destructive(mut self) -> Self {
-        self.destructive = true;
-        self
     }
 
     #[cfg(test)]
@@ -108,10 +100,7 @@ impl ConfirmDialog {
     }
 
     fn button(&self, label: &str, which: Button, theme: &Theme) -> Span<'static> {
-        let base = match (which, self.destructive) {
-            (Button::Yes, true) => theme.danger,
-            _ => theme.text,
-        };
+        let base = theme.text;
         let style = if self.focus == which {
             base.patch(Style::new().add_modifier(Modifier::REVERSED | Modifier::BOLD))
         } else {
@@ -179,20 +168,6 @@ mod tests {
             .unwrap();
         let x = row_text(&buffer, y).chars().position(|c| c == '[').unwrap();
         buffer[(x as u16, y)].clone()
-    }
-
-    #[test]
-    fn destructive_yes_uses_the_danger_colour() {
-        let theme = Theme::dark();
-        let cell = button_cell(&dialog().destructive(), &theme);
-        assert_eq!(cell.fg, theme.danger.fg.unwrap());
-    }
-
-    #[test]
-    fn plain_yes_does_not_use_the_danger_colour() {
-        let theme = Theme::dark();
-        let cell = button_cell(&dialog(), &theme);
-        assert_ne!(cell.fg, theme.danger.fg.unwrap());
     }
 
     #[test]

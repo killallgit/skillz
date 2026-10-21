@@ -7,7 +7,9 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 pub enum Scope {
     /// Navigation and leaving, valid wherever a list has the keys.
     Common,
-    Home,
+    /// The tab bar and what works on every tab.
+    Workspace,
+    Project,
     Tree,
     /// While a filter is being typed, so letters stay text.
     Filter,
@@ -17,7 +19,8 @@ impl Scope {
     pub fn title(self) -> &'static str {
         match self {
             Scope::Common => "Everywhere",
-            Scope::Home => "Workspace",
+            Scope::Workspace => "Tabs",
+            Scope::Project => "Project",
             Scope::Tree => "List",
             Scope::Filter => "Filter",
         }
@@ -40,20 +43,16 @@ pub enum Action {
     Interrupt,
     Help,
     Filter,
-    SwitchPane,
-    DetailUp,
-    DetailDown,
-    NewProfile,
-    SaveProfile,
-    AddInstalled,
-    AddTyped,
-    RemoveEntries,
-    Delete,
     Left,
     Right,
     Toggle,
     Mark,
     Info,
+    NextTab,
+    PrevTab,
+    GoTab(u8),
+    PickProfile,
+    ApplyProfile,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -103,7 +102,7 @@ const fn bind(
 }
 
 use Action as A;
-use Scope::{Common, Filter, Home, Tree};
+use Scope::{Common, Filter, Project, Tree, Workspace};
 
 #[rustfmt::skip]
 pub const BINDINGS: &[Binding] = &[
@@ -120,17 +119,18 @@ pub const BINDINGS: &[Binding] = &[
     bind(Common, A::Quit, &[ch('q')], "q", "quit", 40),
     bind(Common, A::Interrupt, &[ctrl('c')], "^c", "quit anywhere", 0),
     bind(Common, A::Help, &[ch('?')], "?", "help", 0),
-    bind(Home, A::SwitchPane, &[plain(KeyCode::Tab), plain(KeyCode::Left), plain(KeyCode::Right), ch('h'), ch('l')], "tab", "pane", 1),
-    bind(Home, A::Select, &[plain(KeyCode::Enter)], "enter", "apply", 2),
-    bind(Home, A::DetailUp, &[ch('[')], "[ ]", "scroll detail", 0),
-    bind(Home, A::DetailDown, &[ch(']')], "", "", 0),
-    bind(Home, A::NewProfile, &[ch('n')], "n", "new profile", 5),
-    bind(Home, A::SaveProfile, &[ch('s')], "s", "save as profile", 6),
-    bind(Home, A::AddInstalled, &[ch('i')], "i", "add installed", 7),
-    bind(Home, A::AddTyped, &[ch('t')], "t", "add typed", 8),
-    bind(Home, A::RemoveEntries, &[ch('r')], "r", "remove entries", 9),
-    bind(Home, A::Delete, &[ch('d')], "d", "delete", 10),
-    bind(Home, A::Filter, &[ch('/')], "/", "filter", 11),
+    bind(Workspace, A::NextTab, &[plain(KeyCode::Tab)], "tab", "next tab", 20),
+    bind(Workspace, A::PrevTab, &[plain(KeyCode::BackTab)], "shift-tab", "previous tab", 0),
+    bind(Workspace, A::GoTab(0), &[ch('1')], "1 2 3", "go to tab", 0),
+    bind(Workspace, A::GoTab(1), &[ch('2')], "", "", 0),
+    bind(Workspace, A::GoTab(2), &[ch('3')], "", "", 0),
+    bind(Project, A::Toggle, &[ch(' ')], "space", "install/remove", 1),
+    bind(Project, A::PickProfile, &[ch('p')], "p", "compare", 2),
+    bind(Project, A::ApplyProfile, &[ch('a')], "a", "apply", 3),
+    bind(Project, A::Filter, &[ch('/')], "/", "filter", 4),
+    bind(Project, A::Select, &[plain(KeyCode::Enter)], "enter", "expand / toggle", 0),
+    bind(Project, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
+    bind(Project, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
     bind(Tree, A::Mark, &[ch('x'), plain(KeyCode::Tab)], "x tab", "mark", 1),
     bind(Tree, A::Select, &[plain(KeyCode::Enter)], "enter", "actions", 2),
     bind(Tree, A::Filter, &[ch('/')], "/", "filter", 3),
@@ -168,41 +168,35 @@ pub fn resolve(scope: Scope, key: KeyEvent) -> Option<Action> {
         .map(|b| b.action)
 }
 
-/// How `action` is written in `scope`, for hints that name a key.
-pub fn keys_for(scope: Scope, action: Action) -> &'static str {
-    BINDINGS
-        .iter()
-        .find(|b| b.scope == scope && b.action == action)
-        .map_or("", |b| b.keys)
-}
-
-/// The key bar's hints for `scope`, most important first.
-pub fn hints(scope: Scope) -> Vec<(&'static str, &'static str)> {
+/// The key bar's hints for `scopes`, most important first.
+pub fn hints(scopes: &[Scope]) -> Vec<(&'static str, &'static str)> {
     let mut ranked: Vec<&Binding> = BINDINGS
         .iter()
-        .filter(|b| b.rank > 0 && (b.scope == scope || b.scope == Common))
+        .filter(|b| b.rank > 0 && (b.scope == Common || scopes.contains(&b.scope)))
         .collect();
     ranked.sort_by_key(|b| b.rank);
     ranked.iter().map(|b| (b.keys, b.label)).collect()
 }
 
-fn overridden(binding: &Binding, scope: Scope) -> bool {
+fn overridden(binding: &Binding, scopes: &[Scope]) -> bool {
     binding.scope == Common
         && BINDINGS
             .iter()
-            .any(|b| b.scope == scope && b.action == binding.action)
+            .any(|b| scopes.contains(&b.scope) && b.action == binding.action)
 }
 
-/// The rows of the `?` overlay: the scope's own bindings, then the common ones.
-pub fn help_sections(scope: Scope) -> [Vec<&'static Binding>; 2] {
-    let listed = |s: Scope| {
-        BINDINGS
+/// The rows of the `?` overlay: each scope's own bindings in the order given, then the common
+/// ones the scopes do not replace.
+pub fn help_sections(scopes: &[Scope]) -> Vec<(Scope, Vec<&'static Binding>)> {
+    let listed = |scope: Scope| {
+        let bindings = BINDINGS
             .iter()
-            .filter(|b| b.scope == s && !b.label.is_empty())
-            .filter(|b| s == scope || !overridden(b, scope))
-            .collect()
+            .filter(|b| b.scope == scope && !b.label.is_empty())
+            .filter(|b| scope != Common || !overridden(b, scopes))
+            .collect();
+        (scope, bindings)
     };
-    [listed(scope), listed(Common)]
+    scopes.iter().copied().chain([Common]).map(listed).collect()
 }
 
 #[cfg(test)]
@@ -225,19 +219,16 @@ mod tests {
 
     #[test]
     fn the_same_letter_means_different_things_per_scope() {
-        let home = press(Home, 'i');
-        let tree = press(Tree, 'i');
+        let project = press(Project, 'p');
+        let tree = press(Tree, 'p');
 
-        assert_eq!(
-            (home, tree),
-            (Some(Action::AddInstalled), Some(Action::Info))
-        );
+        assert_eq!((project, tree), (Some(Action::PickProfile), None));
     }
 
     #[test]
     fn a_scope_falls_back_to_the_common_bindings() {
         assert_eq!(press(Tree, 'j'), Some(Action::Down));
-        assert_eq!(press(Home, 'q'), Some(Action::Quit));
+        assert_eq!(press(Project, 'q'), Some(Action::Quit));
     }
 
     #[test]
@@ -252,11 +243,32 @@ mod tests {
     #[test]
     fn control_chords_are_distinct_from_the_plain_letter() {
         let half = resolve(Common, ctrl_key('d'));
-        let delete = press(Home, 'd');
 
         assert_eq!(half, Some(Action::HalfPageDown));
-        assert_eq!(delete, Some(Action::Delete));
-        assert_eq!(resolve(Home, ctrl_key('c')), Some(Action::Interrupt));
+        assert_eq!(press(Project, 'd'), None);
+        assert_eq!(resolve(Project, ctrl_key('c')), Some(Action::Interrupt));
+    }
+
+    #[test]
+    fn the_tab_keys_move_between_tabs_and_jump_by_number() {
+        let shift_tab = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
+
+        let keys = [
+            resolve(Workspace, key(KeyCode::Tab)),
+            resolve(Workspace, shift_tab),
+            press(Workspace, '1'),
+            press(Workspace, '3'),
+        ];
+
+        assert_eq!(
+            keys,
+            [
+                Some(Action::NextTab),
+                Some(Action::PrevTab),
+                Some(Action::GoTab(0)),
+                Some(Action::GoTab(2))
+            ]
+        );
     }
 
     #[test]
@@ -273,8 +285,8 @@ mod tests {
 
     #[test]
     fn hints_come_out_most_important_first_and_without_duplicates() {
-        for scope in [Home, Tree] {
-            let hints = hints(scope);
+        for scope in [Project, Tree] {
+            let hints = hints(&[scope]);
             let mut sorted = hints.clone();
             sorted.dedup();
 
@@ -283,19 +295,20 @@ mod tests {
         }
         let ranks: Vec<u8> = BINDINGS
             .iter()
-            .filter(|b| b.scope == Home && b.rank > 0)
+            .filter(|b| matches!(b.scope, Project | Workspace) && b.rank > 0)
             .map(|b| b.rank)
             .collect();
-        assert!(ranks.windows(2).all(|w| w[0] < w[1]));
+        let mut distinct = ranks.clone();
+        distinct.sort_unstable();
+        distinct.dedup();
+        assert_eq!(ranks.len(), distinct.len());
     }
 
     #[test]
     fn the_scopes_own_enter_replaces_the_common_one_in_help() {
-        let [own, common] = help_sections(Home);
-
-        let selects = own
-            .iter()
-            .chain(&common)
+        let selects = help_sections(&[Project])
+            .into_iter()
+            .flat_map(|(_, bindings)| bindings)
             .filter(|b| b.action == Action::Select);
 
         assert_eq!(selects.count(), 1);
@@ -312,10 +325,14 @@ mod tests {
 
     #[test]
     fn help_lists_the_scope_first_then_the_common_bindings() {
-        let [own, common] = help_sections(Home);
+        let sections = help_sections(&[Project]);
 
-        assert!(own.iter().all(|b| b.scope == Home));
-        assert!(common.iter().all(|b| b.scope == Common));
-        assert!(!own.is_empty() && !common.is_empty());
+        let scopes: Vec<Scope> = sections.iter().map(|(s, _)| *s).collect();
+        assert_eq!(scopes, [Project, Common]);
+        assert!(
+            sections
+                .iter()
+                .all(|(s, b)| b.iter().all(|b| b.scope == *s))
+        );
     }
 }

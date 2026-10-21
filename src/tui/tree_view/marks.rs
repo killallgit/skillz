@@ -16,14 +16,14 @@ pub(super) enum Mark {
 impl TreeState {
     /// The markable row `id` belongs to: itself, its item, or its group.
     fn target(&self, mut id: usize) -> usize {
-        while self.rows[id].depth > 0 && self.rows[id].item.is_none() {
-            id = self.rows[id].parent.expect("non-top rows have a parent");
+        while self.outline.depth(id) > 0 && self.rows[id].item.is_none() {
+            id = self.outline.parent(id).expect("non-top rows have a parent");
         }
         id
     }
 
     fn group_of(&self, mut id: usize) -> usize {
-        while let Some(p) = self.rows[id].parent {
+        while let Some(p) = self.outline.parent(id) {
             id = p;
         }
         id
@@ -45,10 +45,12 @@ impl TreeState {
 
     /// x on a group marks or unmarks all its items; on an item, just that item.
     pub fn toggle_mark(&mut self) {
-        let Some(id) = self.current() else { return };
+        let Some(id) = self.outline.current() else {
+            return;
+        };
         let id = self.target(id);
         let on = !self.marks.contains(&id);
-        if self.rows[id].depth == 0 {
+        if self.outline.depth(id) == 0 {
             for i in self.items_in(id).into_iter().chain([id]) {
                 self.set_mark(i, on);
             }
@@ -63,12 +65,12 @@ impl TreeState {
     /// Marked groups (as top-level ordinals) and items outside them; with no marks, whatever
     /// the cursor is on.
     pub fn picked(&self) -> Picked {
-        let marks: BTreeSet<usize> = match self.current() {
+        let marks: BTreeSet<usize> = match self.outline.current() {
             Some(id) if self.marks.is_empty() => [self.target(id)].into(),
             _ => self.marks.clone(),
         };
         let tops: Vec<usize> = (0..self.rows.len())
-            .filter(|&i| self.rows[i].depth == 0)
+            .filter(|&i| self.outline.depth(i) == 0)
             .collect();
         Picked {
             groups: (0..tops.len())
@@ -93,7 +95,7 @@ impl TreeState {
     pub(super) fn mark(&self, id: usize) -> Mark {
         if self.marks.contains(&id) {
             Mark::All
-        } else if self.rows[id].depth == 0
+        } else if self.outline.depth(id) == 0
             && self.items_in(id).iter().any(|i| self.marks.contains(i))
         {
             Mark::Part

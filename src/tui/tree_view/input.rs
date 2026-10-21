@@ -54,26 +54,29 @@ impl TreeState {
         };
         match action {
             Action::Filter => self.overlay = Overlay::Filter,
-            Action::Help => self.overlay = Overlay::Help(Help::new(Scope::Tree)),
+            Action::Help => self.overlay = Overlay::Help(Help::new(&[Scope::Tree])),
             Action::Mark => self.toggle_mark(),
             Action::Info => self.open_info(),
             Action::Select => return self.enter(),
-            Action::Back if self.filter_is_active() => self.clear_filter(),
+            Action::Back if self.outline.is_filtered() => self.outline.clear_filter(),
             Action::Back | Action::Quit => return Outcome::Quit,
-            action => self.navigate(action),
+            action => self.outline.navigate(action),
         }
         Outcome::Continue
     }
 
     fn open_info(&mut self) {
-        let with_info = self.current().filter(|&id| !self.rows[id].info.is_empty());
+        let with_info = self
+            .outline
+            .current()
+            .filter(|&id| !self.rows[id].info.is_empty());
         if let Some(id) = with_info {
             self.overlay = Overlay::Info(id);
         }
     }
 
     fn enter(&mut self) -> Outcome {
-        if self.current().is_none() && self.marks.is_empty() {
+        if self.outline.current().is_none() && self.marks.is_empty() {
             return Outcome::Continue;
         }
         if self.pick {
@@ -95,47 +98,13 @@ impl TreeState {
     fn handle_filter(&mut self, key: KeyEvent) -> Outcome {
         self.overlay = Overlay::Filter;
         if let Some(movement) = keymap::resolve(Scope::Filter, key) {
-            self.list.apply(movement);
+            self.outline.step(movement);
             return Outcome::Continue;
         }
-        let before = self.filter.value().to_string();
-        match self.filter.handle(key) {
-            Edit::Editing if self.filter.value() != before => {
-                self.list.select(0);
-                self.refresh();
-            }
+        match self.outline.edit_filter(key) {
             Edit::Editing => {}
-            Edit::Submit => self.overlay = Overlay::None,
-            Edit::Cancel => {
-                self.overlay = Overlay::None;
-                self.clear_filter();
-            }
+            Edit::Submit | Edit::Cancel => self.overlay = Overlay::None,
         }
         Outcome::Continue
-    }
-
-    fn navigate(&mut self, action: Action) {
-        let Some(id) = self.current() else { return };
-        let has_children = self.rows[id].has_children;
-        match action {
-            Action::Right if has_children => {
-                self.expanded.insert(id);
-            }
-            Action::Toggle if has_children => self.toggle_open(id),
-            Action::Left => return self.collapse_or_ascend(id),
-            movement => {
-                self.list.apply(movement);
-                return;
-            }
-        }
-        self.refresh();
-    }
-
-    fn collapse_or_ascend(&mut self, id: usize) {
-        if self.expanded.remove(&id) {
-            self.refresh();
-        } else if let Some(parent) = self.rows[id].parent {
-            self.select_row(parent);
-        }
     }
 }

@@ -21,15 +21,15 @@ pub enum Verdict {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Help {
-    scope: Scope,
+    scopes: Vec<Scope>,
     list: ListView,
 }
 
 impl Help {
-    pub fn new(scope: Scope) -> Self {
-        let rows = rows(scope).len();
+    pub fn new(scopes: &[Scope]) -> Self {
+        let rows = rows(scopes).len();
         Help {
-            scope,
+            scopes: scopes.to_vec(),
             list: ListView::new(rows),
         }
     }
@@ -46,7 +46,7 @@ impl Help {
     }
 
     pub fn render(&mut self, frame: &mut Frame, theme: &Theme) {
-        let lines = lines(self.scope, theme);
+        let lines = lines(&self.scopes, theme);
         let size = ModalSize {
             width: WIDTH,
             height: lines.len() as u16 + 2,
@@ -61,21 +61,18 @@ enum Row {
     Key(&'static Binding),
 }
 
-fn rows(scope: Scope) -> Vec<Row> {
-    let sections = keymap::help_sections(scope);
-    let titles = [scope, Scope::Common];
-    sections
+fn rows(scopes: &[Scope]) -> Vec<Row> {
+    keymap::help_sections(scopes)
         .into_iter()
-        .zip(titles)
-        .flat_map(|(bindings, title)| {
+        .flat_map(|(scope, bindings)| {
             let keys = bindings.into_iter().map(Row::Key);
-            std::iter::once(Row::Section(title)).chain(keys)
+            std::iter::once(Row::Section(scope)).chain(keys)
         })
         .collect()
 }
 
-fn lines(scope: Scope, theme: &Theme) -> Vec<Line<'static>> {
-    let rows = rows(scope);
+fn lines(scopes: &[Scope], theme: &Theme) -> Vec<Line<'static>> {
+    let rows = rows(scopes);
     let width = rows
         .iter()
         .filter_map(|r| match r {
@@ -103,19 +100,20 @@ mod tests {
 
     #[test]
     fn every_listed_binding_gets_a_row_under_a_section_per_group() {
-        let [own, common] = keymap::help_sections(Scope::Home);
+        let sections = keymap::help_sections(&[Scope::Project]);
 
-        let rows = rows(Scope::Home);
+        let rows = rows(&[Scope::Project]);
 
-        assert_eq!(rows.len(), own.len() + common.len() + 2);
-        assert!(matches!(rows[0], Row::Section(Scope::Home)));
+        let listed: usize = sections.iter().map(|(_, b)| b.len()).sum();
+        assert_eq!(rows.len(), listed + sections.len());
+        assert!(matches!(rows[0], Row::Section(Scope::Project)));
     }
 
     #[test]
     fn labels_start_in_one_column() {
         let theme = Theme::dark();
 
-        let lines = lines(Scope::Tree, &theme);
+        let lines = lines(&[Scope::Tree], &theme);
 
         // Each key row is a padded key span, then the label; the key spans share a width.
         let widths: Vec<usize> = lines
@@ -129,7 +127,7 @@ mod tests {
 
     #[test]
     fn escape_and_question_mark_close_while_navigation_keeps_it_open() {
-        let mut help = Help::new(Scope::Home);
+        let mut help = Help::new(&[Scope::Project]);
 
         let moved = help.handle(key(KeyCode::Down));
         let ignored = help.handle(key(KeyCode::Char('z')));
@@ -152,7 +150,7 @@ mod tests {
     #[test]
     fn a_short_screen_scrolls_the_overlay_instead_of_cutting_it() {
         let theme = Theme::dark();
-        let mut help = Help::new(Scope::Home);
+        let mut help = Help::new(&[Scope::Project]);
         let top = render_to_buffer(60, 10, |f| help.render(f, &theme));
         for _ in 0..30 {
             help.handle(key(KeyCode::Down));

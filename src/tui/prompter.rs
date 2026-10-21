@@ -4,7 +4,6 @@ use std::io::Write;
 
 use super::app::{App, Screen};
 use super::dialogs::Ask;
-use super::home;
 use super::plan::PlanScreen;
 use super::progress::TuiProgress;
 use super::result::ResultScreen;
@@ -12,6 +11,7 @@ use super::shell::{Shell, Ui};
 use super::theme::Theme;
 use super::tree_view;
 use super::widgets::confirm::ConfirmDialog;
+use super::workspace::{self, Act, Workspace};
 use crate::prompt::{Choice, Hold, Picked, Prompter};
 use crate::review::{Next, Outcome, PlanView, Progress, Verdict};
 use crate::tree::{self, Node};
@@ -57,8 +57,8 @@ impl Prompter for TuiPrompter {
         tree_view::browse(title, groups, &self.ui())
     }
 
-    fn home(&self, model: home::Model, pos: home::Pos) -> anyhow::Result<(home::Act, home::Pos)> {
-        home::run(model, pos, &self.ui())
+    fn workspace(&self, screen: &mut Workspace) -> anyhow::Result<Act> {
+        workspace::run(screen, &self.ui())
     }
 
     fn hold(&self) -> Hold<'_> {

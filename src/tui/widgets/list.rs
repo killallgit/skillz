@@ -39,13 +39,9 @@ impl ListView {
         self.selected = index.min(self.len.saturating_sub(1));
     }
 
+    #[cfg(test)]
     pub fn offset(&self) -> usize {
         self.offset
-    }
-
-    #[cfg(test)]
-    pub fn len(&self) -> usize {
-        self.len
     }
 
     pub fn is_empty(&self) -> bool {

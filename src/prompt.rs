@@ -1,6 +1,6 @@
 use crate::review::{Next, NoProgress, Outcome, PlanView, Progress, Verdict};
 use crate::tree::Node;
-use crate::tui::home::{Act, Model, Pos};
+use crate::tui::workspace::{Act, Workspace};
 
 /// User interaction. Injected so flows are testable without a terminal.
 pub trait Prompter {
@@ -32,9 +32,9 @@ pub trait Prompter {
             (Choice::Show, picked)
         }))
     }
-    /// The workspace screen: show `model` with the cursors at `pos` until the user asks for
-    /// something. Needs a terminal, so the default is an error.
-    fn home(&self, _model: Model, _pos: Pos) -> anyhow::Result<(Act, Pos)> {
+    /// The workspace screen: show `workspace` until the user asks for something. Needs a
+    /// terminal, so the default is an error.
+    fn workspace(&self, _workspace: &mut Workspace) -> anyhow::Result<Act> {
         anyhow::bail!("the workspace needs a terminal")
     }
     /// Keep the interactive session open across several prompts until the guard is dropped.
