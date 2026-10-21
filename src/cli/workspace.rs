@@ -86,8 +86,7 @@ impl Session<'_, '_> {
     fn switch(&self, dir: &Path, profile: Option<&str>) -> anyhow::Result<Reply> {
         let dir = self.project(dir)?;
         let profile = profile.map(|name| self.profile(name)).transpose()?;
-        switch(self.deps, &dir, profile.as_deref())?;
-        Ok(None)
+        switch(self.deps, &dir, profile.as_deref())
     }
 
     fn add_project(&self, text: String) -> anyhow::Result<Reply> {

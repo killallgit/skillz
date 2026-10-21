@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use ratatui::crossterm::event::KeyEvent;
 
 use super::ask::Ask;
+use super::detail::Detail;
 use super::layout::Mode;
-use super::model::{Act, Focus, Model, Pos};
+use super::model::{Act, Focus, Model, Pos, ProjectRow};
 use super::mouse::Click;
 use super::pane::Pane;
 use crate::tui::help::Help;
@@ -43,6 +44,8 @@ pub struct Home {
     pub(super) mode: Mode,
     pub(super) tabs: Tabs,
     pub(super) last_click: Option<Click>,
+    undo: Option<Act>,
+    pub(super) detail: Detail,
 }
 
 impl Home {
@@ -52,8 +55,9 @@ impl Home {
         let mut profiles = Pane::new(model.profiles.len());
         profiles.select_row(pos.profile);
         let mut toasts = Toasts::default();
+        let undo = model.undo.take();
         if let Some(notice) = model.notice.take() {
-            toasts.push(Level::Info, notice);
+            toasts.push(Level::Info, with_undo_hint(notice, undo.is_some()));
         }
         let mut tabs = Tabs::new(&["Projects", "Profiles", "Detail"]);
         tabs.select(tab_of(pos.focus));
@@ -67,6 +71,8 @@ impl Home {
             mode: Mode::default(),
             tabs,
             last_click: None,
+            undo,
+            detail: Detail::default(),
         }
     }
 
@@ -104,6 +110,7 @@ impl Home {
             Action::Help => self.open(Popup::Help(Help::new(Scope::Home))),
             Action::Filter => self.open(Popup::Filter),
             Action::Select => self.apply(),
+            Action::Undo => self.undo.clone(),
             action => self.command(action),
         }
     }
@@ -129,8 +136,14 @@ impl Home {
             Action::AddInstalled => self.add_installed(),
             Action::RemoveEntries => profile.map(|profile| Act::RemoveEntries { profile }),
             Action::Delete => self.delete(),
+            Action::DetailUp | Action::DetailDown => self.scroll_detail(action),
             movement => self.move_cursor(movement),
         }
+    }
+
+    fn scroll_detail(&mut self, action: Action) -> Option<Act> {
+        self.detail.page(action == Action::DetailDown);
+        None
     }
 
     fn move_cursor(&mut self, movement: Action) -> Option<Act> {
@@ -233,17 +246,34 @@ impl Home {
         Some(Act::AddInstalled { profile, project })
     }
 
+    pub(super) fn projects_using(&self, profile: &str) -> usize {
+        let loaded = |p: &&ProjectRow| p.profile.as_deref() == Some(profile);
+        self.model.projects.iter().filter(loaded).count()
+    }
+
     fn delete(&mut self) -> Option<Act> {
         match self.focus {
             Focus::Projects => self.project_id().map(Act::ForgetProject),
             Focus::Profiles => {
                 let profile = self.profile_id()?;
-                let prompt = format!("Delete profile {profile}?");
+                let users = self.projects_using(&profile);
+                let prompt = match users {
+                    0 => format!("Delete profile {profile}?"),
+                    n => format!("Delete profile {profile}? {n} project(s) have it loaded."),
+                };
                 let dialog = ConfirmDialog::new("Delete profile", prompt).destructive();
                 self.open(Popup::Delete(profile, dialog))
             }
         }
     }
+}
+
+fn with_undo_hint(notice: String, undoable: bool) -> String {
+    if !undoable {
+        return notice;
+    }
+    let key = keymap::keys_for(Scope::Home, Action::Undo);
+    format!("{notice} · {key} to undo")
 }
 
 fn tab_of(focus: Focus) -> usize {

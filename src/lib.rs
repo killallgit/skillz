@@ -24,6 +24,7 @@ pub mod prompt;
 pub mod provision;
 pub mod prune;
 pub mod remove;
+pub mod review;
 pub mod runner;
 pub mod skills;
 pub mod snapshot;

@@ -28,6 +28,7 @@ fn model() -> Model {
         projects: vec![project("a", false, false), project("b", true, false)],
         profiles: vec![profile("x", false), profile("y", false)],
         notice: None,
+        undo: None,
     }
 }
 
@@ -259,6 +260,7 @@ fn a_notice_is_a_toast_that_the_next_key_dismisses() {
     let mut h = Home::new(
         Model {
             notice: Some("done".into()),
+            undo: None,
             ..model()
         },
         Pos::default(),
@@ -481,4 +483,34 @@ fn the_header_colours_a_missing_project_with_the_danger_style() {
 
     let danger_in_header = (0..120).any(|x| buffer[(x, 0)].fg == theme.danger.fg.unwrap());
     assert!(danger_in_header);
+}
+
+#[test]
+fn the_undo_key_replays_the_request_the_model_carried() {
+    let undo = Act::Unload {
+        project: "b".into(),
+    };
+    let mut with = Home::new(
+        Model {
+            undo: Some(undo.clone()),
+            ..model()
+        },
+        Pos::default(),
+    );
+    let mut without = home();
+
+    let (asked, idle) = (press(&mut with, "U"), press(&mut without, "U"));
+
+    // With an undo on offer U asks for it; without one it does nothing.
+    assert_eq!((asked, idle), (Some(undo), None));
+}
+
+#[test]
+fn profiles_in_use_are_counted_by_the_projects_that_have_them_loaded() {
+    let h = home();
+
+    let counts = (h.projects_using("web"), h.projects_using("x"));
+
+    // Project b has `web` loaded; nothing has `x`.
+    assert_eq!(counts, (1, 0));
 }

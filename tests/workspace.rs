@@ -9,6 +9,7 @@ use common::*;
 use skillz::cli::workspace;
 use skillz::profile::Entry;
 use skillz::prompt::Prompter;
+use skillz::review::{PlanView, Verdict};
 use skillz::tui::home::{Act, Model, Pos};
 
 /// What one workspace screen showed: project count, profile names, whether a notice was up.
@@ -16,6 +17,7 @@ struct Screen {
     projects: usize,
     profiles: Vec<String>,
     has_notice: bool,
+    has_undo: bool,
 }
 
 /// Plays a script of workspace actions (then quits) and remembers what each screen showed.
@@ -23,6 +25,8 @@ struct Home {
     acts: RefCell<VecDeque<Act>>,
     picks: RefCell<VecDeque<Vec<usize>>>,
     seen: RefCell<Vec<Screen>>,
+    verdict: Verdict,
+    plans: RefCell<Vec<PlanView>>,
 }
 
 impl Home {
@@ -35,6 +39,8 @@ impl Home {
             acts: RefCell::new(acts.into()),
             picks: RefCell::new(picks.into()),
             seen: RefCell::default(),
+            verdict: Verdict::Apply,
+            plans: RefCell::default(),
         }
     }
 }
@@ -46,11 +52,16 @@ impl Prompter for Home {
     fn confirm(&self, _: &str) -> anyhow::Result<bool> {
         Ok(true)
     }
+    fn plan(&self, view: &PlanView) -> anyhow::Result<Verdict> {
+        self.plans.borrow_mut().push(view.clone());
+        Ok(self.verdict)
+    }
     fn home(&self, model: Model, pos: Pos) -> anyhow::Result<(Act, Pos)> {
         self.seen.borrow_mut().push(Screen {
             projects: model.projects.len(),
             profiles: model.profiles.iter().map(|p| p.name.clone()).collect(),
             has_notice: model.notice.is_some(),
+            has_undo: model.undo.is_some(),
         });
         Ok((self.acts.borrow_mut().pop_front().unwrap_or(Act::Quit), pos))
     }
@@ -363,5 +374,50 @@ fn applying_to_a_project_that_is_not_registered_is_reported_and_applies_nothing(
     );
 
     assert!(seen[1].has_notice);
+    assert!(w.applied_profiles().is_empty());
+}
+
+fn apply_web(w: &World) -> Vec<Act> {
+    vec![
+        Act::AddProject(".".into()),
+        Act::Apply {
+            project: proj(w),
+            profile: "web".into(),
+        },
+    ]
+}
+
+#[test]
+fn an_applied_switch_offers_to_undo_itself() {
+    let w = world_with_web();
+
+    let seen = screens_after(&w, apply_web(&w));
+
+    // The screen after the apply carries the undo request.
+    assert!(seen[2].has_undo);
+}
+
+#[test]
+fn a_dry_run_shows_the_plan_and_changes_nothing() {
+    let w = world_with_web();
+    let mut home = Home::playing(apply_web(&w));
+    home.verdict = Verdict::DryRun;
+
+    play(&w, &home);
+
+    // The plan was shown once, the ledger is untouched and no undo is offered.
+    assert_eq!(home.plans.borrow().len(), 1);
+    assert!(w.applied_profiles().is_empty());
+    assert!(!home.seen.borrow()[2].has_undo);
+}
+
+#[test]
+fn a_cancelled_plan_changes_nothing() {
+    let w = world_with_web();
+    let mut home = Home::playing(apply_web(&w));
+    home.verdict = Verdict::Cancel;
+
+    play(&w, &home);
+
     assert!(w.applied_profiles().is_empty());
 }
