@@ -1,0 +1,182 @@
+use std::path::{Component, Path, PathBuf};
+
+use anyhow::Context;
+
+use super::args::Filter;
+use super::deps::Deps;
+use crate::agents;
+use crate::env::Env;
+use crate::model::{Augmentation, Scope};
+
+/// Scope rule: a path alone means that project, `-g` alone means global, neither means both.
+pub(super) fn resolve(
+    deps: &Deps,
+    path: Option<&Path>,
+    global: bool,
+) -> anyhow::Result<(Env, Vec<Scope>)> {
+    let project = match path {
+        Some(p) => deps.cwd.join(p),
+        None => deps.cwd.clone(),
+    };
+    let project = project
+        .canonicalize()
+        .with_context(|| format!("no such directory: {}", project.display()))?;
+    let home = deps
+        .home
+        .canonicalize()
+        .unwrap_or_else(|_| deps.home.clone());
+    // In the home dir "project" files are the global ones, so that project is global scope.
+    let scopes = match (project == home, path.is_some(), global) {
+        (true, _, _) | (false, false, true) => vec![Scope::Global],
+        (false, true, false) => vec![Scope::Project],
+        _ => vec![Scope::Global, Scope::Project],
+    };
+    let claude_config = deps.claude_config.clone();
+    let codex_home = deps.codex_home.clone();
+    Ok((
+        Env {
+            home,
+            project,
+            claude_config,
+            codex_home,
+        },
+        scopes,
+    ))
+}
+
+pub(super) fn gather(
+    deps: &Deps,
+    env: &Env,
+    scopes: &[Scope],
+    filter: &Filter,
+) -> Vec<Augmentation> {
+    let inv = agents::inventory(&deps.adapters, env, scopes);
+    for warning in &inv.warnings {
+        eprintln!("warning: {warning}");
+    }
+    inv.items.into_iter().filter(|i| filter.keeps(i)).collect()
+}
+
+/// `list TARGET`: a path starting with `.`, `..` or `/` is the project (as in
+/// `list --hooks .`); anything else, even a word naming a directory, is a query. With `-p`,
+/// TARGET is always a query.
+pub(super) fn split_target(
+    project: Option<PathBuf>,
+    target: Option<String>,
+) -> (Option<PathBuf>, Option<String>) {
+    let path_like = |t: &str| {
+        matches!(
+            Path::new(t).components().next(),
+            Some(Component::CurDir | Component::ParentDir | Component::RootDir)
+        )
+    };
+    match (project, target) {
+        (None, Some(t)) if path_like(&t) => (Some(PathBuf::from(t)), None),
+        other => other,
+    }
+}
+
+/// What the removal flows share: where to look and what the filters allow.
+pub(super) struct Scene<'a, 'd> {
+    pub(super) deps: &'a Deps<'d>,
+    pub(super) env: &'a Env,
+    pub(super) scopes: &'a [Scope],
+    pub(super) filter: &'a Filter,
+}
+
+impl Scene<'_, '_> {
+    pub(super) fn gather(&self) -> Vec<Augmentation> {
+        gather(self.deps, self.env, self.scopes, self.filter)
+    }
+}
+
+/// One scope at a time: the project, unless asked for global or this is the home dir.
+pub(super) fn single_scope(scopes: &[Scope], global: bool) -> Scope {
+    if global || !scopes.contains(&Scope::Project) {
+        Scope::Global
+    } else {
+        Scope::Project
+    }
+}
+
+/// The environment of one registered project, with the config dirs this run redirects.
+pub(super) fn project_env(deps: &Deps, dir: &Path) -> Env {
+    Env {
+        project: dir.to_path_buf(),
+        claude_config: deps.claude_config.clone(),
+        codex_home: deps.codex_home.clone(),
+        ..Env::new(deps.home.clone(), dir.to_path_buf())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prompt::AssumeYes;
+    use crate::runner::SystemRunner;
+
+    static NO_ENVS: SystemRunner = SystemRunner { envs: Vec::new() };
+
+    fn deps_at(home: &Path, cwd: &Path) -> Deps<'static> {
+        Deps {
+            home: home.to_path_buf(),
+            claude_config: None,
+            codex_home: None,
+            cwd: cwd.to_path_buf(),
+            adapters: vec![],
+            runner: &NO_ENVS,
+            prompter: &AssumeYes,
+            interactive: false,
+        }
+    }
+
+    fn scopes(deps: &Deps, path: Option<&str>, global: bool) -> Vec<Scope> {
+        resolve(deps, path.map(Path::new), global).unwrap().1
+    }
+
+    #[test]
+    fn resolve_home_as_project_is_global() {
+        let home = tempfile::tempdir().unwrap();
+        let deps = deps_at(home.path(), home.path());
+        assert_eq!(scopes(&deps, None, false), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("."), false), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("."), true), [Scope::Global]);
+    }
+
+    #[test]
+    fn resolve_scope_rule_outside_home() {
+        let (home, cwd) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        std::fs::create_dir(cwd.path().join("sub")).unwrap();
+        let deps = deps_at(home.path(), cwd.path());
+        let both = [Scope::Global, Scope::Project];
+        assert_eq!(scopes(&deps, None, false), both);
+        assert_eq!(scopes(&deps, None, true), [Scope::Global]);
+        assert_eq!(scopes(&deps, Some("sub"), false), [Scope::Project]);
+        assert_eq!(scopes(&deps, Some("sub"), true), both);
+        let (env, _) = resolve(&deps, Some(Path::new("sub")), false).unwrap();
+        assert_eq!(env.project, cwd.path().join("sub").canonicalize().unwrap());
+        assert!(resolve(&deps, Some(Path::new("missing")), false).is_err());
+    }
+
+    fn split(project: Option<&str>, target: &str) -> (Option<PathBuf>, Option<String>) {
+        split_target(project.map(PathBuf::from), Some(target.into()))
+    }
+
+    #[test]
+    fn split_target_path_like_is_project() {
+        for t in [".", "..", "./sub", "../sib", "/abs/dir"] {
+            assert_eq!(split(None, t), (Some(PathBuf::from(t)), None), "{t}");
+        }
+    }
+
+    #[test]
+    fn split_target_word_is_query() {
+        for t in ["caveman", "org/repo", ".hidden"] {
+            assert_eq!(split(None, t), (None, Some(t.into())), "{t}");
+        }
+        assert_eq!(
+            split(Some("p"), "."),
+            (Some(PathBuf::from("p")), Some(".".into()))
+        );
+    }
+}
