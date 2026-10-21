@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use super::args::{Command, InstallArgs, ListArgs, PruneArgs, ResetArgs, UninstallArgs, UseArgs};
 use super::deps::Deps;
+use super::isolate::run_isolated;
 use super::list::{ListView, list};
 use super::profile::profile_command;
 use super::project::project_command;
@@ -21,6 +22,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         Command::Reset(args) => run_reset(deps, args, out),
         Command::Use(args) => run_use(deps, args, out),
         Command::Install(args) => run_install(deps, args),
+        Command::Run(args) => run_isolated(deps, args, out),
         Command::Profile { action } => profile_command(deps, action, out),
         Command::Project { action } => project_command(deps, action, out),
     }

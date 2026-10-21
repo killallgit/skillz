@@ -20,6 +20,17 @@ pub trait CommandRunner {
         self.run(program, args, cwd)
     }
 
+    /// Run a program the user works in (an agent), with the whole terminal attached. `true` when
+    /// it exited successfully.
+    fn launch(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<bool> {
+        Ok(self.run(program, args, cwd)?.success)
+    }
+
+    /// The same runner with these environment variables set on every child, when it can set any.
+    fn with_envs(&self, _envs: Vec<(&'static str, PathBuf)>) -> Option<Box<dyn CommandRunner>> {
+        None
+    }
+
     /// Run and return stdout; a non-zero exit is an error. Runners that cannot capture say so.
     fn capture(&self, program: &str, _args: &[String], _cwd: &Path) -> anyhow::Result<String> {
         anyhow::bail!("cannot capture the output of `{program}` here")
@@ -45,6 +56,20 @@ pub struct SystemRunner {
 }
 
 impl CommandRunner for SystemRunner {
+    fn launch(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<bool> {
+        let status = Command::new(program)
+            .args(args)
+            .envs(self.envs.iter().map(|(k, v)| (k, v)))
+            .current_dir(cwd)
+            .status()
+            .with_context(|| format!("failed to run `{program}` in {}", cwd.display()))?;
+        Ok(status.success())
+    }
+
+    fn with_envs(&self, envs: Vec<(&'static str, PathBuf)>) -> Option<Box<dyn CommandRunner>> {
+        Some(Box::new(SystemRunner { envs }))
+    }
+
     fn run(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output> {
         let out = Command::new(program)
             .args(args)

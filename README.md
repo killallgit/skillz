@@ -124,6 +124,14 @@ what was installed by hand or was already there. Project plugins go to Claude's 
 not the settings file the team shares. Codex plugins can only be installed globally, so a
 project profile reports them as skipped.
 
+## Running one profile in isolation
+
+`skillz run web -- claude` loads the profile into config dirs of its own
+(`~/.config/skillz/envs/web/{claude,codex}`) and starts the command with `CLAUDE_CONFIG_DIR` and
+`CODEX_HOME` pointing there. The command sees that profile and nothing else, and switching is just
+running another profile: nothing is uninstalled. The cost is a separate login and history per
+profile; the `npx skills` store under `~/.agents` is still shared.
+
 ## Isolating a config
 
 When `CLAUDE_CONFIG_DIR` or `CODEX_HOME` is set, skillz reads and changes only that directory

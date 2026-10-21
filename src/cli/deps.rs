@@ -17,3 +17,24 @@ pub struct Deps<'a> {
     pub prompter: &'a dyn Prompter,
     pub interactive: bool,
 }
+
+impl<'a> Deps<'a> {
+    /// The same effects aimed at other config dirs, running commands with `runner`.
+    pub(super) fn redirected(
+        &self,
+        claude_config: Option<PathBuf>,
+        codex_home: Option<PathBuf>,
+        runner: &'a dyn CommandRunner,
+    ) -> Deps<'a> {
+        Deps {
+            home: self.home.clone(),
+            claude_config,
+            codex_home,
+            cwd: self.cwd.clone(),
+            adapters: crate::agents::registry(),
+            runner,
+            prompter: self.prompter,
+            interactive: self.interactive,
+        }
+    }
+}

@@ -40,6 +40,8 @@ pub enum Command {
         #[command(subcommand)]
         action: ProfileCommand,
     },
+    /// Run a command (say `claude`) in a config dir of its own that holds just one profile
+    Run(RunArgs),
     /// Install skills (via `npx skills`) or a Claude plugin marketplace
     #[command(visible_alias = "add")]
     Install(InstallArgs),
@@ -63,6 +65,21 @@ pub struct ListArgs {
     /// Browse in a collapsible tree
     #[arg(short, long)]
     pub interactive: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct RunArgs {
+    /// Profile to load into its own isolated Claude and Codex config dirs
+    pub profile: String,
+    /// Project directory to run in (default: cwd)
+    #[arg(short = 'p', long)]
+    pub project: Option<PathBuf>,
+    /// Don't ask before changing the profile's config dirs
+    #[arg(short, long)]
+    pub yes: bool,
+    /// The command and its arguments, after `--`
+    #[arg(last = true, required = true)]
+    pub command: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -248,6 +265,7 @@ pub(super) fn wants_auto_yes(command: &Command) -> bool {
         Command::Uninstall(a) => a.yes,
         Command::Install(a) => a.yes,
         Command::Use(a) => a.yes,
+        Command::Run(a) => a.yes,
         Command::Prune(a) => a.force,
         Command::Reset(a) => a.force,
         _ => false,

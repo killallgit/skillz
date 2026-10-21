@@ -2,6 +2,7 @@
 
 mod args;
 mod deps;
+mod isolate;
 mod list;
 mod profile;
 mod project;
