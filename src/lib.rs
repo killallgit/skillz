@@ -17,6 +17,7 @@ pub(crate) mod hooks;
 pub(crate) mod info;
 pub mod install;
 pub(crate) mod json_edit;
+pub(crate) mod library;
 pub(crate) mod matcher;
 pub(crate) mod mcp;
 pub mod model;

@@ -28,6 +28,12 @@ pub fn overlay(base: Vec<Entry>, top: &[Entry]) -> Vec<Entry> {
         .collect()
 }
 
+/// Whether the two entries name at least one thing in common.
+pub fn same_thing(a: &Entry, b: &Entry) -> bool {
+    let taken: HashSet<Key> = keys(a).into_iter().collect();
+    keys(b).iter().any(|k| taken.contains(k))
+}
+
 fn keys(entry: &Entry) -> Vec<Key> {
     match entry {
         Entry::Skill { source, names, .. } => per_name(source, names, Key::Skill),
@@ -146,6 +152,15 @@ mod tests {
 
         // Assert only the matching handler is replaced.
         assert_eq!(merged, [hook(None, "x"), hook(Some("Bash"), "x")]);
+    }
+
+    #[test]
+    fn entries_are_the_same_thing_when_they_share_a_key() {
+        let a = skills("o/r", &["a", "b"]);
+
+        assert!(same_thing(&a, &skills("o/r", &["b", "c"])));
+        assert!(!same_thing(&a, &skills("o/r", &["c"])));
+        assert!(!same_thing(&a, &mcp("a", "x")));
     }
 
     #[test]
