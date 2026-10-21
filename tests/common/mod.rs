@@ -2,6 +2,10 @@
 //! recording command runner and builders for the commands under test.
 #![allow(dead_code)]
 
+mod sandbox;
+#[allow(unused_imports)]
+pub use sandbox::*;
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
