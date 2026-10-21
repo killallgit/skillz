@@ -6,6 +6,7 @@ mod model;
 mod notice;
 mod perform;
 mod plan_view;
+mod profiles;
 
 use std::path::{Path, PathBuf};
 

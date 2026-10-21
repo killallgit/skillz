@@ -125,6 +125,37 @@ fn applying_a_profile_installs_what_it_has_that_the_project_lacks() {
     assert!(!runner.calls().is_empty());
 }
 
+fn save_empty_profile(dir: &Path, name: &str) {
+    let mut profile = Profile::new(name);
+    profile.agents = vec![Agent::Claude];
+    let env = Env::new(dir.into(), dir.into());
+    profile::Store::in_env(&env).save(&profile).unwrap();
+}
+
+#[test]
+fn applying_exactly_removes_what_the_profile_does_not_have() {
+    let dir = tempfile::tempdir().unwrap();
+    project_with_skill(dir.path(), "tdd");
+    save_empty_profile(dir.path(), "web");
+
+    let (result, _) = run_change(dir.path(), true, &Change::ApplyExact("web"));
+
+    assert!(matches!(result.unwrap(), Some(Notice::Applied(_))));
+    assert!(!dir.path().join(".agents/skills/tdd").exists());
+}
+
+#[test]
+fn applying_additively_keeps_what_the_profile_does_not_have() {
+    let dir = tempfile::tempdir().unwrap();
+    project_with_skill(dir.path(), "tdd");
+    save_empty_profile(dir.path(), "web");
+
+    let (result, _) = run_change(dir.path(), true, &Change::Apply("web"));
+
+    assert!(matches!(result.unwrap(), Some(Notice::UpToDate)));
+    assert!(dir.path().join(".agents/skills/tdd").exists());
+}
+
 #[test]
 fn a_failed_run_is_a_failure_and_a_clean_one_is_not() {
     let switch = Switch {

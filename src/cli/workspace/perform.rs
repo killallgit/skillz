@@ -13,6 +13,13 @@ impl Session<'_, '_> {
             Act::Install(entry) => Change::Install(entry),
             Act::Remove { id } => Change::Remove(id),
             Act::Apply { profile } => Change::Apply(profile),
+            Act::ApplyExact { profile } => Change::ApplyExact(profile),
+            Act::NewProfile { name } => return self.create_profile(name).map(Some),
+            Act::SaveCurrent { name } => return self.save_current(name).map(Some),
+            Act::SetEntries { profile, entries } => {
+                return self.set_entries(profile, entries).map(Some);
+            }
+            Act::DeleteProfile { name } => return self.delete_profile(name).map(Some),
         };
         change(self.deps, &self.project, &what)
     }

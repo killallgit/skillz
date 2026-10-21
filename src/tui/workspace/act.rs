@@ -16,4 +16,23 @@ pub enum Act {
     Apply {
         profile: String,
     },
+    /// Make the project hold exactly what the profile has, removing the rest.
+    ApplyExact {
+        profile: String,
+    },
+    NewProfile {
+        name: String,
+    },
+    /// Store what the project has installed as a new profile.
+    SaveCurrent {
+        name: String,
+    },
+    /// Replace the profile's entries.
+    SetEntries {
+        profile: String,
+        entries: Vec<Entry>,
+    },
+    DeleteProfile {
+        name: String,
+    },
 }
