@@ -275,6 +275,7 @@ pub fn deps<'a>(w: &World, runner: &'a Recorder, prompter: &'a dyn Prompter) -> 
         runner,
         prompter,
         interactive: false,
+        checker: std::sync::Arc::new(skillz::update::check::NoCheck),
     }
 }
 

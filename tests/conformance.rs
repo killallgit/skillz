@@ -177,6 +177,7 @@ fn uninstall_runs_the_fakes_removal_plan() {
         runner: &NoRun,
         prompter: &Yes,
         interactive: false,
+        checker: std::sync::Arc::new(skillz::update::check::NoCheck),
     };
     let cmd = Command::Uninstall(UninstallArgs {
         query: Some(PLUGIN.into()),
