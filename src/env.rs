@@ -37,6 +37,12 @@ impl Env {
             .unwrap_or_else(|| self.home.join(".codex"))
     }
 
+    /// Where `codex` commands that act on the user config run: the config dir's parent.
+    pub fn codex_cwd(&self) -> PathBuf {
+        let dir = self.codex_dir();
+        dir.parent().unwrap_or(&self.home).to_path_buf()
+    }
+
     /// Codex config dir for a scope: the global one, or the project's `.codex`.
     pub fn codex_scope_dir(&self, scope: Scope) -> PathBuf {
         match scope {
