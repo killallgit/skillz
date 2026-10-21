@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use super::menu::Menu;
 use crate::matcher::fuzzy_rank;
 use crate::tree::{COLUMNS, Node, Widths};
+use crate::tui::help::Help;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::list::ListView;
 
@@ -46,7 +47,7 @@ pub(super) enum Overlay {
     Menu(Menu),
     /// The row whose info modal is open.
     Info(usize),
-    Help,
+    Help(Help),
 }
 
 /// Collapsible, markable tree. `list` is the cursor over `visible`, which holds row ids in
@@ -98,8 +99,12 @@ impl TreeState {
             .and_then(|at| self.visible.get(at).copied())
     }
 
+    pub(super) fn filter_is_active(&self) -> bool {
+        !self.filter.value().is_empty()
+    }
+
     pub(super) fn is_open(&self, id: usize) -> bool {
-        !self.filter.value().is_empty() || self.expanded.contains(&id)
+        self.filter_is_active() || self.expanded.contains(&id)
     }
 
     pub(super) fn toggle_open(&mut self, id: usize) {
@@ -119,10 +124,10 @@ impl TreeState {
     }
 
     pub(super) fn refresh(&mut self) {
-        self.visible = if self.filter.value().is_empty() {
-            self.expanded_rows()
-        } else {
+        self.visible = if self.filter_is_active() {
             self.matching_rows()
+        } else {
+            self.expanded_rows()
         };
         self.list.set_len(self.visible.len());
     }

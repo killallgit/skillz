@@ -3,13 +3,19 @@
 //! the user asked for (`Act`); `cli::workspace` does it and shows the screen again.
 
 mod ask;
+mod header;
+mod layout;
 mod model;
+mod pane;
+mod popups;
+mod rows;
 mod state;
 #[cfg(test)]
 mod tests;
 mod view;
+mod welcome;
 
-pub use model::{Act, Focus, Model, Pos, ProfileRow, ProjectRow};
+pub use model::{Act, Current, Focus, Model, Pos, ProfileRow, ProjectRow};
 pub use state::Home;
 
 use super::terminal::event_loop;

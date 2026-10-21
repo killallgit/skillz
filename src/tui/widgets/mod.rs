@@ -1,6 +1,7 @@
 //! Reusable widgets. Each is a pure state type plus a render fn that takes a `Theme`.
 
 pub mod confirm;
+pub mod empty;
 pub mod input;
 pub mod keybar;
 pub mod list;

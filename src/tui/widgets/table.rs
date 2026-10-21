@@ -67,14 +67,19 @@ impl Table {
         self.line(&cells, total, theme.text)
     }
 
-    fn line(&self, cells: &[&str], total: u16, style: ratatui::style::Style) -> Line<'static> {
+    /// One row as plain text, padded and truncated to the column widths.
+    pub fn row_text<S: AsRef<str>>(&self, cells: &[S], total: u16) -> String {
         let widths = self.widths(total);
         let padded: Vec<String> = widths
             .iter()
             .enumerate()
-            .map(|(i, w)| pad(&truncate(cells.get(i).copied().unwrap_or(""), *w), *w))
+            .map(|(i, w)| pad(&truncate(cells.get(i).map_or("", AsRef::as_ref), *w), *w))
             .collect();
-        Line::from(Span::styled(padded.join(&" ".repeat(GAP)), style))
+        padded.join(&" ".repeat(GAP))
+    }
+
+    fn line(&self, cells: &[&str], total: u16, style: ratatui::style::Style) -> Line<'static> {
+        Line::from(Span::styled(self.row_text(cells, total), style))
     }
 
     /// Draw the header on the first row and `rows` beneath it, as many as fit.

@@ -28,6 +28,13 @@ impl Tabs {
         self.selected
     }
 
+    /// Jump to tab `index`; out of range is ignored.
+    pub fn select(&mut self, index: usize) {
+        if index < self.titles.len() {
+            self.selected = index;
+        }
+    }
+
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
         let target = match key.code {
             KeyCode::Char(c @ '1'..='9') => Some(c as usize - '1' as usize),
@@ -90,6 +97,16 @@ mod tests {
     fn number_keys_select_that_tab() {
         let mut t = tabs();
         assert_eq!(t.handle(key(KeyCode::Char('3'))), Outcome::Changed);
+        assert_eq!(t.selected(), 2);
+    }
+
+    #[test]
+    fn select_jumps_and_ignores_out_of_range() {
+        let mut t = tabs();
+
+        t.select(2);
+        t.select(9);
+
         assert_eq!(t.selected(), 2);
     }
 

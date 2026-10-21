@@ -1,10 +1,11 @@
 //! The action menu Enter opens on a browsing tree.
 
 use ratatui::Frame;
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::KeyEvent;
 use ratatui::text::Line;
 
 use crate::prompt::Choice;
+use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
 use crate::tui::widgets::list::ListView;
 use crate::tui::widgets::modal::{self, ModalSize};
@@ -38,13 +39,14 @@ impl Menu {
     }
 
     pub fn handle(&mut self, key: KeyEvent) -> Pick {
-        match key.code {
-            KeyCode::Enter => self.entry(),
-            KeyCode::Esc | KeyCode::Char('q') => Pick::Closed,
-            _ => {
-                self.list.handle(key);
+        match keymap::resolve(Scope::Common, key) {
+            Some(Action::Select) => self.entry(),
+            Some(Action::Back) => Pick::Closed,
+            Some(movement) => {
+                self.list.apply(movement);
                 Pick::Open
             }
+            None => Pick::Open,
         }
     }
 

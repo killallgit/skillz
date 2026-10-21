@@ -82,6 +82,14 @@ impl TreeState {
         }
     }
 
+    /// How many items are marked, whether one by one or through their group.
+    pub(super) fn marked_items(&self) -> usize {
+        self.marks
+            .iter()
+            .filter(|&&id| self.rows[id].item.is_some())
+            .count()
+    }
+
     pub(super) fn mark(&self, id: usize) -> Mark {
         if self.marks.contains(&id) {
             Mark::All

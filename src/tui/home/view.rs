@@ -1,108 +1,165 @@
-//! Drawing the workspace: projects, profiles and detail panes, a key bar, toasts and popups.
+//! Drawing the workspace: header, panes for the terminal's size, a key bar, toasts and popups.
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Wrap};
 
-use super::model::{Focus, ProfileRow, ProjectRow};
+use super::header;
+use super::layout::{MIN_HEIGHT, MIN_WIDTH, Mode};
+use super::model::Focus;
+use super::pane::Pane;
+use super::rows::{self, RowCtx};
 use super::state::{Home, Popup};
-use crate::tui::help::{self, Hints};
-use crate::tui::theme::{State, Theme};
+use super::welcome;
+use crate::tui::filter;
+use crate::tui::keymap::{self, Scope};
+use crate::tui::theme::Theme;
+use crate::tui::widgets::empty;
 use crate::tui::widgets::keybar::KeyBar;
-use crate::tui::widgets::list::ListView;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
 
-const HINTS: &Hints = &[
-    ("tab", "pane"),
-    ("enter", "apply"),
-    ("u", "unload"),
-    ("a", "add project"),
-    ("n", "new profile"),
-    ("s", "save as profile"),
-    ("i", "add installed"),
-    ("t", "add typed"),
-    ("r", "remove entries"),
-    ("d", "delete"),
-    ("q", "quit"),
-];
-
-/// The width of the profile column in a project row (`{name:<14} `).
-const PROFILE_COLUMN: usize = 15;
-
-/// Room a row loses to the pane's borders, the cursor gutter and the scrollbar.
-const ROW_MARGIN: usize = 5;
-
-/// One list pane: its frame, cursor and rows.
-struct Pane<'a> {
+/// How one list pane is framed.
+struct PaneFrame {
     title: &'static str,
+    which: Focus,
     focused: bool,
-    list: &'a mut ListView,
-    rows: Vec<Line<'static>>,
 }
 
-impl Pane<'_> {
-    fn render(self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let panel = Panel::new(self.title)
-            .focused(self.focused)
-            .position_badge(self.list.selected(), self.list.len());
-        let inner = panel.render(frame, area, theme);
-        self.list.render(frame, inner, &self.rows, theme);
+/// Draw a filterable list pane; `make` turns the shown model rows into display lines.
+fn draw_pane(
+    frame: &mut Frame,
+    area: Rect,
+    spec: PaneFrame,
+    pane: &mut Pane,
+    theme: &Theme,
+    make: impl FnOnce(&[usize], &RowCtx) -> Vec<Line<'static>>,
+) {
+    let badge = filter::badge(
+        pane.list.selected(),
+        pane.visible().len(),
+        pane.total(),
+        pane.is_filtered(),
+    );
+    let panel = Panel::new(filter::title(spec.title, pane.query()))
+        .focused(spec.focused)
+        .badge(badge);
+    let inner = panel.render(frame, area, theme);
+    if pane.visible().is_empty() {
+        let hint = welcome::pane_hint(spec.which, pane.is_filtered(), theme);
+        return empty::render(frame, inner, hint);
     }
+    let ctx = RowCtx {
+        query: pane.query(),
+        width: inner.width,
+        theme,
+    };
+    let lines = make(pane.visible(), &ctx);
+    pane.list.render(frame, inner, &lines, theme);
 }
 
 impl Home {
     pub fn draw(&mut self, frame: &mut Frame, theme: &Theme) {
+        let area = frame.area();
+        self.mode = Mode::of(area);
+        if self.mode == Mode::TooSmall {
+            return draw_too_small(frame, area, theme);
+        }
         let [head, body, foot] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Min(1),
             Constraint::Length(1),
         ])
-        .areas(frame.area());
-        frame.render_widget(Paragraph::new("skillz workspace").style(theme.title), head);
-        self.draw_panes(frame, body, theme);
-        KeyBar::new(HINTS).render(frame, foot, theme);
-        self.toasts.render(frame, frame.area(), theme);
+        .areas(area);
+        let line = header::line(&self.model, head.width, theme);
+        frame.render_widget(Paragraph::new(line), head);
+        self.draw_body(frame, body, theme);
+        self.draw_footer(frame, foot, theme);
+        self.toasts.render(frame, area, theme);
         self.draw_popup(frame, theme);
     }
 
-    fn draw_panes(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let [projects, profiles, detail] = Layout::horizontal([
-            Constraint::Percentage(40),
-            Constraint::Percentage(25),
-            Constraint::Percentage(35),
-        ])
-        .areas(area);
-        let width = (projects.width as usize).saturating_sub(ROW_MARGIN);
-        let rows = project_lines(&self.model.projects, width, theme);
-        Pane {
+    fn is_empty(&self) -> bool {
+        self.model.projects.is_empty() && self.model.profiles.is_empty()
+    }
+
+    fn draw_body(&mut self, frame: &mut Frame, body: Rect, theme: &Theme) {
+        if self.is_empty() {
+            let inner = Panel::new("skillz")
+                .focused(true)
+                .render(frame, body, theme);
+            return empty::render(frame, inner, welcome::welcome(theme));
+        }
+        if self.mode == Mode::Single {
+            return self.draw_tabbed(frame, body, theme);
+        }
+        let panes = self.mode.panes(body);
+        self.draw_projects(frame, panes.projects, theme);
+        self.draw_profiles(frame, panes.profiles, theme);
+        self.draw_detail(frame, panes.detail, theme);
+    }
+
+    fn draw_tabbed(&mut self, frame: &mut Frame, body: Rect, theme: &Theme) {
+        let [tabs, pane] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(body);
+        self.tabs.render(frame, tabs, theme);
+        match self.tabs.selected() {
+            0 => self.draw_projects(frame, pane, theme),
+            1 => self.draw_profiles(frame, pane, theme),
+            _ => self.draw_detail(frame, pane, theme),
+        }
+    }
+
+    fn draw_projects(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        let spec = PaneFrame {
             title: "Projects",
+            which: Focus::Projects,
             focused: self.focus == Focus::Projects,
-            list: &mut self.projects,
-            rows,
-        }
-        .render(frame, projects, theme);
-        let rows = profile_lines(&self.model.profiles, theme);
-        Pane {
+        };
+        let model = &self.model.projects;
+        draw_pane(
+            frame,
+            area,
+            spec,
+            &mut self.projects,
+            theme,
+            |shown, ctx| {
+                let rows: Vec<_> = shown.iter().map(|&i| &model[i]).collect();
+                rows::project_lines(&rows, ctx)
+            },
+        );
+    }
+
+    fn draw_profiles(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        let spec = PaneFrame {
             title: "Profiles",
+            which: Focus::Profiles,
             focused: self.focus == Focus::Profiles,
-            list: &mut self.profiles,
-            rows,
-        }
-        .render(frame, profiles, theme);
-        self.draw_detail(frame, detail, theme);
+        };
+        let model = &self.model.profiles;
+        draw_pane(
+            frame,
+            area,
+            spec,
+            &mut self.profiles,
+            theme,
+            |shown, ctx| {
+                let rows: Vec<_> = shown.iter().map(|&i| &model[i]).collect();
+                rows::profile_lines(&rows, ctx)
+            },
+        );
     }
 
     fn detail_lines(&self) -> &[String] {
         let detail = match self.focus {
             Focus::Projects => self
                 .projects
-                .selected()
+                .row()
                 .map(|at| &self.model.projects[at].detail),
             Focus::Profiles => self
                 .profiles
-                .selected()
+                .row()
                 .map(|at| &self.model.profiles[at].detail),
         };
         detail.map_or(&[], Vec::as_slice)
@@ -114,10 +171,17 @@ impl Home {
         frame.render_widget(text, inner);
     }
 
-    fn draw_popup(&self, frame: &mut Frame, theme: &Theme) {
-        match &self.popup {
-            Popup::None => {}
-            Popup::Help => help::draw(frame, "Keys", HINTS, theme),
+    fn draw_footer(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        if matches!(self.popup, Popup::Filter) {
+            return filter::draw_prompt(frame, area, self.pane().field(), theme);
+        }
+        KeyBar::new(&keymap::hints(Scope::Home)).render(frame, area, theme);
+    }
+
+    fn draw_popup(&mut self, frame: &mut Frame, theme: &Theme) {
+        match &mut self.popup {
+            Popup::None | Popup::Filter => {}
+            Popup::Help(help) => help.render(frame, theme),
             Popup::Delete(_, dialog) => dialog.render(frame, theme),
             Popup::Input(ask, field) => {
                 let size = ModalSize {
@@ -131,44 +195,10 @@ impl Home {
     }
 }
 
-fn project_lines(projects: &[ProjectRow], width: usize, theme: &Theme) -> Vec<Line<'static>> {
-    projects
-        .iter()
-        .map(|p| {
-            let style = match p.missing {
-                true => theme.state_style(State::Danger),
-                false => theme.text,
-            };
-            Line::styled(fit_tail(&p.label, width, PROFILE_COLUMN), style)
-        })
-        .collect()
-}
-
-fn profile_lines(profiles: &[ProfileRow], theme: &Theme) -> Vec<Line<'static>> {
-    profiles
-        .iter()
-        .map(|p| {
-            let style = match p.broken {
-                true => theme.state_style(State::Danger),
-                false => theme.text,
-            };
-            Line::styled(p.name.clone(), style)
-        })
-        .collect()
-}
-
-/// `label` cut to `width`, keeping its first `head` characters and the end of the rest, since
-/// the end of a path says the most.
-pub(super) fn fit_tail(label: &str, width: usize, head: usize) -> String {
-    let chars: Vec<char> = label.chars().collect();
-    if chars.len() <= width || width <= head + 1 {
-        return label.to_string();
-    }
-    let tail = width - head - 1;
-    let start = chars.len() - tail;
-    chars[..head]
-        .iter()
-        .chain(std::iter::once(&'…'))
-        .chain(&chars[start..])
-        .collect()
+fn draw_too_small(frame: &mut Frame, area: Rect, theme: &Theme) {
+    let lines = vec![
+        Line::styled("Terminal too small", theme.warn),
+        Line::styled(format!("needs {MIN_WIDTH}x{MIN_HEIGHT}"), theme.muted),
+    ];
+    empty::render(frame, area, lines);
 }

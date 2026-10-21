@@ -1,11 +1,12 @@
 //! Keys for the tree: `TreeState::handle` turns a key into a state change or an `Outcome`.
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::KeyEvent;
 
 use super::menu::{Menu, Pick};
 use super::model::{Overlay, TreeState};
 use crate::prompt::{Choice, Picked};
-use crate::tui::keys::is_ctrl_c;
+use crate::tui::help::{Help, Verdict};
+use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::input::Outcome as Edit;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,7 +18,7 @@ pub enum Outcome {
 
 impl TreeState {
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
-        if is_ctrl_c(key) {
+        if keymap::resolve(Scope::Common, key) == Some(Action::Interrupt) {
             return Outcome::Quit;
         }
         match std::mem::take(&mut self.overlay) {
@@ -25,14 +26,21 @@ impl TreeState {
             Overlay::Filter => self.handle_filter(key),
             Overlay::Menu(menu) => self.handle_menu(menu, key),
             Overlay::Info(id) => self.handle_info(id, key),
-            Overlay::Help => Outcome::Continue,
+            Overlay::Help(help) => self.handle_help(help, key),
         }
+    }
+
+    fn handle_help(&mut self, mut help: Help, key: KeyEvent) -> Outcome {
+        if help.handle(key) == Verdict::Open {
+            self.overlay = Overlay::Help(help);
+        }
+        Outcome::Continue
     }
 
     fn handle_info(&mut self, id: usize, key: KeyEvent) -> Outcome {
         let closes = matches!(
-            key.code,
-            KeyCode::Esc | KeyCode::Char('q' | 'i') | KeyCode::Enter
+            keymap::resolve(Scope::Tree, key),
+            Some(Action::Back | Action::Info | Action::Select)
         );
         if !closes {
             self.overlay = Overlay::Info(id);
@@ -41,15 +49,18 @@ impl TreeState {
     }
 
     fn handle_browsing(&mut self, key: KeyEvent) -> Outcome {
-        match key.code {
-            KeyCode::Char('/') => self.overlay = Overlay::Filter,
-            KeyCode::Char('?') => self.overlay = Overlay::Help,
-            KeyCode::Char('x') | KeyCode::Tab => self.toggle_mark(),
-            KeyCode::Char('i') => self.open_info(),
-            KeyCode::Enter => return self.enter(),
-            KeyCode::Esc if !self.filter.value().is_empty() => self.clear_filter(),
-            KeyCode::Esc | KeyCode::Char('q') => return Outcome::Quit,
-            _ => self.navigate(key),
+        let Some(action) = keymap::resolve(Scope::Tree, key) else {
+            return Outcome::Continue;
+        };
+        match action {
+            Action::Filter => self.overlay = Overlay::Filter,
+            Action::Help => self.overlay = Overlay::Help(Help::new(Scope::Tree)),
+            Action::Mark => self.toggle_mark(),
+            Action::Info => self.open_info(),
+            Action::Select => return self.enter(),
+            Action::Back if self.filter_is_active() => self.clear_filter(),
+            Action::Back | Action::Quit => return Outcome::Quit,
+            action => self.navigate(action),
         }
         Outcome::Continue
     }
@@ -83,11 +94,8 @@ impl TreeState {
 
     fn handle_filter(&mut self, key: KeyEvent) -> Outcome {
         self.overlay = Overlay::Filter;
-        if matches!(
-            key.code,
-            KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown
-        ) {
-            self.list.handle(key);
+        if let Some(movement) = keymap::resolve(Scope::Filter, key) {
+            self.list.apply(movement);
             return Outcome::Continue;
         }
         let before = self.filter.value().to_string();
@@ -106,17 +114,17 @@ impl TreeState {
         Outcome::Continue
     }
 
-    fn navigate(&mut self, key: KeyEvent) {
+    fn navigate(&mut self, action: Action) {
         let Some(id) = self.current() else { return };
         let has_children = self.rows[id].has_children;
-        match key.code {
-            KeyCode::Right | KeyCode::Char('l') if has_children => {
+        match action {
+            Action::Right if has_children => {
                 self.expanded.insert(id);
             }
-            KeyCode::Char(' ') if has_children => self.toggle_open(id),
-            KeyCode::Left | KeyCode::Char('h') => return self.collapse_or_ascend(id),
-            _ => {
-                self.list.handle(key);
+            Action::Toggle if has_children => self.toggle_open(id),
+            Action::Left => return self.collapse_or_ascend(id),
+            movement => {
+                self.list.apply(movement);
                 return;
             }
         }
