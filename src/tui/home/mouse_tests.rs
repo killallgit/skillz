@@ -25,7 +25,6 @@ fn model() -> Model {
         projects: ["a", "b", "c"].into_iter().map(project).collect(),
         profiles: ["x", "y"].into_iter().map(profile).collect(),
         notice: None,
-        undo: None,
     }
 }
 

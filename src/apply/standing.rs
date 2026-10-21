@@ -1,0 +1,251 @@
+//! What a directory already has of a profile, read from its inventory. Pure: nothing here reads
+//! or changes the machine.
+
+use std::collections::HashSet;
+
+use crate::model::{Augmentation, Kind};
+use crate::profile::{Claim, Entry, Profile, claims, lacking};
+use crate::snapshot;
+
+/// How a profile's entries and the installed items overlap.
+#[derive(Debug)]
+pub struct Standing {
+    /// Wanted entries with everything in place.
+    pub present: Vec<Entry>,
+    /// What is still to install: the wanted entries cut down to the parts not in place.
+    pub missing: Vec<Entry>,
+    /// Installed items the profile does not want.
+    pub extras: Vec<Extra>,
+}
+
+#[derive(Debug)]
+pub struct Extra {
+    pub item: Augmentation,
+    /// Whether a profile could reinstall it; a hand-made skill cannot be.
+    pub sourced: bool,
+}
+
+impl Standing {
+    pub fn matches(&self) -> bool {
+        self.missing.is_empty()
+    }
+}
+
+/// The profile an installed set matches: the one with the most entries in place, the first
+/// of them on a tie. An empty profile matches everything, so it never counts as loaded.
+pub fn loaded<'a>(
+    profiles: &'a [Profile],
+    installed: &[Augmentation],
+) -> Option<(&'a Profile, Standing)> {
+    let mut best: Option<(&Profile, Standing)> = None;
+    for profile in profiles.iter().filter(|p| !p.entries.is_empty()) {
+        let standing = compare(&profile.resolved(), installed);
+        let better = best
+            .as_ref()
+            .is_none_or(|(_, held)| in_place(&standing) > in_place(held));
+        if standing.matches() && better {
+            best = Some((profile, standing));
+        }
+    }
+    best
+}
+
+fn in_place(standing: &Standing) -> usize {
+    standing.present.iter().flat_map(claims).count()
+}
+
+pub fn compare(wanted: &[Entry], installed: &[Augmentation]) -> Standing {
+    let held: Vec<(&Augmentation, Vec<Claim>)> =
+        installed.iter().map(|i| (i, claims_of(i))).collect();
+    let have: HashSet<Claim> = held.iter().flat_map(|(_, c)| c.iter().cloned()).collect();
+    let wanted = distinct(wanted);
+    let wanted_claims: HashSet<Claim> = wanted.iter().flat_map(claims).collect();
+    let (mut present, mut missing) = (vec![], vec![]);
+    for entry in &wanted {
+        match lacking(entry, &have) {
+            Some(part) => missing.push(part),
+            None => present.push(entry.clone()),
+        }
+    }
+    let extras = held
+        .into_iter()
+        .filter_map(|(item, held)| extra(item, &held, &wanted_claims, &wanted))
+        .collect();
+    Standing {
+        present,
+        missing,
+        extras,
+    }
+}
+
+fn distinct(entries: &[Entry]) -> Vec<Entry> {
+    let mut seen: Vec<Entry> = Vec::new();
+    for entry in entries {
+        if !seen.contains(entry) {
+            seen.push(entry.clone());
+        }
+    }
+    seen
+}
+
+/// What an installed item puts in place, as a profile would have to claim it.
+fn claims_of(item: &Augmentation) -> Vec<Claim> {
+    let snap = snapshot::snapshot("installed", std::slice::from_ref(item));
+    snap.profile.resolved().iter().flat_map(claims).collect()
+}
+
+/// An item is wanted when any one of its claims is, so one shared with a wanted entry stays.
+/// A marketplace is wanted while a wanted plugin comes from it.
+fn extra(
+    item: &Augmentation,
+    held: &[Claim],
+    wanted_claims: &HashSet<Claim>,
+    wanted: &[Entry],
+) -> Option<Extra> {
+    if item.kind == Kind::Marketplace {
+        let used = wanted.iter().any(|e| draws_on(e, &item.name));
+        return (!used).then(|| Extra {
+            item: item.clone(),
+            sourced: true,
+        });
+    }
+    if held.iter().any(|c| wanted_claims.contains(c)) {
+        return None;
+    }
+    Some(Extra {
+        item: item.clone(),
+        sourced: !held.is_empty(),
+    })
+}
+
+fn draws_on(entry: &Entry, marketplace: &str) -> bool {
+    matches!(entry, Entry::Plugin { marketplace: m, .. } if m == marketplace)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Agent, Installer, Scope};
+
+    fn skill_entry(names: &[&str]) -> Entry {
+        Entry::Skill {
+            source: "o/r".into(),
+            names: names.iter().map(|n| n.to_string()).collect(),
+            agents: vec![Agent::Claude],
+        }
+    }
+
+    fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
+        Augmentation {
+            hooks: vec![],
+            id: format!("{kind}:{name}"),
+            name: name.into(),
+            kind,
+            agents: vec![Agent::Claude],
+            scope: Scope::Project,
+            group: "g".into(),
+            source: source.map(Into::into),
+            installer: Installer::Npx,
+            children: vec![],
+            removal: vec![],
+        }
+    }
+
+    fn sourced_skill(name: &str) -> Augmentation {
+        installed(name, Kind::Skill, Some("o/r"))
+    }
+
+    #[test]
+    fn a_project_with_everything_wanted_matches_and_extras_do_not_matter() {
+        let live = [sourced_skill("a"), sourced_skill("b")];
+
+        let standing = compare(&[skill_entry(&["a"])], &live);
+
+        assert!(standing.matches());
+        assert_eq!(standing.present, [skill_entry(&["a"])]);
+        assert_eq!(standing.extras.len(), 1);
+    }
+
+    #[test]
+    fn only_the_names_not_installed_are_missing() {
+        let live = [sourced_skill("a")];
+
+        let standing = compare(&[skill_entry(&["a", "b"])], &live);
+
+        assert!(!standing.matches());
+        assert_eq!(standing.missing, [skill_entry(&["b"])]);
+        assert!(standing.present.is_empty());
+    }
+
+    #[test]
+    fn a_hand_made_skill_is_an_extra_that_cannot_be_reinstalled() {
+        let live = [installed("mine", Kind::Skill, None)];
+
+        let standing = compare(&[], &live);
+
+        assert!(!standing.extras[0].sourced);
+    }
+
+    #[test]
+    fn an_installed_item_shared_with_a_wanted_entry_is_not_an_extra() {
+        let mut both = sourced_skill("a");
+        both.agents = vec![Agent::Claude, Agent::Codex];
+
+        let standing = compare(&[skill_entry(&["a"])], &[both]);
+
+        assert!(standing.extras.is_empty());
+    }
+
+    #[test]
+    fn a_marketplace_stays_while_a_wanted_plugin_comes_from_it() {
+        let plugin = Entry::Plugin {
+            source: "o/mp".into(),
+            marketplace: "mp".into(),
+            name: "p".into(),
+            agents: vec![Agent::Claude],
+        };
+        let live = [installed("mp", Kind::Marketplace, Some("o/mp"))];
+
+        let wanting = compare(std::slice::from_ref(&plugin), &live);
+        let not_wanting = compare(&[], &live);
+
+        assert!(wanting.extras.is_empty());
+        assert_eq!(not_wanting.extras.len(), 1);
+    }
+
+    fn profile(name: &str, skills: &[&str]) -> Profile {
+        let mut p = Profile::new(name);
+        p.entries = vec![skill_entry(skills)];
+        p.agents = vec![Agent::Claude];
+        p
+    }
+
+    #[test]
+    fn the_loaded_profile_is_the_matching_one_with_the_most_in_place() {
+        let live = [sourced_skill("a"), sourced_skill("b")];
+        let profiles = [
+            profile("small", &["a"]),
+            profile("big", &["a", "b"]),
+            profile("other", &["c"]),
+            Profile::new("empty"),
+        ];
+
+        let found = loaded(&profiles, &live);
+
+        assert_eq!(found.map(|(p, _)| p.name.as_str()), Some("big"));
+    }
+
+    #[test]
+    fn nothing_is_loaded_when_no_profile_matches() {
+        let profiles = [profile("web", &["a"])];
+
+        assert!(loaded(&profiles, &[]).is_none());
+    }
+
+    #[test]
+    fn a_repeated_entry_counts_once() {
+        let standing = compare(&[skill_entry(&["a"]), skill_entry(&["a"])], &[]);
+
+        assert_eq!(standing.missing.len(), 1);
+    }
+}

@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::Agent;
 
 pub use entry::Entry;
+pub use identity::{Claim, claims, lacking};
 pub use store::Store;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

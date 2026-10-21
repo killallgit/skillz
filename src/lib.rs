@@ -31,7 +31,6 @@ pub(crate) mod remove;
 pub mod review;
 pub mod runner;
 pub(crate) mod skills;
-pub(crate) mod skillz_dir;
 pub(crate) mod snapshot;
 pub(crate) mod spinner;
 pub(crate) mod subagent_store;

@@ -59,9 +59,9 @@ impl Env {
         }
     }
 
-    /// skillz's own files for the project: its profiles and local state.
+    /// skillz's own config: the profiles and the dirs `run` keeps.
     pub fn skillz_dir(&self) -> PathBuf {
-        self.project.join(".skillz")
+        self.home.join(".config/skillz")
     }
 
     pub fn root(&self, scope: Scope) -> &Path {

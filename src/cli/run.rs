@@ -79,7 +79,8 @@ fn run_use(deps: &Deps, args: UseArgs, out: &mut dyn Write) -> anyhow::Result<()
         scope: Scope::Project,
     };
     let switching = Switching {
-        profile: args.profile.as_deref(),
+        profile: &args.profile,
+        exact: args.exact,
         dry_run: args.dry_run,
     };
     use_profile(deps, &target, &switching, out)

@@ -28,7 +28,6 @@ fn model() -> Model {
         projects: vec![project("a"), project("b")],
         profiles: vec![profile("x")],
         notice: None,
-        undo: None,
     }
 }
 

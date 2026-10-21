@@ -6,6 +6,7 @@ use super::deps::Deps;
 use super::detail;
 use super::notice::Notice;
 use super::scope::project_env;
+use crate::agents;
 use crate::apply;
 use crate::model::Scope;
 use crate::profile;
@@ -35,17 +36,18 @@ fn profile_row(store: &profile::Store, name: String) -> ProfileRow {
 }
 
 fn project_row(deps: &Deps, store: &profile::Store, path: PathBuf) -> anyhow::Result<ProjectRow> {
-    let env = project_env(deps, &path);
-    let record = apply::Ledger::in_env(&env).get(&apply::Ledger::key(&env, Scope::Project))?;
-    let wanted = record
-        .as_ref()
-        .and_then(|r| store.load_flat(&r.profile).ok())
-        .map(|p| p.entries);
+    let installed = agents::inventory(&deps.adapters, &project_env(deps, &path), &[Scope::Project]);
+    let profiles: Vec<profile::Profile> = store
+        .names()?
+        .iter()
+        .filter_map(|name| store.load_flat(name).ok())
+        .collect();
+    let loaded = apply::loaded(&profiles, &installed.items);
     Ok(ProjectRow {
-        profile: record.as_ref().map(|r| r.profile.clone()),
+        profile: loaded.as_ref().map(|(p, _)| p.name.clone()),
         short: short_path(deps, &path),
         missing: false,
-        detail: detail::project(&path, false, record.as_ref(), wanted),
+        detail: detail::project(&path, loaded.as_ref().map(|(p, s)| (*p, s))),
         path,
     })
 }
@@ -64,7 +66,6 @@ pub(super) fn screen_model(
         }),
         projects: vec![here],
         profiles: profile_rows(store)?,
-        undo: notice.as_ref().and_then(Notice::undo),
         notice: notice.map(|n| n.to_string()),
     })
 }
@@ -90,7 +91,7 @@ mod tests {
     }
 
     #[test]
-    fn a_project_without_a_loaded_profile_has_none_on_its_row() {
+    fn a_project_matching_no_profile_has_none_on_its_row() {
         with_deps(|deps, dir| {
             let store = profile::Store::in_env(&project_env(deps, dir));
 
@@ -98,21 +99,6 @@ mod tests {
 
             // Assert the typed row carries no profile.
             assert_eq!(here.profile, None);
-        });
-    }
-
-    #[test]
-    fn an_unreadable_ledger_fails_the_row_instead_of_hiding_the_profile() {
-        with_deps(|deps, dir| {
-            let env = project_env(deps, dir);
-            let store = profile::Store::in_env(&env);
-            std::fs::create_dir_all(env.skillz_dir()).unwrap();
-            std::fs::write(env.skillz_dir().join("state.json"), "{not json").unwrap();
-
-            let row = project_row(deps, &store, dir.to_path_buf());
-
-            // A corrupt ledger is an error, not a silently empty row.
-            assert!(row.is_err());
         });
     }
 

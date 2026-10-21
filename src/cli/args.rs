@@ -28,7 +28,7 @@ pub enum Command {
     Reset(ResetArgs),
     /// Find duplicate skills and skills/plugins unused for 7+ days, then remove the ones picked
     Prune(PruneArgs),
-    /// Load a profile into the project, swapping out the one that is there
+    /// Install what a project lacks of a profile (with --exact, remove the rest)
     Use(UseArgs),
     /// Create, inspect and delete profiles
     Profile {
@@ -133,11 +133,10 @@ pub struct PruneArgs {
 #[derive(Debug, Args)]
 pub struct UseArgs {
     /// Profile name (see `.skillz/profiles`)
-    #[arg(required_unless_present = "none", conflicts_with = "none")]
-    pub profile: Option<String>,
-    /// Unload the current profile instead
+    pub profile: String,
+    /// Also remove what the profile does not want
     #[arg(long)]
-    pub none: bool,
+    pub exact: bool,
     /// Project directory (default: cwd)
     #[arg(short = 'p', long)]
     pub project: Option<PathBuf>,
@@ -258,7 +257,7 @@ mod tests {
             &["profile", "save", "x", "-p", "."][..],
             &["profile", "rm", "x"],
             &["use", "x", "--dry-run"],
-            &["use", "--none"],
+            &["use", "x", "--exact"],
         ] {
             assert!(
                 Cli::try_parse_from([&["skillz"], args].concat()).is_ok(),
@@ -266,7 +265,6 @@ mod tests {
             );
         }
         assert!(Cli::try_parse_from(["skillz", "use"]).is_err());
-        assert!(Cli::try_parse_from(["skillz", "use", "x", "--none"]).is_err());
     }
 
     #[test]

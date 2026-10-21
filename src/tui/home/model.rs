@@ -81,8 +81,6 @@ pub struct Model {
     pub profiles: Vec<ProfileRow>,
     /// Shown as a toast until the next key: what the last action did or why it failed.
     pub notice: Option<String>,
-    /// What the undo key asks for while the notice is the latest thing that happened.
-    pub undo: Option<Act>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -117,9 +115,6 @@ pub enum Act {
     Apply {
         project: PathBuf,
         profile: String,
-    },
-    Unload {
-        project: PathBuf,
     },
     NewProfile(String),
     SaveProfile {

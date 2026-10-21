@@ -117,7 +117,6 @@ mod tests {
                 broken: true,
             }],
             notice: None,
-            undo: None,
         }
     }
 

@@ -6,13 +6,16 @@ use crate::model::Scope;
 use crate::remove::Plan;
 use crate::review::{Group, PlanView};
 
-fn name(profile: &Option<String>) -> &str {
-    profile.as_deref().unwrap_or("none")
-}
-
 pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
-    let kept = switch.kept.iter().map(|l| l.entry.to_string()).collect();
-    let remove = switch.dropped.iter().map(|l| l.entry.to_string()).collect();
+    let kept = switch.present.iter().map(ToString::to_string).collect();
+    let remove = switch
+        .removals
+        .iter()
+        .map(|item| match switch.is_unsourced(item) {
+            true => format!("{}  (no known source)", item.label(true)),
+            false => item.label(true),
+        })
+        .collect();
     let install = switch.installs.iter().map(|(e, _)| e.to_string()).collect();
     let skip = switch
         .unsupported
@@ -31,7 +34,7 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
         (Group::Skip, skip),
     ];
     PlanView {
-        heading: format!("{scope}: {} -> {}", name(&switch.from), name(&switch.to)),
+        heading: format!("{scope}: {}", switch.to),
         groups: groups
             .into_iter()
             .filter(|(_, lines): &(Group, Vec<String>)| !lines.is_empty())
@@ -55,8 +58,7 @@ pub(super) fn step_label(switch: &Switch, removal: &Plan, step: &Action) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::apply::Loaded;
-    use crate::model::Agent;
+    use crate::model::{Agent, Augmentation, Installer, Kind};
     use crate::profile::Entry;
 
     fn skill(name: &str) -> Entry {
@@ -67,16 +69,28 @@ mod tests {
         }
     }
 
+    fn removable(name: &str) -> Augmentation {
+        Augmentation {
+            hooks: vec![],
+            id: name.into(),
+            name: name.into(),
+            kind: Kind::Skill,
+            agents: vec![Agent::Claude],
+            scope: Scope::Project,
+            group: "g".into(),
+            source: None,
+            installer: Installer::Local,
+            children: vec![],
+            removal: vec![],
+        }
+    }
+
     fn switch() -> Switch {
         Switch {
-            from: Some("old".into()),
-            to: None,
-            kept: vec![],
-            dropped: vec![Loaded {
-                entry: skill("a"),
-                items: vec![],
-            }],
-            removals: vec![],
+            to: "new".into(),
+            present: vec![],
+            removals: vec![removable("a")],
+            unsourced: vec![],
             installs: vec![(skill("b"), vec![])],
             unsupported: vec![],
         }

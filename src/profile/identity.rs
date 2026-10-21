@@ -9,9 +9,10 @@
 use std::collections::HashSet;
 
 use super::Entry;
+use crate::model::Agent;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum Key {
+pub enum Key {
     Skill(String, String),
     Subagent(String, String),
     Plugin(String, String),
@@ -26,6 +27,33 @@ pub fn overlay(base: Vec<Entry>, top: &[Entry]) -> Vec<Entry> {
         .filter_map(|entry| without(entry, &taken))
         .chain(top.iter().cloned())
         .collect()
+}
+
+/// One thing an entry puts in place for one agent.
+pub type Claim = (Key, Agent);
+
+/// What a resolved entry (agents filled in) puts in place: each of its keys for each agent.
+pub fn claims(entry: &Entry) -> Vec<Claim> {
+    let agents = entry.agents();
+    keys(entry)
+        .into_iter()
+        .flat_map(|key| agents.iter().map(move |agent| (key.clone(), *agent)))
+        .collect()
+}
+
+/// The part of a resolved entry that `have` does not cover: the names with a missing claim for
+/// some agent, or the whole entry when it has one key. `None` when everything is there.
+pub fn lacking(entry: &Entry, have: &HashSet<Claim>) -> Option<Entry> {
+    let covered: HashSet<Key> = keys(entry)
+        .into_iter()
+        .filter(|key| {
+            entry
+                .agents()
+                .iter()
+                .all(|agent| have.contains(&(key.clone(), *agent)))
+        })
+        .collect();
+    without(entry.clone(), &covered)
 }
 
 fn keys(entry: &Entry) -> Vec<Key> {
@@ -97,6 +125,33 @@ mod tests {
             transport: None,
             agents: vec![],
         }
+    }
+
+    #[test]
+    fn only_the_names_missing_for_some_agent_are_lacking() {
+        let entry = skills("o/r", &["a", "b"]).with_agents(vec![Agent::Claude, Agent::Codex]);
+        let have: HashSet<Claim> = [
+            (Key::Skill("o/r".into(), "a".into()), Agent::Claude),
+            (Key::Skill("o/r".into(), "a".into()), Agent::Codex),
+            (Key::Skill("o/r".into(), "b".into()), Agent::Claude),
+        ]
+        .into();
+
+        let lacking = lacking(&entry, &have);
+
+        // Assert b is still wanted for Codex and a is not.
+        assert_eq!(
+            lacking,
+            Some(skills("o/r", &["b"]).with_agents(vec![Agent::Claude, Agent::Codex]))
+        );
+    }
+
+    #[test]
+    fn an_entry_whose_claims_are_all_there_lacks_nothing() {
+        let entry = hook(None, "x").with_agents(vec![Agent::Claude]);
+        let have = claims(&entry).into_iter().collect();
+
+        assert_eq!(lacking(&entry, &have), None);
     }
 
     #[test]

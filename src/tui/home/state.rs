@@ -44,7 +44,6 @@ pub struct Home {
     pub(super) mode: Mode,
     pub(super) tabs: Tabs,
     pub(super) last_click: Option<Click>,
-    undo: Option<Act>,
     pub(super) detail: Detail,
 }
 
@@ -55,9 +54,8 @@ impl Home {
         let mut profiles = Pane::new(model.profiles.len());
         profiles.select_row(pos.profile);
         let mut toasts = Toasts::default();
-        let undo = model.undo.take();
         if let Some(notice) = model.notice.take() {
-            toasts.push(with_undo_hint(notice, undo.is_some()));
+            toasts.push(notice);
         }
         let mut tabs = Tabs::new(&["Projects", "Profiles", "Detail"]);
         tabs.select(tab_of(pos.focus));
@@ -71,7 +69,6 @@ impl Home {
             mode: Mode::default(),
             tabs,
             last_click: None,
-            undo,
             detail: Detail::default(),
         }
     }
@@ -110,7 +107,6 @@ impl Home {
             Action::Help => self.open(Popup::Help(Help::new(Scope::Home))),
             Action::Filter => self.open(Popup::Filter),
             Action::Select => self.apply(),
-            Action::Undo => self.undo.clone(),
             action => self.command(action),
         }
     }
@@ -128,7 +124,6 @@ impl Home {
     fn command(&mut self, action: Action) -> Option<Act> {
         let profile = self.profile_id();
         match action {
-            Action::Unload => self.loaded_project().map(|project| Act::Unload { project }),
             Action::NewProfile => self.ask(Ask::NewProfile),
             Action::SaveProfile if self.usable_project().is_some() => self.ask(Ask::SaveProfile),
             Action::AddTyped if profile.is_some() => self.ask(Ask::AddEntry),
@@ -223,11 +218,6 @@ impl Home {
         (!row.missing).then(|| row.path.clone())
     }
 
-    fn loaded_project(&self) -> Option<PathBuf> {
-        let row = &self.model.projects[self.projects.row()?];
-        row.loaded().then(|| row.path.clone())
-    }
-
     fn usable_profile(&self) -> Option<String> {
         let row = &self.model.profiles[self.profiles.row()?];
         (!row.broken).then(|| row.name.clone())
@@ -265,14 +255,6 @@ impl Home {
             }
         }
     }
-}
-
-fn with_undo_hint(notice: String, undoable: bool) -> String {
-    if !undoable {
-        return notice;
-    }
-    let key = keymap::keys_for(Scope::Home, Action::Undo);
-    format!("{notice} · {key} to undo")
 }
 
 fn tab_of(focus: Focus) -> usize {

@@ -1,5 +1,5 @@
 //! `run`: a command in config dirs of its own. A profile is loaded into
-//! `<project>/.skillz/envs/<profile>/{claude,codex}` and the command starts with `CLAUDE_CONFIG_DIR`
+//! `<skillz dir>/envs/<profile>/{claude,codex}` and the command starts with `CLAUDE_CONFIG_DIR`
 //! and `CODEX_HOME` pointing there, so it sees that profile and nothing else, and nothing has
 //! to be uninstalled to switch. The dirs are separate, so the agent logs in again once.
 
@@ -35,7 +35,8 @@ pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> a
         scope: Scope::Global,
     };
     let switching = Switching {
-        profile: Some(&args.profile),
+        profile: &args.profile,
+        exact: false,
         dry_run: false,
     };
     use_profile(&inside, &target, &switching, out)?;
@@ -88,9 +89,12 @@ mod tests {
 
         assert_eq!(
             web.claude_dir(),
-            PathBuf::from("/p/.skillz/envs/web/claude")
+            PathBuf::from("/h/.config/skillz/envs/web/claude")
         );
-        assert_eq!(web.codex_dir(), PathBuf::from("/p/.skillz/envs/web/codex"));
+        assert_eq!(
+            web.codex_dir(),
+            PathBuf::from("/h/.config/skillz/envs/web/codex")
+        );
         assert_eq!(web.project, env.project);
     }
 

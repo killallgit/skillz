@@ -53,8 +53,7 @@ impl Session<'_, '_> {
     fn perform(&self, act: Act) -> anyhow::Result<Reply> {
         match act {
             Act::Quit => Ok(None),
-            Act::Apply { project, profile } => self.switch(&project, Some(&profile)),
-            Act::Unload { project } => self.switch(&project, None),
+            Act::Apply { project, profile } => self.switch(&project, &profile),
             Act::NewProfile(name) => self.new_profile(name),
             Act::SaveProfile { name, project } => self.save_setup(name, &project),
             Act::DeleteProfile(name) => self.delete_profile(&name),
@@ -79,10 +78,10 @@ impl Session<'_, '_> {
         Ok(name.to_string())
     }
 
-    fn switch(&self, dir: &Path, profile: Option<&str>) -> anyhow::Result<Reply> {
+    fn switch(&self, dir: &Path, profile: &str) -> anyhow::Result<Reply> {
         let dir = self.project(dir)?;
-        let profile = profile.map(|name| self.profile(name)).transpose()?;
-        switch(self.deps, &dir, profile.as_deref())
+        let profile = self.profile(profile)?;
+        switch(self.deps, &dir, &profile)
     }
 
     fn new_profile(&self, name: String) -> anyhow::Result<Reply> {
