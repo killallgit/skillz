@@ -63,14 +63,14 @@ fn use_line(used: Used, now_ms: u64) -> Option<String> {
 }
 
 fn contents(item: &Augmentation) -> Vec<String> {
-    if item.children.is_empty() {
+    let children = crate::mcp::shown_children(item);
+    if children.is_empty() {
         return vec![];
     }
-    let shown = item.children.iter().take(MAX_CHILDREN);
-    let mut lines = vec![format!("contains ({})", item.children.len())];
-    lines.extend(shown.map(|c| format!("  {c}")));
-    if item.children.len() > MAX_CHILDREN {
-        lines.push(format!("  … {} more", item.children.len() - MAX_CHILDREN));
+    let mut lines = vec![format!("contains ({})", children.len())];
+    lines.extend(children.iter().take(MAX_CHILDREN).map(|c| format!("  {c}")));
+    if children.len() > MAX_CHILDREN {
+        lines.push(format!("  … {} more", children.len() - MAX_CHILDREN));
     }
     lines
 }

@@ -5,6 +5,7 @@ use super::deps::Deps;
 use super::removal::{Review, confirm_and_remove};
 use super::scope::Scene;
 use crate::cost;
+use crate::mcp;
 use crate::env::Env;
 use crate::model::{Augmentation, Kind};
 use crate::prompt::Choice;
@@ -119,6 +120,7 @@ fn print_json(scene: &Scene, items: &[Augmentation], out: &mut dyn Write) -> any
         .iter()
         .map(|i| {
             let mut row = serde_json::to_value(i)?;
+            row["children"] = serde_json::json!(mcp::shown_children(i));
             row["tokens"] = serde_json::json!(costs.tokens(i));
             anyhow::Ok(row)
         })
@@ -166,6 +168,9 @@ fn render_listing(listing: &Listing, out: &mut dyn Write) -> anyhow::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::scope::project_env;
+    use crate::agents::AgentAdapter;
+    use crate::install::test_support::{FakeRunner, ScriptedPrompter};
     use crate::model::{Agent, Installer, Scope};
 
     fn skill(name: &str) -> Augmentation {
@@ -182,6 +187,43 @@ mod tests {
             children: vec![],
             removal: vec![],
         }
+    }
+
+    struct BrokenUsage;
+
+    impl AgentAdapter for BrokenUsage {
+        fn agent(&self) -> Agent {
+            Agent::Claude
+        }
+        fn skill_dirs(&self, _: &Env, _: Scope) -> Vec<std::path::PathBuf> {
+            vec![]
+        }
+        fn hook_files(&self, _: &Env, _: Scope) -> Vec<std::path::PathBuf> {
+            vec![]
+        }
+        fn discover(&self, _: &Env, _: Scope) -> anyhow::Result<Vec<Augmentation>> {
+            Ok(vec![])
+        }
+        fn home_dir_names(&self) -> &'static [&'static str] {
+            &[]
+        }
+        fn usage(&self, _: &Env) -> anyhow::Result<Vec<(String, u64)>> {
+            anyhow::bail!("unreadable")
+        }
+    }
+
+    #[test]
+    fn unreadable_usage_data_still_leaves_the_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ScriptedPrompter::new(&[], true);
+        let deps = Deps::for_test(dir.path(), vec![Box::new(BrokenUsage)], (&runner, &prompter));
+        let env = project_env(&deps, &deps.cwd);
+
+        let nodes = display_tree(&deps, &env, &[skill("a")]);
+
+        // The failed usage read degrades to a warning; the item row is still built.
+        assert_eq!(nodes[0].children.len(), 1);
     }
 
     fn view(query: Option<&str>, all: bool) -> ListView<'_> {

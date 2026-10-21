@@ -183,7 +183,7 @@ fn item_node(index: usize, item: &Augmentation) -> Node {
             item.scope.to_string(),
             String::new(),
         ],
-        children: item.children.iter().map(Node::leaf).collect(),
+        children: crate::mcp::shown_children(item).iter().map(Node::leaf).collect(),
         item: Some(index),
         ..Node::default()
     }
