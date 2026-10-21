@@ -2,6 +2,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -108,6 +109,11 @@ impl ProjectTab {
             format!("{ITEM_INDENT}{box_glyph} "),
             box_style,
         )];
+        let outdated = self.is_outdated(&item.state);
+        let text_style = match outdated {
+            true => text_style.add_modifier(Modifier::BOLD),
+            false => text_style,
+        };
         spans.extend(filter::highlight(
             &item.label,
             &self.outline.matched(id),
@@ -115,6 +121,9 @@ impl ProjectTab {
             text_style,
             theme,
         ));
+        if outdated {
+            spans.push(Span::styled("*", text_style));
+        }
         if !item.detail.is_empty() {
             spans.push(Span::styled(format!("  {}", item.detail), theme.muted));
         }

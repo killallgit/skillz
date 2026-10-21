@@ -1,6 +1,8 @@
 //! What a tab is to the workspace. A tab owns its state, takes the keys the workspace does not,
 //! and draws into the body; the tab bar, key bar, help and toasts belong to the workspace.
 
+use std::collections::BTreeSet;
+
 use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
@@ -25,6 +27,9 @@ pub trait Tab {
     fn handle(&mut self, key: KeyEvent) -> Option<Act>;
 
     fn draw(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
+
+    /// Ids of installed items found to have an update; a tab may mark them.
+    fn mark_outdated(&mut self, _ids: &BTreeSet<String>) {}
 
     /// A text field or popup wants every key, tab keys included.
     fn captures_keys(&self) -> bool {
