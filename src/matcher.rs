@@ -27,6 +27,25 @@ pub fn fuzzy_rank(query: &str, candidates: &[String]) -> Vec<usize> {
     scored.into_iter().map(|(_, i)| i).collect()
 }
 
+/// Character positions in `text` that `query` matched, using the same rule as `fuzzy_rank`:
+/// a case-insensitive substring if there is one, else the fuzzy match. Empty when none.
+pub fn match_positions(query: &str, text: &str) -> Vec<usize> {
+    let query = query.trim();
+    if query.is_empty() {
+        return vec![];
+    }
+    let lower = text.to_lowercase();
+    if let Some(byte) = lower.find(&query.to_lowercase()) {
+        let start = lower[..byte].chars().count();
+        return (start..start + query.chars().count()).collect();
+    }
+    let matcher = SkimMatcherV2::default().ignore_case();
+    matcher
+        .fuzzy_indices(text, query)
+        .map(|(_, at)| at)
+        .unwrap_or_default()
+}
+
 /// Does `name` match one comma-free `pattern`? Glob syntax (`*commit`, `speckit-*`) when the
 /// pattern has wildcards, exact match otherwise.
 pub fn pattern_matches(pattern: &str, name: &str) -> bool {
@@ -42,6 +61,22 @@ mod tests {
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn a_substring_is_highlighted_as_one_run_ignoring_case() {
+        assert_eq!(match_positions("LIB", "my-lib-x"), vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn a_fuzzy_match_highlights_the_scattered_letters() {
+        assert_eq!(match_positions("mlx", "my-lib-x"), vec![0, 3, 7]);
+    }
+
+    #[test]
+    fn no_match_and_an_empty_query_highlight_nothing() {
+        assert!(match_positions("zzz", "abc").is_empty());
+        assert!(match_positions(" ", "abc").is_empty());
     }
 
     #[test]

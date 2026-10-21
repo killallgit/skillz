@@ -7,7 +7,7 @@ use super::scope::project_env;
 use crate::apply;
 use crate::model::Scope;
 use crate::profile;
-use crate::tui::home::{Model, ProfileRow, ProjectRow};
+use crate::tui::home::{Current, Model, ProfileRow, ProjectRow};
 use crate::workspace::Workspace;
 
 pub(super) fn screen_model(
@@ -27,7 +27,12 @@ pub(super) fn screen_model(
         .into_iter()
         .map(|name| profile_row(store, name))
         .collect();
+    let here = project_row(deps, &ledger, deps.cwd.clone());
     Ok(Model {
+        current: Some(Current {
+            short: here.short,
+            profile: here.profile,
+        }),
         projects,
         profiles,
         notice,
@@ -38,11 +43,9 @@ fn project_row(deps: &Deps, ledger: &apply::Ledger, path: PathBuf) -> ProjectRow
     let key = apply::Ledger::key(&project_env(deps, &path), Scope::Project);
     let record = ledger.get(&key).ok().flatten();
     let missing = !path.is_dir();
-    let profile_name = record.as_ref().map_or("-", |r| r.profile.as_str());
-    let gone = if missing { "  (missing)" } else { "" };
     ProjectRow {
-        label: format!("{profile_name:<14} {}{gone}", short_path(deps, &path)),
-        loaded: record.is_some(),
+        profile: record.as_ref().map(|r| r.profile.clone()),
+        short: short_path(deps, &path),
         missing,
         detail: project_detail(&path, missing, record.as_ref()),
         path,

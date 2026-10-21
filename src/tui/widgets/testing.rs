@@ -25,3 +25,8 @@ pub fn key(code: KeyCode) -> KeyEvent {
 pub fn ctrl(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
 }
+
+/// One key press per character of `s`.
+pub fn keys(s: &str) -> Vec<KeyEvent> {
+    s.chars().map(|c| key(KeyCode::Char(c))).collect()
+}

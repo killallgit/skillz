@@ -2,6 +2,8 @@
 
 use ratatui::style::{Color, Modifier, Style};
 
+use super::glyphs::Glyphs;
+
 /// How a status reads at a glance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
@@ -23,6 +25,7 @@ pub struct Theme {
     pub border: Style,
     pub title: Style,
     pub text: Style,
+    pub glyphs: Glyphs,
 }
 
 fn fg(color: Color) -> Style {
@@ -46,6 +49,7 @@ impl Theme {
             border: fg(Color::DarkGray),
             title: fg(Color::White).add_modifier(Modifier::BOLD),
             text: Style::new(),
+            glyphs: Glyphs::UNICODE,
         }
     }
 
@@ -61,6 +65,7 @@ impl Theme {
             border: fg(Color::Gray),
             title: fg(Color::Black).add_modifier(Modifier::BOLD),
             text: Style::new(),
+            glyphs: Glyphs::UNICODE,
         }
     }
 
@@ -77,11 +82,26 @@ impl Theme {
             border: modifier(Modifier::DIM),
             title: modifier(Modifier::BOLD),
             text: Style::new(),
+            glyphs: Glyphs {
+                cursor: "> ",
+                ..Glyphs::UNICODE
+            },
         }
     }
 
     /// Pick a theme from the environment, read through `lookup` so tests need no real env.
     pub fn detect(lookup: &dyn Fn(&str) -> Option<String>) -> Self {
+        let base = Self::coloured(lookup);
+        match Glyphs::detect(lookup) {
+            Glyphs::ASCII => Theme {
+                glyphs: Glyphs::ASCII,
+                ..base
+            },
+            _ => base,
+        }
+    }
+
+    fn coloured(lookup: &dyn Fn(&str) -> Option<String>) -> Self {
         if let Some(named) = lookup("SKILLZ_THEME").and_then(|n| Self::named(&n)) {
             return named;
         }
@@ -174,7 +194,14 @@ mod tests {
     #[test]
     fn dumb_terminal_selects_mono() {
         let theme = Theme::detect(&env(&[("TERM", "dumb")]));
-        assert_eq!(theme, Theme::mono());
+        // A dumb terminal also gets the ASCII glyphs.
+        assert_eq!(
+            theme,
+            Theme {
+                glyphs: Glyphs::ASCII,
+                ..Theme::mono()
+            }
+        );
     }
 
     #[test]
@@ -199,6 +226,19 @@ mod tests {
     fn unknown_explicit_theme_falls_back_to_detection() {
         let theme = Theme::detect(&env(&[("SKILLZ_THEME", "neon"), ("NO_COLOR", "1")]));
         assert_eq!(theme, Theme::mono());
+    }
+
+    #[test]
+    fn mono_marks_the_cursor_row_with_a_prompt() {
+        assert_eq!(Theme::mono().glyphs.cursor, Glyphs::ASCII.cursor);
+    }
+
+    #[test]
+    fn an_ascii_locale_swaps_the_glyphs_but_keeps_the_colours() {
+        let theme = Theme::detect(&env(&[("LANG", "C")]));
+
+        assert_eq!(theme.glyphs, Glyphs::ASCII);
+        assert_eq!(theme.accent, Theme::dark().accent);
     }
 
     #[test]

@@ -1,8 +1,7 @@
 use super::marks::Mark;
 use super::model::Overlay;
 use super::*;
-use crate::tui::keys::keys;
-use crate::tui::widgets::testing::{key, render_to_buffer, row_text};
+use crate::tui::widgets::testing::{key, keys, render_to_buffer, row_text};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 fn n(label: &str, item: Option<usize>, children: Vec<Node>) -> Node {
@@ -256,14 +255,16 @@ fn i_opens_the_modal_for_rows_with_info_and_esc_closes_it() {
 }
 
 #[test]
-fn question_mark_opens_help_and_any_key_closes_it() {
+fn question_mark_opens_help_which_scrolls_without_moving_the_cursor_and_esc_closes_it() {
     let mut s = TreeState::new(&sample());
 
     feed(&mut s, keys("?"));
-    assert_eq!(s.overlay, Overlay::Help);
+    let open = matches!(s.overlay, Overlay::Help(_));
     feed(&mut s, keys("j"));
+    let still_open = matches!(s.overlay, Overlay::Help(_));
+    feed(&mut s, [key(KeyCode::Esc)]);
 
-    // Closing swallows the key: the cursor did not move.
+    assert!(open && still_open);
     assert_eq!(
         (s.overlay.clone(), s.list.selected()),
         (Overlay::None, Some(0))
@@ -315,4 +316,50 @@ fn flat_options_pick_by_position() {
 
     // Moved to the second option and marked it.
     assert_eq!(chosen, [1]);
+}
+
+#[test]
+fn filtering_underlines_the_matched_letters_and_counts_matches_in_the_badge() {
+    let mut s = TreeState::new(&sample());
+    feed(&mut s, keys("/c"));
+    let theme = Theme::dark();
+
+    let buffer = render_to_buffer(60, 8, |f| s.draw("t", f, &theme));
+
+    let underlined = (0..8)
+        .flat_map(|y| (0..60).map(move |x| (x, y)))
+        .filter(|&pos| {
+            buffer[pos]
+                .modifier
+                .contains(ratatui::style::Modifier::UNDERLINED)
+        })
+        .count();
+    // Only the "c" row (and its group "g1", which has no c) is shown; exactly one letter matches.
+    assert_eq!(underlined, 1);
+    assert_eq!(s.visible.len(), 2);
+}
+
+#[test]
+fn marked_items_are_counted_through_their_group() {
+    let mut s = TreeState::new(&sample());
+
+    feed(&mut s, keys("x"));
+
+    // Marking g0 marks its two items.
+    assert_eq!(s.marked_items(), 2);
+}
+
+#[test]
+fn q_and_esc_leave_a_browsing_tree_but_q_is_inert_in_the_info_modal() {
+    let mut nodes = sample();
+    nodes[0].info = vec!["kind  group".into()];
+    let mut s = TreeState::new(&nodes);
+    feed(&mut s, keys("i"));
+
+    feed(&mut s, keys("q"));
+    let still_info = s.overlay.clone();
+    feed(&mut s, [key(KeyCode::Esc)]);
+
+    assert_eq!(still_info, Overlay::Info(0));
+    assert_eq!(s.handle(key(KeyCode::Char('q'))), Outcome::Quit);
 }

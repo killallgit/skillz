@@ -4,12 +4,24 @@ use std::path::PathBuf;
 
 pub struct ProjectRow {
     pub path: PathBuf,
-    /// Shown in the list: the loaded profile and a short path.
-    pub label: String,
+    /// The profile loaded into the project, if any.
+    pub profile: Option<String>,
+    /// The path as shown in the list, home abbreviated.
+    pub short: String,
     pub missing: bool,
-    /// Detail lines: the loaded profile and what it added.
+    /// Detail lines: the path, then the loaded profile's entries.
     pub detail: Vec<String>,
-    pub loaded: bool,
+}
+
+impl ProjectRow {
+    pub fn loaded(&self) -> bool {
+        self.profile.is_some()
+    }
+
+    /// What the filter matches against: the loaded profile and the short path.
+    pub fn search_text(&self) -> String {
+        format!("{} {}", self.profile.as_deref().unwrap_or(""), self.short)
+    }
 }
 
 pub struct ProfileRow {
@@ -19,8 +31,15 @@ pub struct ProfileRow {
     pub broken: bool,
 }
 
+/// The project the workspace was opened in.
+pub struct Current {
+    pub short: String,
+    pub profile: Option<String>,
+}
+
 #[derive(Default)]
 pub struct Model {
+    pub current: Option<Current>,
     pub projects: Vec<ProjectRow>,
     pub profiles: Vec<ProfileRow>,
     /// Shown as a toast until the next key: what the last action did or why it failed.

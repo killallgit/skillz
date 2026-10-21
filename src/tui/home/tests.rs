@@ -1,17 +1,15 @@
 use super::state::Popup;
-use super::view::fit_tail;
 use super::*;
-use crate::tui::keys::keys;
-use crate::tui::widgets::testing::{ctrl, key, render_to_buffer};
+use crate::tui::widgets::testing::{ctrl, key, keys, render_to_buffer};
 use ratatui::crossterm::event::KeyCode;
 
 fn project(label: &str, loaded: bool, missing: bool) -> ProjectRow {
     ProjectRow {
         path: label.into(),
-        label: label.into(),
+        profile: loaded.then(|| "web".to_string()),
+        short: label.into(),
         missing,
         detail: vec![],
-        loaded,
     }
 }
 
@@ -25,6 +23,7 @@ fn profile(name: &str, broken: bool) -> ProfileRow {
 
 fn model() -> Model {
     Model {
+        current: None,
         projects: vec![project("a", false, false), project("b", true, false)],
         profiles: vec![profile("x", false), profile("y", false)],
         notice: None,
@@ -261,28 +260,16 @@ fn a_notice_is_a_toast_that_the_next_key_dismisses() {
 }
 
 #[test]
-fn long_labels_keep_their_profile_column_and_the_end_of_the_path() {
-    let label = "web            ~/Code/a/very/long/project/path";
-    assert_eq!(fit_tail(label, 80, 15), label);
-
-    let cut = fit_tail(label, 30, 15);
-
-    assert_eq!(cut.chars().count(), 30);
-    assert!(cut.starts_with("web            ") && cut.ends_with("path") && cut.contains('…'));
-    assert_eq!(fit_tail(label, 10, 15), label, "too narrow to cut sensibly");
-}
-
-#[test]
 fn the_focused_pane_has_the_accent_border_and_the_other_does_not() {
     let mut h = home();
     let theme = Theme::dark();
 
-    let buffer = render_to_buffer(80, 12, |f| h.draw(f, &theme));
+    let buffer = render_to_buffer(120, 12, |f| h.draw(f, &theme));
 
-    // Projects (left) is focused; Profiles starts at column 32 of 80 (40%).
+    // Projects (left) is focused; Profiles starts at column 48 of 120 (40%).
     let focus = theme.focus_border.fg;
     assert_eq!(buffer[(0, 1)].fg, focus.unwrap());
-    assert_ne!(buffer[(32, 1)].fg, focus.unwrap());
+    assert_ne!(buffer[(48, 1)].fg, focus.unwrap());
 }
 
 #[test]
@@ -290,27 +277,197 @@ fn the_cursor_row_of_the_focused_pane_has_the_selection_background() {
     let mut h = home();
     let theme = Theme::dark();
 
-    let buffer = render_to_buffer(80, 12, |f| h.draw(f, &theme));
+    let buffer = render_to_buffer(120, 12, |f| h.draw(f, &theme));
 
     // Inside the frame (x=1,y=2) is the first project row.
     assert_eq!(buffer[(5, 2)].bg, theme.selection.bg.unwrap());
     assert_ne!(buffer[(5, 3)].bg, theme.selection.bg.unwrap());
 }
 
+fn corners(buffer: &ratatui::buffer::Buffer) -> usize {
+    let area = buffer.area;
+    (0..area.height)
+        .flat_map(|y| (0..area.width).map(move |x| (x, y)))
+        .filter(|&pos| buffer[pos].symbol() == "╭")
+        .count()
+}
+
 #[test]
-fn popups_and_empty_models_draw() {
+fn panes_follow_the_terminal_width() {
     let theme = Theme::dark();
-    for (model, keys_pressed) in [(Model::default(), ""), (model(), "?"), (model(), "n")] {
+    let sizes = [(120, 20), (80, 20), (50, 20), (30, 8)];
+
+    let drawn: Vec<usize> = sizes
+        .iter()
+        .map(|&(w, h)| {
+            let mut screen = home();
+            corners(&render_to_buffer(w, h, |f| screen.draw(f, &theme)))
+        })
+        .collect();
+
+    // Three panes, three panes (two columns), one pane behind tabs, nothing when too small.
+    assert_eq!(drawn, [3, 3, 1, 0]);
+}
+
+#[test]
+fn popups_add_a_frame_and_an_empty_workspace_shows_one_welcome_frame() {
+    let theme = Theme::dark();
+    let cases = [(Model::default(), "", 1), (model(), "n", 4)];
+    for (model, pressed, expected) in cases {
         let mut h = Home::new(model, Pos::default());
-        press(&mut h, keys_pressed);
+        press(&mut h, pressed);
 
-        let buffer = render_to_buffer(100, 20, |f| h.draw(f, &theme));
+        let buffer = render_to_buffer(120, 24, |f| h.draw(f, &theme));
 
-        // Three panes each have a rounded corner; an open popup adds a fourth.
-        let corners = (0..20)
-            .flat_map(|y| (0..100).map(move |x| (x, y)))
-            .filter(|&pos| buffer[pos].symbol() == "╭")
-            .count();
-        assert_eq!(corners, 3 + usize::from(!keys_pressed.is_empty()));
+        assert_eq!(corners(&buffer), expected);
     }
+}
+
+#[test]
+fn an_empty_pane_hints_while_the_other_is_filled() {
+    let theme = Theme::dark();
+    let mut only_profiles = Home::new(
+        Model {
+            profiles: vec![profile("x", false)],
+            ..Model::default()
+        },
+        Pos::default(),
+    );
+
+    let buffer = render_to_buffer(120, 20, |f| only_profiles.draw(f, &theme));
+
+    // Three panes, not the welcome; the empty Projects pane has a centred muted hint.
+    assert_eq!(corners(&buffer), 3);
+    let muted_hint = (0..20)
+        .flat_map(|y| (1..47).map(move |x| (x, y)))
+        .any(|pos| buffer[pos].fg == theme.muted.fg.unwrap() && buffer[pos].symbol() != " ");
+    assert!(muted_hint);
+}
+
+#[test]
+fn slash_filters_the_focused_pane_and_requests_name_model_rows() {
+    let mut h = home();
+    press(&mut h, "/b");
+
+    let enter = h.handle(key(KeyCode::Enter));
+    h.handle(key(KeyCode::Tab));
+    let applied = h.handle(key(KeyCode::Enter));
+
+    // Only "b" remains; Enter closed the prompt, and the request carries b's model row (1).
+    assert_eq!(enter, None);
+    assert_eq!(h.projects.visible(), [1]);
+    assert_eq!(
+        applied,
+        Some(Act::Apply {
+            project: 1,
+            profile: 0
+        })
+    );
+}
+
+#[test]
+fn esc_closes_the_topmost_layer_before_leaving() {
+    let mut h = home();
+    press(&mut h, "/b");
+    h.handle(key(KeyCode::Enter));
+
+    let clears = h.handle(key(KeyCode::Esc));
+    let filtered_after = h.projects.is_filtered();
+    let leaves = h.handle(key(KeyCode::Esc));
+
+    // The first Esc only drops the filter; the second leaves the screen.
+    assert_eq!(
+        (clears, filtered_after, leaves),
+        (None, false, Some(Act::Quit))
+    );
+}
+
+#[test]
+fn esc_in_the_filter_prompt_cancels_it_and_q_is_only_text_there() {
+    let mut h = home();
+    press(&mut h, "/q");
+    let still_open = matches!(h.popup, Popup::Filter);
+
+    h.handle(key(KeyCode::Esc));
+
+    assert!(still_open);
+    assert!(matches!(h.popup, Popup::None) && !h.projects.is_filtered());
+}
+
+#[test]
+fn q_does_nothing_inside_a_popup_but_ctrl_c_always_quits() {
+    let mut h = home();
+    press(&mut h, "?");
+
+    let q = h.handle(key(KeyCode::Char('q')));
+    let interrupt = h.handle(ctrl('c'));
+    press(&mut h, "n");
+    let in_input = h.handle(ctrl('c'));
+
+    assert_eq!(
+        (q, interrupt, in_input),
+        (None, Some(Act::Quit), Some(Act::Quit))
+    );
+}
+
+#[test]
+fn the_help_overlay_closes_on_esc_and_question_mark() {
+    let mut h = home();
+    press(&mut h, "?");
+    let open = matches!(h.popup, Popup::Help(_));
+
+    h.handle(key(KeyCode::Esc));
+    let closed = matches!(h.popup, Popup::None);
+    press(&mut h, "??");
+
+    assert!(open && closed);
+    assert!(matches!(h.popup, Popup::None));
+}
+
+#[test]
+fn top_and_bottom_keys_jump_the_cursor() {
+    let mut h = home();
+
+    press(&mut h, "G");
+    let bottom = h.pos().project;
+    press(&mut h, "g");
+
+    assert_eq!((bottom, h.pos().project), (1, 0));
+}
+
+#[test]
+fn single_pane_mode_switches_panes_with_number_keys() {
+    let theme = Theme::dark();
+    let mut h = home();
+    render_to_buffer(50, 20, |f| h.draw(f, &theme));
+
+    press(&mut h, "2");
+    let on_profiles = h.pos().focus;
+    press(&mut h, "j");
+    let moved = h.pos().profile;
+    press(&mut h, "3");
+    press(&mut h, "k");
+
+    // Tab 2 is Profiles and moves its cursor; on the Detail tab the cursor keys are inert.
+    assert_eq!(
+        (on_profiles, moved, h.pos().profile),
+        (Focus::Profiles, 1, 1)
+    );
+}
+
+#[test]
+fn the_header_colours_a_missing_project_with_the_danger_style() {
+    let theme = Theme::dark();
+    let mut h = Home::new(
+        Model {
+            projects: vec![project("a", false, true)],
+            ..Model::default()
+        },
+        Pos::default(),
+    );
+
+    let buffer = render_to_buffer(120, 20, |f| h.draw(f, &theme));
+
+    let danger_in_header = (0..120).any(|x| buffer[(x, 0)].fg == theme.danger.fg.unwrap());
+    assert!(danger_in_header);
 }

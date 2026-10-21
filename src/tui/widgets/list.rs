@@ -2,12 +2,13 @@
 //! `↑ n more` / `↓ n more` hints when rows are cut off.
 
 use ratatui::Frame;
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::Outcome;
+use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
 
 const DEFAULT_PAGE: usize = 10;
@@ -59,14 +60,25 @@ impl ListView {
     }
 
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
+        match keymap::resolve(Scope::Common, key) {
+            Some(action) => self.apply(action),
+            None => Outcome::Ignored,
+        }
+    }
+
+    /// Move the cursor as `action` says; any action that is not a movement is ignored.
+    pub fn apply(&mut self, action: Action) -> Outcome {
         let before = self.selected;
-        match key.code {
-            KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
-            KeyCode::Down | KeyCode::Char('j') => self.move_down(1),
-            KeyCode::PageUp => self.selected = self.selected.saturating_sub(self.page),
-            KeyCode::PageDown => self.move_down(self.page),
-            KeyCode::Home => self.selected = 0,
-            KeyCode::End => self.selected = self.len.saturating_sub(1),
+        let half = (self.page / 2).max(1);
+        match action {
+            Action::Up => self.selected = self.selected.saturating_sub(1),
+            Action::Down => self.move_down(1),
+            Action::PageUp => self.selected = self.selected.saturating_sub(self.page),
+            Action::PageDown => self.move_down(self.page),
+            Action::HalfPageUp => self.selected = self.selected.saturating_sub(half),
+            Action::HalfPageDown => self.move_down(half),
+            Action::Top => self.selected = 0,
+            Action::Bottom => self.selected = self.len.saturating_sub(1),
             _ => return Outcome::Ignored,
         }
         if self.selected == before {
@@ -122,7 +134,7 @@ impl ListView {
     fn decorate(&self, index: usize, row: &Line<'static>, theme: &Theme) -> Line<'static> {
         let current = index == self.selected;
         let gutter = if current {
-            Span::styled("▌ ", theme.accent)
+            Span::styled(theme.glyphs.cursor, theme.accent)
         } else {
             Span::raw("  ")
         };
@@ -190,7 +202,8 @@ pub fn thumb(len: usize, height: usize, offset: usize) -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::widgets::testing::{key, render_to_buffer, row_text};
+    use crate::tui::widgets::testing::{ctrl, key, render_to_buffer, row_text};
+    use ratatui::crossterm::event::KeyCode;
 
     fn rows(n: usize) -> Vec<Line<'static>> {
         (0..n).map(|i| Line::from(format!("row{i}"))).collect()
@@ -246,6 +259,45 @@ mod tests {
         let mut view = ListView::new(30);
         assert_eq!(view.handle(key(KeyCode::End)), Outcome::Changed);
         assert_eq!(view.selected(), Some(29));
+    }
+
+    #[test]
+    fn g_and_capital_g_jump_to_the_ends() {
+        let mut view = ListView::new(30);
+
+        view.handle(key(KeyCode::Char('G')));
+        let bottom = view.selected();
+        view.handle(key(KeyCode::Char('g')));
+
+        assert_eq!((bottom, view.selected()), (Some(29), Some(0)));
+    }
+
+    #[test]
+    fn control_d_and_u_move_half_a_viewport() {
+        let mut view = view_at(30, 0, 8);
+
+        view.handle(ctrl('d'));
+        let down = view.selected();
+        view.handle(ctrl('u'));
+
+        assert_eq!((down, view.selected()), (Some(4), Some(0)));
+    }
+
+    #[test]
+    fn actions_that_are_not_movements_are_ignored() {
+        let mut view = ListView::new(3);
+
+        assert_eq!(view.apply(Action::Quit), Outcome::Ignored);
+    }
+
+    #[test]
+    fn the_cursor_glyph_comes_from_the_theme() {
+        let theme = Theme::mono();
+        let mut view = ListView::new(2);
+
+        let buffer = render_to_buffer(12, 2, |f| view.render(f, f.area(), &rows(2), &theme));
+
+        assert_eq!(buffer[(0, 0)].symbol(), ">");
     }
 
     #[test]
