@@ -4,12 +4,14 @@
 
 mod plan;
 mod run;
+mod run_each;
 mod standing;
 mod switch;
 #[cfg(test)]
 mod tests;
 
 pub use run::Done;
+pub use run_each::Each;
 pub use standing::{Standing, compare, loaded};
 pub use switch::Switch;
 

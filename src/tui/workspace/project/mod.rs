@@ -6,7 +6,10 @@ mod draw;
 mod drift;
 mod header;
 mod keys;
+mod pending;
 mod picker;
+#[cfg(test)]
+mod picking_tests;
 mod rows;
 #[cfg(test)]
 mod tests;
@@ -16,6 +19,7 @@ use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
 use self::drift::{Drift, drift};
+use self::pending::Pending;
 use self::picker::Picker;
 use self::rows::{Row, build, shape};
 use super::act::Act;
@@ -43,6 +47,7 @@ pub struct ProjectTab {
     profiles: Vec<Profile>,
     rows: Vec<Row>,
     outline: Outline,
+    pending: Pending,
     /// The profile the header compares the project with.
     compare: Option<String>,
     popup: Popup,
@@ -56,6 +61,7 @@ impl ProjectTab {
             profiles: vec![],
             rows: vec![],
             outline: Outline::new(vec![]),
+            pending: Pending::default(),
             compare: None,
             popup: Popup::None,
         }
@@ -82,6 +88,7 @@ impl Tab for ProjectTab {
         self.installed = model.installed.clone();
         self.profiles = model.profiles.clone();
         self.rows = build(&model.installed, &model.library);
+        self.pending.keep_existing(&self.rows);
         self.outline.reshape(shape(&self.rows));
     }
 

@@ -10,6 +10,8 @@ pub struct Glyphs {
     pub checked: &'static str,
     pub unchecked: &'static str,
     pub partial: &'static str,
+    pub to_install: &'static str,
+    pub to_remove: &'static str,
     pub open: &'static str,
     pub closed: &'static str,
 }
@@ -23,6 +25,8 @@ impl Glyphs {
         checked: "☑",
         unchecked: "☐",
         partial: "◩",
+        to_install: "⊕",
+        to_remove: "⊖",
         open: "▾",
         closed: "▸",
     };
@@ -35,6 +39,8 @@ impl Glyphs {
         checked: "X",
         unchecked: " ",
         partial: "-",
+        to_install: "+",
+        to_remove: "~",
         open: "-",
         closed: "+",
     };
@@ -119,6 +125,8 @@ mod tests {
                 set.checked,
                 set.unchecked,
                 set.partial,
+                set.to_install,
+                set.to_remove,
                 set.open,
                 set.closed,
             ];

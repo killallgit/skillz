@@ -6,11 +6,10 @@ use crate::profile::Entry;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Act {
     Quit,
-    /// Install what the entry describes in the project.
-    Install(Entry),
-    /// Remove the installed item with this id from the project.
-    Remove {
-        id: String,
+    /// Install these entries and remove the installed items with these ids, as one plan.
+    Change {
+        install: Vec<Entry>,
+        remove: Vec<String>,
     },
     /// Install what the profile has that the project lacks.
     Apply {

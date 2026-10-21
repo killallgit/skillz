@@ -4,16 +4,16 @@
 
 use std::path::Path;
 
-use anyhow::Context;
-
 use super::notice::Notice;
 use super::plan_view::{plan_view, step_label};
+use super::selection::{Selection, outcome_of_each, selection_plan};
+use crate::action::Action;
 use crate::apply::{self, Done, Switch};
 use crate::cli::deps::Deps;
-use crate::cli::scope::{installed, project_env};
+use crate::cli::scope::project_env;
 use crate::env::Env;
 use crate::model::Scope;
-use crate::profile::{self, Entry, Profile};
+use crate::profile;
 use crate::remove;
 use crate::review::{Next, Outcome, Verdict};
 
@@ -23,25 +23,25 @@ pub(super) enum Change<'a> {
     Apply(&'a str),
     /// Install what the profile has that the project lacks and remove everything else.
     ApplyExact(&'a str),
-    Install(&'a Entry),
-    /// Remove the installed item with this id.
-    Remove(&'a str),
+    /// Install and remove the items the user picked, one at a time.
+    Selection(&'a Selection<'a>),
 }
 
 impl Change<'_> {
     fn title(&self) -> &'static str {
         match self {
             Change::Apply(_) | Change::ApplyExact(_) => "Apply",
-            Change::Install(_) => "Install",
-            Change::Remove(_) => "Remove",
+            Change::Selection(_) => "Change",
         }
     }
 
     fn done(&self, switch: &Switch) -> Notice {
         match self {
             Change::Apply(_) | Change::ApplyExact(_) => Notice::Applied(switch.to.clone()),
-            Change::Install(_) => Notice::Installed(switch.to.clone()),
-            Change::Remove(_) => Notice::Removed(switch.to.clone()),
+            Change::Selection(_) => Notice::Changed {
+                installed: switch.installs.len(),
+                removed: switch.removals.len(),
+            },
         }
     }
 }
@@ -70,7 +70,7 @@ pub(super) fn change(deps: &Deps, project: &Path, what: &Change) -> anyhow::Resu
             Verdict::DryRun => return Ok(Some(Notice::DryRun(switch.steps().len()))),
             Verdict::Apply => {}
         }
-        let outcome = job.apply(&applier, &switch, what.title());
+        let outcome = job.apply(&applier, &switch, what);
         if deps.prompter.outcome(what.title(), &outcome)? != Next::Retry {
             return Ok(Some(job.notice(what, &switch, &outcome)));
         }
@@ -90,8 +90,7 @@ impl Job<'_> {
         match what {
             Change::Apply(name) => self.apply_plan(applier, name, false),
             Change::ApplyExact(name) => self.apply_plan(applier, name, true),
-            Change::Install(entry) => applier.plan(&profile_of(entry), false),
-            Change::Remove(id) => self.removal(id),
+            Change::Selection(picked) => selection_plan(self.deps, &self.env, applier, picked),
         }
     }
 
@@ -105,36 +104,27 @@ impl Job<'_> {
         applier.plan(&wanted, exact)
     }
 
-    /// A switch that only removes the installed item `id`.
-    fn removal(&self, id: &str) -> anyhow::Result<Switch> {
-        let item = installed(self.deps, &self.env, Scope::Project)
-            .into_iter()
-            .find(|item| item.id == id)
-            .with_context(|| format!("{id} is no longer installed"))?;
-        Ok(Switch {
-            to: item.name.clone(),
-            present: vec![],
-            removals: vec![item],
-            unsourced: vec![],
-            installs: vec![],
-            unsupported: vec![],
-        })
-    }
-
-    fn apply(&self, applier: &apply::Applier, switch: &Switch, title: &str) -> Outcome {
-        let progress = self.deps.prompter.progress(title, switch.steps().len());
+    fn apply(&self, applier: &apply::Applier, switch: &Switch, what: &Change) -> Outcome {
+        let progress = self
+            .deps
+            .prompter
+            .progress(what.title(), switch.steps().len());
         let removal = remove::Plan::from_owned(&switch.removals);
         let mut log = Vec::new();
-        let result = applier.run(switch, self.deps.runner, &mut |step| {
+        let mut on_step = |step: &Action| {
             let label = step_label(switch, &removal, step);
             progress.step(&label);
             log.push(label);
-        });
+        };
+        let outcome = match what {
+            Change::Selection(_) => outcome_of_each(
+                switch,
+                applier.run_each(switch, self.deps.runner, &mut on_step),
+            ),
+            _ => outcome_of(switch, applier.run(switch, self.deps.runner, &mut on_step)),
+        };
         drop(progress);
-        Outcome {
-            log,
-            ..outcome_of(switch, result)
-        }
+        Outcome { log, ..outcome }
     }
 
     fn notice(&self, what: &Change, switch: &Switch, outcome: &Outcome) -> Notice {
@@ -143,13 +133,6 @@ impl Job<'_> {
             None => what.done(switch),
         }
     }
-}
-
-/// A profile of just `entry`, named for the plan heading.
-fn profile_of(entry: &Entry) -> Profile {
-    let mut profile = Profile::new(&entry.to_string());
-    profile.entries = vec![entry.clone()];
-    profile
 }
 
 fn outcome_of(switch: &Switch, result: anyhow::Result<Done>) -> Outcome {
@@ -173,5 +156,7 @@ fn outcome_of(switch: &Switch, result: anyhow::Result<Done>) -> Outcome {
     }
 }
 
+#[cfg(test)]
+mod selection_tests;
 #[cfg(test)]
 mod tests;

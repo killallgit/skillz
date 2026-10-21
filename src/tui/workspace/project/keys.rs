@@ -21,12 +21,14 @@ impl ProjectTab {
     fn handle_idle(&mut self, key: KeyEvent) -> Option<Act> {
         match keymap::resolve(Scope::Project, key)? {
             Action::Filter => self.popup = Popup::Filter,
+            Action::Back if !self.pending.is_empty() => self.pending.clear(),
             Action::Back if self.outline.is_filtered() => self.outline.clear_filter(),
             Action::PickProfile => self.open_picker(),
             Action::ApplyProfile => {
                 return self.compare.clone().map(|profile| Act::Apply { profile });
             }
-            Action::Toggle | Action::Select => return self.activate(),
+            Action::Toggle => self.toggle(),
+            Action::Select => return self.select(),
             movement => self.outline.navigate(movement),
         }
         None
@@ -37,18 +39,35 @@ impl ProjectTab {
         self.popup = Popup::Profiles(Picker::new(names, self.compare.as_deref()));
     }
 
-    /// A section opens or closes; an item is installed or removed.
-    fn activate(&mut self) -> Option<Act> {
-        let id = self.outline.current()?;
-        match &self.rows[id] {
-            Row::Section { .. } => {
-                self.outline.toggle_open(id);
-                None
-            }
-            Row::Item(item) => Some(match &item.state {
-                State::Installed(id) => Act::Remove { id: id.clone() },
-                State::Available(entry) => Act::Install(entry.clone()),
-            }),
+    fn toggle(&mut self) {
+        match self.current_state() {
+            Some(state) => self.pending.toggle(&state),
+            None => self.fold(),
+        }
+    }
+
+    /// Apply what is picked; with nothing picked, a section opens or closes.
+    fn select(&mut self) -> Option<Act> {
+        if self.pending.is_empty() {
+            self.fold();
+            return None;
+        }
+        Some(self.pending.act())
+    }
+
+    fn current_state(&self) -> Option<State> {
+        match &self.rows[self.outline.current()?] {
+            Row::Item(item) => Some(item.state.clone()),
+            Row::Section { .. } => None,
+        }
+    }
+
+    fn fold(&mut self) {
+        let Some(id) = self.outline.current() else {
+            return;
+        };
+        if matches!(self.rows[id], Row::Section { .. }) {
+            self.outline.toggle_open(id);
         }
     }
 

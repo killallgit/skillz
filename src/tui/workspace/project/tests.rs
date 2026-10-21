@@ -7,7 +7,7 @@ use crate::model::Kind;
 use crate::profile::Entry;
 use crate::tui::widgets::testing::{key, keys, render_to_buffer};
 
-fn model() -> Model {
+pub(super) fn model() -> Model {
     let mut web = Profile::new("web");
     web.entries = vec![Entry::Skill {
         source: "o/r".into(),
@@ -23,50 +23,25 @@ fn model() -> Model {
     }
 }
 
-fn loaded() -> ProjectTab {
+pub(super) fn loaded() -> ProjectTab {
     let mut tab = ProjectTab::new();
     tab.load(&model());
     tab
 }
 
-fn press(tab: &mut ProjectTab, code: KeyCode) -> Option<Act> {
+pub(super) fn press(tab: &mut ProjectTab, code: KeyCode) -> Option<Act> {
     tab.handle(key(code))
 }
 
-fn space() -> KeyCode {
+pub(super) fn space() -> KeyCode {
     KeyCode::Char(' ')
 }
 
 /// Section, installed tdd, available grill; the cursor starts on the section.
-fn on_item(tab: &mut ProjectTab, row: usize) {
+pub(super) fn on_item(tab: &mut ProjectTab, row: usize) {
     (0..row).for_each(|_| {
         press(tab, KeyCode::Down);
     });
-}
-
-#[test]
-fn space_on_an_installed_item_asks_to_remove_it_by_id() {
-    let mut tab = loaded();
-    on_item(&mut tab, 1);
-
-    let act = press(&mut tab, space());
-
-    assert_eq!(
-        act,
-        Some(Act::Remove {
-            id: "skill:tdd".into()
-        })
-    );
-}
-
-#[test]
-fn space_on_a_library_item_asks_to_install_its_entry() {
-    let mut tab = loaded();
-    on_item(&mut tab, 2);
-
-    let act = press(&mut tab, space());
-
-    assert_eq!(act, Some(Act::Install(library_skill("o/r", "grill").entry)));
 }
 
 #[test]
