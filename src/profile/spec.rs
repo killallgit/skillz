@@ -37,6 +37,7 @@ impl Entry {
             ),
         };
         entry.validate()?;
+        entry.ensure_no_credentials()?;
         Ok(entry)
     }
 }
@@ -123,6 +124,8 @@ mod tests {
             "skill -g a",
             "plugin o/mp mp",
             "hook x",
+            "hook Stop run --token abc",
+            "mcp s npx --api-key=abc",
         ];
 
         for line in bad {

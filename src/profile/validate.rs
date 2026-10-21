@@ -2,6 +2,7 @@
 //! option-like.
 
 use super::Entry;
+use crate::redact::credential_count;
 
 impl Entry {
     pub fn validate(&self) -> anyhow::Result<()> {
@@ -19,6 +20,23 @@ impl Entry {
             Entry::Mcp { .. } => mcp_args(self)?,
         };
         ensure_plain(&args, self)
+    }
+}
+
+impl Entry {
+    /// Refuse an entry typed by hand whose command line or url carries a credential: a library
+    /// or profile file is plain text and is shared.
+    pub fn ensure_no_credentials(&self) -> anyhow::Result<()> {
+        let words = match self {
+            Entry::Hook { command, .. } => command.split_whitespace().map(String::from).collect(),
+            Entry::Mcp { args, url, .. } => args.iter().cloned().chain(url.clone()).collect(),
+            _ => vec![],
+        };
+        anyhow::ensure!(
+            credential_count(&words) == 0,
+            "{self} carries a credential; keep secrets out of the library"
+        );
+        Ok(())
     }
 }
 
@@ -131,6 +149,28 @@ mod tests {
 
         assert!(bad.iter().all(|e| e.validate().is_err()));
         assert!(good.iter().all(|e| e.validate().is_ok()));
+    }
+
+    #[test]
+    fn a_hook_or_mcp_line_carrying_a_credential_is_refused() {
+        let hook = Entry::Hook {
+            event: "Stop".into(),
+            matcher: None,
+            command: "notify --token abc".into(),
+            agents: vec![],
+        };
+        let mcp = Entry::Mcp {
+            name: "s".into(),
+            command: Some("npx".into()),
+            args: vec!["--api-key=abc".into()],
+            url: None,
+            transport: None,
+            agents: vec![],
+        };
+
+        assert!(hook.ensure_no_credentials().is_err());
+        assert!(mcp.ensure_no_credentials().is_err());
+        assert!(skill("o/r", &["a"]).ensure_no_credentials().is_ok());
     }
 
     #[test]

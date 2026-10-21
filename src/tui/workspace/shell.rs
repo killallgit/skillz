@@ -49,7 +49,7 @@ impl Workspace {
     pub fn standard() -> Self {
         Workspace::new(vec![
             Box::new(ProjectTab::new()),
-            Box::new(LibraryTab),
+            Box::new(LibraryTab::new()),
             Box::new(ProfilesTab),
         ])
     }

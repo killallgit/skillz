@@ -13,6 +13,16 @@ pub enum ItemKind {
 }
 
 impl ItemKind {
+    pub fn title(self) -> &'static str {
+        match self {
+            ItemKind::Skill => "Skills",
+            ItemKind::Plugin => "Plugins",
+            ItemKind::Mcp => "MCP servers",
+            ItemKind::Hook => "Hooks",
+            ItemKind::Subagent => "Subagents",
+        }
+    }
+
     /// The library kind of an installed item's kind; a marketplace is not an item of its own.
     pub fn of(kind: Kind) -> Option<ItemKind> {
         match kind {

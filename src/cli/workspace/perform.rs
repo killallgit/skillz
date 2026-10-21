@@ -13,6 +13,9 @@ impl Session<'_, '_> {
             Act::Install(entry) => Change::Install(entry),
             Act::Remove { id } => Change::Remove(id),
             Act::Apply { profile } => Change::Apply(profile),
+            Act::LibraryAdd { spec } => return self.library_add(spec),
+            Act::LibraryImport => return self.library_import(),
+            Act::LibraryRemove(entry) => return self.library_remove(entry),
         };
         change(self.deps, &self.project, &what)
     }
