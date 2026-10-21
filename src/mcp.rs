@@ -162,6 +162,7 @@ mod tests {
 
     fn item(server: &Server) -> Augmentation {
         Augmentation {
+            hooks: Vec::new(),
             id: "mcp:x".into(),
             name: server.name.clone(),
             kind: Kind::Mcp,

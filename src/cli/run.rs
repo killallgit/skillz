@@ -14,7 +14,15 @@ use super::use_profile::{Switching, Target, use_profile};
 use crate::agents;
 use crate::install::{self, InstallRequest, SkillSelection};
 
-pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
+/// Runs the command and returns the process exit code: the child's for `run`, else 0.
+pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<i32> {
+    match command {
+        Command::Run(args) => run_isolated(deps, args, out),
+        other => run_managed(other, deps, out).map(|()| 0),
+    }
+}
+
+fn run_managed(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<()> {
     match command {
         Command::List(args) => run_list(deps, args, out),
         Command::Uninstall(args) => run_uninstall(deps, args, out),
@@ -22,7 +30,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         Command::Reset(args) => run_reset(deps, args, out),
         Command::Use(args) => run_use(deps, args, out),
         Command::Install(args) => run_install(deps, args),
-        Command::Run(args) => run_isolated(deps, args, out),
+        Command::Run(_) => unreachable!("run_isolated is dispatched before run_managed"),
         Command::Profile { action } => profile_command(deps, action, out),
         Command::Project { action } => project_command(deps, action, out),
     }

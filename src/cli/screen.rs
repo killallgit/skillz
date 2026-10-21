@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use super::deps::Deps;
+use super::notice::Notice;
 use super::scope::project_env;
 use crate::apply;
 use crate::model::Scope;
@@ -14,7 +15,7 @@ pub(super) fn screen_model(
     deps: &Deps,
     store: &profile::Store,
     workspace: &Workspace,
-    notice: Option<String>,
+    notice: Option<Notice>,
 ) -> anyhow::Result<Model> {
     let ledger = apply::Ledger::in_env(&project_env(deps, &deps.cwd));
     let projects = workspace
@@ -30,7 +31,7 @@ pub(super) fn screen_model(
     Ok(Model {
         projects,
         profiles,
-        notice,
+        notice: notice.map(|n| n.to_string()),
     })
 }
 

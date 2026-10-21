@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 
+use super::identity::overlay;
 use super::{Entry, Profile, check_name};
 use crate::env::Env;
 
@@ -48,13 +49,13 @@ impl Store {
     }
 
     /// The profile with every profile it extends folded in: their entries first, in order, each
-    /// with its own profile's agents filled in. A base that is missing, or that leads back to
-    /// itself, is an error.
+    /// with its own profile's agents filled in. An entry replaces any inherited one with the same
+    /// identity (see `identity`). A base that is missing, or that leads back to itself, is an
+    /// error.
     pub fn load_flat(&self, name: &str) -> anyhow::Result<Profile> {
         let mut profile = self.load(name)?;
-        let mut entries = self.base_entries(&profile, &mut vec![name.to_string()])?;
-        entries.extend(profile.resolved());
-        profile.entries = entries;
+        let inherited = self.base_entries(&profile, &mut vec![name.to_string()])?;
+        profile.entries = overlay(inherited, &profile.resolved());
         profile.extends.clear();
         Ok(profile)
     }
@@ -71,9 +72,9 @@ impl Store {
             anyhow::ensure!(!chain.contains(base), "profile {base} extends itself");
             let loaded = self.load(base)?;
             chain.push(base.clone());
-            entries.extend(self.base_entries(&loaded, chain)?);
+            let inherited = self.base_entries(&loaded, chain)?;
             chain.pop();
-            entries.extend(loaded.resolved());
+            entries = overlay(entries, &overlay(inherited, &loaded.resolved()));
         }
         Ok(entries)
     }
@@ -175,6 +176,38 @@ mod tests {
 
         assert_eq!(skill_names(&flat), ["tdd", "grill", "react"]);
         assert!(flat.extends.is_empty());
+    }
+
+    #[test]
+    fn a_child_entry_replaces_the_inherited_one_with_the_same_identity() {
+        let (_dir, store) = store();
+        saved(&store, "base", &[], &["tdd", "grill"]);
+        saved(&store, "web", &["base"], &["tdd"]);
+
+        let flat = store.load_flat("web").unwrap();
+
+        // Assert tdd appears once, after the surviving inherited skill.
+        assert_eq!(skill_names(&flat), ["grill", "tdd"]);
+    }
+
+    #[test]
+    fn of_two_bases_the_later_one_wins() {
+        let (_dir, store) = store();
+        let mut one = Profile::new("one");
+        one.agents = vec![crate::model::Agent::Claude];
+        one.entries = vec![skill("tdd")];
+        store.save(&one).unwrap();
+        let mut two = Profile::new("two");
+        two.agents = vec![crate::model::Agent::Codex];
+        two.entries = vec![skill("tdd")];
+        store.save(&two).unwrap();
+        saved(&store, "web", &["one", "two"], &[]);
+
+        let flat = store.load_flat("web").unwrap();
+
+        // Assert one entry is left, with the later base's agents.
+        assert_eq!(flat.entries.len(), 1);
+        assert_eq!(flat.entries[0].agents(), [crate::model::Agent::Codex]);
     }
 
     #[test]

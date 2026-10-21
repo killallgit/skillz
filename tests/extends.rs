@@ -135,3 +135,55 @@ fn extending_a_missing_profile_is_rejected() {
     // Assert: a non-zero exit
     assert!(!out.status.success());
 }
+
+fn skills_entry(source: &str, names: &[&str]) -> String {
+    let list: Vec<String> = names.iter().map(|n| format!("\"{n}\"")).collect();
+    format!(
+        "[[entry]]\nkind = \"skill\"\nsource = \"{source}\"\nnames = [{}]\n",
+        list.join(", ")
+    )
+}
+
+#[test]
+fn a_child_skill_overrides_the_same_skill_of_the_parent() {
+    // Assemble
+    let sb = Sandbox::new();
+    sb.write_profile("base", &skills_entry("o/s", &["a", "b"]));
+    sb.write_profile("web", &extending("\"base\"", &skills_entry("o/s", &["a"])));
+
+    // Act
+    sb.skillz(&["use", "-y", "web"]);
+
+    // Assert: skill a is installed by one call only, b by the parent's
+    let calls = sb.npx_calls();
+    let installing = |skill: &str| {
+        calls
+            .iter()
+            .filter(|c| c.split_whitespace().any(|w| w == skill))
+            .count()
+    };
+    assert_eq!((installing("a"), installing("b")), (1, 1));
+}
+
+#[test]
+fn a_child_hook_with_other_agents_takes_the_hook_from_the_parents_agents() {
+    // Assemble
+    let sb = Sandbox::new();
+    sb.write_profile("base", &hook_profile("Stop", "say hi", "\"claude\""));
+    sb.write_profile(
+        "web",
+        &extending("\"base\"", &hook_profile("Stop", "say hi", "\"codex\"")),
+    );
+
+    // Act
+    sb.skillz(&["use", "-y", "web"]);
+
+    // Assert: only the child's agent has the hook
+    assert_eq!(
+        (
+            hook_commands(&sb.project_claude_hooks(), "Stop"),
+            hook_commands(&sb.project_codex_hooks(), "Stop")
+        ),
+        (vec![], vec!["say hi".to_string()])
+    );
+}

@@ -20,10 +20,14 @@ pub trait CommandRunner {
         self.run(program, args, cwd)
     }
 
-    /// Run a program the user works in (an agent), with the whole terminal attached. `true` when
-    /// it exited successfully.
-    fn launch(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<bool> {
-        Ok(self.run(program, args, cwd)?.success)
+    /// Run a program the user works in (an agent), with the whole terminal attached. Returns its
+    /// exit code.
+    fn launch(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<i32> {
+        Ok(if self.run(program, args, cwd)?.success {
+            0
+        } else {
+            1
+        })
     }
 
     /// The same runner with these environment variables set on every child, when it can set any.
@@ -56,14 +60,14 @@ pub struct SystemRunner {
 }
 
 impl CommandRunner for SystemRunner {
-    fn launch(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<bool> {
+    fn launch(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<i32> {
         let status = Command::new(program)
             .args(args)
             .envs(self.envs.iter().map(|(k, v)| (k, v)))
             .current_dir(cwd)
             .status()
             .with_context(|| format!("failed to run `{program}` in {}", cwd.display()))?;
-        Ok(status.success())
+        Ok(status.code().unwrap_or(1))
     }
 
     fn with_envs(&self, envs: Vec<(&'static str, PathBuf)>) -> Option<Box<dyn CommandRunner>> {
@@ -183,6 +187,17 @@ mod tests {
         assert_eq!(sh("printf hi").unwrap(), "hi");
         assert!(sh("exit 2").is_err());
         assert!(NoCommands.capture("x", &[], dir.path()).is_err());
+    }
+
+    #[test]
+    fn a_launched_program_reports_its_own_exit_code() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = ["-c".into(), "exit 7".into()];
+
+        let code = SystemRunner::default().launch("sh", &args, dir.path());
+
+        // Assert the code is the child's, not a flattened failure.
+        assert_eq!(code.unwrap(), 7);
     }
 
     #[test]

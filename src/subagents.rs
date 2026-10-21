@@ -139,6 +139,7 @@ impl Scan<'_> {
             .unwrap_or(stem);
         let source = self.manifest.get(&file).map(String::from);
         Some(Augmentation {
+            hooks: Vec::new(),
             id: format!("subagent:{}:{}:{file}", self.agent, self.scope),
             name,
             kind: Kind::Subagent,

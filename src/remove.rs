@@ -155,6 +155,7 @@ mod tests {
 
     fn item(name: &str, agents: &[Agent], removal: Vec<Action>) -> Augmentation {
         Augmentation {
+            hooks: Vec::new(),
             id: name.into(),
             name: name.into(),
             kind: Kind::Skill,
