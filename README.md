@@ -1,15 +1,35 @@
 # skillz
 
-List, install and completely remove skills, plugins, marketplaces and hooks for
-Claude Code, Codex and Cursor — globally or per project — and keep named sets of them
-(profiles) you can load into a project and swap.
+List, install and completely remove skills, plugins, marketplaces, hooks, MCP servers and
+subagents for Claude Code, Codex and Cursor, globally or per project, and keep named sets of them
+(profiles) that you can load into a project and swap.
 
 ```sh
 task install                     # release build, symlinked to ~/.local/bin/skillz
 # or: cargo install --path .
 ```
 
-## Usage
+`skillz` with no arguments opens the workspace (see [Workspace](#workspace)); everything it does
+is also a command.
+
+## Commands
+
+| Command | Does |
+| --- | --- |
+| `list` (`ls`) | show what is installed as a tree, or browse it with `-i` |
+| `uninstall` (`rm`, `delete`) | fuzzy match, pick, confirm, remove completely |
+| `reset` | remove every skill, plugin and marketplace in scope |
+| `prune` | find duplicate and unused skills and plugins, remove the ones picked |
+| `install` (`add`) | install skills with `npx skills`, or Claude plugins from a marketplace |
+| `use` | load a profile into a project (or globally), swapping out the one that is there |
+| `run` | run a command against one profile in config dirs of its own |
+| `profile` | `list` (`ls`), `show`, `save`, `delete` (`rm`) |
+| `project` | `list` (`ls`), `add`, `remove` (`rm`) |
+
+Kind filters on `list`, `uninstall`, `reset` and `prune`: `--skills --hooks --plugins
+--marketplaces --mcp --subagents` (singular spellings work too; none given means all kinds).
+`-a claude|codex|cursor` filters by agent (repeatable), `-g` means global only. Run
+`skillz <command> --help` for every flag.
 
 ```sh
 skillz list                      # global + current project, groups collapsed
@@ -18,63 +38,42 @@ skillz list ponytail             # expand what matches (a marketplace brings its
 skillz list --all                # expand everything
 skillz list --hooks .            # project hooks only
 skillz list -g --skills -a claude
-skillz list -i                   # browser: space expands, x marks, enter -> Show / Remove…
-skillz list --json | jq '.[].name'  # machine-readable: items + removal plans
+skillz list -i                   # browser: expand, mark, enter -> Show / Remove…
+skillz list --json | jq '.[].name'  # items + removal plans
 
 skillz rm tdd                    # fuzzy match -> pick -> confirm -> remove
 skillz rm --hook bd -a cursor    # every hook that runs `bd`, for Cursor
-skillz rm caveman@caveman -y     # non-interactive: needs one exact name match
+skillz rm caveman@caveman -y     # non-interactive: needs exactly one exact name match
 skillz rm speckit --dry-run      # print the removal plan only
 
-skillz reset                    # remove every skill, plugin, marketplace in scope (hooks with --hooks, MCP servers with --mcp)
-skillz reset --keep caveman     # spare items by name, group or source
+skillz reset                     # skills, plugins, marketplaces; --hooks, --mcp, --subagents add those kinds
+skillz reset --keep caveman      # spare items by name, group or source
 skillz reset --dry-run | --force
-skillz prune                    # duplicates + unused 7+ days -> pick -> confirm -> remove
-skillz prune --dry-run          # findings and their removal plan only
-skillz prune --force            # remove everything found, no questions
+skillz prune                     # duplicates + unused 7+ days -> pick -> confirm -> remove
+skillz prune --dry-run | --force
 
-skillz install mattpocock/skills --skill 'tdd,*commit' # glob match, confirm, npx skills add
+skillz install mattpocock/skills --skill 'tdd,*commit'   # glob match, confirm, npx skills add
 skillz install mattpocock/skills --all -g
-skillz install killallgit/killall-skills               # has a marketplace: pick Claude plugins
+skillz install killallgit/killall-skills                 # has a marketplace: pick Claude plugins
 ```
 
-Scope: a `PATH` (or `-p PATH` (`--project`)) means that project only, `-g` means global only, neither
-means both (project = cwd). A `list` PATH must start with `.`, `..` or `/` (`./sub`, not
-`sub`); any other word is a query.
-
-Pickers: `↑↓/jk` move, `space` toggle, `a` toggle all, `/` filter, `enter` accept, `esc` cancel.
-Browser (`list -i`, multi-group queries): `space`/`→←` expand, `x`/`tab` mark a group or item,
-`enter` opens Show / Remove… (same plan and `[y/N]` as `rm`), `/` filter, `q` quit.
+Scope: a `PATH` (or `-p PATH`) means that project only, `-g` means global only, neither means
+both (project = cwd). A project that is your home directory counts as global. A `list` PATH must
+start with `.`, `..` or `/` (`./sub`, not `sub`); any other word is a query.
 
 ## Profiles
 
-`skillz` with no arguments opens the workspace: registered projects on the left, profiles in
-the middle, details on the right. `Tab` switches pane, `Enter` applies the selected profile to
-the selected project (the plan is shown and confirmed first), `u` unloads a project's profile,
-`a` adds a project, `n` creates an empty profile, `s` saves what the project has installed as a
-profile, `d` deletes, `q` quits. On a profile: `i` adds items the selected project has installed,
-`t` types an entry (`skill SOURCE NAMES`, `plugin SOURCE MARKETPLACE NAME` or
-`mcp NAME COMMAND|URL [ARGS]`, `hook EVENT COMMAND` or `subagent SOURCE NAMES`), `r` removes entries.
-
-The same from the command line:
-
-```sh
-skillz profile save web          # snapshot this project's installs (-g: the global config)
-skillz profile ls | show web | rm web
-skillz use web --dry-run         # what swapping this project to `web` would remove and install
-skillz use web                   # swap: only the difference is removed and installed
-skillz use --none                # unload the current profile
-skillz project add . | ls | rm . # projects the workspace shows
-```
-
-A profile is `~/.config/skillz/profiles/<name>.toml`:
+A profile is `~/.config/skillz/profiles/<name>.toml`. Names are letters, digits, `-`, `_` and `.`
+and do not start with `-` or `.`.
 
 ```toml
-agents = ["claude", "codex"]          # default for entries that name none
+description = "frontend work"         # optional
+extends = ["base"]                    # optional, see below
+agents = ["claude", "codex"]          # default for entries that name none (this is the default)
 
 [[entry]]
-kind = "skill"
-source = "mattpocock/skills"
+kind = "skill"                        # installed with `npx skills`
+source = "mattpocock/skills"          # org/repo, git URL or local path
 names = ["tdd", "grilling"]
 
 [[entry]]
@@ -83,59 +82,91 @@ source = "killallgit/killall-skills"  # what adds the marketplace
 marketplace = "killallgit"
 name = "killall-skills"
 agents = ["claude"]
-```
 
-```toml
+[[entry]]
+kind = "subagent"
+source = "msitarzewski/agency-agents" # a repo, or a directory relative to the project
+names = ["frontend-developer", "ui-designer"]  # file names or the agents' own names
+agents = ["claude"]
+
 [[entry]]
 kind = "mcp"
 name = "filesystem"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-filesystem", "."]
-# or: url = "https://example.com/mcp", transport = "sse"   (default http)
-```
+# or: url = "https://example.com/mcp", transport = "sse"   (transport: http (default) or sse)
 
-```toml
 [[entry]]
-kind = "subagent"
-source = "msitarzewski/agency-agents"    # a repo, or a directory relative to the project
-names = ["frontend-developer", "ui-designer"]   # file names or the agents' own names
-agents = ["claude"]                      # Claude copies .md files, Codex .toml files
+kind = "hook"
+event = "SessionStart"
+matcher = "startup|resume"            # optional; absent means all
+command = "bd prime"
 ```
 
-Subagents are the definition files in `.claude/agents` / `~/.claude/agents` (Claude) and
-`.codex/agents` / `~/.codex/agents` (Codex). skillz copies them from the source and remembers where
-each came from (`.skillz-sources.json` beside them), so `list --subagents` groups them by source,
-a snapshot can save them, and unloading deletes exactly those files. It never overwrites a file it
-did not put there.
+Every value must be non-empty and must not start with `-`; an MCP entry has exactly one of
+`command` or `url`. Of the agents, Cursor only takes skills; Codex takes what its CLI and config
+can (see below); anything an agent cannot take is shown as skipped in the plan, not as an error.
 
-MCP servers are listed too (`skillz list --mcp`; read from Claude's `.claude.json` and
-`.mcp.json`, and Codex's `config.toml`) and removed with their agent's own `mcp remove`. They are
-spared by `reset` unless you pass `--mcp` (subagents: `--subagents`). A server that needs env vars or headers is not saved in
-a profile (it would have to carry secrets); a snapshot lists it as skipped. Codex only installs MCP
-servers globally, and has no SSE transport.
+| Kind | Claude | Codex |
+| --- | --- | --- |
+| skill | `npx skills add`, all agents at once | same |
+| plugin | `claude plugin marketplace add` + `plugin install`; project scope uses Claude's `local` scope, never the file the team shares | global only |
+| subagent | `.md` files into `.claude/agents` (`~/.claude/agents` global) | `.toml` files into `.codex/agents` (`~/.codex/agents` global) |
+| hook | `settings.json` (global) or `.claude/settings.local.json` (project) | `hooks.json` in the same scope |
+| mcp | `claude mcp add`, scope `user` (global) or `local` (project) | `codex mcp add`, global only, no SSE |
 
-A profile can start from others: `extends = ["base"]` at the top loads `base`'s entries (and
-theirs, recursively) before its own; a missing base or a cycle is an error. Each base keeps the
-agents of its own profile. An entry replaces an inherited one that names the same thing, so a
-child can override a base instead of repeating it: a skill or subagent is identified by source
-and name, a plugin by marketplace and name, an MCP server by name, and a hook by event, matcher
-and command. The replacing entry brings its own settings (agents, launch) and takes the place
-after the inherited ones; an inherited skill or subagent entry that names several things only
-loses the ones the child names. Of two bases, the later one wins.
+Subagents are copied from the source and remembered in `.skillz-sources.json` beside them, so
+`list --subagents` groups them by source, a snapshot can name the source, and unloading deletes
+exactly those files. skillz never overwrites a file it did not put there.
 
-skillz records what each entry added (`~/.config/skillz/applied.json`, per project and per
-`CLAUDE_CONFIG_DIR`/`CODEX_HOME`), so swapping or unloading removes exactly that and never
-what was installed by hand or was already there. Project plugins go to Claude's `local` scope,
-not the settings file the team shares. Codex plugins can only be installed globally, so a
-project profile reports them as skipped.
+### Extending
+
+`extends = ["base"]` loads `base`'s entries (and theirs, recursively) before the profile's own; a
+missing base or a cycle is an error. Each base keeps the agents of its own profile. An entry
+replaces an inherited one that names the same thing, so a child overrides a base instead of
+repeating it. "The same thing" is: a skill or subagent by source and name, a plugin by marketplace
+and name, an MCP server by name, a hook by event, matcher and command. The replacing entry brings
+its own settings (agents, launch) and goes after the inherited ones. An inherited skill or subagent
+entry that names several things loses only the ones the child names. Of two bases, the later one
+wins.
+
+### Switching
+
+```sh
+skillz profile save web          # snapshot what this project has installed (-g: global; --force replaces)
+skillz profile ls | show web | rm web
+skillz use web --dry-run         # what swapping this project to `web` would remove and install
+skillz use web                   # shows the plan, asks, then swaps: only the difference changes
+skillz use --none                # unload the current profile
+skillz use web -g                # the global config instead of a project (-y skips the question)
+skillz project add . | ls | rm . # projects the workspace shows
+```
+
+`profile save` keeps only what can be installed again: skills fetched by `npx skills` from a
+source, plugins whose marketplace has one, subagents with a recorded source, hooks, and MCP
+servers that need no secrets. The rest is listed as not saved, with the reason. Deleting a profile
+leaves what it installed in place until you `use` another.
+
+`use` records what each entry added in `~/.config/skillz/applied.json` (one record per project, or
+`global`, and per `CLAUDE_CONFIG_DIR`/`CODEX_HOME` when set). It finds that by reading the
+inventory before and after each entry installs, so swapping or unloading removes exactly those
+items and never what was already there or was installed by hand since. Entries in both profiles are
+left alone. `use` in a project also registers it.
+
+### Project registry
+
+`project add [PATH]` registers a directory in `~/.config/skillz/workspace.toml` (by real path);
+`project ls` shows each with its loaded profile; `project rm` forgets it and changes nothing
+installed there. A registered project whose directory is gone stays listed, marked missing.
 
 ## Running one profile in isolation
 
 `skillz run web -- claude` loads the profile into config dirs of its own
-(`~/.config/skillz/envs/web/{claude,codex}`) and starts the command with `CLAUDE_CONFIG_DIR` and
-`CODEX_HOME` pointing there. The command sees that profile and nothing else, and switching is just
-running another profile: nothing is uninstalled. The cost is a separate login and history per
-profile; the `npx skills` store under `~/.agents` is still shared.
+(`~/.config/skillz/envs/web/{claude,codex}`, global scope), asks first unless `-y`, and starts the
+command in the project with `CLAUDE_CONFIG_DIR` and `CODEX_HOME` pointing there. The command sees
+that profile and nothing else, and switching is just running another profile: nothing is
+uninstalled. The cost is a separate login and history per profile; the `npx skills` store under
+`~/.agents` is still shared. skillz exits with the command's exit code.
 
 ## Isolating a config
 
@@ -145,18 +176,93 @@ never `~/.claude` or `~/.codex`. The variable is also set on every command skill
 (`claude`, `codex`, `npx`), so native uninstalls act on the same directory. Project config
 (`<project>/.claude`, `<project>/.codex`) is unaffected. Unset, the usual home dirs apply.
 
+## Workspace
+
+Registered projects on the left, profiles in the middle, details on the right. It needs a
+terminal. Wide terminals (100+ columns) show three panes, 60+ two, 40+ one behind tabs; anything
+smaller than 40x10 says so.
+
+| Key | Does |
+| --- | --- |
+| `tab`, `←` `→`, `h` `l` | switch pane (tabs: `1`-`9`, `[` `]` in the one-pane layout) |
+| `↑↓` `j` `k`, `PgUp` `PgDn`, `^u` `^d`, `g` `G` | move |
+| `enter` | apply the selected profile to the selected project |
+| `u` | unload the project's profile |
+| `U` | undo the last switch (re-applies the previous profile, or unloads) |
+| `a` | add a project |
+| `n` | new empty profile |
+| `s` | save the project's installs as a profile |
+| `i` | add items the project has installed to the profile |
+| `t` | type an entry: `skill SOURCE NAMES`, `subagent SOURCE NAMES`, `plugin SOURCE MARKETPLACE NAME`, `hook EVENT COMMAND`, `mcp NAME COMMAND\|URL [ARGS]` |
+| `r` | remove entries from the profile |
+| `d` | forget the project (projects pane) or delete the profile after a confirm (profiles pane) |
+| `[` `]` | scroll the details |
+| `/` | filter the focused pane; `esc` clears it |
+| `?` | all keys for the screen |
+| `q`, `esc`, `^c` | quit |
+
+The mouse clicks to focus and select, double-clicks to apply and scrolls with the wheel.
+
+Applying shows a plan first: `=` kept, `-` removed, `+` installed, `~` skipped, framed in red when
+it removes something. `enter` or `y` applies, `d` turns on dry run, `s` shows the raw steps, `esc`
+cancels. A progress screen follows, then a result with counts and any failures: `c` copies them
+(through the terminal, so it works over ssh), `r` retries a failed switch, `enter` closes. After a
+switch the footer offers `U` until the next notice.
+
+The browser (`list -i`, multi-group queries) and every picker (`uninstall`, `prune`, `install`)
+share one list:
+
+| Key | Does |
+| --- | --- |
+| `↑↓` `j` `k`, `PgUp` `PgDn`, `^u` `^d`, `g` `G` | move |
+| `space`, `→` `l`, `←` `h` | expand/collapse (`←` on a collapsed row jumps to its parent) |
+| `x`, `tab` | mark a group (all its items) or one item |
+| `/` | filter; keeps matching rows and their parents |
+| `i` | info: kind, scope, agents, source, installer, last use, contents, and the commands removal runs |
+| `enter` | browser: Show / Remove… / Cancel for the marks (or the row under the cursor); picker: accept |
+| `esc` | clear the filter, then quit |
+| `q` | quit |
+
+Environment: `SKILLZ_THEME=dark|light|mono` forces a theme. Otherwise `NO_COLOR` (non-empty) or
+`TERM=dumb` selects mono, and `COLORFGBG` tells a light terminal from a dark one.
+`SKILLZ_ASCII=1` draws plain ASCII symbols (also automatic for `TERM=linux`/`dumb` or a
+non-UTF-8 locale). `SKILLZ_NO_MOUSE` (any value) turns mouse capture off.
+
+## Safety
+
+- **Complete but bounded removal.** Every deletion goes through one check: the path must sit
+  strictly inside a root skillz owns (an agent's plugin cache, a skill dir, ...), built from plain
+  names, and is skipped when it sits behind a symlinked directory. A symlink is removed, never its target,
+  so a source checkout you linked in is untouched.
+- **Native tools first.** Items an agent's own CLI installed are removed with that CLI
+  (`claude plugin uninstall`, `codex mcp remove`, `npx skills remove`, ...); skillz then cleans
+  what is left. A failing command aborts before any file is touched.
+- **Ownership by inventory diff.** Profiles only ever remove items recorded in the ledger
+  (`applied.json`, locked while written), which was rewritten after the removals and after each
+  entry, so a crash or failed step loses nothing that landed. A failed install that did add
+  something is recorded so it can be unloaded.
+- **Atomic writes.** skillz's own files (profiles, ledger, registry, source manifest) are written
+  to a temp file and renamed. Edits to agent config files are staged beside the original with its
+  permissions, follow symlinks (dotfiles stay links), are re-parsed before writing, and are
+  written all or none; if a file changed since the plan was made, nothing is written. No backups
+  are made.
+- **Redaction.** Plans, logs and error messages hide URL credentials and query strings,
+  `--token VALUE`, `NAME_SECRET=VALUE` and `Bearer` tokens.
+- **Secrets are never saved.** MCP env vars and headers are read by name only, never value. A
+  snapshot skips any MCP server that needs them, or that carries a credential in its args or URL.
+- After removal skillz re-reads the inventory and reports anything still installed.
+
 ## What "remove" means
 
 | Item | Removed |
 | --- | --- |
 | Skill (npx `skills` or loose) | every agent link to it, the store copy in `.agents/skills`, its lock entry |
 | Hook group | every handler that runs the same tool, pruning empty groups/events |
+| Subagent | the definition file and its `.skillz-sources.json` entry |
+| MCP server | `claude mcp remove` / `codex mcp remove`, then its config entry |
 | Claude plugin | `enabledPlugins` entry, install record, cache + data dirs once no scope uses it |
 | Claude marketplace | its plugins, `known_marketplaces.json` entry, `extraKnownMarketplaces`, its clone (never a local directory source) |
 | Codex plugin / marketplace | `config.toml` tables, hook trust state, plugin cache |
-
-Every edited JSON/TOML file is re-parsed before it is written, and after removal skillz
-re-discovers to confirm the items are gone. No backups are made.
 
 ## Development
 
