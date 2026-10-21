@@ -114,6 +114,11 @@ impl Augmentation {
     }
 }
 
+/// `name@marketplace` -> (`name`, `marketplace`); a bare name has an empty marketplace.
+pub fn split_plugin_id(id: &str) -> (&str, &str) {
+    id.rsplit_once('@').unwrap_or((id, ""))
+}
+
 impl fmt::Display for Agent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -163,6 +168,13 @@ mod tests {
             children: vec![],
             removal: vec![],
         }
+    }
+
+    #[test]
+    fn plugin_ids_split_at_the_last_at_sign() {
+        assert_eq!(split_plugin_id("tdd@mp"), ("tdd", "mp"));
+        assert_eq!(split_plugin_id("bare"), ("bare", ""));
+        assert_eq!(split_plugin_id("a@b@c"), ("a@b", "c"));
     }
 
     #[test]

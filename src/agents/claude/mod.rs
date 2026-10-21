@@ -18,7 +18,7 @@ use crate::hooks;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 use crate::profile::Entry;
 use crate::runner::CommandRunner;
-use crate::subagents;
+use crate::subagents::{self, AgentDir};
 use context::parse_context;
 use files::{
     agents_dir, hook_settings, installed_file, marketplaces_file, read_json, settings_files,
@@ -61,7 +61,11 @@ impl AgentAdapter for Claude {
         let mut out = plugins::plugins(env, scope, &installs, &markets);
         out.extend(mcp::discover(env, scope)?);
         let agents = agents_dir(env, scope);
-        out.extend(subagents::discover(&agents, "md", Agent::Claude, scope));
+        out.extend(subagents::discover(
+            &AgentDir::new(&agents, "md"),
+            Agent::Claude,
+            scope,
+        ));
         if scope == Scope::Global {
             out.extend(
                 markets
@@ -97,7 +101,7 @@ impl AgentAdapter for Claude {
             Entry::Hook { .. } => hooks::provision(entry, hook_settings(env, scope)),
             Entry::Mcp { .. } => mcp::provision(entry, scope, env),
             Entry::Subagent { .. } => {
-                subagents::provision(entry, agents_dir(env, scope), "md", env)
+                subagents::provision(entry, &AgentDir::new(&agents_dir(env, scope), "md"), env)
             }
             Entry::Plugin {
                 source,

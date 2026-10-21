@@ -24,11 +24,23 @@ pub(super) fn with_source(
     if local.exists() {
         return f(&local, &local.to_string_lossy());
     }
+    with_tmp_clone(
+        source,
+        |(program, args)| run_checked(runner, program, args, &env.project),
+        |tmp| f(tmp, source),
+    )
+}
+
+/// Shallow-clone `source` into a temp dir with `clone`, run `f` on it, and remove the clone.
+pub(crate) fn with_tmp_clone<T>(
+    source: &str,
+    clone: impl FnOnce(&Cmd) -> anyhow::Result<()>,
+    f: impl FnOnce(&Path) -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
     let tmp = std::env::temp_dir().join(unique_name());
-    let (program, args) = clone_command(source, &tmp);
-    let res = run_checked(runner, &program, &args, &env.project).and_then(|()| f(&tmp, source));
+    let result = clone(&clone_command(source, &tmp)).and_then(|()| f(&tmp));
     let _ = std::fs::remove_dir_all(&tmp);
-    res
+    result
 }
 
 fn clone_url(source: &str) -> String {

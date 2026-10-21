@@ -4,10 +4,10 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::records::{Install, Marketplace, mp_of, same_path};
+use super::records::{Install, Marketplace, same_path};
 use super::removal::plugin_removal;
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
+use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope, split_plugin_id};
 
 /// One plugin augmentation per id among the installs belonging to `scope`.
 pub(super) fn plugins(
@@ -31,7 +31,7 @@ pub(super) fn plugins(
 }
 
 fn plugin(env: &Env, scope: Scope, install: &Install, markets: &[Marketplace]) -> Augmentation {
-    let mp = mp_of(&install.id);
+    let (_, mp) = split_plugin_id(&install.id);
     Augmentation {
         id: format!("plugin:claude:{scope}:{}", install.id),
         name: install.id.clone(),

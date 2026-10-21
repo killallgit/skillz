@@ -34,8 +34,7 @@ impl Switch {
 
     /// The removal and install steps in the order `run` takes them.
     pub fn steps(&self) -> Vec<Action> {
-        let refs: Vec<&Augmentation> = self.removals.iter().collect();
-        Plan::new(&refs, &[])
+        Plan::from_owned(&self.removals)
             .steps
             .into_iter()
             .chain(self.installs.iter().flat_map(|(_, steps)| steps.clone()))

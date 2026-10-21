@@ -11,12 +11,52 @@ use anyhow::Context;
 
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::install::{clone_command, unique_name};
+use crate::fswalk;
+use crate::install::{Cmd, with_tmp_clone};
 use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
 use crate::profile::Entry;
 use crate::runner::CommandRunner;
 
 const MANIFEST: &str = ".skillz-sources.json";
+
+/// Where an agent keeps its subagent definitions and what extension they carry.
+pub struct AgentDir<'a> {
+    pub path: &'a Path,
+    pub ext: &'a str,
+}
+
+impl<'a> AgentDir<'a> {
+    pub fn new(path: &'a Path, ext: &'a str) -> Self {
+        AgentDir { path, ext }
+    }
+}
+
+/// `.skillz-sources.json`: which source each copied definition file came from.
+#[derive(Default)]
+struct Manifest(BTreeMap<String, String>);
+
+impl Manifest {
+    fn read(dir: &Path) -> Self {
+        let sources = fs::read_to_string(dir.join(MANIFEST))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default();
+        Manifest(sources)
+    }
+
+    fn get(&self, file: &str) -> Option<&str> {
+        self.0.get(file).map(String::as_str)
+    }
+
+    fn insert(&mut self, file: &str, source: &str) {
+        self.0.insert(file.to_string(), source.to_string());
+    }
+
+    fn write(&self, dir: &Path) -> anyhow::Result<()> {
+        fs::write(dir.join(MANIFEST), serde_json::to_string_pretty(&self.0)?)?;
+        Ok(())
+    }
+}
 
 /// The agent's own name for a definition: `name:` in markdown frontmatter, `name =` in toml.
 fn definition_name(text: &str, ext: &str) -> Option<String> {
@@ -54,63 +94,81 @@ fn slug(s: &str) -> String {
     out.trim_matches('-').to_string()
 }
 
-fn manifest(dir: &Path) -> BTreeMap<String, String> {
-    fs::read_to_string(dir.join(MANIFEST))
-        .ok()
-        .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
-}
-
 /// The definitions in `dir`, each removable by deleting its file (and its manifest line).
-pub fn discover(dir: &Path, ext: &str, agent: Agent, scope: Scope) -> Vec<Augmentation> {
-    let Ok(read) = fs::read_dir(dir) else {
-        return vec![];
+pub fn discover(dir: &AgentDir, agent: Agent, scope: Scope) -> Vec<Augmentation> {
+    let scan = Scan {
+        dir,
+        manifest: Manifest::read(dir.path),
+        agent,
+        scope,
     };
-    let sources = manifest(dir);
-    let mut files: Vec<PathBuf> = read
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == ext))
-        .collect();
-    files.sort();
-    files
-        .into_iter()
-        .filter_map(|path| {
-            let file = path.file_name()?.to_str()?.to_string();
-            let stem = path.file_stem()?.to_str()?.to_string();
-            let name = fs::read_to_string(&path)
-                .ok()
-                .and_then(|t| definition_name(&t, ext))
-                .unwrap_or(stem);
-            let source = sources.get(&file).cloned();
-            let mut removal: Vec<Action> = RemovalTarget::new(dir, [&file])
-                .map(Action::RemovePath)
-                .into_iter()
-                .collect();
-            removal.push(Action::Edit {
-                file: dir.join(MANIFEST),
-                edit: Edit::JsonRemoveKey {
-                    path: vec![file.clone()],
-                },
-            });
-            Some(Augmentation {
-                id: format!("subagent:{agent}:{scope}:{file}"),
-                name,
-                kind: Kind::Subagent,
-                agents: vec![agent],
-                scope,
-                group: source.clone().unwrap_or_else(|| "local".into()),
-                source,
-                installer: Installer::Local,
-                children: vec![format!("file: {file}")],
-                removal,
-            })
-        })
+    definition_files(dir)
+        .iter()
+        .filter_map(|path| scan.augmentation(path))
         .collect()
 }
 
+/// The `ext` files directly in `dir`, sorted.
+fn definition_files(dir: &AgentDir) -> Vec<PathBuf> {
+    let Ok(read) = fs::read_dir(dir.path) else {
+        return vec![];
+    };
+    let mut files: Vec<PathBuf> = read
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == dir.ext))
+        .collect();
+    files.sort();
+    files
+}
+
+struct Scan<'a> {
+    dir: &'a AgentDir<'a>,
+    manifest: Manifest,
+    agent: Agent,
+    scope: Scope,
+}
+
+impl Scan<'_> {
+    fn augmentation(&self, path: &Path) -> Option<Augmentation> {
+        let file = path.file_name()?.to_str()?.to_string();
+        let stem = path.file_stem()?.to_str()?.to_string();
+        let name = fs::read_to_string(path)
+            .ok()
+            .and_then(|t| definition_name(&t, self.dir.ext))
+            .unwrap_or(stem);
+        let source = self.manifest.get(&file).map(String::from);
+        Some(Augmentation {
+            id: format!("subagent:{}:{}:{file}", self.agent, self.scope),
+            name,
+            kind: Kind::Subagent,
+            agents: vec![self.agent],
+            scope: self.scope,
+            group: source.clone().unwrap_or_else(|| "local".into()),
+            source,
+            installer: Installer::Local,
+            children: vec![format!("file: {file}")],
+            removal: self.removal(&file),
+        })
+    }
+
+    fn removal(&self, file: &str) -> Vec<Action> {
+        let mut steps: Vec<Action> = RemovalTarget::new(self.dir.path, [file])
+            .map(Action::RemovePath)
+            .into_iter()
+            .collect();
+        steps.push(Action::Edit {
+            file: self.dir.path.join(MANIFEST),
+            edit: Edit::JsonRemoveKey {
+                path: vec![file.to_string()],
+            },
+        });
+        steps
+    }
+}
+
 /// The step that copies a profile's subagents into `to`. `None` for other kinds of entry.
-pub fn provision(entry: &Entry, to: PathBuf, ext: &str, env: &Env) -> Option<Vec<Action>> {
+pub fn provision(entry: &Entry, to: &AgentDir, env: &Env) -> Option<Vec<Action>> {
     let Entry::Subagent { source, names, .. } = entry else {
         return None;
     };
@@ -118,13 +176,13 @@ pub fn provision(entry: &Entry, to: PathBuf, ext: &str, env: &Env) -> Option<Vec
         source: source.clone(),
         cwd: env.project.clone(),
         names: names.clone(),
-        ext: ext.into(),
-        to,
+        ext: to.ext.into(),
+        to: to.path.to_path_buf(),
     }])
 }
 
 /// What `copy` needs.
-pub struct Copy<'a> {
+pub struct CopyRequest<'a> {
     pub source: &'a str,
     pub cwd: &'a Path,
     pub names: &'a [String],
@@ -135,92 +193,101 @@ pub struct Copy<'a> {
 /// Fetch `source` (a directory relative to `cwd`, else a git repo), copy the definitions called
 /// `names` into `to` and record their source. Refuses to overwrite a file skillz did not put
 /// there. Returns the files written.
-pub fn copy(runner: &dyn CommandRunner, req: &Copy) -> anyhow::Result<Vec<PathBuf>> {
+pub fn copy(runner: &dyn CommandRunner, req: &CopyRequest) -> anyhow::Result<Vec<PathBuf>> {
     let local = req.cwd.join(req.source);
     if local.is_dir() {
         return copy_from(&local, req);
     }
-    let tmp = std::env::temp_dir().join(unique_name());
-    let (program, args) = clone_command(req.source, &tmp);
-    let cloned = runner.run_quiet(&program, &args, req.cwd).and_then(|out| {
-        anyhow::ensure!(
-            out.success,
-            "cloning {} failed: {}",
-            req.source,
-            out.stderr.trim()
-        );
-        Ok(())
-    });
-    let result = cloned.and_then(|()| copy_from(&tmp, req));
-    let _ = fs::remove_dir_all(&tmp);
-    result
+    with_tmp_clone(
+        req.source,
+        |cmd| clone_quietly(runner, req, cmd),
+        |tmp| copy_from(tmp, req),
+    )
 }
 
-fn copy_from(root: &Path, req: &Copy) -> anyhow::Result<Vec<PathBuf>> {
-    let mut found = vec![];
-    walk(root, req.ext, &mut found)?;
-    found.sort();
-    let mut chosen = vec![];
-    for wanted in req.names {
-        let want = slug(wanted);
-        let hit = found.iter().find(|(path, name)| {
-            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            slug(stem) == want || name.as_deref().is_some_and(|n| slug(n) == want)
-        });
-        let Some((path, _)) = hit else {
-            anyhow::bail!("no subagent called {wanted} in {}", req.source);
-        };
-        chosen.push(path.clone());
-    }
+fn clone_quietly(
+    runner: &dyn CommandRunner,
+    req: &CopyRequest,
+    (program, args): &Cmd,
+) -> anyhow::Result<()> {
+    let out = runner.run_quiet(program, args, req.cwd)?;
+    anyhow::ensure!(
+        out.success,
+        "cloning {} failed: {}",
+        req.source,
+        out.stderr.trim()
+    );
+    Ok(())
+}
 
+fn copy_from(root: &Path, req: &CopyRequest) -> anyhow::Result<Vec<PathBuf>> {
+    let chosen = pick_definitions(root, req)?;
     fs::create_dir_all(req.to)?;
-    let mut sources = manifest(req.to);
+    let mut manifest = Manifest::read(req.to);
     let mut written = vec![];
-    for path in chosen {
-        let file = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .context("file name")?;
-        let dest = req.to.join(file);
-        anyhow::ensure!(
-            !dest.exists() || sources.contains_key(file),
-            "{} exists and was not installed by skillz",
-            dest.display()
-        );
-        fs::copy(&path, &dest).with_context(|| format!("copying {}", path.display()))?;
-        sources.insert(file.to_string(), req.source.to_string());
-        written.push(dest);
+    for path in &chosen {
+        written.push(copy_definition(path, req, &mut manifest)?);
     }
-    fs::write(
-        req.to.join(MANIFEST),
-        serde_json::to_string_pretty(&sources)?,
-    )?;
+    manifest.write(req.to)?;
     Ok(written)
 }
 
-/// Every `ext` file under `dir` with its definition name, skipping VCS and build dirs and
-/// the readmes and docs repos keep beside them.
-fn walk(dir: &Path, ext: &str, out: &mut Vec<(PathBuf, Option<String>)>) -> anyhow::Result<()> {
-    for entry in fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))? {
-        let entry = entry?;
-        let path = entry.path();
-        let skip = matches!(
-            entry.file_name().to_str(),
-            Some(".git" | "node_modules" | "dist" | "build" | "target")
-        );
-        let kind = entry.file_type()?;
-        if kind.is_dir() && !skip {
-            walk(&path, ext, out)?;
-        } else if kind.is_file() && path.extension().is_some_and(|e| e == ext) {
-            let text = fs::read_to_string(&path).unwrap_or_default();
-            let name = definition_name(&text, ext);
-            // Only files that declare a name are definitions; this leaves READMEs out.
-            if name.is_some() {
-                out.push((path, name));
-            }
+/// The files under `root` for each of `req.names`, matched by file stem or the agent's own name.
+fn pick_definitions(root: &Path, req: &CopyRequest) -> anyhow::Result<Vec<PathBuf>> {
+    let found = find_definitions(root, req.ext)?;
+    req.names
+        .iter()
+        .map(|wanted| {
+            let want = slug(wanted);
+            found
+                .iter()
+                .find(|(path, name)| matches_name(path, name, &want))
+                .map(|(path, _)| path.clone())
+                .with_context(|| format!("no subagent called {wanted} in {}", req.source))
+        })
+        .collect()
+}
+
+fn matches_name(path: &Path, name: &str, want: &str) -> bool {
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    slug(stem) == want || slug(name) == want
+}
+
+fn copy_definition(
+    path: &Path,
+    req: &CopyRequest,
+    manifest: &mut Manifest,
+) -> anyhow::Result<PathBuf> {
+    let file = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .context("file name")?;
+    let dest = req.to.join(file);
+    anyhow::ensure!(
+        !dest.exists() || manifest.get(file).is_some(),
+        "{} exists and was not installed by skillz",
+        dest.display()
+    );
+    fs::copy(path, &dest).with_context(|| format!("copying {}", path.display()))?;
+    manifest.insert(file, req.source);
+    Ok(dest)
+}
+
+/// Every `ext` file under `root` that declares a name, with that name, sorted by path. Files
+/// without a name are left out, which keeps READMEs and docs from counting as definitions.
+fn find_definitions(root: &Path, ext: &str) -> anyhow::Result<Vec<(PathBuf, String)>> {
+    let mut found = vec![];
+    fswalk::walk(root, &mut |path, is_dir| {
+        if is_dir || !path.extension().is_some_and(|e| e == ext) {
+            return;
         }
-    }
-    Ok(())
+        let text = fs::read_to_string(path).unwrap_or_default();
+        if let Some(name) = definition_name(&text, ext) {
+            found.push((path.to_path_buf(), name));
+        }
+    })?;
+    found.sort();
+    Ok(found)
 }
 
 #[cfg(test)]
@@ -236,6 +303,10 @@ mod tests {
             format!("---\nname: {name}\ndescription: d\n---\nbody\n"),
         )
         .unwrap();
+    }
+
+    fn md_dir(path: &Path) -> AgentDir<'_> {
+        AgentDir { path, ext: "md" }
     }
 
     fn names(v: &[&str]) -> Vec<String> {
@@ -269,7 +340,7 @@ mod tests {
         agent_file(src.path(), "design/ui-designer.md", "UI Designer");
         fs::write(src.path().join("README.md"), "# not an agent\n").unwrap();
         let wanted = names(&["frontend-developer", "ui-designer"]);
-        let req = Copy {
+        let req = CopyRequest {
             source: "agents-repo",
             cwd: src.path().parent().unwrap(),
             names: &wanted,
@@ -284,7 +355,7 @@ mod tests {
             .to_str()
             .unwrap()
             .to_string();
-        let req = Copy {
+        let req = CopyRequest {
             source: &folder,
             ..req
         };
@@ -292,10 +363,10 @@ mod tests {
         assert_eq!(written.len(), 2);
         assert!(to.path().join("engineering-frontend-developer.md").exists());
         assert!(!to.path().join("README.md").exists());
-        let sources = manifest(to.path());
-        assert_eq!(sources["ui-designer.md"], folder);
+        let sources = Manifest::read(to.path());
+        assert_eq!(sources.get("ui-designer.md"), Some(folder.as_str()));
 
-        let found = discover(to.path(), "md", Agent::Claude, Scope::Project);
+        let found = discover(&md_dir(to.path()), Agent::Claude, Scope::Project);
         let mut got: Vec<(&str, Option<&str>)> = found
             .iter()
             .map(|a| (a.name.as_str(), a.source.as_deref()))
@@ -326,7 +397,7 @@ mod tests {
             let wanted = names(wanted);
             copy(
                 &NoCommands,
-                &Copy {
+                &CopyRequest {
                     source: &folder,
                     cwd,
                     names: &wanted,
@@ -372,7 +443,7 @@ mod tests {
         let wanted = names(&["helper"]);
         let written = copy(
             &Clone,
-            &Copy {
+            &CopyRequest {
                 source: "o/r",
                 cwd: cwd.path(),
                 names: &wanted,
@@ -382,7 +453,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(written, [to.path().join("helper.md")]);
-        assert_eq!(manifest(to.path())["helper.md"], "o/r");
+        assert_eq!(Manifest::read(to.path()).get("helper.md"), Some("o/r"));
 
         struct Fails;
         impl CommandRunner for Fails {
@@ -395,7 +466,7 @@ mod tests {
         }
         let err = copy(
             &Fails,
-            &Copy {
+            &CopyRequest {
                 source: "o/r",
                 cwd: cwd.path(),
                 names: &wanted,
@@ -411,7 +482,7 @@ mod tests {
         let to = tempfile::tempdir().unwrap();
         agent_file(to.path(), "a.md", "A");
         fs::write(to.path().join(MANIFEST), r#"{"a.md": "o/r"}"#).unwrap();
-        let item = discover(to.path(), "md", Agent::Claude, Scope::Global).remove(0);
+        let item = discover(&md_dir(to.path()), Agent::Claude, Scope::Global).remove(0);
         crate::action::execute(&item.removal, &NoCommands).unwrap();
         assert!(!to.path().join("a.md").exists());
         assert!(
@@ -425,8 +496,7 @@ mod tests {
     fn missing_directories_and_foreign_extensions_find_nothing() {
         assert!(
             discover(
-                Path::new("/definitely/not/here"),
-                "md",
+                &md_dir(Path::new("/definitely/not/here")),
                 Agent::Claude,
                 Scope::Global
             )
@@ -434,6 +504,6 @@ mod tests {
         );
         let to = tempfile::tempdir().unwrap();
         fs::write(to.path().join("x.txt"), "x").unwrap();
-        assert!(discover(to.path(), "md", Agent::Claude, Scope::Global).is_empty());
+        assert!(discover(&md_dir(to.path()), Agent::Claude, Scope::Global).is_empty());
     }
 }

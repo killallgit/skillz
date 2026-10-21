@@ -9,6 +9,7 @@ pub mod apply;
 pub mod cli;
 pub mod cost;
 pub mod env;
+pub mod fswalk;
 pub mod hooks;
 pub mod info;
 pub mod install;

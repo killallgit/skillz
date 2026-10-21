@@ -1,9 +1,8 @@
 use std::collections::HashSet;
 
 use crate::action::{self, Action, Report};
-use crate::model::Augmentation;
 use crate::profile::Entry;
-use crate::remove::{self, Outcome, Plan};
+use crate::remove::{self, Outcome, Plan, Removal};
 use crate::runner::CommandRunner;
 
 use super::switch::Switch;
@@ -70,15 +69,13 @@ impl Applier<'_> {
         if switch.removals.is_empty() {
             return Ok((None, vec![]));
         }
-        let refs: Vec<&Augmentation> = switch.removals.iter().collect();
-        let outcome = remove::run(
-            &Plan::new(&refs, &[]),
-            self.adapters,
-            self.env,
-            &[self.scope],
+        let removal = Removal {
+            adapters: self.adapters,
+            env: self.env,
+            scopes: &[self.scope],
             runner,
-            on_step,
-        )?;
+        };
+        let outcome = remove::run(&Plan::from_owned(&switch.removals), &removal, on_step)?;
         let leftover = still_installed(&switch.drop, &outcome);
         Ok((Some(outcome), leftover))
     }

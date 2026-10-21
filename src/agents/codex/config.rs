@@ -66,11 +66,6 @@ pub(super) fn hook_state_keys(doc: &DocumentMut, id: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// `name@mp` -> (`name`, `mp`).
-pub(super) fn split_id(id: &str) -> (&str, &str) {
-    id.rsplit_once('@').unwrap_or((id, ""))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

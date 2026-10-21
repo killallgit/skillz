@@ -88,7 +88,13 @@ fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
         scope: single_scope(&scopes, args.global),
         selection: skill_selection(args.all, args.skill),
     };
-    install::install(&deps.adapters, &request, &env, deps.runner, deps.prompter)
+    let ctx = install::Ctx {
+        adapters: &deps.adapters,
+        env: &env,
+        runner: deps.runner,
+        prompter: deps.prompter,
+    };
+    install::install(&ctx, &request)
 }
 
 fn skill_selection(all: bool, skills: Vec<String>) -> SkillSelection {

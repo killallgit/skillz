@@ -114,7 +114,7 @@ impl Execution<'_> {
         else {
             return Ok(());
         };
-        let request = crate::subagents::Copy {
+        let request = crate::subagents::CopyRequest {
             source,
             cwd,
             names,

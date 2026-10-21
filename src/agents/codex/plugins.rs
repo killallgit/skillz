@@ -2,11 +2,11 @@ use std::path::{Path, PathBuf};
 
 use toml_edit::DocumentMut;
 
-use super::config::{hook_state_keys, plugin_ids, split_id, str_field, table_keys};
+use super::config::{hook_state_keys, plugin_ids, str_field, table_keys};
 use super::removal::{native, toml_remove};
 use crate::action::{Action, RemovalTarget};
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
+use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope, split_plugin_id};
 use crate::profile::Entry;
 
 /// `codex plugin marketplace add` then `plugin add`; the user config only.
@@ -67,7 +67,7 @@ pub(super) fn marketplaces_from(
         .iter()
         .filter(|m| !m.bundled)
         .map(|m| {
-            let keep_cache = project_uses(in_project, |other| split_id(other).1 == m.name);
+            let keep_cache = project_uses(in_project, |other| split_plugin_id(other).1 == m.name);
             marketplace(cx, m, plugins, keep_cache)
         })
         .collect()
@@ -76,7 +76,7 @@ pub(super) fn marketplaces_from(
 fn is_in_bundled_marketplace(cx: &Cx, id: &str) -> bool {
     cx.marketplaces
         .iter()
-        .any(|m| m.bundled && m.name == split_id(id).1)
+        .any(|m| m.bundled && m.name == split_plugin_id(id).1)
 }
 
 fn project_uses(in_project: Option<&[String]>, pick: impl Fn(&str) -> bool) -> bool {
@@ -107,7 +107,7 @@ fn display_source(source: &str) -> String {
 }
 
 fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
-    let (name, mp) = split_id(id);
+    let (name, mp) = split_plugin_id(id);
     Augmentation {
         id: format!("plugin:codex:{}:{id}", cx.scope),
         name: id.to_string(),
@@ -127,7 +127,7 @@ fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
 }
 
 fn plugin_removal(cx: &Cx, id: &str, keep_cache: bool) -> Vec<Action> {
-    let (name, mp) = split_id(id);
+    let (name, mp) = split_plugin_id(id);
     let mut removal = native(cx.scope, cx.config, &["plugin", "remove", id], id);
     removal.push(toml_remove(cx.config, &["plugins", id]));
     removal.extend(
