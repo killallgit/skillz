@@ -1,6 +1,7 @@
 //! Turn what is installed into a profile. Only what a profile can install again is kept: skills
-//! `npx skills` fetched from a source, plugins whose marketplace has one, subagents with a
-//! source, hooks, and MCP servers that need no secrets. Everything else is reported as skipped.
+//! `npx skills` fetched from a source or hand-made ones by their directory, plugins whose
+//! marketplace has one, subagents with a source or directory, hooks, and MCP servers that need no
+//! secrets. Everything else is reported as skipped.
 //!
 //! Each kind of entry has its own `Collector`; `snapshot` only routes items to them.
 
@@ -31,7 +32,8 @@ pub struct Skipped {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
-    /// Nothing to reinstall it from: a hand-made skill, a plugin without a marketplace.
+    /// Nothing to reinstall it from: a plugin without a marketplace, a skill outside the home and
+    /// project or one `npx skills` cannot see.
     NoSource,
     /// An MCP server with this many env vars or headers, which a profile does not carry.
     Secrets(usize),
@@ -138,7 +140,12 @@ mod tests {
     use super::*;
     use crate::model::{Installer, Kind, Scope};
 
-    fn item(name: &str, kind: Kind, installer: Installer, agents: &[Agent]) -> Augmentation {
+    pub(super) fn item(
+        name: &str,
+        kind: Kind,
+        installer: Installer,
+        agents: &[Agent],
+    ) -> Augmentation {
         Augmentation {
             hooks: Vec::new(),
             id: format!("{kind}:{name}:{agents:?}"),
@@ -163,7 +170,7 @@ mod tests {
         }
     }
 
-    fn both() -> [Agent; 2] {
+    pub(super) fn both() -> [Agent; 2] {
         [Agent::Claude, Agent::Codex]
     }
 

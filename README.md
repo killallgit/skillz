@@ -155,12 +155,16 @@ global (the store); nothing about a project is stored. A project's state is its 
 
 `profile save` keeps only what can be installed again: skills fetched by `npx skills` from a
 source, plugins whose marketplace has one, subagents with a recorded source, hooks, and MCP
-servers that need no secrets. The rest is listed as not saved, with the reason.
+servers that need no secrets. A hand-made skill or subagent is kept by the local directory that
+holds it (a skill only when `npx skills` can see it: `name` and `description` set, and inside
+your home, the project or the agents' config dirs), so such a profile applies on this machine
+only. The rest is listed as not saved, with the reason.
 
 `use` is additive: it reads the project's inventory and installs only the entries (or the names
 within an entry) that are not there yet, and never removes anything. `--exact` also removes every
 installed item the profile does not want, after showing the plan; items with no known source
-(hand-made skills and the like) are flagged because no profile can bring them back. An item
+(plugins without a marketplace, skills `npx skills` cannot see) are flagged because no profile
+can bring them back. An item
 shared with a wanted entry, such as a skill for two agents of which the profile wants one, stays.
 
 Which profile a project has loaded is never stored. A project matches a profile when nothing the
@@ -186,7 +190,9 @@ out for needing secrets). The same scan runs as `skillz sync`, after every insta
 change, and on `i` in the Library tab. It only ever adds: a second run adds nothing, labels you
 gave are kept, and items that are no longer installed stay. The only way out of the library is its
 remove key (`x`) or removing it by hand in `store.json`. `SKILLZ_NO_SYNC=1` turns the startup scan
-off. Items without something to reinstall them from, such as a hand-made skill, are not recorded.
+off. A hand-made skill or subagent is recorded by the directory that holds it (engine `local`,
+marked detected), so it is reinstalled with `npx skills add <that directory> --skill <name>`.
+Items needing secrets, and items with nothing to reinstall them from, are not recorded.
 Installing a skill again fetches it from its recorded
 link when there is one.
 

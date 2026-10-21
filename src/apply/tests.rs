@@ -232,6 +232,11 @@ fn exact_removes_what_the_profile_does_not_want_and_keeps_what_it_does() {
 fn exact_flags_an_item_no_profile_could_install_again() {
     let fx = Fx::new();
     write_skill(&fx.env.project, "mine");
+    fs::write(
+        fx.env.project.join(".agents/skills/mine/SKILL.md"),
+        "---\nname: mine\n---\n",
+    )
+    .unwrap();
     fs::create_dir_all(fx.env.project.join(".claude/skills")).unwrap();
     std::os::unix::fs::symlink(
         fx.env.project.join(".agents/skills/mine"),

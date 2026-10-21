@@ -42,6 +42,7 @@ fn mark_detected(item: LibraryItem) -> LibraryItem {
 mod tests {
     use super::super::import::tests::installed_skill;
     use super::*;
+    use crate::model::{Installer, Origin};
     use crate::profile::Entry;
 
     fn manual(label: &str) -> LibraryItem {
@@ -97,6 +98,33 @@ mod tests {
         // Assert nothing was added and the manual entry is untouched.
         assert!(synced.added.is_empty());
         assert_eq!(catalog.items(), [manual("my favourite")]);
+    }
+
+    #[test]
+    fn a_hand_made_skill_is_added_as_detected_manual_with_its_dir_as_the_link() {
+        let mut catalog = Catalog::default();
+        let mine = Augmentation {
+            installer: Installer::Local,
+            origin: Origin {
+                link: Some("/p/.agents/skills".into()),
+                version: None,
+            },
+            ..installed_skill("mine", None)
+        };
+
+        let synced = sync_installed(&mut catalog, &[mine], 7);
+
+        // Assert nothing was skipped and the item reinstalls from the dir it was found in.
+        let item = &catalog.items()[0];
+        let provenance = item.provenance.clone().unwrap();
+        assert!(synced.skipped.is_empty());
+        assert_eq!(
+            (provenance.engine, provenance.detected, provenance.link),
+            (Installer::Local, true, Some("/p/.agents/skills".into()))
+        );
+        assert!(
+            matches!(&item.entry, Entry::Skill { source, .. } if source == "/p/.agents/skills")
+        );
     }
 
     #[test]

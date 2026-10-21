@@ -91,11 +91,7 @@ fn saving_the_project_lists_what_could_not_be_saved() {
     with_session(|session, dir| {
         let loose = dir.join(".claude/skills/mine");
         fs::create_dir_all(&loose).unwrap();
-        fs::write(
-            loose.join("SKILL.md"),
-            "---\nname: mine\ndescription: d\n---\n",
-        )
-        .unwrap();
+        fs::write(loose.join("SKILL.md"), "---\nname: mine\n---\n").unwrap();
 
         let notice = session.save_current("snap").unwrap();
 
@@ -104,6 +100,32 @@ fn saving_the_project_lists_what_could_not_be_saved() {
         };
         assert_eq!(skipped.len(), 1);
         assert!(session.profiles.load("snap").unwrap().entries.is_empty());
+    });
+}
+
+#[test]
+fn saving_the_project_keeps_a_hand_made_skill_by_the_dir_holding_it() {
+    with_session(|session, dir| {
+        let loose = dir.join(".claude/skills/mine");
+        fs::create_dir_all(&loose).unwrap();
+        fs::write(
+            loose.join("SKILL.md"),
+            "---\nname: mine\ndescription: d\n---\n",
+        )
+        .unwrap();
+
+        session.save_current("snap").unwrap();
+
+        // Assert the profile reinstalls it from the skills dir, canonicalized as discovery does.
+        let held_in = fs::canonicalize(dir.join(".claude/skills")).unwrap();
+        assert_eq!(
+            session.profiles.load("snap").unwrap().entries,
+            [Entry::Skill {
+                source: held_in.to_string_lossy().into(),
+                names: vec!["mine".into()],
+                agents: vec![Agent::Claude],
+            }]
+        );
     });
 }
 

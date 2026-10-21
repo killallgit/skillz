@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
+use crate::model::{Agent, Augmentation, Installer, Kind, Origin, Scope};
 use crate::profile::Entry;
 use crate::subagent_store::{MANIFEST, Manifest, definition_name};
 
@@ -67,6 +67,9 @@ impl Scan<'_> {
             .and_then(|t| definition_name(&t, self.dir.ext))
             .unwrap_or(stem);
         let source = self.manifest.get(&file).map(String::from);
+        let origin = source
+            .as_ref()
+            .map_or_else(|| self.origin(), |_| Origin::default());
         Some(Augmentation {
             hooks: Vec::new(),
             id: format!("subagent:{}:{}:{file}", self.agent, self.scope),
@@ -77,10 +80,18 @@ impl Scan<'_> {
             group: source.clone().unwrap_or_else(|| "local".into()),
             source,
             installer: Installer::Local,
-            origin: Default::default(),
+            origin,
             children: vec![format!("file: {file}")],
             removal: self.removal(&file),
         })
+    }
+
+    /// A definition nothing recorded can still be copied again from the dir it sits in.
+    fn origin(&self) -> Origin {
+        Origin {
+            link: Some(self.dir.path.to_string_lossy().into_owned()),
+            version: None,
+        }
     }
 
     fn removal(&self, file: &str) -> Vec<Action> {
@@ -134,6 +145,24 @@ mod tests {
 
     fn names(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_hand_made_definition_can_be_copied_again_from_its_dir_and_a_recorded_one_is_not_redirected()
+     {
+        let dir = tempfile::tempdir().unwrap();
+        agent_file(dir.path(), "mine.md", "Mine");
+        agent_file(dir.path(), "copied.md", "Copied");
+        fs::write(dir.path().join(MANIFEST), r#"{"copied.md":"o/r"}"#).unwrap();
+
+        let found = discover(&md_dir(dir.path()), Agent::Claude, Scope::Project).unwrap();
+
+        let link = |name: &str| {
+            let item = found.iter().find(|a| a.name == name).unwrap();
+            item.origin.link.clone()
+        };
+        assert_eq!(link("Mine"), Some(dir.path().to_string_lossy().into()));
+        assert_eq!(link("Copied"), None);
     }
 
     #[test]
