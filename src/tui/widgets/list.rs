@@ -34,6 +34,11 @@ impl ListView {
         (self.len > 0).then_some(self.selected)
     }
 
+    /// Move the cursor to `index`, clamped to the last row.
+    pub fn select(&mut self, index: usize) {
+        self.selected = index.min(self.len.saturating_sub(1));
+    }
+
     pub fn offset(&self) -> usize {
         self.offset
     }
@@ -241,6 +246,13 @@ mod tests {
         let mut view = ListView::new(30);
         assert_eq!(view.handle(key(KeyCode::End)), Outcome::Changed);
         assert_eq!(view.selected(), Some(29));
+    }
+
+    #[test]
+    fn select_clamps_to_the_last_row() {
+        let mut list = ListView::new(3);
+        list.select(9);
+        assert_eq!(list.selected(), Some(2));
     }
 
     #[test]

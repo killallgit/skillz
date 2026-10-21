@@ -71,42 +71,6 @@ impl Picked {
     }
 }
 
-/// Interactive terminal prompter backed by the shared tree component and a y/n line prompt.
-pub struct TuiPrompter;
-
-impl Prompter for TuiPrompter {
-    fn multi_select(&self, title: &str, options: &[String]) -> anyhow::Result<Vec<usize>> {
-        let nodes = crate::tree::flat(options);
-        crate::tui::tree_view::pick(title, &nodes)
-    }
-
-    fn select_items(&self, title: &str, nodes: &[Node]) -> anyhow::Result<Vec<usize>> {
-        crate::tui::tree_view::pick(title, nodes)
-    }
-
-    fn browse(&self, title: &str, groups: &[Node]) -> anyhow::Result<Option<(Choice, Picked)>> {
-        crate::tui::tree_view::browse(title, groups)
-    }
-
-    fn home(&self, model: Model, pos: Pos) -> anyhow::Result<(Act, Pos)> {
-        crate::tui::home::run(model, pos)
-    }
-
-    fn confirm(&self, question: &str) -> anyhow::Result<bool> {
-        use std::io::Write;
-        eprint!("{question} [y/N] ");
-        std::io::stderr().flush()?;
-        let mut line = String::new();
-        std::io::stdin().read_line(&mut line)?;
-        Ok(parse_yes(&line))
-    }
-}
-
-/// True only for `y` / `yes`, case-insensitive, surrounding whitespace ignored.
-pub fn parse_yes(answer: &str) -> bool {
-    matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
-}
-
 /// Non-interactive `--yes`: selects every option and confirms everything.
 pub struct AssumeYes;
 
@@ -123,16 +87,6 @@ impl Prompter for AssumeYes {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parse_yes_accepts_only_y_and_yes() {
-        for yes in ["y", "Y", "yes", "YES", " Yes\n"] {
-            assert!(parse_yes(yes), "{yes:?}");
-        }
-        for no in ["", "\n", "n", "no", "yep", "ye s", "yess"] {
-            assert!(!parse_yes(no), "{no:?}");
-        }
-    }
 
     #[test]
     fn assume_yes_selects_all_and_confirms() {

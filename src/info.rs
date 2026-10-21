@@ -26,8 +26,19 @@ impl Installer {
 
 const MAX_CHILDREN: usize = 12;
 
-/// Everything worth knowing about one item.
+const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+
+/// Everything worth knowing about one item: facts, then what it contains, then what removing it
+/// runs; the later sections are left out when empty.
 pub fn item_lines(item: &Augmentation, used: Used, now_ms: u64) -> Vec<String> {
+    let mut lines = fact_lines(item);
+    lines.extend(use_line(used, now_ms));
+    lines.extend(section(contents(item)));
+    lines.extend(section(removal(item)));
+    lines
+}
+
+fn fact_lines(item: &Augmentation) -> Vec<String> {
     let agents: Vec<String> = item.agents.iter().map(|a| a.to_string()).collect();
     let mut lines = vec![
         format!("kind       {}", item.kind),
@@ -35,37 +46,51 @@ pub fn item_lines(item: &Augmentation, used: Used, now_ms: u64) -> Vec<String> {
         format!("agents     {}", agents.join(", ")),
         format!("group      {}", item.group),
     ];
-    if let Some(source) = &item.source {
-        lines.push(format!("source     {source}"));
-    }
+    lines.extend(item.source.iter().map(|s| format!("source     {s}")));
     lines.push(format!("installed  {}", item.installer.describe()));
+    lines
+}
+
+fn use_line(used: Used, now_ms: u64) -> Option<String> {
     match used {
-        Used::NotTracked => {}
-        Used::Never => lines.push("last used  never".into()),
-        Used::At(ms) => {
-            let days = now_ms.saturating_sub(ms) / (24 * 60 * 60 * 1000);
-            lines.push(format!("last used  {days}d ago"));
-        }
+        Used::NotTracked => None,
+        Used::Never => Some("last used  never".into()),
+        Used::At(ms) => Some(format!(
+            "last used  {}d ago",
+            now_ms.saturating_sub(ms) / DAY_MS
+        )),
     }
-    if !item.children.is_empty() {
-        lines.push(String::new());
-        lines.push(format!("contains ({})", item.children.len()));
-        lines.extend(
-            item.children
-                .iter()
-                .take(MAX_CHILDREN)
-                .map(|c| format!("  {c}")),
-        );
-        if item.children.len() > MAX_CHILDREN {
-            lines.push(format!("  … {} more", item.children.len() - MAX_CHILDREN));
-        }
+}
+
+fn contents(item: &Augmentation) -> Vec<String> {
+    if item.children.is_empty() {
+        return vec![];
     }
-    if !item.removal.is_empty() {
-        lines.push(String::new());
-        lines.push("removing it runs".into());
-        lines.extend(item.removal.iter().map(|a| format!("  {}", a.describe())));
+    let shown = item.children.iter().take(MAX_CHILDREN);
+    let mut lines = vec![format!("contains ({})", item.children.len())];
+    lines.extend(shown.map(|c| format!("  {c}")));
+    if item.children.len() > MAX_CHILDREN {
+        lines.push(format!("  … {} more", item.children.len() - MAX_CHILDREN));
     }
     lines
+}
+
+fn removal(item: &Augmentation) -> Vec<String> {
+    if item.removal.is_empty() {
+        return vec![];
+    }
+    let steps = item.removal.iter().map(|a| format!("  {}", a.describe()));
+    std::iter::once("removing it runs".to_string())
+        .chain(steps)
+        .collect()
+}
+
+/// A blank line, then `lines`; nothing when there are none.
+fn section(lines: Vec<String>) -> Vec<String> {
+    if lines.is_empty() {
+        return lines;
+    }
+    std::iter::once(String::new()).chain(lines).collect()
 }
 
 #[cfg(test)]
@@ -97,29 +122,55 @@ mod tests {
         }
     }
 
+    fn count(item: &Augmentation, used: Used) -> usize {
+        item_lines(item, used, 0).len()
+    }
+
     #[test]
-    fn lines_cover_agents_source_children_and_the_removal_plan() {
-        let text = item_lines(&item(), Used::At(0), 3 * 24 * 60 * 60 * 1000).join("\n");
-        for needle in [
-            "claude, codex",
-            "org/repo",
-            "claude plugin",
-            "3d ago",
-            "… 8 more",
-            "uninstall x",
-        ] {
-            assert!(text.contains(needle), "{needle}");
-        }
+    fn long_child_lists_are_cut_to_the_cap_with_a_remainder_line() {
+        let mut few = item();
+        few.children.truncate(MAX_CHILDREN);
+
+        let (all, capped) = (
+            count(&item(), Used::NotTracked),
+            count(&few, Used::NotTracked),
+        );
+
+        // 20 children show MAX_CHILDREN of them plus one "more" line; exactly MAX shows no such line.
+        assert_eq!(all, capped + 1);
+    }
+
+    #[test]
+    fn empty_sections_leave_no_blank_lines() {
+        let mut bare = item();
+        bare.children.clear();
+        bare.removal.clear();
+
+        let lines = item_lines(&bare, Used::NotTracked, 0);
+
+        // Only the facts remain: no blank separator and no section headers.
+        assert!(lines.iter().all(|l| !l.is_empty()));
+        assert_eq!(lines.len(), fact_lines(&bare).len());
     }
 
     #[test]
     fn use_line_only_for_tracked_items() {
-        let has = |u| {
-            item_lines(&item(), u, 0)
-                .iter()
-                .any(|l| l.contains("last used"))
-        };
-        assert!(!has(Used::NotTracked));
-        assert!(has(Used::Never) && has(Used::At(0)));
+        let base = count(&item(), Used::NotTracked);
+
+        let (never, at) = (count(&item(), Used::Never), count(&item(), Used::At(0)));
+
+        // Untracked items add no line; tracked ones add exactly one.
+        assert_eq!((never, at), (base + 1, base + 1));
+    }
+
+    #[test]
+    fn days_since_last_use_are_whole_days() {
+        let at = |now| use_line(Used::At(0), now);
+
+        let (whole, part, next) = (at(3 * DAY_MS), at(3 * DAY_MS + DAY_MS / 2), at(4 * DAY_MS));
+
+        // Three and a half days read the same as three, and differ from four.
+        assert_eq!(whole, part);
+        assert_ne!(part, next);
     }
 }

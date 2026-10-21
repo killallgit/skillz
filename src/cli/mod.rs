@@ -30,15 +30,18 @@ pub use run::run;
 pub use workspace::workspace;
 
 use crate::agents;
-use crate::prompt::{AssumeYes, Prompter, TuiPrompter};
+use crate::prompt::{AssumeYes, Prompter};
 use crate::runner::SystemRunner;
+use crate::tui::prompter::TuiPrompter;
+use crate::tui::theme::Theme;
 
 pub fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let tui = TuiPrompter::new(Theme::detect(&|name| std::env::var(name).ok()));
     let prompter: &dyn Prompter = if cli.command.as_ref().is_some_and(wants_auto_yes) {
         &AssumeYes
     } else {
-        &TuiPrompter
+        &tui
     };
     let claude_config = redirected_dir("CLAUDE_CONFIG_DIR");
     let codex_home = redirected_dir("CODEX_HOME");
