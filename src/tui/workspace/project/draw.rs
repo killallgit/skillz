@@ -67,20 +67,42 @@ impl ProjectTab {
                 total,
             } => {
                 let caret = self.outline.caret(id, &theme.glyphs);
-                Line::from(vec![
+                let mut spans = vec![
                     Span::styled(format!("{caret} {}", kind.title()), theme.title),
                     Span::styled(format!("  {installed} of {total}"), theme.muted),
-                ])
+                ];
+                spans.extend(self.pending_summary(id, theme));
+                Line::from(spans)
             }
             Row::Item(item) => self.item_line(id, item, theme),
         }
     }
 
+    fn pending_summary(&self, section: usize, theme: &Theme) -> Option<Span<'static>> {
+        let items = self.rows[section + 1..].iter().map_while(|row| match row {
+            Row::Item(item) => Some(item),
+            Row::Section { .. } => None,
+        });
+        let counts = self.pending.counts(items);
+        let text = match (counts.install, counts.remove) {
+            (0, 0) => return None,
+            (install, 0) => format!("{install} to install"),
+            (0, remove) => format!("{remove} to remove"),
+            (install, remove) => format!("{install} to install, {remove} to remove"),
+        };
+        Some(Span::styled(format!("  {text}"), theme.accent))
+    }
+
     fn item_line(&self, id: usize, item: &Item, theme: &Theme) -> Line<'static> {
         let glyphs = &theme.glyphs;
-        let (box_glyph, box_style, text_style) = match item.state {
-            State::Installed(_) => (glyphs.checked, theme.ok, theme.text),
-            State::Available(_) => (glyphs.unchecked, theme.muted, theme.muted),
+        let picked = self.pending.contains(&item.state);
+        let (box_glyph, box_style, text_style, note) = match (&item.state, picked) {
+            (State::Installed(_), false) => (glyphs.checked, theme.ok, theme.text, ""),
+            (State::Available(_), false) => (glyphs.unchecked, theme.muted, theme.muted, ""),
+            (State::Installed(_), true) => (glyphs.to_remove, theme.warn, theme.warn, "to remove"),
+            (State::Available(_), true) => {
+                (glyphs.to_install, theme.accent, theme.accent, "to install")
+            }
         };
         let mut spans = vec![Span::styled(
             format!("{ITEM_INDENT}{box_glyph} "),
@@ -95,6 +117,9 @@ impl ProjectTab {
         ));
         if !item.detail.is_empty() {
             spans.push(Span::styled(format!("  {}", item.detail), theme.muted));
+        }
+        if picked {
+            spans.push(Span::styled(format!("  {note}"), text_style));
         }
         Line::from(spans)
     }

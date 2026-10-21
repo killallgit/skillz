@@ -31,7 +31,7 @@ impl Applier<'_> {
         Ok(Done { removed, installed })
     }
 
-    fn remove_unwanted(
+    pub(super) fn remove_unwanted(
         &self,
         switch: &Switch,
         runner: &dyn CommandRunner,

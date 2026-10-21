@@ -10,8 +10,11 @@ pub(super) enum Notice {
     UpToDate,
     /// A dry run: nothing changed.
     DryRun(usize),
-    Installed(String),
-    Removed(String),
+    /// How many items a batch installed and removed.
+    Changed {
+        installed: usize,
+        removed: usize,
+    },
     Applied(String),
     LibraryAdded(String),
     LibraryRemoved(String),
@@ -36,8 +39,9 @@ impl fmt::Display for Notice {
             Notice::Failed(message) => f.write_str(message),
             Notice::UpToDate => f.write_str("already up to date"),
             Notice::DryRun(steps) => write!(f, "dry run: {steps} steps, nothing changed"),
-            Notice::Installed(what) => write!(f, "installed {what}"),
-            Notice::Removed(what) => write!(f, "removed {what}"),
+            Notice::Changed { installed, removed } => {
+                write!(f, "installed {installed}, removed {removed}")
+            }
             Notice::Applied(profile) => write!(f, "applied {profile}"),
             Notice::LibraryAdded(what) => write!(f, "added {what} to the library"),
             Notice::LibraryRemoved(what) => write!(f, "removed {what} from the library"),

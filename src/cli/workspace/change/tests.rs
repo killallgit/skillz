@@ -3,11 +3,13 @@ use std::path::Path;
 
 use super::*;
 use crate::agents::registry;
+use crate::cli::scope::installed;
 use crate::install::test_support::{FakeRunner, ScriptedPrompter};
 use crate::model::Agent;
+use crate::profile::{Entry, Profile};
 
 /// A project with one skill installed the way `npx skills` leaves it.
-fn project_with_skill(dir: &Path, name: &str) {
+pub(super) fn project_with_skill(dir: &Path, name: &str) {
     let real = dir.join(".agents/skills").join(name);
     fs::create_dir_all(&real).unwrap();
     fs::write(
@@ -21,7 +23,7 @@ fn project_with_skill(dir: &Path, name: &str) {
     fs::write(dir.join("skills-lock.json"), lock.to_string()).unwrap();
 }
 
-fn skill_entry(name: &str) -> Entry {
+pub(super) fn skill_entry(name: &str) -> Entry {
     Entry::Skill {
         source: "o/r".into(),
         names: vec![name.into()],
@@ -29,7 +31,7 @@ fn skill_entry(name: &str) -> Entry {
     }
 }
 
-fn run_change(
+pub(super) fn run_change(
     dir: &Path,
     approve: bool,
     what: &Change,
@@ -41,73 +43,12 @@ fn run_change(
     (result, runner)
 }
 
-fn skill_id(dir: &Path) -> String {
+pub(super) fn skill_id(dir: &Path) -> String {
     let runner = FakeRunner::new(|_| {});
     let prompter = ScriptedPrompter::new(&[], true);
     let deps = Deps::for_test(dir, registry(), (&runner, &prompter));
     let env = project_env(&deps, dir);
     installed(&deps, &env, Scope::Project)[0].id.clone()
-}
-
-#[test]
-fn removing_an_approved_item_deletes_it_and_says_so() {
-    let dir = tempfile::tempdir().unwrap();
-    project_with_skill(dir.path(), "tdd");
-    let id = skill_id(dir.path());
-
-    let (result, _) = run_change(dir.path(), true, &Change::Remove(&id));
-
-    assert!(matches!(result.unwrap(), Some(Notice::Removed(_))));
-    assert!(!dir.path().join(".agents/skills/tdd").exists());
-}
-
-#[test]
-fn a_declined_plan_changes_nothing_and_reports_nothing() {
-    let dir = tempfile::tempdir().unwrap();
-    project_with_skill(dir.path(), "tdd");
-    let id = skill_id(dir.path());
-
-    let (result, _) = run_change(dir.path(), false, &Change::Remove(&id));
-
-    assert!(result.unwrap().is_none());
-    assert!(dir.path().join(".agents/skills/tdd").exists());
-}
-
-#[test]
-fn removing_something_already_gone_is_an_error() {
-    let dir = tempfile::tempdir().unwrap();
-
-    let (result, _) = run_change(dir.path(), true, &Change::Remove("skill:gone"));
-
-    assert!(result.is_err());
-}
-
-#[test]
-fn installing_an_entry_runs_its_install_steps() {
-    let dir = tempfile::tempdir().unwrap();
-    let entry = skill_entry("tdd");
-
-    let (result, runner) = run_change(dir.path(), true, &Change::Install(&entry));
-
-    assert!(matches!(result.unwrap(), Some(Notice::Installed(_))));
-    assert!(
-        runner
-            .calls()
-            .iter()
-            .any(|(_, args, _)| args.contains(&"add".to_string()))
-    );
-}
-
-#[test]
-fn installing_what_is_already_there_needs_no_plan() {
-    let dir = tempfile::tempdir().unwrap();
-    project_with_skill(dir.path(), "tdd");
-    let entry = skill_entry("tdd");
-
-    let (result, runner) = run_change(dir.path(), true, &Change::Install(&entry));
-
-    assert!(matches!(result.unwrap(), Some(Notice::UpToDate)));
-    assert!(runner.calls().is_empty());
 }
 
 #[test]

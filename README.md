@@ -184,12 +184,15 @@ at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
 - **Project**: what the directory has installed, grouped as Skills, Plugins, MCP servers, Hooks and
   Subagents with `n of m` counts, followed in each group by library items it does not have yet
   (shown unchecked). A header shows the directory and how it compares with a profile you chose:
-  matching, or `N missing` / `N extra`.
+  matching, or `N missing` / `N extra`. Picked rows get their own marker and a `to install` /
+  `to remove` note, and each group shows its count of picks.
 - **Library** and **Profiles**: placeholders for now.
 
 | Key | Does |
 | --- | --- |
-| `space`, `enter` | install the library item / remove the installed item under the cursor (on a group header: open or close it) |
+| `space` | pick the item under the cursor: a library item to install, an installed item to remove; again to unpick (on a group header: open or close it) |
+| `enter` | apply all picks as one change, with one plan to review; with nothing picked, open or close the group |
+| `esc` | clear the picks (with none, clear the filter) |
 | `p` | choose the profile the header compares with |
 | `a` | install what the chosen profile has that the project lacks |
 | `←` `→`, `h` `l` | close / open a group (`←` on an item jumps to its group) |
