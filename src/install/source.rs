@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::clone::with_tmp_clone;
+use crate::clone::{check_source, with_tmp_clone};
 use crate::runner::{CommandRunner, run_checked};
 
 /// Where an install source is fetched from and how.
@@ -21,10 +21,7 @@ pub(super) fn with_source(
     f: impl FnOnce(&Path, &str) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
     let source = fetch.source;
-    // Sources are passed as positional args to git/npx/claude; a leading `-` would be an option.
-    if source.trim().is_empty() || source.starts_with('-') {
-        anyhow::bail!("invalid source: {source}");
-    }
+    check_source(source)?;
     let local = fetch.cwd.join(source);
     if local.exists() {
         return f(&local, &local.to_string_lossy());

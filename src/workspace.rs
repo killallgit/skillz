@@ -1,12 +1,12 @@
 //! The projects skillz knows about, kept in `<skillz dir>/workspace.toml`. Which profile each
 //! one has loaded lives in the `apply::Ledger`; profiles themselves in `profile::Store`.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use crate::read_optional::read_optional;
 use crate::atomic::write_atomic;
 use crate::env::Env;
 
@@ -30,11 +30,10 @@ impl Workspace {
     }
 
     fn read(&self) -> anyhow::Result<File> {
-        match fs::read_to_string(&self.path) {
-            Ok(text) => toml_edit::de::from_str(&text)
+        match read_optional(&self.path)? {
+            Some(text) => toml_edit::de::from_str(&text)
                 .with_context(|| format!("invalid {}", self.path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(File::default()),
-            Err(e) => Err(e).with_context(|| format!("reading {}", self.path.display())),
+            None => Ok(File::default()),
         }
     }
 
@@ -84,6 +83,7 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn ws() -> (tempfile::TempDir, Workspace) {
         let dir = tempfile::tempdir().unwrap();

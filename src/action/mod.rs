@@ -2,7 +2,6 @@
 
 mod edit;
 mod execute;
-mod files;
 mod json;
 mod removal_target;
 mod stage;

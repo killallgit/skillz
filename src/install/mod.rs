@@ -175,11 +175,11 @@ mod tests {
         let (prog, args, cwd) = &calls[0];
         assert_eq!(prog, "git");
         assert_eq!(
-            args[..4],
-            s(&["clone", "--depth", "1", "https://github.com/org/repo.git"])
+            args[..5],
+            s(&["clone", "--depth", "1", "--", "https://github.com/org/repo.git"])
         );
         assert_eq!(cwd, &fx.env.project);
-        assert!(!Path::new(&args[4]).exists(), "tmp clone removed");
+        assert!(!Path::new(&args[5]).exists(), "tmp clone removed");
         assert_eq!(
             calls[1].1,
             npx("org/repo", &["--skill", "tdd", "-a", "codex", "-g", "-y"])

@@ -49,24 +49,28 @@ pub fn add_command(
     agents: &[Agent],
     scope: Scope,
 ) -> (String, Vec<String>) {
-    let mut args: Vec<String> = ["-y", "skills", "add", source].map(String::from).to_vec();
+    let mut args = skills_args(&["add", source]);
     for s in skills {
         args.extend(["--skill".into(), s.clone()]);
     }
-    for a in agents {
-        args.extend(["-a".into(), a.npx_id().into()]);
-    }
-    if scope == Scope::Global {
-        args.push("-g".into());
-    }
-    args.push("-y".into());
-    ("npx".into(), args)
+    finish(args, agents, scope)
 }
 
 /// `npx -y skills remove <name> -a <agent>... [-g] -y`: the CLI's own uninstall, which also
 /// drops the lock entry.
 pub fn remove_command(name: &str, agents: &[Agent], scope: Scope) -> (String, Vec<String>) {
-    let mut args: Vec<String> = ["-y", "skills", "remove", name].map(String::from).to_vec();
+    finish(skills_args(&["remove", name]), agents, scope)
+}
+
+fn skills_args(subcommand: &[&str]) -> Vec<String> {
+    ["-y", "skills"]
+        .iter()
+        .chain(subcommand)
+        .map(|a| a.to_string())
+        .collect()
+}
+
+fn finish(mut args: Vec<String>, agents: &[Agent], scope: Scope) -> (String, Vec<String>) {
     for a in agents {
         args.extend(["-a".into(), a.npx_id().into()]);
     }

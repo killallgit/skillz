@@ -65,7 +65,7 @@ pub(super) struct FilePlan {
 
 impl FilePlan {
     fn open(file: &Path, edit: &Edit) -> anyhow::Result<Self> {
-        let existing = super::files::read_existing(file)?;
+        let existing = crate::read_optional::read_optional(file)?;
         let texts = match (existing, edit) {
             (Some(text), _) => Some(Texts {
                 before: Some(text.clone()),

@@ -25,6 +25,7 @@ pub mod profile;
 pub mod prompt;
 pub mod provision;
 pub mod prune;
+pub mod read_optional;
 pub mod redact;
 pub mod remove;
 pub mod review;

@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
+use crate::read_optional::read_optional;
 use crate::atomic::write_atomic;
-use crate::clone::with_tmp_clone;
+use crate::clone::{check_source, with_tmp_clone};
 use crate::fswalk;
 use crate::redact::redact_text;
 use crate::runner::{Cmd, CommandRunner};
@@ -25,12 +26,11 @@ impl Manifest {
     /// error, not an empty one, so writing back never discards what it recorded.
     pub(crate) fn read(dir: &Path) -> anyhow::Result<Self> {
         let path = dir.join(MANIFEST);
-        match fs::read_to_string(&path) {
-            Ok(text) => serde_json::from_str(&text)
+        match read_optional(&path)? {
+            Some(text) => serde_json::from_str(&text)
                 .map(Manifest)
                 .with_context(|| format!("invalid {}", path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Manifest::default()),
-            Err(e) => Err(e).with_context(|| format!("reading {}", path.display())),
+            None => Ok(Manifest::default()),
         }
     }
 
@@ -96,6 +96,7 @@ pub struct CopyRequest<'a> {
 /// `names` into `to` and record their source. Refuses to overwrite a file skillz did not put
 /// there. Returns the files written.
 pub fn copy(runner: &dyn CommandRunner, req: &CopyRequest) -> anyhow::Result<Vec<PathBuf>> {
+    check_source(req.source)?;
     let local = req.cwd.join(req.source);
     if local.is_dir() {
         return copy_from(&local, req);

@@ -13,36 +13,39 @@ pub fn add_hook(text: &str, format: Format, hook: &HookEntry) -> anyhow::Result<
     if format == Format::Toml {
         bail!("adding a hook to a TOML config is not supported");
     }
-    edit_json(text, |doc| insert(doc, hook))
+    edit_json(text, |doc| {
+        insert(doc, hook);
+    })
 }
 
-fn insert(doc: &mut Value, hook: &HookEntry) {
-    let Some(root) = doc.as_object_mut() else {
-        return;
-    };
-    let events = object_at(root, "hooks");
-    let groups = array_at(events, &hook.event);
+fn insert(doc: &mut Value, hook: &HookEntry) -> Option<()> {
+    let events = object_at(doc.as_object_mut()?, "hooks")?;
+    let groups = array_at(events, &hook.event)?;
     let matcher = hook.matcher.as_deref().unwrap_or("");
     match groups.iter_mut().find(|g| matcher_of(g) == matcher) {
         Some(group) => add_handler(group, &hook.command),
         None => groups.push(new_group(hook)),
     }
+    Some(())
 }
 
-fn object_at<'a>(parent: &'a mut Map<String, Value>, key: &str) -> &'a mut Map<String, Value> {
+fn object_at<'a>(
+    parent: &'a mut Map<String, Value>,
+    key: &str,
+) -> Option<&'a mut Map<String, Value>> {
     let slot = parent.entry(key).or_insert_with(|| json!({}));
     if !slot.is_object() {
         *slot = json!({});
     }
-    slot.as_object_mut().expect("just made an object")
+    slot.as_object_mut()
 }
 
-fn array_at<'a>(parent: &'a mut Map<String, Value>, key: &str) -> &'a mut Vec<Value> {
+fn array_at<'a>(parent: &'a mut Map<String, Value>, key: &str) -> Option<&'a mut Vec<Value>> {
     let slot = parent.entry(key).or_insert_with(|| json!([]));
     if !slot.is_array() {
         *slot = json!([]);
     }
-    slot.as_array_mut().expect("just made an array")
+    slot.as_array_mut()
 }
 
 fn matcher_of(group: &Value) -> &str {
@@ -53,7 +56,9 @@ fn add_handler(group: &mut Value, command: &str) {
     let Some(group) = group.as_object_mut() else {
         return;
     };
-    let handlers = array_at(group, "hooks");
+    let Some(handlers) = array_at(group, "hooks") else {
+        return;
+    };
     let present = handlers
         .iter()
         .any(|h| h.get("command").and_then(Value::as_str) == Some(command));
