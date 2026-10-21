@@ -63,11 +63,14 @@ fn run_uninstall(deps: &Deps, args: UninstallArgs, out: &mut dyn Write) -> anyho
     uninstall(&scene, &request, out)
 }
 
-/// Acts on the one project: `-p`, or a path as the target, or the current directory.
+/// Acts on the one project: `-p`, or a path as the target, or the current directory; with `-g`
+/// on the user's installs instead.
 fn run_update(deps: &Deps, args: UpdateArgs, out: &mut dyn Write) -> anyhow::Result<()> {
     let (path, query) = split_target(args.project, args.target);
     let env = resolve_project(deps, path.as_deref())?;
-    let scene = Scene::new(deps, &env, &[Scope::Project], &args.filter);
+    let scope = scope_of(args.filter.global);
+    let scopes = [scope];
+    let scene = Scene::new(deps, &env, &scopes, &args.filter);
     if args.check {
         return check(&scene, query.as_deref(), args.json, out);
     }
@@ -75,6 +78,7 @@ fn run_update(deps: &Deps, args: UpdateArgs, out: &mut dyn Write) -> anyhow::Res
         query: query.as_deref(),
         yes: args.yes,
         dry_run: args.dry_run,
+        scope,
     };
     update(&scene, &request, out)
 }
@@ -111,6 +115,7 @@ fn run_use(deps: &Deps, args: UseArgs, out: &mut dyn Write) -> anyhow::Result<()
 
 fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
     let env = resolve_project(deps, args.project.as_deref())?;
+    let scope = scope_of(args.global);
     let request = InstallRequest {
         source: args.source,
         cwd: deps.cwd.clone(),
@@ -119,7 +124,7 @@ fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
         } else {
             args.agents
         },
-        scope: Scope::Project,
+        scope,
         selection: skill_selection(args.all, args.skill),
     };
     let ctx = install::Ctx {
@@ -129,11 +134,19 @@ fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
         prompter: deps.prompter,
     };
     let store = Store::in_env(&env);
-    let before = installed(deps, &env, Scope::Project);
+    let before = installed(deps, &env, scope);
     let result = install::install(&ctx, &request);
-    let recorded = record_since(deps, &store, (&env, Scope::Project), &before);
+    let recorded = record_since(deps, &store, (&env, scope), &before);
     result?;
     recorded.context("installed, but the library was not updated")
+}
+
+fn scope_of(global: bool) -> Scope {
+    if global {
+        Scope::Global
+    } else {
+        Scope::Project
+    }
 }
 
 fn skill_selection(all: bool, skills: Vec<String>) -> SkillSelection {
