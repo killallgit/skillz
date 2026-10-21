@@ -229,12 +229,13 @@ fn list_lines(w: &World, target: Option<&str>, all: bool) -> Vec<String> {
     String::from_utf8(out)
         .unwrap()
         .lines()
+        .filter(|l| !l.is_empty() && !l.starts_with("NAME"))
         .map(Into::into)
         .collect()
 }
 
 fn is_top_level(line: &str) -> bool {
-    !line.starts_with(['├', '└', '│', ' '])
+    !line.starts_with(' ')
 }
 
 #[test]
@@ -673,8 +674,10 @@ fn list_items_picking(w: &World, query: &str, pick: Option<Vec<usize>>, json: bo
             .unwrap()
             .len();
     }
-    // Items are the depth-1 tree lines; their children are indented under `│` or spaces.
-    text.lines().filter(|l| l.starts_with(['├', '└'])).count()
+    // Items are the depth-1 rows: indented by two spaces, their details by four.
+    text.lines()
+        .filter(|l| l.starts_with("  ") && !l.starts_with("   "))
+        .count()
 }
 
 #[test]

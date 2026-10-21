@@ -6,10 +6,16 @@ use crate::model::{Augmentation, Kind, Scope};
 const LOCAL: &str = "local";
 const LOCAL_LABEL: &str = "local files (no source)";
 
+/// Table columns after the name, shared by the terminal list and the plain output.
+pub const COLUMNS: [&str; 4] = ["KIND", "AGENTS", "SCOPE", "ITEMS"];
+
 /// A display tree node.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Node {
+    /// The row's name; group rows read like `source` or `claude hooks`.
     pub label: String,
+    /// The table columns after the name, as `COLUMNS` lists them.
+    pub cells: [String; COLUMNS.len()],
     pub children: Vec<Node>,
     /// Index into `build`'s input for item rows; `None` for group headers and detail leaves.
     pub item: Option<usize>,
@@ -29,9 +35,7 @@ impl Node {
         };
         Node {
             label,
-            children: vec![],
-            item: None,
-            scope: None,
+            ..Node::default()
         }
     }
 }
@@ -50,21 +54,10 @@ pub fn build(items: &[Augmentation]) -> Vec<Node> {
     let mut groups: Vec<_> = groups.into_iter().collect();
     groups
         .sort_by_key(|((scope, group), _)| (*scope != scope_key(Scope::Project), *group != LOCAL));
-    let mut nodes: Vec<(Node, usize)> = groups
+    groups
         .into_iter()
         .map(|((_, group), members)| group_node(group, members))
-        .collect();
-    // Pad names so the scope and count columns line up down the list.
-    let width = nodes
-        .iter()
-        .map(|(n, _)| n.label.chars().count())
-        .max()
-        .unwrap_or(0);
-    nodes.iter_mut().for_each(|(n, total)| {
-        let scope = n.scope.map(scope_key).unwrap_or_default();
-        n.label = format!("{:<width$}  {scope:<7}  {total:>4}", n.label);
-    });
-    nodes.into_iter().map(|(n, _)| n).collect()
+        .collect()
 }
 
 fn scope_key(scope: Scope) -> &'static str {
@@ -74,8 +67,8 @@ fn scope_key(scope: Scope) -> &'static str {
     }
 }
 
-/// The header node plus its item count. A group of lone marketplaces counts their plugins.
-fn group_node(group: &str, members: Vec<(usize, &Augmentation)>) -> (Node, usize) {
+/// The group's header row. Its count is items; a group of lone marketplaces counts their plugins.
+fn group_node(group: &str, members: Vec<(usize, &Augmentation)>) -> Node {
     let (marketplaces, mut rest): (Vec<_>, Vec<_>) = members
         .iter()
         .copied()
@@ -107,18 +100,55 @@ fn group_node(group: &str, members: Vec<(usize, &Augmentation)>) -> (Node, usize
     } else {
         rest.into_iter().map(|(i, a)| item_node(i, a)).collect()
     };
-    let node = Node {
+    let scope = members[0].1.scope;
+    Node {
         label,
+        cells: [
+            String::new(),
+            String::new(),
+            scope_key(scope).into(),
+            count.to_string(),
+        ],
         children,
         item: None,
-        scope: Some(members[0].1.scope),
-    };
-    (node, count)
+        scope: Some(scope),
+    }
+}
+
+/// One top-level node per label, each an item with the label's position as its index: the
+/// shape a flat picker needs.
+pub fn flat(labels: &[String]) -> Vec<Node> {
+    labels
+        .iter()
+        .enumerate()
+        .map(|(i, l)| Node {
+            label: l.clone(),
+            item: Some(i),
+            ..Node::default()
+        })
+        .collect()
+}
+
+/// Every item row under `nodes` (preorder) with its `Node::item` index and label.
+pub fn items(nodes: &[Node]) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    for n in nodes {
+        out.extend(n.item.map(|i| (i, n.label.clone())));
+        out.extend(items(&n.children));
+    }
+    out
 }
 
 fn item_node(index: usize, item: &Augmentation) -> Node {
+    let agents: Vec<String> = item.agents.iter().map(|a| a.to_string()).collect();
     Node {
-        label: item.label(false),
+        label: item.name.clone(),
+        cells: [
+            item.kind.to_string(),
+            agents.join(","),
+            item.scope.to_string(),
+            String::new(),
+        ],
         children: item.children.iter().map(Node::leaf).collect(),
         item: Some(index),
         scope: None,
@@ -136,31 +166,105 @@ pub fn collapse(nodes: Vec<Node>) -> Vec<Node> {
         .collect()
 }
 
-/// Render as a box-drawing text tree (`├──`, `└──`, `│`).
+/// Column widths for a set of rows: the name column (indent included) and each cell column.
+/// A column no row fills has width 0 and is left out of the header and the rows.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Widths {
+    name: usize,
+    cells: [usize; COLUMNS.len()],
+}
+
+impl Widths {
+    /// `extra` columns are reserved before each name (the terminal list's expand caret).
+    pub fn of(nodes: &[Node], extra: usize) -> Self {
+        let mut w = Widths::default();
+        w.add(nodes, 0, extra);
+        for (width, title) in w.cells.iter_mut().zip(COLUMNS) {
+            if *width > 0 {
+                *width = (*width).max(title.len());
+            }
+        }
+        w
+    }
+
+    fn add(&mut self, nodes: &[Node], depth: usize, extra: usize) {
+        for n in nodes {
+            // Detail leaves have no cells and may be long, so they never set a width.
+            if n.cells.iter().any(|c| !c.is_empty()) || n.item.is_some() {
+                self.name = self.name.max(2 * depth + extra + n.label.chars().count());
+                for (w, c) in self.cells.iter_mut().zip(&n.cells) {
+                    *w = (*w).max(c.chars().count());
+                }
+            }
+            self.add(&n.children, depth + 1, extra);
+        }
+    }
+
+    /// The header line.
+    pub fn header(&self) -> String {
+        self.join("NAME", &COLUMNS.map(String::from))
+    }
+
+    /// One row: `prefix` (indent, caret) and `node`'s name padded to the name column, then the
+    /// cells. A detail leaf is just its text.
+    pub fn row(&self, prefix: &str, node: &Node) -> String {
+        self.line(prefix, &node.label, &node.cells, node.item.is_none())
+    }
+
+    /// `row` from a node's parts; `maybe_detail` rows without cells print as plain text.
+    pub fn line(
+        &self,
+        prefix: &str,
+        label: &str,
+        cells: &[String; COLUMNS.len()],
+        maybe_detail: bool,
+    ) -> String {
+        if maybe_detail && cells.iter().all(String::is_empty) {
+            return format!("{prefix}{label}");
+        }
+        self.join(&format!("{prefix}{label}"), cells)
+    }
+
+    fn join(&self, name: &str, cells: &[String]) -> String {
+        let mut line = format!("{name:<w$}", w = self.name);
+        for (i, (w, c)) in self.cells.iter().zip(cells).enumerate() {
+            if *w == 0 {
+                continue;
+            }
+            // Counts are numbers: right-aligned.
+            if i == COLUMNS.len() - 1 {
+                line.push_str(&format!("  {c:>w$}"));
+            } else {
+                line.push_str(&format!("  {c:<w$}"));
+            }
+        }
+        line.trim_end().to_string()
+    }
+}
+
+/// Render as an aligned table with a header row; a blank line separates the project groups
+/// from the global ones. Children are indented under their group.
 pub fn render(nodes: &[Node]) -> String {
-    let mut out = String::new();
+    if nodes.is_empty() {
+        return String::new();
+    }
+    let widths = Widths::of(nodes, 0);
+    let mut out = format!("{}\n", widths.header());
     for (i, node) in nodes.iter().enumerate() {
         // Blank line between the project groups and the global ones.
         if i > 0 && nodes[i - 1].scope != node.scope {
             out.push('\n');
         }
-        out.push_str(&node.label);
-        out.push('\n');
-        render_children(&node.children, "", &mut out);
+        render_rows(&widths, node, 0, &mut out);
     }
     out
 }
 
-fn render_children(nodes: &[Node], prefix: &str, out: &mut String) {
-    for (i, node) in nodes.iter().enumerate() {
-        let last = i + 1 == nodes.len();
-        let (branch, indent) = if last {
-            ("└── ", "    ")
-        } else {
-            ("├── ", "│   ")
-        };
-        out.push_str(&format!("{prefix}{branch}{}\n", node.label));
-        render_children(&node.children, &format!("{prefix}{indent}"), out);
+fn render_rows(widths: &Widths, node: &Node, depth: usize, out: &mut String) {
+    out.push_str(&widths.row(&"  ".repeat(depth), node));
+    out.push('\n');
+    for child in &node.children {
+        render_rows(widths, child, depth + 1, out);
     }
 }
 
@@ -237,9 +341,14 @@ mod tests {
             aug("c", Kind::Skill, "g", None, &[]),
             p,
         ]);
-        assert_eq!(nodes[0].label.len(), nodes[1].label.len());
-        assert!(nodes[0].label.ends_with("   1"));
-        assert!(nodes[1].label.ends_with("   2"));
+        assert_eq!(nodes[0].cells[3], "1");
+        assert_eq!(nodes[1].cells[3], "2");
+        // Scope and count columns start at the same offset on every row, header included.
+        let text = render(&collapse(nodes.clone()));
+        let at = |l: &str, w: &str| l.find(w).unwrap();
+        let lines: Vec<&str> = text.lines().filter(|l| !l.is_empty()).collect();
+        assert_eq!(at(lines[0], "SCOPE"), at(lines[1], "project"));
+        assert_eq!(at(lines[0], "SCOPE"), at(lines[2], "global"));
     }
 
     #[test]
@@ -296,7 +405,7 @@ mod tests {
         let collapsed = collapse(nodes.clone());
         assert_eq!(collapsed.len(), nodes.len());
         assert!(collapsed.iter().all(|n| n.children.is_empty()));
-        assert_eq!(render(&collapsed).lines().count(), 2);
+        assert_eq!(render(&collapsed).lines().count(), 3);
     }
 
     #[test]
@@ -315,8 +424,9 @@ mod tests {
         let text = render(&nodes);
         assert!(text.ends_with('\n'));
         let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(lines.len(), 8);
-        for (line, name) in lines
+        assert_eq!(lines.len(), 9);
+        assert!(lines[0].starts_with("NAME"));
+        for (line, name) in lines[1..]
             .iter()
             .zip(["hooks", "rtk", "mp", "p@mp", "s1", "s2", "q@mp", "s3"])
         {

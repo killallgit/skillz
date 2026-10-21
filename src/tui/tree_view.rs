@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Clear, List, ListState};
 use super::{FilterKey, Mark, draw_list, event_loop, filter_key, is_ctrl_c, step_cursor};
 use crate::matcher::fuzzy_rank;
 use crate::prompt::{Choice, Picked};
-use crate::tree::Node;
+use crate::tree::{COLUMNS, Node, Widths};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
@@ -31,6 +31,7 @@ const MENU: [(&str, Option<Choice>); 3] = [
 #[derive(Debug, Clone)]
 struct Row {
     label: String,
+    cells: [String; COLUMNS.len()],
     depth: usize,
     parent: Option<usize>,
     has_children: bool,
@@ -42,6 +43,7 @@ fn flatten(nodes: &[Node], depth: usize, parent: Option<usize>, rows: &mut Vec<R
         let id = rows.len();
         rows.push(Row {
             label: node.label.clone(),
+            cells: node.cells.clone(),
             depth,
             parent,
             has_children: !node.children.is_empty(),
@@ -64,6 +66,9 @@ pub struct TreeState {
     visible: Vec<usize>,
     /// Cursor into `MENU` while the action menu is open.
     menu: Option<usize>,
+    /// A picker: Enter accepts the marks directly instead of opening the action menu.
+    pick: bool,
+    widths: Widths,
 }
 
 impl TreeState {
@@ -79,9 +84,19 @@ impl TreeState {
             filtering: false,
             visible: vec![],
             menu: None,
+            pick: false,
+            widths: Widths::of(nodes, 2),
         };
         state.refresh();
         state
+    }
+
+    /// The same tree as a picker: Enter accepts the marked rows (or the row under the cursor).
+    pub fn picker(nodes: &[Node]) -> Self {
+        TreeState {
+            pick: true,
+            ..Self::new(nodes)
+        }
     }
 
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
@@ -110,6 +125,9 @@ impl TreeState {
             KeyCode::Char('x') | KeyCode::Tab => self.toggle_mark(),
             KeyCode::Char('i') => return self.current().map_or(Outcome::Continue, Outcome::Info),
             KeyCode::Enter if self.current().is_some() || !self.marks.is_empty() => {
+                if self.pick {
+                    return Outcome::Accept(Choice::Remove, self.picked());
+                }
                 self.menu = Some(0)
             }
             KeyCode::Esc if !self.filter.is_empty() => {
@@ -286,23 +304,34 @@ impl TreeState {
                     (true, true) => "▾",
                     (true, false) => "▸",
                 };
-                format!(
-                    "{}{}{caret} {}",
-                    self.mark(id).column(),
-                    "  ".repeat(row.depth),
-                    row.label
-                )
+                let prefix = format!("{}{caret} ", "  ".repeat(row.depth));
+                let text = self
+                    .widths
+                    .line(&prefix, &row.label, &row.cells, row.item.is_none());
+                format!("{}{text}", self.mark(id).column())
             })
             .collect();
         let footer = if self.filtering {
             format!("/{}", self.filter)
         } else {
+            let enter = if self.pick {
+                "enter confirm"
+            } else {
+                "enter actions"
+            };
             format!(
-                "↑↓/jk move · space/→← expand · x/tab mark · i info · enter actions · / filter · q quit  {}",
+                "↑↓/jk move · space/→← expand · x/tab mark · i info · {enter} · / filter · q quit  {}",
                 self.filter
             )
         };
-        let body = draw_list(frame, title, rows, self.cursor, footer);
+        let body = draw_list(
+            frame,
+            title,
+            &format!("  {}", self.widths.header()),
+            rows,
+            self.cursor,
+            footer,
+        );
 
         if let Some(at) = self.menu {
             let [area] = Layout::vertical([Constraint::Length(MENU.len() as u16 + 2)])
@@ -338,6 +367,20 @@ pub fn browse(title: &str, nodes: &[Node]) -> anyhow::Result<Option<(Choice, Pic
     )
 }
 
+/// Pick items from `nodes` (marking groups or items); the chosen `Node::item` indices,
+/// ascending. Empty when the user quits.
+pub fn pick(title: &str, nodes: &[Node]) -> anyhow::Result<Vec<usize>> {
+    event_loop(
+        &mut TreeState::picker(nodes),
+        |s, f| s.draw(title, f),
+        |s, k| match s.handle(k) {
+            Outcome::Continue | Outcome::Info(_) => None,
+            Outcome::Quit => Some(vec![]),
+            Outcome::Accept(_, picked) => Some(picked.item_indices(nodes)),
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -350,7 +393,7 @@ mod tests {
             label: label.into(),
             children,
             item,
-            scope: None,
+            ..Node::default()
         }
     }
 
@@ -527,5 +570,39 @@ mod tests {
         assert_eq!(s.mark(1), Mark::All);
         feed(&mut s, keys("kx"));
         assert_eq!(s.mark(0), Mark::All);
+    }
+
+    #[test]
+    fn picker_enter_accepts_marks_without_the_menu() {
+        let nodes = sample();
+        let mut s = TreeState::picker(&nodes);
+        // Mark group g0 (all its items), expand nothing, accept.
+        for k in keys("x") {
+            assert_eq!(s.handle(k), Outcome::Continue);
+        }
+        let Outcome::Accept(_, picked) = s.handle(key(KeyCode::Enter)) else {
+            panic!("enter accepts in a picker");
+        };
+        assert_eq!(picked.item_indices(&nodes), [0, 1]);
+        // With no marks, Enter takes the row under the cursor.
+        let mut s = TreeState::picker(&nodes);
+        let Outcome::Accept(_, picked) = s.handle(key(KeyCode::Enter)) else {
+            panic!("enter accepts in a picker");
+        };
+        assert_eq!(picked.item_indices(&nodes), [0, 1]);
+    }
+
+    #[test]
+    fn flat_options_pick_by_position() {
+        let nodes = crate::tree::flat(&["a".into(), "b".into(), "c".into()]);
+        let mut s = TreeState::picker(&nodes);
+        for k in keys("jx") {
+            s.handle(k);
+        }
+        let Outcome::Accept(_, picked) = s.handle(key(KeyCode::Enter)) else {
+            panic!("enter accepts in a picker");
+        };
+        assert_eq!(picked.item_indices(&nodes), [1]);
+        assert_eq!(crate::tree::items(&nodes).len(), 3);
     }
 }

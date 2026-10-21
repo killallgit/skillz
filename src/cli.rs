@@ -565,13 +565,13 @@ fn uninstall(
             candidates.len()
         );
     }
-    let labels: Vec<String> = candidates.iter().map(|c| c.label(true)).collect();
     // A dry run changes nothing, so show every candidate's plan without asking.
     let picked = if dry_run {
         (0..candidates.len()).collect()
     } else {
+        let owned: Vec<Augmentation> = candidates.iter().map(|&c| c.clone()).collect();
         deps.prompter
-            .multi_select("Select items to remove", &labels)?
+            .select_items("Select items to remove", &tree::build(&owned))?
     };
     let chosen: Vec<&Augmentation> = picked
         .into_iter()
@@ -679,10 +679,10 @@ fn prune(
     if dry_run {
         chosen.extend(&unused);
     } else if !unused.is_empty() {
-        let labels: Vec<String> = unused.iter().map(|i| i.label(true)).collect();
+        let owned: Vec<Augmentation> = unused.iter().map(|&i| i.clone()).collect();
         let picked = deps
             .prompter
-            .multi_select("Select unused items to remove", &labels)?;
+            .select_items("Select unused items to remove", &tree::build(&owned))?;
         chosen.extend(picked.into_iter().filter_map(|i| unused.get(i).copied()));
     }
     // A dry run already listed every item, with its age, in the sections above.

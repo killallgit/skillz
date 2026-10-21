@@ -6,6 +6,17 @@ pub trait Prompter {
     /// An empty result means the user cancelled or picked nothing.
     fn multi_select(&self, title: &str, options: &[String]) -> anyhow::Result<Vec<usize>>;
     fn confirm(&self, question: &str) -> anyhow::Result<bool>;
+    /// Pick items from `nodes` (trees from `tree::build`); returns the chosen `Node::item`
+    /// indices, ascending. Without a tree UI: a flat pick over the item labels.
+    fn select_items(&self, title: &str, nodes: &[Node]) -> anyhow::Result<Vec<usize>> {
+        let items = crate::tree::items(nodes);
+        let labels: Vec<String> = items.iter().map(|(_, l)| l.clone()).collect();
+        Ok(self
+            .multi_select(title, &labels)?
+            .into_iter()
+            .filter_map(|i| items.get(i).map(|(item, _)| *item))
+            .collect())
+    }
     /// Browse `groups` (trees from `tree::build`), mark groups or items and pick an action.
     /// `None` when the user quits. Without a tree UI: pick groups, then show them.
     fn browse(&self, title: &str, groups: &[Node]) -> anyhow::Result<Option<(Choice, Picked)>> {
@@ -36,12 +47,35 @@ pub struct Picked {
     pub items: Vec<usize>,
 }
 
-/// Interactive terminal prompter backed by `tui::select` and a y/n line prompt.
+impl Picked {
+    /// Every `Node::item` this selection covers: all items of the picked groups plus the
+    /// single ones, ascending.
+    pub fn item_indices(&self, groups: &[Node]) -> Vec<usize> {
+        let mut out: Vec<usize> = self
+            .groups
+            .iter()
+            .filter_map(|&g| groups.get(g))
+            .flat_map(|g| crate::tree::items(std::slice::from_ref(g)))
+            .map(|(i, _)| i)
+            .chain(self.items.iter().copied())
+            .collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+}
+
+/// Interactive terminal prompter backed by the shared tree component and a y/n line prompt.
 pub struct TuiPrompter;
 
 impl Prompter for TuiPrompter {
     fn multi_select(&self, title: &str, options: &[String]) -> anyhow::Result<Vec<usize>> {
-        crate::tui::select::run(title, options)
+        let nodes = crate::tree::flat(options);
+        crate::tui::tree_view::pick(title, &nodes)
+    }
+
+    fn select_items(&self, title: &str, nodes: &[Node]) -> anyhow::Result<Vec<usize>> {
+        crate::tui::tree_view::pick(title, nodes)
     }
 
     fn browse(&self, title: &str, groups: &[Node]) -> anyhow::Result<Option<(Choice, Picked)>> {

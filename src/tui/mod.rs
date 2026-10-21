@@ -1,5 +1,5 @@
-//! Minimal terminal widgets: a multi-select list and a collapsible tree, both with `/` filter.
-//! Each widget is a pure state machine (`State::handle(key)`) plus a thin render/event loop.
+//! The terminal list: one collapsible, markable tree with `/` filter, used for browsing and
+//! for every picker. A pure state machine (`State::handle(key)`) plus a thin render/event loop.
 
 use std::io::IsTerminal;
 
@@ -9,7 +9,6 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{List, ListState, Paragraph};
 
-pub mod select;
 pub mod tree_view;
 
 /// Whether a row is chosen: all of it, only part of it (a group with some items marked), or not.
@@ -36,11 +35,13 @@ impl Mark {
 fn draw_list(
     frame: &mut Frame,
     title: &str,
+    header: &str,
     rows: Vec<String>,
     cursor: usize,
     footer: String,
 ) -> Rect {
-    let [head, body, foot] = Layout::vertical([
+    let [head, cols, body, foot] = Layout::vertical([
+        Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(1),
@@ -49,6 +50,10 @@ fn draw_list(
     frame.render_widget(
         Paragraph::new(title.to_string()).style(Style::new().add_modifier(Modifier::BOLD)),
         head,
+    );
+    frame.render_widget(
+        Paragraph::new(header.to_string()).style(Style::new().add_modifier(Modifier::DIM)),
+        cols,
     );
     let list = List::new(rows).highlight_style(Style::new().add_modifier(Modifier::REVERSED));
     frame.render_stateful_widget(

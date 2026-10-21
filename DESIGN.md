@@ -44,7 +44,7 @@ All agent knowledge lives in `src/agents/<name>.rs`. Steps:
 | `matcher` | `fuzzy_rank`, `pattern_matches` (glob) |
 | `agents/*` | per-agent plugin/marketplace discovery + `skill_dirs` + `hook_files` |
 | `tree` | display tree build + text render |
-| `tui/*` | multi-select list, collapsible tree, `/` filter |
+| `tui/*` | the one list component: collapsible, markable tree with `/` filter |
 | `prompt` | `Prompter` trait, `TuiPrompter`, `AssumeYes` |
 | `runner` | `CommandRunner` trait, `SystemRunner` |
 | `install` | install flow: `install()` dispatch, `InstallRequest`, `SkillSelection` |
@@ -214,7 +214,7 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,
   a query, even if a directory has that name; `-p` forces query mode. `-i` opens the
   browser on everything listed. Browser selections either print (Show) or go through the
   same `remove` step as `uninstall` (Remove).
-- `uninstall`: filter -> fuzzy match QUERY over `name group source` -> multi-select picker
+- `uninstall`: filter -> fuzzy match QUERY over `name group source` -> grouped picker
   -> show plan -> confirm -> execute -> re-discover and verify.
 - `reset`: remove every skill, plugin and marketplace the filters leave (hooks only with `--hooks`:
   they belong to other tools), minus `--keep` matches by name/group/source; a marketplace stays
@@ -237,15 +237,18 @@ skillz install <org/repo | url | path> [-g] [-a <agent>]... [--all | --skill 'a,
 
 ## TUI
 
-ratatui + crossterm. Widgets are pure state machines tested without a terminal. Both draw
-through `tui::draw_list`: a title line, no border, an `X` column for marked rows (`-` for a
-group with only some items marked), a key-hint footer. `i` on any row yields `Outcome::Info`
-(the info modal, skillz-atj, handles it; until then it is ignored).
-- `tui::select`: marked rows show `X`; `↑↓/jk` move, `space` toggle, `a` toggle all
-  visible, `/` enters filter (typed text fuzzy-filters; `esc` leaves filter), `enter` accept,
-  `esc`/`q` cancel.
-- `tui::tree_view`: the browser. Collapsible tree, starts collapsed; `↑↓/jk` move,
-  `space` expand/collapse, `→/l` expand, `←/h` collapse (or jump to parent), `x`/`tab` mark
-  a group (all its items) or one item, `enter` opens the Show / Remove… / Cancel menu for the
-  marks (or the row under the cursor), `/` filter keeps matching nodes and their ancestors,
-  `q/esc` quit. Rows map back to items through `tree::Node::item`.
+ratatui + crossterm. One list component, `tui::tree_view`, serves every list: the browser
+(`skillz list`) and every picker (`uninstall`, `prune`, the install pickers; a flat list is a
+tree with no children, `tree::flat`). It is a pure state machine tested without a terminal,
+drawn through `tui::draw_list`: a title line, a dim column header, no border, an `X` column
+for marked rows (`-` for a group with only some items marked), a key-hint footer. Rows are
+`tree::Node`s (`label` plus `cells`: KIND, AGENTS, SCOPE, ITEMS); `tree::Widths` lays the
+columns out, and the plain `list` output (`tree::render`) uses the same `Widths`, so the
+terminal list and the piped table match. JSON output is built from the items, not the rows.
+Keys: `↑↓/jk` move, `space` expand/collapse, `→/l` expand, `←/h` collapse (or jump to parent),
+`x`/`tab` mark a group (all its items) or one item, `/` filter keeps matching nodes and their
+ancestors, `i` yields `Outcome::Info` (the info modal, skillz-atj, handles it; until then it
+is ignored), `q/esc` quit. In the browser `enter` opens the Show / Remove… / Cancel menu for
+the marks (or the row under the cursor); in a picker `enter` accepts them
+(`Prompter::select_items` returns `Node::item` indices). Rows map back to items through
+`tree::Node::item`.
