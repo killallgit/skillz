@@ -3,11 +3,11 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::Line;
-use ratatui::widgets::{Paragraph, Wrap};
+use ratatui::widgets::Paragraph;
 
 use super::header;
 use super::layout::{MIN_HEIGHT, MIN_WIDTH, Mode};
-use super::model::Focus;
+use super::model::{DetailLine, Focus};
 use super::pane::Pane;
 use super::rows::{self, RowCtx};
 use super::state::{Home, Popup};
@@ -67,6 +67,7 @@ impl Home {
         self.mode = Mode::of(area);
         self.projects.area = Rect::default();
         self.profiles.area = Rect::default();
+        self.detail.forget_area();
         if self.mode == Mode::TooSmall {
             return draw_too_small(frame, area, theme);
         }
@@ -155,24 +156,30 @@ impl Home {
         );
     }
 
-    fn detail_lines(&self) -> &[String] {
-        let detail = match self.focus {
-            Focus::Projects => self
-                .projects
-                .row()
-                .map(|at| &self.model.projects[at].detail),
-            Focus::Profiles => self
-                .profiles
-                .row()
-                .map(|at| &self.model.profiles[at].detail),
+    /// The selected row and its detail lines.
+    fn selected_detail(&self) -> (Option<(Focus, usize)>, &[DetailLine]) {
+        let (row, detail) = match self.focus {
+            Focus::Projects => (
+                self.projects.row(),
+                self.projects
+                    .row()
+                    .map(|at| &self.model.projects[at].detail),
+            ),
+            Focus::Profiles => (
+                self.profiles.row(),
+                self.profiles
+                    .row()
+                    .map(|at| &self.model.profiles[at].detail),
+            ),
         };
-        detail.map_or(&[], Vec::as_slice)
+        let at = row.map(|r| (self.focus, r));
+        (at, detail.map_or(&[], Vec::as_slice))
     }
 
-    fn draw_detail(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let inner = Panel::new("Detail").render(frame, area, theme);
-        let text = Paragraph::new(self.detail_lines().join("\n")).wrap(Wrap { trim: false });
-        frame.render_widget(text, inner);
+    fn draw_detail(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        let (row, lines) = self.selected_detail();
+        let lines = lines.to_vec();
+        self.detail.draw(frame, area, row, (&lines, theme));
     }
 
     fn draw_footer(&self, frame: &mut Frame, area: Rect, theme: &Theme) {

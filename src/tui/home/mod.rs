@@ -3,6 +3,7 @@
 //! the user asked for (`Act`); `cli::workspace` does it and shows the screen again.
 
 mod ask;
+mod detail;
 mod header;
 mod layout;
 mod model;
@@ -21,7 +22,7 @@ mod tests;
 mod view;
 mod welcome;
 
-pub use model::{Act, Current, Focus, Model, Pos, ProfileRow, ProjectRow};
+pub use model::{Act, Current, DetailLine, EntryKind, Focus, Model, Pos, ProfileRow, ProjectRow};
 pub use screen::HomeScreen;
 pub use state::Home;
 

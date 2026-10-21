@@ -5,8 +5,8 @@ use std::cell::{Cell, RefCell};
 use std::io::IsTerminal;
 use std::time::Duration;
 
-use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::{DefaultTerminal, Frame};
 
 use super::app::{App, Exit};
 use super::hygiene::{self, Signals};
@@ -71,6 +71,24 @@ impl Shell {
             self.leave();
         }
         result
+    }
+
+    /// Draw one frame now, entering the terminal if needed, without waiting for an event.
+    pub fn paint(&self, draw: impl FnOnce(&mut Frame)) -> anyhow::Result<()> {
+        self.enter()?;
+        let mut term = self.term.borrow_mut();
+        let term = term.as_mut().expect("entered above");
+        term.draw(draw)?;
+        Ok(())
+    }
+
+    /// Drop the keys pressed while nothing was reading them, so they answer no later question.
+    pub fn discard_input(&self) {
+        while event::poll(Duration::ZERO).unwrap_or(false) {
+            if event::read().is_err() {
+                break;
+            }
+        }
     }
 
     /// Give the terminal back now; the next screen takes it again.

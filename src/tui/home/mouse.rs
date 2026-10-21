@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+use ratatui::crossterm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Position;
 
 use super::model::{Act, Focus};
@@ -27,6 +27,10 @@ impl Home {
             return None;
         }
         let at = Position::new(mouse.column, mouse.row);
+        if self.detail.contains(at) {
+            self.detail.wheel(&Event::Mouse(mouse));
+            return None;
+        }
         let focus = self.pane_at(at)?;
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => self.click(focus, at, now),

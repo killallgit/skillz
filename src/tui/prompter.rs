@@ -3,13 +3,17 @@
 use std::io::Write;
 
 use super::app::{App, Screen};
-use super::dialogs::{Ask, Review};
+use super::dialogs::Ask;
 use super::home;
+use super::plan::PlanScreen;
+use super::progress::TuiProgress;
+use super::result::ResultScreen;
 use super::shell::{Shell, Ui};
 use super::theme::Theme;
 use super::tree_view;
 use super::widgets::confirm::ConfirmDialog;
 use crate::prompt::{Choice, Hold, Picked, Prompter};
+use crate::review::{Next, Outcome, PlanView, Progress, Verdict};
 use crate::tree::{self, Node};
 
 /// Terminal prompter. The theme is chosen once by the caller and handed to every screen; the
@@ -61,16 +65,21 @@ impl Prompter for TuiPrompter {
         self.shell.hold()
     }
 
-    fn release_terminal(&self) {
-        self.shell.leave();
+    fn plan(&self, view: &PlanView) -> anyhow::Result<Verdict> {
+        let screen = PlanScreen::new(view.clone());
+        Ok(self
+            .ui()
+            .run(&mut App::new(screen))?
+            .unwrap_or(Verdict::Cancel))
     }
 
-    fn review(&self, title: &str, body: &str, question: &str) -> anyhow::Result<bool> {
-        self.answer(Review::new(title, body, Some(question)))
+    fn progress(&self, title: &str, total: usize) -> Box<dyn Progress + '_> {
+        Box::new(TuiProgress::start(self.ui(), title, total))
     }
 
-    fn report(&self, title: &str, body: &str) -> anyhow::Result<()> {
-        self.answer(Review::new(title, body, None)).map(|_| ())
+    fn outcome(&self, title: &str, outcome: &Outcome) -> anyhow::Result<Next> {
+        let screen = ResultScreen::new(title, outcome.clone());
+        Ok(self.ui().run(&mut App::new(screen))?.unwrap_or(Next::Done))
     }
 
     fn confirm(&self, question: &str) -> anyhow::Result<bool> {

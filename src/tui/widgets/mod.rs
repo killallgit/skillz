@@ -7,6 +7,7 @@ pub mod keybar;
 pub mod list;
 pub mod modal;
 pub mod panel;
+pub mod scroll;
 pub mod table;
 pub mod tabs;
 #[cfg(test)]

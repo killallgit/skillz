@@ -2,9 +2,11 @@
 
 mod args;
 mod deps;
+mod detail;
 mod isolate;
 mod list;
 mod notice;
+mod plan_view;
 mod profile;
 mod project;
 mod prune;

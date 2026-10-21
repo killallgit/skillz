@@ -2,6 +2,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 use ratatui::symbols::border::ROUNDED;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders};
@@ -13,6 +14,7 @@ pub struct Panel {
     title: String,
     badge: Option<String>,
     focused: bool,
+    danger: bool,
 }
 
 impl Panel {
@@ -21,6 +23,7 @@ impl Panel {
             title: title.into(),
             badge: None,
             focused: false,
+            danger: false,
         }
     }
 
@@ -39,11 +42,17 @@ impl Panel {
         self
     }
 
+    /// Draw the border in the danger colour: what is inside can destroy something.
+    pub fn danger(mut self, danger: bool) -> Self {
+        self.danger = danger;
+        self
+    }
+
     pub fn block(&self, theme: &Theme) -> Block<'static> {
         let mut block = Block::new()
             .borders(Borders::ALL)
             .border_set(ROUNDED)
-            .border_style(theme.border_for(self.focused))
+            .border_style(self.border_style(theme))
             .title(self.title_line(theme));
         if let Some(badge) = &self.badge {
             block = block.title(self.badge_line(badge, theme));
@@ -57,6 +66,14 @@ impl Panel {
         let inner = block.inner(area);
         frame.render_widget(block, area);
         inner
+    }
+
+    fn border_style(&self, theme: &Theme) -> Style {
+        if self.danger {
+            theme.danger
+        } else {
+            theme.border_for(self.focused)
+        }
     }
 
     fn title_line(&self, theme: &Theme) -> Line<'static> {
@@ -104,6 +121,13 @@ mod tests {
         let theme = Theme::dark();
         let buffer = draw(&Panel::new("t"), 12);
         assert_eq!(buffer[(0, 1)].fg, theme.border.fg.unwrap());
+    }
+
+    #[test]
+    fn a_danger_border_wins_over_focus() {
+        let theme = Theme::dark();
+        let buffer = draw(&Panel::new("t").focused(true).danger(true), 12);
+        assert_eq!(buffer[(0, 1)].fg, theme.danger.fg.unwrap());
     }
 
     #[test]

@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use super::deps::Deps;
+use super::detail;
 use super::notice::Notice;
 use super::scope::project_env;
 use crate::apply;
@@ -21,14 +22,14 @@ pub(super) fn screen_model(
     let projects = workspace
         .projects()?
         .into_iter()
-        .map(|path| project_row(deps, &ledger, path))
+        .map(|path| project_row(deps, (&ledger, store), path))
         .collect();
     let profiles = store
         .names()?
         .into_iter()
         .map(|name| profile_row(store, name))
         .collect();
-    let here = project_row(deps, &ledger, deps.cwd.clone());
+    let here = project_row(deps, (&ledger, store), deps.cwd.clone());
     Ok(Model {
         current: Some(Current {
             short: here.short,
@@ -36,57 +37,45 @@ pub(super) fn screen_model(
         }),
         projects,
         profiles,
+        undo: notice.as_ref().and_then(Notice::undo),
         notice: notice.map(|n| n.to_string()),
     })
 }
 
-fn project_row(deps: &Deps, ledger: &apply::Ledger, path: PathBuf) -> ProjectRow {
+fn project_row(
+    deps: &Deps,
+    (ledger, store): (&apply::Ledger, &profile::Store),
+    path: PathBuf,
+) -> ProjectRow {
     let key = apply::Ledger::key(&project_env(deps, &path), Scope::Project);
     let record = ledger.get(&key).ok().flatten();
     let missing = !path.is_dir();
+    let wanted = record
+        .as_ref()
+        .and_then(|r| store.load_flat(&r.profile).ok())
+        .map(|p| p.entries);
     ProjectRow {
         profile: record.as_ref().map(|r| r.profile.clone()),
         short: short_path(deps, &path),
         missing,
-        detail: project_detail(&path, missing, record.as_ref()),
+        detail: detail::project(&path, missing, record.as_ref(), wanted),
         path,
     }
-}
-
-fn project_detail(path: &Path, missing: bool, record: Option<&apply::Record>) -> Vec<String> {
-    let mut detail = vec![path.display().to_string()];
-    if missing {
-        detail.push("directory is missing".into());
-    }
-    for loaded in record.iter().flat_map(|r| &r.entries) {
-        detail.push(loaded.entry.to_string());
-        detail.extend(loaded.items.iter().map(|o| format!("    {}", o.name)));
-    }
-    detail
 }
 
 fn profile_row(store: &profile::Store, name: String) -> ProfileRow {
     match store.load(&name) {
         Ok(p) => ProfileRow {
-            detail: profile_detail(&p),
+            detail: detail::profile(&p),
             broken: false,
             name,
         },
         Err(e) => ProfileRow {
-            detail: vec![format!("{e:#}")],
+            detail: detail::broken(&e),
             broken: true,
             name,
         },
     }
-}
-
-fn profile_detail(profile: &profile::Profile) -> Vec<String> {
-    let extends =
-        (!profile.extends.is_empty()).then(|| format!("extends {}", profile.extends.join(", ")));
-    extends
-        .into_iter()
-        .chain(profile.entries.iter().map(ToString::to_string))
-        .collect()
 }
 
 fn short_path(deps: &Deps, path: &Path) -> String {

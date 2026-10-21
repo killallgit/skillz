@@ -1,3 +1,4 @@
+use crate::review::{Next, NoProgress, Outcome, PlanView, Progress, Verdict};
 use crate::tree::Node;
 use crate::tui::home::{Act, Model, Pos};
 
@@ -40,16 +41,21 @@ pub trait Prompter {
     fn hold(&self) -> Hold<'_> {
         Hold::none()
     }
-    /// Give the terminal back for work that talks to it directly; the next prompt retakes it.
-    fn release_terminal(&self) {}
-    /// Show `body` and ask `question` about it. Without a screen: just the question.
-    fn review(&self, _title: &str, body: &str, question: &str) -> anyhow::Result<bool> {
-        let _ = body;
-        self.confirm(question)
+    /// Show a plan and ask what to do with it. Without a screen: just a yes/no question.
+    fn plan(&self, _view: &PlanView) -> anyhow::Result<Verdict> {
+        Ok(if self.confirm("Proceed?")? {
+            Verdict::Apply
+        } else {
+            Verdict::Cancel
+        })
     }
-    /// Show `body` until the user dismisses it. Without a screen: nothing.
-    fn report(&self, _title: &str, _body: &str) -> anyhow::Result<()> {
-        Ok(())
+    /// Show progress through `total` steps until the returned guard is dropped.
+    fn progress(&self, _title: &str, _total: usize) -> Box<dyn Progress + '_> {
+        Box::new(NoProgress)
+    }
+    /// Show how a switch ended. Without a screen: nothing, and no retry.
+    fn outcome(&self, _title: &str, _outcome: &Outcome) -> anyhow::Result<Next> {
+        Ok(Next::Done)
     }
 }
 

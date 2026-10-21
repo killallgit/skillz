@@ -2,6 +2,43 @@
 
 use std::path::PathBuf;
 
+use crate::tui::theme::State;
+
+/// The kinds of profile entry, which a detail pane groups and tags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum EntryKind {
+    Skill,
+    Plugin,
+    Subagent,
+    Hook,
+    Mcp,
+}
+
+impl EntryKind {
+    pub fn tag(self) -> &'static str {
+        match self {
+            EntryKind::Skill => "skill",
+            EntryKind::Plugin => "plugin",
+            EntryKind::Subagent => "agent",
+            EntryKind::Hook => "hook",
+            EntryKind::Mcp => "mcp",
+        }
+    }
+}
+
+/// One line of a detail pane. Styles are chosen when it is drawn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DetailLine {
+    Heading(String),
+    Text(String),
+    /// An entry under its kind tag.
+    Entry(EntryKind, String),
+    /// Something an entry added, under it.
+    Child(String),
+    Status(State, String),
+    Blank,
+}
+
 pub struct ProjectRow {
     pub path: PathBuf,
     /// The profile loaded into the project, if any.
@@ -9,8 +46,8 @@ pub struct ProjectRow {
     /// The path as shown in the list, home abbreviated.
     pub short: String,
     pub missing: bool,
-    /// Detail lines: the path, then the loaded profile's entries.
-    pub detail: Vec<String>,
+    /// Detail lines: the path, how it compares with its profile, then the loaded entries.
+    pub detail: Vec<DetailLine>,
 }
 
 impl ProjectRow {
@@ -27,7 +64,7 @@ impl ProjectRow {
 pub struct ProfileRow {
     pub name: String,
     /// Detail lines: one per entry, or why the file is unreadable.
-    pub detail: Vec<String>,
+    pub detail: Vec<DetailLine>,
     pub broken: bool,
 }
 
@@ -44,6 +81,8 @@ pub struct Model {
     pub profiles: Vec<ProfileRow>,
     /// Shown as a toast until the next key: what the last action did or why it failed.
     pub notice: Option<String>,
+    /// What the undo key asks for while the notice is the latest thing that happened.
+    pub undo: Option<Act>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
