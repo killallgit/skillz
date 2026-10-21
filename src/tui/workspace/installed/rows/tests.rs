@@ -140,3 +140,50 @@ fn the_same_kind_installed_and_available_has_two_different_labels() {
 
     assert_ne!(shape[0].1, shape[3].1);
 }
+
+fn plugin_with_hook(name: &str) -> Augmentation {
+    Augmentation {
+        hooks: vec![crate::hook_text::HookEntry {
+            event: "Stop".into(),
+            matcher: None,
+            command: "say done".into(),
+        }],
+        ..installed(name, Kind::Plugin, Some("mp"))
+    }
+}
+
+#[test]
+fn a_plugins_hooks_follow_it_as_owned_rows_not_in_the_hooks_section() {
+    let here = [plugin_with_hook("p@mp")];
+
+    let rows = rows_of(&here, &[], &Catalog::default());
+
+    assert!(matches!(
+        rows.as_slice(),
+        [Row::Section { .. }, Row::Item(_), Row::Owned(_)]
+    ));
+    assert_eq!(sections_of(&rows, Part::Installed), [ItemKind::Plugin]);
+}
+
+#[test]
+fn an_owned_row_hangs_under_its_plugin_and_says_which_plugin_adds_it() {
+    let here = [plugin_with_hook("p@mp")];
+
+    let rows = rows_of(&here, &[], &Catalog::default());
+
+    let parents: Vec<Option<usize>> = shape(&rows).iter().map(|(p, _)| *p).collect();
+    assert_eq!(parents, [None, Some(0), Some(1)]);
+    let Row::Owned(owned) = &rows[2] else {
+        panic!("not an owned row")
+    };
+    assert!(owned.detail.contains("p@mp"));
+}
+
+#[test]
+fn unowned_hooks_are_titled_apart_from_available_ones() {
+    let installed_title = title(Part::Installed, ItemKind::Hook);
+    let available_title = title(Part::Available, ItemKind::Hook);
+
+    assert_ne!(installed_title, available_title);
+    assert_eq!(installed_title, crate::hooks::UNOWNED_HOOKS);
+}

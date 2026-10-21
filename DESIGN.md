@@ -78,7 +78,7 @@ Directories:
 | --- | --- |
 | `action` | `Action`, `Edit`; `apply_edit` (pure; `edit`, `json`, `toml`); `execute` (dedupe, commands, staged all-or-nothing file commit in `stage`, path removal); `RemovalTarget`; `files` |
 | `hook_text` | hook handlers as text: `Format::of(file)`, `parse`, `remove_hook`, `add_hook`; one walker per layout |
-| `hooks` | `discover` (one `Augmentation` per group), `hook_group` + `GroupHints` (`group`), `provision` (a hook entry as an `AddHook` edit) |
+| `hooks` | `discover` (one `Augmentation` per group), `plugin_hooks` (the hooks a plugin declares), `hook_group` + `GroupHints` (`group`), `provision` (a hook entry as an `AddHook` edit) |
 | `skills` | loose-skill discovery (`discover`, `entry`), npx lock ownership (`ownership`), removal plans (`removal`) |
 | `agents` | `AgentAdapter`, `registry`, `adapter_for`; `inventory` merges every adapter plus the shared skill/hook discovery |
 | `agents/claude` | `files` (paths), `records` (plugin/marketplace json), `plugins`, `marketplace` (discover, install, provision), `mcp`, `removal`, `usage`, `context` (parses `claude -p "/context"`) |
@@ -119,6 +119,9 @@ requests, one directory per tab kind: `installed` (the Project and Global tabs),
   `{"mp": {"source": {"source":"github","repo":"org/repo"}, "installLocation": "/abs/.claude/plugins/marketplaces/mp"}}`.
 - Plugin contents (display children): `<installPath>/skills/*/SKILL.md`,
   `<installPath>/hooks/hooks.json`, `<installPath>/agents/*.md`, `<installPath>/commands/*.md`.
+  Hooks a plugin declares are `hooks/hooks.json`, `hooks.json`, and the `hooks` of
+  `.claude-plugin/plugin.json` (a path, a list of paths, or the hooks inline). Codex reads the same
+  files from the newest cached version, with `.codex-plugin/plugin.json` as the manifest.
 - Loose skills: `~/.claude/skills/<name>/SKILL.md`, `<proj>/.claude/skills/<name>/` (often
   symlinks into `~/.agents/skills/<name>` made by `npx skills`).
 - MCP servers: `mcpServers` in `~/.claude.json` (user scope), the same key under
@@ -186,10 +189,16 @@ subagents). Removal uses this to pick the tool's own uninstall.
 - Skill: `skill:<canonical path>` (plus `:project` for a project item whose canonical dir a
   global item shares, e.g. a project link into `~/.agents/skills`); group = lock `source` or
   `"local"`; source = same.
-- Hook group: `hook:<file>:<group>`; name = `hook_group(cmd)`; group = `"hooks"`;
+- Hook group: `hook:<file>:<group>`; name = `hook_group(cmd)`; group = `"(unknown) hooks"`
+  (`UNOWNED_HOOKS`): these are the hooks no plugin declares;
   children = `"<Event> [<matcher>]: <command>"` (display only); `Augmentation::hooks` holds the
   handlers as data.
-- Plugin: `plugin:<agent>:<scope>:<name@mp>`; name = `name@mp`; group = `mp`.
+- Plugin: `plugin:<agent>:<scope>:<name@mp>`; name = `name@mp`; group = `mp`. The hooks it declares
+  are in `Augmentation::hooks` and in `children` as `"hook: <Event> [<matcher>]: <command>"`. They
+  have no removal of their own (removing the plugin removes them) and are not hook items: the
+  snapshot's hook collector passes over plugins, so the plugin entry alone covers them. A hook in
+  a settings file whose command points into a plugin directory stays unowned: a path is not proof
+  that the plugin added it.
 - Marketplace: `marketplace:<agent>:<name>`; group = name; source = `org/repo` or URL.
 - MCP server: `mcp:claude:<scope>:<claude scope>:<name>` or `mcp:codex:<scope>:<name>`;
   group = `"mcp"`; children = launch lines and `needs: NAME` for secrets.

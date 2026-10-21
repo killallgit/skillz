@@ -258,12 +258,12 @@ impl Prompter for RemoveGroups {
     }
 }
 
-/// Removes the skills group in the interactive browser. Groups are three "<agent> hooks" and
-/// "mattpocock/skills".
+/// Removes the skills group in the interactive browser. Its group is found by index; the
+/// world also has "(unknown) hooks" groups.
 fn after_browser_removes_the_skills_group() -> World {
     let w = world();
     let runner = Recorder::default();
-    let prompter = RemoveGroups(vec![3]);
+    let prompter = RemoveGroups(vec![2]);
     let d = Deps {
         interactive: true,
         checker: std::sync::Arc::new(skillz::update::check::NoCheck),

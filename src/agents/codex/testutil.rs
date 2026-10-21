@@ -75,8 +75,14 @@ pub(super) fn setup() -> (tempfile::TempDir, Env) {
     write(&cache.join("review/1.0.0/skills/lint/SKILL.md"), "x");
     write(&cache.join("review/1.0.0/skills/diff/SKILL.md"), "x");
     write(&cache.join("review/1.1.0/skills/lint/SKILL.md"), "x");
-    write(&cache.join("review/1.1.0/hooks/hooks.json"), "{}");
-    write(&cache.join("commit/0.1.0/hooks.json"), "{}");
+    write(
+        &cache.join("review/1.1.0/hooks/hooks.json"),
+        r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}"#,
+    );
+    write(
+        &cache.join("commit/0.1.0/hooks.json"),
+        r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}"#,
+    );
     (dir, env)
 }
 

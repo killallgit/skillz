@@ -98,18 +98,18 @@ fn list_json_without_matches_is_empty() {
 fn picking_every_group_of_a_query_shows_all_its_items() {
     let w = world();
 
-    // `bd` names three hooks (Claude, Codex, Cursor), one per "<agent> hooks" group.
-    assert_eq!(items_shown_picking(&w, "bd", vec![0, 1, 2], false), 3);
+    // `bd` names three hooks (Claude, Codex, Cursor), all in the one "(unknown) hooks" group.
+    assert_eq!(items_shown_picking(&w, "bd", vec![0], false), 3);
 }
 
 #[test]
 fn picked_groups_partition_the_items_of_a_query() {
     let w = world();
-    // `s` hits the hooks and the `mattpocock/skills` skill: four groups.
+    // `s` hits the hooks and the `mattpocock/skills` skill: two groups.
 
-    let all = items_shown_picking(&w, "s", vec![0, 1, 2, 3], false);
-    let first = items_shown_picking(&w, "s", vec![0, 1, 2], false);
-    let second = items_shown_picking(&w, "s", vec![3], false);
+    let all = items_shown_picking(&w, "s", vec![0, 1], false);
+    let first = items_shown_picking(&w, "s", vec![0], false);
+    let second = items_shown_picking(&w, "s", vec![1], false);
 
     assert!(first > 0 && second > 0);
     assert_eq!(first + second, all);

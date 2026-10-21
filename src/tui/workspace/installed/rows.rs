@@ -3,8 +3,9 @@
 
 use super::location::location;
 use super::presence::{has_counterpart, has_library_item};
+use crate::hooks::UNOWNED_HOOKS;
 use crate::library::{Catalog, ItemKind, LibraryItem};
-use crate::model::Augmentation;
+use crate::model::{Augmentation, Kind};
 use crate::profile::Entry;
 use crate::tui::widgets::outline::Shape;
 
@@ -35,6 +36,15 @@ pub(super) struct Item {
     pub state: State,
     /// Installed globally as well, which matters to a project.
     pub global: bool,
+    /// What a plugin brings along, shown beneath it.
+    pub owned: Vec<Owned>,
+}
+
+/// A hook a plugin declares: shown under the plugin, never acted on by itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Owned {
+    pub label: String,
+    pub detail: String,
 }
 
 /// Whether a section lists what the scope has or what the library could add.
@@ -56,6 +66,7 @@ pub(super) enum Row {
         total: usize,
     },
     Item(Item),
+    Owned(Owned),
 }
 
 /// What the rows are built from: what the scope has installed, what the user has installed
@@ -94,7 +105,11 @@ fn sections(part: Part, sources: &Sources) -> Vec<Row> {
                 kind,
                 total: items.len(),
             };
-            std::iter::once(header).chain(items.into_iter().map(Row::Item))
+            let rows = items.into_iter().flat_map(|mut item| {
+                let owned = std::mem::take(&mut item.owned);
+                std::iter::once(Row::Item(item)).chain(owned.into_iter().map(Row::Owned))
+            });
+            std::iter::once(header).chain(rows)
         })
         .collect()
 }
@@ -118,6 +133,19 @@ fn installed_items(kind: ItemKind, sources: &Sources) -> Vec<Item> {
             detail: location(item),
             state: State::Installed(item.id.clone()),
             global: has_counterpart(sources.also_global, item),
+            owned: owned_hooks(item),
+        })
+        .collect()
+}
+
+fn owned_hooks(plugin: &Augmentation) -> Vec<Owned> {
+    plugin
+        .hooks
+        .iter()
+        .filter(|_| plugin.kind == Kind::Plugin)
+        .map(|hook| Owned {
+            label: hook.label(),
+            detail: format!("added by {}", plugin.name),
         })
         .collect()
 }
@@ -139,12 +167,21 @@ fn available_item(item: &LibraryItem, sources: &Sources) -> Item {
         detail: String::new(),
         state: State::Available(item.entry.clone()),
         global: has_library_item(sources.also_global, item),
+        owned: vec![],
+    }
+}
+
+/// What a section is called: hooks that no plugin declares are of unknown origin.
+pub(super) fn title(part: Part, kind: ItemKind) -> &'static str {
+    match (part, kind) {
+        (Part::Installed, ItemKind::Hook) => UNOWNED_HOOKS,
+        _ => kind.title(),
     }
 }
 
 /// The outline's shape: available sections hang under their header, items under their section.
 pub(super) fn shape(rows: &[Row]) -> Vec<Shape> {
-    let (mut header, mut section) = (None, None);
+    let (mut header, mut section, mut plugin) = (None, None, None);
     rows.iter()
         .enumerate()
         .map(|(id, row)| match row {
@@ -158,13 +195,17 @@ pub(super) fn shape(rows: &[Row]) -> Vec<Shape> {
                 ..
             } => {
                 section = Some(id);
-                (None, kind.title().to_string())
+                (None, title(Part::Installed, *kind).to_string())
             }
             Row::Section { kind, .. } => {
                 section = Some(id);
                 (header, format!("{AVAILABLE} {}", kind.title()))
             }
-            Row::Item(item) => (section, item.label.clone()),
+            Row::Item(item) => {
+                plugin = Some(id);
+                (section, item.label.clone())
+            }
+            Row::Owned(owned) => (plugin, owned.label.clone()),
         })
         .collect()
 }

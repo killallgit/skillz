@@ -3,8 +3,10 @@
 
 mod discover;
 mod group;
+mod plugin;
 mod provision;
 
-pub use discover::discover;
+pub use discover::{UNOWNED_HOOKS, discover};
 pub use group::GroupHints;
+pub use plugin::declared as plugin_hooks;
 pub use provision::provision;

@@ -80,7 +80,7 @@ impl InstalledTab {
         let Some(id) = self.outline.current() else {
             return;
         };
-        if !matches!(self.rows[id], Row::Item(_)) {
+        if !matches!(self.rows[id], Row::Item(_) | Row::Owned(_)) {
             self.outline.toggle_open(id);
         }
     }

@@ -9,6 +9,9 @@ use crate::hook_text::{Format, HookEntry, parse};
 use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
 use crate::read_optional::read_optional;
 
+/// Group of hooks that no plugin declares.
+pub const UNOWNED_HOOKS: &str = "(unknown) hooks";
+
 /// The config file a hook was read from, and whose it is.
 struct Source<'a> {
     file: &'a Path,
@@ -54,11 +57,11 @@ fn augmentation(source: &Source, name: String, entries: &[HookEntry]) -> Augment
         kind: Kind::Hook,
         agents: vec![source.agent],
         scope: source.scope,
-        group: format!("{} hooks", source.agent),
+        group: UNOWNED_HOOKS.into(),
         source: None,
         installer: Installer::Local,
         origin: Default::default(),
-        children: entries.iter().map(child_label).collect(),
+        children: entries.iter().map(HookEntry::label).collect(),
         removal: removal_plan(source.file, entries),
         name,
     }
@@ -79,13 +82,6 @@ fn removal_plan(file: &Path, entries: &[HookEntry]) -> Vec<Action> {
         }
     }
     removal
-}
-
-fn child_label(e: &HookEntry) -> String {
-    match &e.matcher {
-        Some(m) => format!("{} [{}]: {}", e.event, m, e.command),
-        None => format!("{}: {}", e.event, e.command),
-    }
 }
 
 #[cfg(test)]
@@ -138,7 +134,7 @@ mod tests {
         assert_eq!(rtk.installer, Installer::Local);
         assert_eq!(rtk.agents, vec![Agent::Codex]);
         assert_eq!(rtk.scope, Scope::Project);
-        assert_eq!(rtk.group, format!("{} hooks", Agent::Codex));
+        assert_eq!(rtk.group, UNOWNED_HOOKS);
         assert_eq!(rtk.source, None);
         assert_eq!(rtk.children.len(), 3);
         assert_eq!(rtk.hooks.len(), 3);

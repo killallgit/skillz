@@ -92,7 +92,10 @@ pub(super) fn fixture() -> Fixture {
     write(&cache.join("agents/reviewer.md"), "x");
     write(&cache.join("agents/notes.txt"), "x");
     write(&cache.join("commands/ship.md"), "x");
-    write(&cache.join("hooks/hooks.json"), "{}");
+    write(
+        &cache.join("hooks/hooks.json"),
+        r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}"#,
+    );
     let mp_dir = home.join(".claude/plugins/marketplaces/acme");
     let installed = json!({
         "version": 2,

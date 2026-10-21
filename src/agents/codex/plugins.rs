@@ -6,8 +6,10 @@ use super::config::{hook_state_keys, plugin_ids, str_field, table_keys};
 use super::removal::{native, toml_remove};
 use crate::action::{Action, RemovalTarget};
 use crate::env::Env;
+use crate::hook_text::HookEntry;
+use crate::hooks;
 use crate::model::{
-    Agent, Augmentation, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
+    Agent, Augmentation, HOOK_CHILD, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
 };
 use crate::profile::Entry;
 
@@ -115,8 +117,12 @@ fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
         .iter()
         .find(|m| m.name == mp)
         .and_then(|m| m.source.clone());
+    let cache = cx.cache.join(mp).join(name);
+    let hooks = declared_hooks(&cache);
+    let mut children = plugin_children(&cache);
+    children.extend(hooks.iter().map(|h| format!("{HOOK_CHILD}{}", h.label())));
     Augmentation {
-        hooks: Vec::new(),
+        hooks,
         id: format!("plugin:codex:{}:{id}", cx.scope),
         name: id.to_string(),
         kind: Kind::Plugin,
@@ -127,9 +133,9 @@ fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
         installer: Installer::CodexCli,
         origin: Origin {
             link: source,
-            version: cached_version(&cx.cache.join(mp).join(name)),
+            version: cached_version(&cache),
         },
-        children: plugin_children(&cx.cache.join(mp).join(name)),
+        children,
         removal: plugin_removal(cx, id, keep_cache),
     }
 }
@@ -204,7 +210,7 @@ fn marketplace_removal(
     removal
 }
 
-/// Skills and hooks found in any version dir of a cached plugin.
+/// Skills found in any version dir of a cached plugin.
 fn plugin_children(plugin_cache: &Path) -> Vec<String> {
     let base = glob::Pattern::escape(&plugin_cache.to_string_lossy());
     let matches = |pattern: &str| -> Vec<PathBuf> {
@@ -219,12 +225,15 @@ fn plugin_children(plugin_cache: &Path) -> Vec<String> {
         .collect();
     skills.sort();
     skills.dedup();
-    let has_hooks =
-        !matches("*/hooks/hooks.json").is_empty() || !matches("*/hooks.json").is_empty();
     skills
-        .into_iter()
-        .chain(has_hooks.then(|| "hooks".to_string()))
-        .collect()
+}
+
+/// The hooks the newest cached version of a plugin declares.
+fn declared_hooks(plugin_cache: &Path) -> Vec<HookEntry> {
+    cached_version(plugin_cache)
+        .map(|version| plugin_cache.join(version))
+        .map(|root| hooks::plugin_hooks(&root, &root.join(".codex-plugin/plugin.json")))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

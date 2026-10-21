@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use super::records::{Install, Marketplace, same_path};
 use super::removal::plugin_removal;
 use crate::env::Env;
+use crate::hooks;
 use crate::model::{
-    Agent, Augmentation, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
+    Agent, Augmentation, HOOK_CHILD, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
 };
 
 /// One plugin augmentation per id among the installs belonging to `scope`.
@@ -38,8 +39,15 @@ fn plugin(env: &Env, scope: Scope, install: &Install, markets: &[Marketplace]) -
         .iter()
         .find(|m| m.name == mp)
         .and_then(|m| m.source.clone());
+    let root = install.install_path.as_deref();
+    let hooks = root
+        .map(|r| hooks::plugin_hooks(r, &r.join(".claude-plugin/plugin.json")))
+        .unwrap_or_default();
+    let mut children = root.map(plugin_children).unwrap_or_default();
+    children.extend(hooks.iter().map(|h| format!("{HOOK_CHILD}{}", h.label())));
+    children.sort();
     Augmentation {
-        hooks: Vec::new(),
+        hooks,
         id: format!("plugin:claude:{scope}:{}", install.id),
         name: install.id.clone(),
         kind: Kind::Plugin,
@@ -52,11 +60,7 @@ fn plugin(env: &Env, scope: Scope, install: &Install, markets: &[Marketplace]) -
             link: source,
             version: install.version.clone(),
         },
-        children: install
-            .install_path
-            .as_deref()
-            .map(plugin_children)
-            .unwrap_or_default(),
+        children,
         removal: plugin_removal(&env.claude_dir(), install),
     }
 }
@@ -81,10 +85,6 @@ fn plugin_children(root: &Path) -> Vec<String> {
                 .filter_map(|p| Some(format!("{label}: {}", p.file_stem()?.to_str()?))),
         );
     }
-    if root.join("hooks/hooks.json").is_file() {
-        out.push("hooks".into());
-    }
-    out.sort();
     out
 }
 
@@ -124,6 +124,12 @@ mod tests {
         let mut sorted = tools.children.clone();
         sorted.sort();
         assert_eq!(tools.children, sorted);
+        assert_eq!(tools.hooks.len(), 1);
+        assert!(
+            tools
+                .children
+                .contains(&format!("{HOOK_CHILD}Stop: say done"))
+        );
         let installed = installed_file(&f.env.claude_dir());
         assert_eq!(
             files(&tools.removal),
