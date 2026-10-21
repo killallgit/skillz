@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::claude::read_json;
+use super::files::read_json;
 use crate::action::{Action, Edit};
 use crate::env::Env;
 use crate::mcp::Server;
@@ -19,7 +19,7 @@ pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentati
     let project = env.project.display().to_string();
     let mut out = vec![];
     match scope {
-        Scope::Global => out.extend(from(
+        Scope::Global => out.extend(server_augmentation(
             env,
             scope,
             "user",
@@ -30,9 +30,11 @@ pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentati
         Scope::Project => {
             let local = &json["projects"][project.as_str()]["mcpServers"];
             let path = ["projects", project.as_str(), "mcpServers"];
-            out.extend(from(env, scope, "local", local, &state, &path));
+            out.extend(server_augmentation(
+                env, scope, "local", local, &state, &path,
+            ));
             let shared = env.project.join(".mcp.json");
-            out.extend(from(
+            out.extend(server_augmentation(
                 env,
                 scope,
                 "project",
@@ -47,7 +49,7 @@ pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentati
 
 /// The servers under `servers`, each removed with `claude mcp remove --scope <claude_scope>`
 /// and, should that not run, by deleting its key at `path` in `file`.
-fn from(
+fn server_augmentation(
     env: &Env,
     scope: Scope,
     claude_scope: &str,
