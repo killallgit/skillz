@@ -7,19 +7,19 @@ use crate::model::Scope;
 use crate::prompt::Prompter;
 use crate::runner::CommandRunner;
 
-use super::Cmd;
-use super::source::run_checked;
+use super::{PluginInstall, PluginOutcome};
+use crate::install::{Cmd, run_checked};
 
 /// A `.claude-plugin/marketplace.json` reduced to what install needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Marketplace {
+struct Marketplace {
     pub name: String,
     pub plugins: Vec<String>,
 }
 
 /// `None` when `src` has no marketplace; malformed JSON is an error. Option-like (`-x`)
 /// names are dropped since they end up as `claude` args.
-pub(super) fn read(src: &Path) -> anyhow::Result<Option<Marketplace>> {
+fn read(src: &Path) -> anyhow::Result<Option<Marketplace>> {
     let path = src.join(".claude-plugin/marketplace.json");
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Ok(None);
@@ -44,9 +44,29 @@ pub(super) fn read(src: &Path) -> anyhow::Result<Option<Marketplace>> {
     }))
 }
 
+/// Claude's side of `AgentAdapter::install_plugins`: only a source with a Claude marketplace.
+pub(super) fn install_plugins(req: &PluginInstall) -> anyhow::Result<PluginOutcome> {
+    let Some(mp) = read(req.src)? else {
+        return Ok(PluginOutcome::Unsupported);
+    };
+    let installed = install(
+        &mp,
+        req.source,
+        req.scope,
+        req.env,
+        req.runner,
+        req.prompter,
+    )?;
+    Ok(if installed {
+        PluginOutcome::Installed
+    } else {
+        PluginOutcome::Declined
+    })
+}
+
 /// Let the user pick `mp`'s plugins, then add the marketplace to Claude and install them.
 /// `Ok(false)` when nothing was picked.
-pub(super) fn install(
+fn install(
     mp: &Marketplace,
     source: &str,
     scope: Scope,
@@ -189,5 +209,31 @@ mod tests {
             proj[1].1,
             s(&["plugin", "install", "p@mp", "--scope", "project"])
         );
+    }
+
+    #[test]
+    fn install_plugins_reports_unsupported_declined_and_installed() {
+        let outcome = |with_mp: bool, picks: &[usize]| {
+            let fx = project_with(move |root| {
+                if with_mp {
+                    marketplace_fixture(root)
+                }
+            });
+            let runner = FakeRunner::new(|_| {});
+            let prompter = ScriptedPrompter::new(picks, true);
+            let src = fx.env.project.join("repo");
+            install_plugins(&PluginInstall {
+                src: &src,
+                source: "o/r",
+                scope: Scope::Project,
+                env: &fx.env,
+                runner: &runner,
+                prompter: &prompter,
+            })
+            .unwrap()
+        };
+        assert_eq!(outcome(false, &[0]), PluginOutcome::Unsupported);
+        assert_eq!(outcome(true, &[]), PluginOutcome::Declined);
+        assert_eq!(outcome(true, &[0]), PluginOutcome::Installed);
     }
 }

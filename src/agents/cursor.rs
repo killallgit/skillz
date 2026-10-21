@@ -11,6 +11,14 @@ impl AgentAdapter for Cursor {
         Agent::Cursor
     }
 
+    fn npx_id(&self) -> &'static str {
+        "cursor"
+    }
+
+    fn home_dir_names(&self) -> &'static [&'static str] {
+        &["cursor"]
+    }
+
     fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
         vec![env.root(scope).join(".cursor/skills")]
     }

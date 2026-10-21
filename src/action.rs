@@ -8,11 +8,22 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::hooks::{self, Format};
+use crate::runner::CommandRunner;
 
 /// A single side effect needed to remove an augmentation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
+    /// Run the item's own uninstall (`claude plugin uninstall …`). Runs before any edit or
+    /// removal; a command that exits non-zero aborts the whole plan with nothing else done.
+    /// With `fallback`, a program that cannot run at all (not installed) is skipped instead,
+    /// and the file steps of the plan do the removal.
+    Run {
+        program: String,
+        args: Vec<String>,
+        cwd: PathBuf,
+        fallback: bool,
+    },
     /// Delete a file, symlink, or directory tree. Missing paths are not an error.
     RemovePath(RemovalTarget),
     /// Rewrite a config file in place. Missing files are skipped.
@@ -25,6 +36,22 @@ pub enum Action {
         file: PathBuf,
         key: Vec<String>,
     },
+}
+
+impl Action {
+    /// A `Run` with `fallback`. `names` are the args taken from config files; `None` when one
+    /// is empty or option-like (`-x`), so a crafted id never becomes a flag of the tool.
+    pub fn native(program: &str, args: &[&str], names: &[&str], cwd: &Path) -> Option<Action> {
+        if names.iter().any(|n| n.is_empty() || n.starts_with('-')) {
+            return None;
+        }
+        Some(Action::Run {
+            program: program.into(),
+            args: args.iter().map(|a| a.to_string()).collect(),
+            cwd: cwd.into(),
+            fallback: true,
+        })
+    }
 }
 
 /// A pure transformation of a config file's text.
@@ -92,6 +119,10 @@ impl RemovalTarget {
 /// What `execute` actually changed.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Report {
+    /// Each command run, as `program arg…`.
+    pub ran: Vec<String>,
+    /// Commands skipped because their program could not run (`fallback`).
+    pub skipped: Vec<String>,
     pub removed: Vec<PathBuf>,
     pub edited: Vec<PathBuf>,
 }
@@ -180,15 +211,48 @@ fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result<String> {
 /// `Some((original, planned))` text of one file, or `None` when the file is missing.
 type Plan = Option<(String, String)>;
 
-/// Dedupe, then plan every edit in memory (any failure returns before the filesystem is
+/// Dedupe, run every `Run` in plan order (stopping at the first failure), then plan every
+/// edit in memory (any failure returns before the filesystem is
 /// touched), then write all edited files or none, then remove paths in their original order
 /// (checking each `RemovePathIfJsonAbsent` condition against the written files).
-pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
+pub fn execute(actions: &[Action], runner: &dyn CommandRunner) -> anyhow::Result<Report> {
     let mut unique: Vec<&Action> = Vec::new();
     for action in actions {
         if !unique.contains(&action) {
             unique.push(action);
         }
+    }
+
+    // Native tools first: they may already have edited the files the later steps clean up
+    // (an edit of an absent key is a no-op), and a failure here leaves everything else alone.
+    let mut report = Report::default();
+    for action in &unique {
+        let Action::Run {
+            program,
+            args,
+            cwd,
+            fallback,
+        } = action
+        else {
+            continue;
+        };
+        let line = [program.as_str()]
+            .into_iter()
+            .chain(args.iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let out = match runner.run(program, args, cwd) {
+            Ok(out) => out,
+            Err(_) if *fallback => {
+                report.skipped.push(line);
+                continue;
+            }
+            Err(e) => return Err(e.context(format!("already ran: {:?}", report.ran))),
+        };
+        if !out.success {
+            anyhow::bail!("`{line}` failed: {}", out.stderr.trim());
+        }
+        report.ran.push(line);
     }
 
     // Per real file (symlinks resolved, as `stage` writes there), the first path naming it.
@@ -216,7 +280,6 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
         }
     }
 
-    let mut report = Report::default();
     let mut staged = Vec::new();
     for (_, file, plan) in plans {
         if let Some((before, after)) = plan
@@ -235,7 +298,7 @@ pub fn execute(actions: &[Action]) -> anyhow::Result<Report> {
     commit(&staged)?;
     for action in unique {
         let (target, wanted) = match action {
-            Action::Edit { .. } => continue,
+            Action::Edit { .. } | Action::Run { .. } => continue,
             Action::RemovePath(target) => (target, Ok(true)),
             Action::RemovePathIfJsonAbsent { target, file, key } => {
                 (target, json_has(file, key).map(|has| !has))
@@ -378,6 +441,7 @@ fn validate(file: &Path, contents: &str) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::NoCommands;
     use serde_json::json;
 
     fn strings(v: &[&str]) -> Vec<String> {
@@ -643,7 +707,7 @@ enabled = false
                 path: root.clone(),
             },
         ];
-        let report = execute(&escaped.map(Action::RemovePath)).unwrap();
+        let report = execute(&escaped.map(Action::RemovePath), &NoCommands).unwrap();
         assert!(report.removed.is_empty());
         assert!(victim.exists() && root.exists());
     }
@@ -658,7 +722,11 @@ enabled = false
         write(&tree.join("a/b/c"), "x");
         let missing = dir.path().join("missing");
 
-        let report = execute(&[rm(&file), rm(&missing), rm(&tree), rm(&file)]).unwrap();
+        let report = execute(
+            &[rm(&file), rm(&missing), rm(&tree), rm(&file)],
+            &NoCommands,
+        )
+        .unwrap();
         assert_eq!(report.removed, vec![file.clone(), tree.clone()]);
         assert!(report.edited.is_empty());
         assert!(!file.exists() && !tree.exists());
@@ -676,7 +744,7 @@ enabled = false
         let dangling = dir.path().join("dangling");
         std::os::unix::fs::symlink(dir.path().join("gone"), &dangling).unwrap();
 
-        let report = execute(&[rm(&link), rm(&dangling)]).unwrap();
+        let report = execute(&[rm(&link), rm(&dangling)], &NoCommands).unwrap();
         assert_eq!(report.removed, vec![link.clone(), dangling.clone()]);
         assert!(fs::symlink_metadata(&link).is_err());
         assert!(fs::symlink_metadata(&dangling).is_err());
@@ -693,7 +761,7 @@ enabled = false
         fs::create_dir(dir.path().join("cache")).unwrap();
         std::os::unix::fs::symlink(&real, dir.path().join("cache/mp")).unwrap();
 
-        let report = execute(&[rm(&dir.path().join("cache/mp/name"))]).unwrap();
+        let report = execute(&[rm(&dir.path().join("cache/mp/name"))], &NoCommands).unwrap();
         assert!(report.removed.is_empty());
         assert!(real.join("name/SKILL.md").exists());
     }
@@ -713,23 +781,26 @@ enabled = false
             file: file.to_path_buf(),
             key: strings(&["plugins", id]),
         };
-        let report = execute(&[
-            unless(&dirs[0], &index, "a@m"),
-            unless(&dirs[1], &index, "b@m"),
-            unless(&dirs[2], &dir.path().join("missing.json"), "c@m"),
-            Action::Edit {
-                file: index.clone(),
-                edit: Edit::JsonRemoveKey {
-                    path: strings(&["plugins", "a@m"]),
+        let report = execute(
+            &[
+                unless(&dirs[0], &index, "a@m"),
+                unless(&dirs[1], &index, "b@m"),
+                unless(&dirs[2], &dir.path().join("missing.json"), "c@m"),
+                Action::Edit {
+                    file: index.clone(),
+                    edit: Edit::JsonRemoveKey {
+                        path: strings(&["plugins", "a@m"]),
+                    },
                 },
-            },
-        ])
+            ],
+            &NoCommands,
+        )
         .unwrap();
         assert_eq!(report.removed, vec![dirs[0].clone(), dirs[2].clone()]);
         assert!(!dirs[0].exists() && dirs[1].exists() && !dirs[2].exists());
 
         write(&index, "{");
-        assert!(execute(&[unless(&dirs[1], &index, "b@m")]).is_err());
+        assert!(execute(&[unless(&dirs[1], &index, "b@m")], &NoCommands).is_err());
         assert!(dirs[1].exists());
     }
 
@@ -784,7 +855,7 @@ enabled = false
                 edit: hook("a", "c"),
             },
         ];
-        let report = execute(&actions).unwrap();
+        let report = execute(&actions, &NoCommands).unwrap();
         assert_eq!(report.edited, vec![settings.clone(), config.clone()]);
         assert!(report.removed.is_empty());
 
@@ -804,7 +875,7 @@ enabled = false
             file: file.clone(),
             edit: hook("x", "y"),
         };
-        assert_eq!(execute(&[action]).unwrap(), Report::default());
+        assert_eq!(execute(&[action], &NoCommands).unwrap(), Report::default());
         assert_eq!(fs::read_to_string(&file).unwrap(), src);
     }
 
@@ -815,13 +886,16 @@ enabled = false
         let later = dir.path().join("later");
         write(&bad, "{");
         write(&later, "x");
-        let result = execute(&[
-            Action::Edit {
-                file: bad.clone(),
-                edit: hook("a", "b"),
-            },
-            rm(&later),
-        ]);
+        let result = execute(
+            &[
+                Action::Edit {
+                    file: bad.clone(),
+                    edit: hook("a", "b"),
+                },
+                rm(&later),
+            ],
+            &NoCommands,
+        );
         assert!(result.is_err());
         assert!(later.exists());
         assert_eq!(fs::read_to_string(&bad).unwrap(), "{");
@@ -837,19 +911,22 @@ enabled = false
         write(&doomed, "x");
         write(&good, src);
         write(&bad, "{");
-        let result = execute(&[
-            rm(&doomed),
-            Action::Edit {
-                file: good.clone(),
-                edit: Edit::JsonRemoveKey {
-                    path: strings(&["a"]),
+        let result = execute(
+            &[
+                rm(&doomed),
+                Action::Edit {
+                    file: good.clone(),
+                    edit: Edit::JsonRemoveKey {
+                        path: strings(&["a"]),
+                    },
                 },
-            },
-            Action::Edit {
-                file: bad.clone(),
-                edit: hook("a", "b"),
-            },
-        ]);
+                Action::Edit {
+                    file: bad.clone(),
+                    edit: hook("a", "b"),
+                },
+            ],
+            &NoCommands,
+        );
         assert!(result.is_err());
         assert!(doomed.exists());
         assert_eq!(fs::read_to_string(&good).unwrap(), src);
@@ -867,12 +944,15 @@ enabled = false
         fs::set_permissions(&real, fs::Permissions::from_mode(0o600)).unwrap();
         std::os::unix::fs::symlink(&real, &link).unwrap();
 
-        let report = execute(&[Action::Edit {
-            file: link.clone(),
-            edit: Edit::JsonRemoveKey {
-                path: strings(&["a"]),
-            },
-        }])
+        let report = execute(
+            &[Action::Edit {
+                file: link.clone(),
+                edit: Edit::JsonRemoveKey {
+                    path: strings(&["a"]),
+                },
+            }],
+            &NoCommands,
+        )
         .unwrap();
         assert_eq!(report.edited, vec![link.clone()]);
         assert!(
@@ -924,7 +1004,7 @@ enabled = false
             },
         };
 
-        execute(&[remove(&real, "x"), remove(&alias, "y")]).unwrap();
+        execute(&[remove(&real, "x"), remove(&alias, "y")], &NoCommands).unwrap();
         let json: Value = serde_json::from_str(&fs::read_to_string(&real).unwrap()).unwrap();
         assert_eq!(json, json!({"z": 3}));
         assert!(fs::symlink_metadata(&alias).unwrap().is_symlink());
@@ -942,7 +1022,7 @@ enabled = false
                 path: strings(&["a", "b"]),
             },
         };
-        assert!(execute(&[action]).is_err());
+        assert!(execute(&[action], &NoCommands).is_err());
         assert_eq!(
             fs::read_to_string(&json_named_toml).unwrap(),
             r#"{"a": {"b": 1}}"#
@@ -956,6 +1036,99 @@ enabled = false
             file: dir.path().to_path_buf(),
             edit: hook("a", "b"),
         };
-        assert!(execute(&[action]).is_err());
+        assert!(execute(&[action], &NoCommands).is_err());
+    }
+
+    struct Recorder {
+        calls: std::cell::RefCell<Vec<String>>,
+        fail: bool,
+    }
+
+    impl CommandRunner for Recorder {
+        fn run(
+            &self,
+            program: &str,
+            args: &[String],
+            _cwd: &Path,
+        ) -> anyhow::Result<crate::runner::Output> {
+            self.calls
+                .borrow_mut()
+                .push(format!("{program} {}", args.join(" ")));
+            Ok(crate::runner::Output {
+                success: !self.fail,
+                stderr: "boom".into(),
+            })
+        }
+    }
+
+    fn run_action(program: &str, arg: &str, cwd: &Path) -> Action {
+        Action::Run {
+            program: program.into(),
+            args: vec![arg.into()],
+            cwd: cwd.into(),
+            fallback: false,
+        }
+    }
+
+    #[test]
+    fn commands_run_once_in_order_before_edits_and_removals() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("f");
+        fs::write(&file, "x").unwrap();
+        let runner = Recorder {
+            calls: Default::default(),
+            fail: false,
+        };
+        let report = execute(
+            &[
+                rm(&file),
+                run_action("tool", "a", dir.path()),
+                run_action("tool", "b", dir.path()),
+                run_action("tool", "a", dir.path()),
+            ],
+            &runner,
+        )
+        .unwrap();
+        assert_eq!(*runner.calls.borrow(), ["tool a", "tool b"]);
+        assert_eq!(report.ran, ["tool a", "tool b"]);
+        assert_eq!(report.removed, std::slice::from_ref(&file));
+        assert!(!file.exists());
+    }
+
+    #[test]
+    fn failing_command_stops_the_plan_before_any_file_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("f");
+        fs::write(&file, "x").unwrap();
+        let runner = Recorder {
+            calls: Default::default(),
+            fail: true,
+        };
+        let plan = [run_action("tool", "a", dir.path()), rm(&file)];
+        assert!(execute(&plan, &runner).is_err());
+        assert!(file.exists());
+        // A plan with a command and no runner for it is an error too.
+        assert!(execute(&plan, &NoCommands).is_err());
+        assert!(file.exists());
+    }
+
+    #[test]
+    fn fallback_command_that_cannot_run_is_skipped_and_the_file_steps_still_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("f");
+        fs::write(&file, "x").unwrap();
+        let native = Action::native("tool", &["rm", "x"], &["x"], dir.path()).unwrap();
+        let report = execute(&[native, rm(&file)], &NoCommands).unwrap();
+        assert_eq!(report.skipped, ["tool rm x"]);
+        assert!(report.ran.is_empty());
+        assert!(!file.exists());
+    }
+
+    #[test]
+    fn native_refuses_empty_and_option_like_names() {
+        let at = |name: &str| Action::native("tool", &["rm", name], &[name], Path::new("/"));
+        assert!(at("ok").is_some());
+        assert!(at("").is_none());
+        assert!(at("-x").is_none());
     }
 }

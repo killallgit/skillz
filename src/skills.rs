@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Kind, Scope};
+use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
 use crate::npx_skills;
 
 /// A directory an agent loads skills from (each skill is a subdir with `SKILL.md`).
@@ -95,12 +95,24 @@ fn augmentation(
         true => format!("skill:{}:{scope}", canonical.display()),
         false => format!("skill:{}", canonical.display()),
     };
-    let removal = removal(
+    let installer = if locked.is_some() {
+        Installer::Npx
+    } else {
+        Installer::Local
+    };
+    // The CLI that installed it goes first; the file steps then finish what it left.
+    let native = locked.as_ref().and_then(|(name, _)| {
+        let (program, args) = npx_skills::remove_command(name, &agents, scope);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        Action::native(&program, &args, &[name], env.root(scope))
+    });
+    let mut removal = removal(
         entries,
         canonical,
         &owned_roots(env, dirs, scope),
         locked.map(|(n, _)| (npx_skills::lock_path(env, scope), n)),
     );
+    removal.splice(0..0, native);
     Augmentation {
         id,
         name,
@@ -109,6 +121,7 @@ fn augmentation(
         scope,
         group: source.clone().unwrap_or_else(|| "local".into()),
         source,
+        installer,
         children: vec![],
         removal,
     }
@@ -208,6 +221,15 @@ fn canonical_or(p: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A removal plan without its native-tool commands.
+    fn files(plan: &[Action]) -> Vec<Action> {
+        plan.iter()
+            .filter(|a| !matches!(a, Action::Run { .. }))
+            .cloned()
+            .collect()
+    }
+
+    use crate::model::Installer;
     use std::os::unix::fs::symlink;
     use tempfile::TempDir;
 
@@ -308,7 +330,7 @@ mod tests {
         assert_eq!(a.source.as_deref(), Some("mattpocock/skills"));
         assert!(a.children.is_empty());
         assert_eq!(
-            a.removal,
+            files(&a.removal),
             vec![
                 rm(h.join(".claude/skills/tdd")),
                 rm(h.join(".cursor/skills/tdd")),
@@ -336,13 +358,15 @@ mod tests {
         let id = |p: &Path| format!("skill:{}", p.display());
         let npx = augs.iter().find(|a| a.id == id(&canon)).unwrap();
         assert_eq!(npx.source.as_deref(), Some("o/r"));
+        assert_eq!(npx.installer, Installer::Npx);
         assert_eq!(
-            npx.removal,
+            files(&npx.removal),
             vec![rm(renamed), rm(canon.clone()), lock_edit(lock, "tdd")]
         );
         let local = augs.iter().find(|a| a.id == id(&mine)).unwrap();
         assert_eq!(local.source, None);
-        assert_eq!(local.removal, vec![rm(mine.clone())]);
+        assert_eq!(local.installer, Installer::Local);
+        assert_eq!(files(&local.removal), vec![rm(mine.clone())]);
     }
 
     #[test]
@@ -358,7 +382,7 @@ mod tests {
         assert_eq!(augs.len(), 1);
         assert_eq!(augs[0].source.as_deref(), Some("o/r"));
         assert_eq!(
-            augs[0].removal,
+            files(&augs[0].removal),
             vec![rm(dir), lock_edit(lock, "find-skills")]
         );
     }
@@ -375,7 +399,7 @@ mod tests {
         assert_eq!(augs[0].group, "local");
         assert_eq!(augs[0].source, None);
         assert_eq!(augs[0].agents, vec![Agent::Claude]);
-        assert_eq!(augs[0].removal, vec![rm(dir)]);
+        assert_eq!(files(&augs[0].removal), vec![rm(dir)]);
     }
 
     #[test]
@@ -389,7 +413,7 @@ mod tests {
         let augs = discover(&f.env, &global_dirs(&f.env)).unwrap();
 
         assert_eq!(augs[0].id, format!("skill:{}", checkout.display()));
-        assert_eq!(augs[0].removal, vec![rm(at)]);
+        assert_eq!(files(&augs[0].removal), vec![rm(at)]);
     }
 
     #[test]
@@ -403,7 +427,7 @@ mod tests {
         assert_eq!(augs.len(), 1);
         assert_eq!(augs[0].name, "gone");
         assert_eq!(augs[0].id, format!("skill:{}", at.display()));
-        assert_eq!(augs[0].removal, vec![rm(at)]);
+        assert_eq!(files(&augs[0].removal), vec![rm(at)]);
     }
 
     #[test]
@@ -428,7 +452,7 @@ mod tests {
 
         assert_eq!(augs[0].group, "local");
         assert_eq!(
-            augs[0].removal,
+            files(&augs[0].removal),
             vec![rm(f.env.home.join(".agents/skills/x"))]
         );
     }
@@ -470,7 +494,7 @@ mod tests {
         assert_eq!(a.agents, vec![Agent::Claude]);
         assert_eq!(a.source.as_deref(), Some("org/repo"));
         assert_eq!(
-            a.removal,
+            files(&a.removal),
             vec![
                 rm(p.join(".claude/skills/review")),
                 rm(canon),
@@ -505,7 +529,7 @@ mod tests {
         assert_eq!(global.id, format!("skill:{}", canon.display()));
         assert_eq!(project.id, format!("skill:{}:project", canon.display()));
         assert_eq!(project.group, "local");
-        assert_eq!(project.removal, vec![rm(proj_link)]);
+        assert_eq!(files(&project.removal), vec![rm(proj_link)]);
     }
 
     #[test]
@@ -526,7 +550,7 @@ mod tests {
 
         assert_eq!(augs.len(), 1);
         assert_eq!(augs[0].scope, Scope::Project);
-        assert_eq!(augs[0].removal, vec![]);
+        assert_eq!(files(&augs[0].removal), vec![]);
     }
 
     #[test]
@@ -541,7 +565,7 @@ mod tests {
 
         assert_eq!(augs.len(), 1);
         assert_eq!(augs[0].agents, vec![Agent::Claude, Agent::Codex]);
-        assert_eq!(augs[0].removal, vec![rm(canon)]);
+        assert_eq!(files(&augs[0].removal), vec![rm(canon)]);
     }
 
     #[test]
@@ -566,6 +590,41 @@ mod tests {
             order,
             vec![("a/a", "zeta"), ("local", "alpha"), ("local", "mid")]
         );
-        assert_eq!(by_name(&augs, "zeta").removal.len(), 2);
+        assert_eq!(files(&by_name(&augs, "zeta").removal).len(), 2);
+    }
+
+    #[test]
+    fn npx_skill_removes_with_npx_and_local_skill_with_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let h = tmp.path();
+        let env = Env {
+            home: h.into(),
+            project: h.join("p"),
+        };
+        write_lock(
+            &h.join(".agents/.skill-lock.json"),
+            r#"{"version":3,"skills":{"tdd":{"source":"o/r"}}}"#,
+        );
+        for name in ["tdd", "mine"] {
+            let dir = h.join(".agents/skills").join(name);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("SKILL.md"), "---\nname: x\n---\n").unwrap();
+        }
+        let dirs = vec![sd(Agent::Codex, Scope::Global, h.join(".agents/skills"))];
+        let augs = discover(&env, &dirs).unwrap();
+        let first = |name: &str| by_name(&augs, name).removal.first().cloned().unwrap();
+        let Action::Run {
+            program,
+            args,
+            cwd,
+            fallback,
+        } = first("tdd")
+        else {
+            panic!("npx skill starts with its own uninstall");
+        };
+        assert_eq!(program, "npx");
+        assert_eq!(args[..4], ["-y", "skills", "remove", "tdd"]);
+        assert_eq!((cwd, fallback), (h.to_path_buf(), true));
+        assert!(!matches!(first("mine"), Action::Run { .. }));
     }
 }

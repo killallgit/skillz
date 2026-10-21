@@ -2,17 +2,16 @@ use std::collections::BTreeSet;
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
-use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, List, ListState, Paragraph};
 
-use super::{FilterKey, event_loop, filter_key, is_ctrl_c, step_cursor};
+use super::{FilterKey, Mark, draw_list, event_loop, filter_key, is_ctrl_c, step_cursor};
 use crate::matcher::fuzzy_rank;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     Continue,
     Accept(Vec<usize>),
+    /// `i` on the option at this index.
+    Info(usize),
     Cancel,
 }
 
@@ -61,6 +60,7 @@ impl SelectState {
             KeyCode::Char(' ') => self.toggle(),
             KeyCode::Char('a') => self.toggle_all(),
             KeyCode::Char('/') => self.filtering = true,
+            KeyCode::Char('i') => return self.current().map_or(Outcome::Continue, Outcome::Info),
             KeyCode::Enter => return Outcome::Accept(self.accepted()),
             KeyCode::Esc | KeyCode::Char('q') => return Outcome::Cancel,
             code => self.navigate(code),
@@ -113,30 +113,27 @@ impl SelectState {
     }
 
     fn draw(&self, title: &str, frame: &mut Frame) {
-        let [body, footer] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
-        let items = self.visible.iter().map(|&i| {
-            let mark = if self.selected.contains(&i) {
-                "[x]"
-            } else {
-                "[ ]"
-            };
-            format!("{mark} {}", self.options[i])
-        });
-        let list = List::new(items)
-            .block(Block::bordered().title(title.to_string()))
-            .highlight_style(Style::new().add_modifier(Modifier::REVERSED));
-        let mut list_state = ListState::default().with_selected(Some(self.cursor));
-        frame.render_stateful_widget(list, body, &mut list_state);
-        let help = if self.filtering {
+        let rows = self
+            .visible
+            .iter()
+            .map(|&i| {
+                let mark = if self.selected.contains(&i) {
+                    Mark::All
+                } else {
+                    Mark::No
+                };
+                format!("{}{}", mark.column(), self.options[i])
+            })
+            .collect();
+        let footer = if self.filtering {
             format!("/{}", self.filter)
         } else {
             format!(
-                "↑↓/jk move · space toggle · a all · / filter · enter accept · esc/q cancel  {}",
+                "↑↓/jk move · space mark · a all · i info · / filter · enter accept · esc/q cancel  {}",
                 self.filter
             )
         };
-        frame.render_widget(Paragraph::new(help), footer);
+        draw_list(frame, title, rows, self.cursor, footer);
     }
 }
 
@@ -147,7 +144,8 @@ pub fn run(title: &str, options: &[String]) -> anyhow::Result<Vec<usize>> {
         &mut SelectState::new(options),
         |s, f| s.draw(title, f),
         |s, k| match s.handle(k) {
-            Outcome::Continue => None,
+            // The info modal (skillz-atj) takes over `Info`.
+            Outcome::Continue | Outcome::Info(_) => None,
             Outcome::Accept(v) => Some(v),
             Outcome::Cancel => Some(vec![]),
         },
@@ -290,5 +288,15 @@ mod tests {
         term.draw(|f| s.draw("t", f)).unwrap();
         feed(&mut s, keys(" /a"));
         term.draw(|f| s.draw("t", f)).unwrap();
+    }
+
+    #[test]
+    fn i_reports_the_option_under_the_cursor_even_when_filtered() {
+        let mut s = state(&["a", "b", "c"]);
+        feed(&mut s, keys("j"));
+        assert_eq!(s.handle(key(KeyCode::Char('i'))), Outcome::Info(1));
+        feed(&mut s, keys("/c"));
+        feed(&mut s, [key(KeyCode::Enter)]);
+        assert_eq!(s.handle(key(KeyCode::Char('i'))), Outcome::Info(2));
     }
 }

@@ -6,7 +6,7 @@
 pub mod action;
 pub mod agents;
 pub mod cli;
-pub mod doctor;
+pub mod cost;
 pub mod env;
 pub mod hooks;
 pub mod install;
@@ -14,6 +14,7 @@ pub mod matcher;
 pub mod model;
 pub mod npx_skills;
 pub mod prompt;
+pub mod prune;
 pub mod runner;
 pub mod skills;
 pub mod tree;

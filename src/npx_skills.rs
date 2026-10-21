@@ -42,14 +42,6 @@ pub fn lock_key(name: &str) -> Vec<String> {
     vec!["skills".into(), name.into()]
 }
 
-pub fn agent_id(agent: Agent) -> &'static str {
-    match agent {
-        Agent::Claude => "claude-code",
-        Agent::Codex => "codex",
-        Agent::Cursor => "cursor",
-    }
-}
-
 /// `npx -y skills add <source> --skill <s>... -a <agent>... [-g] -y`.
 pub fn add_command(
     source: &str,
@@ -62,7 +54,21 @@ pub fn add_command(
         args.extend(["--skill".into(), s.clone()]);
     }
     for a in agents {
-        args.extend(["-a".into(), agent_id(*a).into()]);
+        args.extend(["-a".into(), crate::agents::npx_id(*a).into()]);
+    }
+    if scope == Scope::Global {
+        args.push("-g".into());
+    }
+    args.push("-y".into());
+    ("npx".into(), args)
+}
+
+/// `npx -y skills remove <name> -a <agent>... [-g] -y`: the CLI's own uninstall, which also
+/// drops the lock entry.
+pub fn remove_command(name: &str, agents: &[Agent], scope: Scope) -> (String, Vec<String>) {
+    let mut args: Vec<String> = ["-y", "skills", "remove", name].map(String::from).to_vec();
+    for a in agents {
+        args.extend(["-a".into(), crate::agents::npx_id(*a).into()]);
     }
     if scope == Scope::Global {
         args.push("-g".into());
@@ -75,6 +81,30 @@ pub fn add_command(
 mod tests {
     use super::*;
     use crate::install::test_support::s;
+
+    #[test]
+    fn remove_command_names_skill_agents_and_scope() {
+        let (prog, args) = remove_command("tdd", &[Agent::Claude], Scope::Global);
+        assert_eq!(prog, "npx");
+        assert_eq!(
+            args,
+            s(&[
+                "-y",
+                "skills",
+                "remove",
+                "tdd",
+                "-a",
+                "claude-code",
+                "-g",
+                "-y"
+            ])
+        );
+        let (_, project) = remove_command("tdd", &[Agent::Codex], Scope::Project);
+        assert_eq!(
+            project,
+            s(&["-y", "skills", "remove", "tdd", "-a", "codex", "-y"])
+        );
+    }
 
     #[test]
     fn add_command_maps_agent_ids_and_global_flag() {

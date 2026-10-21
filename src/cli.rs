@@ -7,12 +7,13 @@ use clap::{Args, Parser, Subcommand};
 
 use crate::action::{self, Action, Edit};
 use crate::agents::{self, AgentAdapter};
-use crate::doctor;
+use crate::cost;
 use crate::env::Env;
 use crate::install::{self, InstallRequest, SkillSelection};
 use crate::matcher;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 use crate::prompt::{AssumeYes, Choice, Prompter, TuiPrompter};
+use crate::prune;
 use crate::runner::{CommandRunner, SystemRunner};
 use crate::tree;
 use crate::usage;
@@ -36,7 +37,7 @@ pub enum Command {
         /// Fuzzy query to expand, or a project path (`.`, `./dir`, `/abs`) to limit the listing to
         target: Option<String>,
         /// Project directory (default: cwd + global)
-        #[arg(short = 'C', long)]
+        #[arg(short = 'p', long)]
         project: Option<PathBuf>,
         /// Expand every group
         #[arg(long)]
@@ -56,7 +57,7 @@ pub enum Command {
         /// Fuzzy query over name, group and source
         query: Option<String>,
         /// Project directory (default: cwd)
-        #[arg(short = 'C', long)]
+        #[arg(short = 'p', long)]
         project: Option<PathBuf>,
         #[command(flatten)]
         filter: Filter,
@@ -67,10 +68,27 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Remove every skill, plugin and marketplace in scope (hooks only with `--hooks`)
+    Reset {
+        /// Project directory (default: the current one). With `-g`, only global unless given.
+        #[arg(value_name = "PATH")]
+        project: Option<PathBuf>,
+        #[command(flatten)]
+        filter: Filter,
+        /// Spare items with this name, group or source (repeatable)
+        #[arg(long)]
+        keep: Vec<String>,
+        /// Print what would be removed without changing anything
+        #[arg(long, conflicts_with = "force")]
+        dry_run: bool,
+        /// Remove without asking
+        #[arg(short, long)]
+        force: bool,
+    },
     /// Find duplicate skills and skills/plugins unused for 7+ days, then remove the ones picked
-    Doctor {
-        /// Project directory (default: cwd)
-        #[arg(short = 'C', long)]
+    Prune {
+        /// Project directory (default: the current one, plus global)
+        #[arg(value_name = "PATH")]
         project: Option<PathBuf>,
         #[command(flatten)]
         filter: Filter,
@@ -99,7 +117,7 @@ pub enum Command {
         #[arg(long, value_delimiter = ',')]
         skill: Vec<String>,
         /// Project directory (default: cwd)
-        #[arg(short = 'C', long)]
+        #[arg(short = 'p', long)]
         project: Option<PathBuf>,
         /// Don't prompt; pick everything matched
         #[arg(short, long)]
@@ -174,13 +192,14 @@ pub fn main() -> anyhow::Result<()> {
     run(cli.command, &deps, &mut std::io::stdout())
 }
 
-/// `--yes` (doctor: `--force`) swaps the interactive prompter for one that picks and confirms everything.
+/// `--yes` (prune: `--force`) swaps the interactive prompter for one that picks and confirms everything.
 fn wants_auto_yes(command: &Command) -> bool {
     matches!(
         command,
         Command::Uninstall { yes: true, .. }
             | Command::Install { yes: true, .. }
-            | Command::Doctor { force: true, .. }
+            | Command::Prune { force: true, .. }
+            | Command::Reset { force: true, .. }
     )
 }
 
@@ -223,7 +242,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
                 out,
             )
         }
-        Command::Doctor {
+        Command::Prune {
             project,
             filter,
             dry_run,
@@ -231,7 +250,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         } => {
             let (env, scopes) = resolve(deps, project.as_deref(), filter.global)?;
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
-            doctor(
+            prune(
                 deps,
                 &env,
                 &scopes,
@@ -240,6 +259,18 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
                 dry_run,
                 out,
             )
+        }
+        Command::Reset {
+            project,
+            filter,
+            keep,
+            dry_run,
+            force: _,
+        } => {
+            // Destructive, so the project you are in is the default; `-g` alone is global.
+            let path = project.or_else(|| (!filter.global).then(|| PathBuf::from(".")));
+            let (env, scopes) = resolve(deps, path.as_deref(), filter.global)?;
+            reset(deps, &env, &scopes, &filter, &keep, dry_run, out)
         }
         Command::Install {
             source,
@@ -255,7 +286,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
                 source,
                 cwd: deps.cwd.clone(),
                 agents: if agents.is_empty() {
-                    vec![Agent::Claude, Agent::Codex, Agent::Cursor]
+                    agents::all()
                 } else {
                     agents
                 },
@@ -271,7 +302,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
                     (false, true) => SkillSelection::Interactive,
                 },
             };
-            install::install(&req, &env, deps.runner, deps.prompter)
+            install::install(&deps.adapters, &req, &env, deps.runner, deps.prompter)
         }
     }
 }
@@ -307,7 +338,7 @@ fn gather(deps: &Deps, env: &Env, scopes: &[Scope], filter: &Filter) -> Vec<Augm
 }
 
 /// `list TARGET`: a path starting with `.`, `..` or `/` is the project (as in
-/// `list --hooks .`); anything else, even a word naming a directory, is a query. With `-C`,
+/// `list --hooks .`); anything else, even a word naming a directory, is a query. With `-p`,
 /// TARGET is always a query.
 fn split_target(
     project: Option<PathBuf>,
@@ -394,7 +425,7 @@ fn browse(
             )?;
             Ok(())
         }
-        Choice::Remove => remove(deps, env, scopes, filter, &chosen, false, out),
+        Choice::Remove => remove(deps, env, scopes, filter, &chosen, false, true, out),
     }
 }
 
@@ -411,7 +442,17 @@ fn list(
         items = queried(&items, &matches(&items, Some(q)));
     }
     if view.json {
-        serde_json::to_writer_pretty(&mut *out, &items)?;
+        // Read the costs only here: the report takes a second or so (`claude -p /context`).
+        let costs = cost::read(&deps.adapters, env, deps.runner);
+        let rows: Vec<serde_json::Value> = items
+            .iter()
+            .map(|i| {
+                let mut row = serde_json::to_value(i)?;
+                row["tokens"] = serde_json::json!(costs.tokens(i));
+                anyhow::Ok(row)
+            })
+            .collect::<Result<_, _>>()?;
+        serde_json::to_writer_pretty(&mut *out, &rows)?;
         writeln!(out)?;
         return Ok(());
     }
@@ -504,11 +545,58 @@ fn uninstall(
         .into_iter()
         .filter_map(|i| candidates.get(i).copied())
         .collect();
-    remove(deps, env, scopes, filter, &chosen, dry_run, out)
+    remove(deps, env, scopes, filter, &chosen, dry_run, true, out)
+}
+
+/// Remove everything the filters leave, except what `keep` names. Hooks belong to other tools
+/// (rtk, beads), so they go only when asked for with `--hooks`.
+fn reset(
+    deps: &Deps,
+    env: &Env,
+    scopes: &[Scope],
+    filter: &Filter,
+    keep: &[String],
+    dry_run: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
+    let items = gather(deps, env, scopes, filter);
+    let chosen = reset_set(&items, filter, keep);
+    remove(deps, env, scopes, filter, &chosen, dry_run, true, out)
+}
+
+fn reset_set<'a>(
+    items: &'a [Augmentation],
+    filter: &Filter,
+    keep: &[String],
+) -> Vec<&'a Augmentation> {
+    let named = |i: &Augmentation, q: &String| {
+        [
+            Some(i.name.as_str()),
+            Some(i.group.as_str()),
+            i.source.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|f| f.eq_ignore_ascii_case(q.trim()))
+    };
+    let spared: Vec<&Augmentation> = items
+        .iter()
+        .filter(|i| keep.iter().any(|q| named(i, q)))
+        .collect();
+    // A marketplace takes its plugins with it, so it stays while any of them is spared.
+    let spared_groups: Vec<&str> = spared.iter().map(|i| i.group.as_str()).collect();
+    let explicit_kinds = !filter.kinds().is_empty();
+    items
+        .iter()
+        .filter(|i| filter.keeps(i))
+        .filter(|i| explicit_kinds || i.kind != Kind::Hook)
+        .filter(|i| !spared.contains(i))
+        .filter(|i| !(i.kind == Kind::Marketplace && spared_groups.contains(&i.name.as_str())))
+        .collect()
 }
 
 /// Report findings; duplicates are always in the removal, unused items only when picked.
-fn doctor(
+fn prune(
     deps: &Deps,
     env: &Env,
     scopes: &[Scope],
@@ -518,8 +606,8 @@ fn doctor(
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let items = gather(deps, env, scopes, filter);
-    let usage = usage::read(env)?;
-    let found = doctor::check(&items, &usage, now_ms);
+    let usage = usage::read(&deps.adapters, env)?;
+    let found = prune::check(&items, &deps.adapters, &usage, now_ms);
     let unused: Vec<&Augmentation> = found
         .never_used
         .iter()
@@ -565,10 +653,12 @@ fn doctor(
             .multi_select("Select unused items to remove", &labels)?;
         chosen.extend(picked.into_iter().filter_map(|i| unused.get(i).copied()));
     }
-    remove(deps, env, scopes, filter, &chosen, dry_run, out)
+    // A dry run already listed every item, with its age, in the sections above.
+    remove(deps, env, scopes, filter, &chosen, dry_run, !dry_run, out)
 }
 
-/// Print the removal plan for `chosen`, confirm, execute, then verify they are gone.
+#[allow(clippy::too_many_arguments)]
+/// Print the removal plan for `chosen` (and the items themselves if `list_items`), confirm, execute, then verify they are gone.
 fn remove(
     deps: &Deps,
     env: &Env,
@@ -576,6 +666,7 @@ fn remove(
     filter: &Filter,
     chosen: &[&Augmentation],
     dry_run: bool,
+    list_items: bool,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
     if chosen.is_empty() {
@@ -584,8 +675,10 @@ fn remove(
     }
 
     let plan: Vec<Action> = chosen.iter().flat_map(|c| c.removal.clone()).collect();
-    writeln!(out, "Removing:")?;
-    for c in chosen {
+    if list_items {
+        writeln!(out, "Removing:")?;
+    }
+    for c in chosen.iter().filter(|_| list_items) {
         writeln!(out, "  {}", c.label(true))?;
         // Removal is always complete, so say when `-a` narrows the view but not the effect.
         let others: Vec<String> = c
@@ -610,10 +703,11 @@ fn remove(
         return Ok(());
     }
 
-    let report = action::execute(&plan)?;
+    let report = action::execute(&plan, deps.runner)?;
     writeln!(
         out,
-        "removed {} paths, edited {} files",
+        "ran {} commands, removed {} paths, edited {} files",
+        report.ran.len(),
         report.removed.len(),
         report.edited.len()
     )?;
@@ -632,6 +726,7 @@ fn remove(
 
 fn describe(step: &Action) -> String {
     match step {
+        Action::Run { program, args, .. } => format!("run {program} {}", args.join(" ")),
         Action::RemovePath(t) => format!("rm {}", t.path().display()),
         Action::RemovePathIfJsonAbsent { target, file, key } => format!(
             "rm {} (if {} then has no {})",
@@ -709,8 +804,22 @@ mod tests {
         assert!(wants_auto_yes(&parse(&["install", "o/r", "--yes"])));
         assert!(!wants_auto_yes(&parse(&["install", "o/r"])));
         assert!(!wants_auto_yes(&parse(&["list"])));
-        assert!(wants_auto_yes(&parse(&["doctor", "--force"])));
-        assert!(!wants_auto_yes(&parse(&["doctor"])));
+        assert!(wants_auto_yes(&parse(&["prune", "--force"])));
+        assert!(!wants_auto_yes(&parse(&["prune"])));
+        assert!(wants_auto_yes(&parse(&["reset", "-f"])));
+        assert!(!wants_auto_yes(&parse(&["reset"])));
+        assert!(Cli::try_parse_from(["skillz", "reset", "--dry-run", "--force"]).is_err());
+        let project = |args: &[&str]| match parse(args) {
+            Command::Reset { project, .. } | Command::Prune { project, .. } => project,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(project(&["reset", "."]), Some(PathBuf::from(".")));
+        assert_eq!(project(&["reset", "../x"]), Some(PathBuf::from("../x")));
+        assert_eq!(project(&["reset"]), None);
+        assert_eq!(
+            project(&["prune", "/p", "--dry-run"]),
+            Some(PathBuf::from("/p"))
+        );
     }
 
     fn split(project: Option<&str>, target: &str) -> (Option<PathBuf>, Option<String>) {
@@ -733,5 +842,46 @@ mod tests {
             split(Some("p"), "."),
             (Some(PathBuf::from("p")), Some(".".into()))
         );
+    }
+
+    fn item(name: &str, kind: Kind, group: &str) -> Augmentation {
+        Augmentation {
+            id: format!("{kind}:{name}"),
+            name: name.into(),
+            kind,
+            agents: vec![Agent::Claude],
+            scope: Scope::Global,
+            group: group.into(),
+            source: None,
+            installer: crate::model::Installer::Local,
+            children: vec![],
+            removal: vec![],
+        }
+    }
+
+    #[test]
+    fn reset_skips_hooks_unless_asked_and_spares_kept_groups_with_their_marketplace() {
+        let items = vec![
+            item("tdd", Kind::Skill, "local"),
+            item("rtk", Kind::Hook, "hooks"),
+            item("p@mp", Kind::Plugin, "mp"),
+            item("mp", Kind::Marketplace, "mp"),
+            item("other@om", Kind::Plugin, "om"),
+            item("om", Kind::Marketplace, "om"),
+        ];
+        let names = |set: Vec<&Augmentation>| -> Vec<String> {
+            set.iter().map(|i| i.name.clone()).collect()
+        };
+        let all = reset_set(&items, &Filter::default(), &[]);
+        assert_eq!(names(all), ["tdd", "p@mp", "mp", "other@om", "om"]);
+        let hooks = Filter {
+            hooks: true,
+            ..Filter::default()
+        };
+        assert_eq!(names(reset_set(&items, &hooks, &[])), ["rtk"]);
+        let kept = reset_set(&items, &Filter::default(), &["MP".to_string()]);
+        assert_eq!(names(kept), ["tdd", "other@om", "om"]);
+        let one = reset_set(&items, &Filter::default(), &["tdd".to_string()]);
+        assert_eq!(one.len(), 4);
     }
 }

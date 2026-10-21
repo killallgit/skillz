@@ -197,7 +197,7 @@ fn project_link_into_global_store_is_its_own_item() {
     assert_eq!(scopes.len(), 2);
     assert!(scopes.contains(&Scope::Global) && scopes.contains(&Scope::Project));
     let plan: Vec<Action> = both.iter().flat_map(|a| a.removal.clone()).collect();
-    execute(&plan).unwrap();
+    execute(&plan, &skillz::runner::NoCommands).unwrap();
     assert!(fs::symlink_metadata(&proj_link).is_err());
     assert!(!env.home.join(".agents/skills/tdd").exists());
 }
@@ -672,12 +672,12 @@ fn list_items_picking(w: &World, query: &str, pick: Option<Vec<usize>>, json: bo
 #[test]
 fn list_query_matching_several_groups_shows_only_the_picked_groups() {
     let w = world();
-    // `bd` names three hooks (Claude, Cursor, Codex), all in the one "hooks" group: no picker.
-    assert_eq!(list_items_picking(&w, "bd", Some(vec![]), false), 3);
-    // `s` hits the hooks and the `mattpocock/skills` skill: two groups, so pick one.
-    let both = list_items_picking(&w, "s", Some(vec![0, 1]), false);
-    let first = list_items_picking(&w, "s", Some(vec![0]), false);
-    let second = list_items_picking(&w, "s", Some(vec![1]), false);
+    // `bd` names three hooks (Claude, Codex, Cursor), one per "<agent> hooks" group.
+    assert_eq!(list_items_picking(&w, "bd", Some(vec![0, 1, 2]), false), 3);
+    // `s` hits the hooks and the `mattpocock/skills` skill: four groups, so pick some.
+    let both = list_items_picking(&w, "s", Some(vec![0, 1, 2, 3]), false);
+    let first = list_items_picking(&w, "s", Some(vec![0, 1, 2]), false);
+    let second = list_items_picking(&w, "s", Some(vec![3]), false);
     assert!(first > 0 && second > 0);
     assert_eq!(first + second, both);
     assert_eq!(list_items_picking(&w, "s", Some(vec![]), false), 0);
@@ -711,7 +711,7 @@ impl Prompter for RemoveGroups {
 fn browser_remove_deletes_only_the_marked_group() {
     let w = world();
     let r = Recorder::default();
-    let p = RemoveGroups(vec![1]); // groups: "hooks", "mattpocock/skills"
+    let p = RemoveGroups(vec![3]); // groups: three "<agent> hooks", "mattpocock/skills"
     let d = Deps {
         home: w.home.clone(),
         cwd: w.project.clone(),
@@ -736,7 +736,7 @@ fn browser_remove_deletes_only_the_marked_group() {
 }
 
 #[test]
-fn doctor_removes_duplicates_and_only_the_picked_unused_items() {
+fn prune_removes_duplicates_and_only_the_picked_unused_items() {
     let w = world();
     let cache = w.home.join(".claude/plugins/cache/mp/tools/1.0");
     write(
@@ -754,7 +754,7 @@ fn doctor_removes_duplicates_and_only_the_picked_unused_items() {
         &w.home.join(".claude/skills/lint/SKILL.md"),
         "---\nname: lint\n---\n",
     );
-    let doctor = |dry_run| Command::Doctor {
+    let prune = |dry_run| Command::Prune {
         project: None,
         filter: Filter::default(),
         dry_run,
@@ -768,11 +768,136 @@ fn doctor_removes_duplicates_and_only_the_picked_unused_items() {
         },
     );
 
-    run(doctor(true), &deps(&w, &r, &p), &mut Vec::new()).unwrap();
+    run(prune(true), &deps(&w, &r, &p), &mut Vec::new()).unwrap();
     assert!(w.home.join(".claude/skills/lint").exists());
 
-    run(doctor(false), &deps(&w, &r, &p), &mut Vec::new()).unwrap();
+    run(prune(false), &deps(&w, &r, &p), &mut Vec::new()).unwrap();
     assert!(!w.home.join(".claude/skills/lint").exists());
     assert!(w.home.join(".agents/skills/tdd").exists());
     assert!(cache.exists());
+}
+
+/// `main` swaps in a prompter that picks and confirms everything for `--force`; so does this one.
+#[test]
+fn prune_force_removes_duplicates_and_every_unused_item() {
+    let w = world();
+    let cache = w.home.join(".claude/plugins/cache/mp/tools/1.0");
+    write(
+        &cache.join("skills/lint/SKILL.md"),
+        "---\nname: lint\n---\n",
+    );
+    write(
+        &w.home.join(".claude/plugins/installed_plugins.json"),
+        &json!({"version": 2, "plugins": {"tools@mp": [
+            {"scope": "user", "installPath": cache.to_string_lossy()}
+        ]}})
+        .to_string(),
+    );
+    write(
+        &w.home.join(".claude/skills/lint/SKILL.md"),
+        "---\nname: lint\n---\n",
+    );
+    let cmd = Command::Prune {
+        project: None,
+        filter: Filter::default(),
+        dry_run: false,
+        force: true,
+    };
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+
+    run(cmd, &deps(&w, &r, &p), &mut Vec::new()).unwrap();
+    assert!(!w.home.join(".claude/skills/lint").exists());
+    assert!(!w.home.join(".agents/skills/tdd").exists());
+    assert!(!cache.exists());
+}
+
+fn global() -> Filter {
+    Filter {
+        global: true,
+        ..Filter::default()
+    }
+}
+
+fn reset(filter: Filter, keep: &[&str], dry_run: bool) -> Command {
+    Command::Reset {
+        project: None,
+        filter,
+        keep: keep.iter().map(|k| k.to_string()).collect(),
+        dry_run,
+        force: false,
+    }
+}
+
+#[test]
+fn reset_removes_skills_but_leaves_hooks_unless_asked() {
+    let w = world();
+    let (r, p) = (
+        Recorder::default(),
+        Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+
+    run(
+        reset(global(), &[], true),
+        &deps(&w, &r, &p),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert!(w.home.join(".agents/skills/tdd").exists());
+
+    run(
+        reset(global(), &[], false),
+        &deps(&w, &r, &p),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert!(!w.home.join(".agents/skills/tdd").exists());
+    let settings = read_json(&w.home.join(".claude/settings.json"));
+    assert!(settings["hooks"]["PreToolUse"].is_array());
+
+    let hooks = Filter {
+        hooks: true,
+        global: true,
+        ..Filter::default()
+    };
+    run(reset(hooks, &[], false), &deps(&w, &r, &p), &mut Vec::new()).unwrap();
+    let settings = read_json(&w.home.join(".claude/settings.json"));
+    assert!(settings["hooks"].get("PreToolUse").is_none());
+}
+
+#[test]
+fn reset_spares_what_keep_names_and_nothing_removed_when_declined() {
+    let w = world();
+    let declined = Scripted {
+        pick: None,
+        confirm: false,
+    };
+    let r = Recorder::default();
+    run(
+        reset(global(), &[], false),
+        &deps(&w, &r, &declined),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert!(w.home.join(".agents/skills/tdd").exists());
+
+    let yes = Scripted {
+        pick: None,
+        confirm: true,
+    };
+    run(
+        reset(global(), &["TDD"], false),
+        &deps(&w, &r, &yes),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert!(w.home.join(".agents/skills/tdd").exists());
 }

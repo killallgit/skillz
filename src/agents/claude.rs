@@ -6,16 +6,29 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use serde_json::Value;
 
-use super::AgentAdapter;
+use super::{AgentAdapter, PluginInstall, PluginOutcome, claude_marketplace};
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Kind, SKILL_CHILD, Scope};
+use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
+use crate::runner::CommandRunner;
 
 pub struct Claude;
 
 impl AgentAdapter for Claude {
     fn agent(&self) -> Agent {
         Agent::Claude
+    }
+
+    fn npx_id(&self) -> &'static str {
+        "claude-code"
+    }
+
+    fn home_dir_names(&self) -> &'static [&'static str] {
+        &["claude"]
+    }
+
+    fn plugin_root_var(&self) -> Option<&'static str> {
+        Some("CLAUDE_PLUGIN_ROOT")
     }
 
     fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
@@ -35,6 +48,41 @@ impl AgentAdapter for Claude {
         }
         Ok(out)
     }
+
+    /// `claude -p "/context"` prints, with no model call, a table of every skill and custom
+    /// agent with its tokens. Without the `claude` binary, loose skills are estimated.
+    fn context_costs(
+        &self,
+        env: &Env,
+        runner: &dyn CommandRunner,
+    ) -> anyhow::Result<Vec<(String, u32)>> {
+        let args = ["-p", "/context"].map(String::from);
+        match runner.capture("claude", &args, &env.project) {
+            Ok(text) => Ok(parse_context(&text)),
+            Err(_) => {
+                let dirs: Vec<PathBuf> = [Scope::Global, Scope::Project]
+                    .iter()
+                    .flat_map(|&s| self.skill_dirs(env, s))
+                    .collect();
+                Ok(crate::cost::estimate_dirs(&dirs))
+            }
+        }
+    }
+
+    fn install_plugins(&self, req: &PluginInstall) -> anyhow::Result<PluginOutcome> {
+        claude_marketplace::install_plugins(req)
+    }
+
+    /// `~/.claude.json` `skillUsage` (loose skills by name; `plugin:skill` keys are plugin
+    /// skills, counted through `pluginUsage`) and `pluginUsage` (`name@mp`, only when
+    /// `usageCount > 0`), both with `lastUsedAt` in ms.
+    fn usage(&self, env: &Env) -> anyhow::Result<Vec<(String, u64)>> {
+        Ok(claude_uses(&read_json(&env.home.join(".claude.json"))?))
+    }
+
+    fn tracks(&self, item: &Augmentation) -> bool {
+        matches!(item.kind, Kind::Skill | Kind::Plugin)
+    }
 }
 
 /// One entry of `installed_plugins.json` `plugins[id][]`.
@@ -43,6 +91,8 @@ struct Install {
     id: String,
     /// `None` for `"scope": "user"` (global) entries, else the entry's `projectPath`.
     project: Option<PathBuf>,
+    /// The entry's `scope` as `claude plugin uninstall --scope` spells it: user, project, local.
+    scope: String,
     install_path: Option<PathBuf>,
 }
 
@@ -101,6 +151,7 @@ fn installs_from(json: &Value) -> Vec<Install> {
                 Some(Install {
                     id: id.clone(),
                     project,
+                    scope: str_at(e, "scope").unwrap_or("user").to_string(),
                     install_path: str_at(e, "installPath").map(PathBuf::from),
                 })
             })
@@ -169,14 +220,24 @@ fn plugin_removal(home: &Path, install: &Install) -> Vec<Action> {
         None => settings_files(home, Scope::Global),
         Some(p) => settings_files(p, Scope::Project),
     };
-    settings
+    // `claude plugin uninstall` also drops the cache once no other scope uses the plugin.
+    let cwd = install.project.as_deref().unwrap_or(home);
+    let args = [
+        "plugin",
+        "uninstall",
+        &install.id,
+        "--scope",
+        &install.scope,
+    ];
+    let native = Action::native("claude", &args, &[&install.id], cwd);
+    native
         .into_iter()
-        .map(|file| Action::Edit {
+        .chain(settings.into_iter().map(|file| Action::Edit {
             file,
             edit: Edit::JsonRemoveKey {
                 path: vec!["enabledPlugins".into(), install.id.clone()],
             },
-        })
+        }))
         .chain(std::iter::once(Action::Edit {
             file: installed_file(home),
             edit: Edit::JsonRemoveArrayItems {
@@ -247,6 +308,7 @@ fn plugins(
                     .iter()
                     .find(|m| m.name == mp)
                     .and_then(|m| m.source.clone()),
+                installer: Installer::ClaudeCli,
                 children: i
                     .install_path
                     .as_deref()
@@ -270,6 +332,8 @@ fn marketplace(home: &Path, m: &Marketplace, installs: &[Install]) -> Augmentati
             removal.push(a);
         }
     }
+    let args = ["plugin", "marketplace", "remove", &m.name];
+    removal.extend(Action::native("claude", &args, &[&m.name], home));
     removal.push(Action::Edit {
         file: marketplaces_file(home),
         edit: Edit::JsonRemoveKey {
@@ -298,15 +362,99 @@ fn marketplace(home: &Path, m: &Marketplace, installs: &[Install]) -> Augmentati
         scope: Scope::Global,
         group: m.name.clone(),
         source: m.source.clone(),
+        installer: Installer::ClaudeCli,
         children: children.into_iter().collect(),
         removal,
+    }
+}
+
+fn claude_uses(json: &Value) -> Vec<(String, u64)> {
+    let entries = |field: &str| {
+        json.get(field)
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter_map(|(k, v)| Some((k.clone(), v.get("lastUsedAt")?.as_u64()?, v)))
+    };
+    let skills = entries("skillUsage").map(|(k, ms, _)| match k.split_once(':') {
+        Some((plugin, skill)) => (format!("pskill:{plugin}:{skill}"), ms),
+        None => (format!("skill:{k}"), ms),
+    });
+    let plugins = entries("pluginUsage")
+        .filter(|(_, _, v)| v.get("usageCount").and_then(Value::as_u64) > Some(0))
+        .map(|(k, ms, _)| (format!("plugin:{k}"), ms));
+    skills.chain(plugins).collect()
+}
+
+/// Rows of the `### Skills` and `### Custom Agents` tables of `/context`: loose skills as
+/// `skill:<name>`, and everything from a plugin summed under `plugin:<plugin>`. Built-in and
+/// claude.ai skills are not ours to remove and are left out.
+fn parse_context(text: &str) -> Vec<(String, u32)> {
+    let mut out = Vec::new();
+    let mut section = "";
+    for line in text.lines() {
+        if let Some(title) = line.strip_prefix("### ") {
+            section = title.trim();
+            continue;
+        }
+        if !matches!(section, "Skills" | "Custom Agents") {
+            continue;
+        }
+        let cells: Vec<&str> = line
+            .trim()
+            .trim_matches('|')
+            .split('|')
+            .map(str::trim)
+            .collect();
+        let [name, source, tokens] = cells[..] else {
+            continue;
+        };
+        let Some(tokens) = context_tokens(tokens) else {
+            continue;
+        };
+        let key = match (source, section) {
+            ("User" | "Project", "Skills") => format!("skill:{name}"),
+            ("Plugin", "Custom Agents") => {
+                format!("plugin:{}", name.split(':').next().unwrap_or(name))
+            }
+            _ => match source
+                .strip_prefix("Plugin (")
+                .and_then(|s| s.strip_suffix(')'))
+            {
+                Some(plugin) => format!("plugin:{plugin}"),
+                None => continue,
+            },
+        };
+        out.push((key, tokens));
+    }
+    out
+}
+
+/// `~100`, `1.2k`, `< 20` (counted as 10); header and separator cells are `None`.
+fn context_tokens(cell: &str) -> Option<u32> {
+    if let Some(small) = cell.strip_prefix('<') {
+        return small.trim().parse::<u32>().ok().map(|n| n / 2);
+    }
+    let cell = cell.trim_start_matches('~');
+    match cell.strip_suffix('k') {
+        Some(k) => Some((k.parse::<f64>().ok()? * 1000.0).round() as u32),
+        None => cell.parse().ok(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A removal plan without its native-tool commands.
+    fn files(plan: &[Action]) -> Vec<Action> {
+        plan.iter()
+            .filter(|a| !matches!(a, Action::Run { .. }))
+            .cloned()
+            .collect()
+    }
+
     use crate::action::apply_edit;
+    use crate::model::Installer;
     use serde_json::json;
     use tempfile::TempDir;
 
@@ -477,7 +625,7 @@ mod tests {
         assert_eq!(tools.children, sorted);
         let installed = installed_file(&f.env.home);
         assert_eq!(
-            tools.removal,
+            files(&tools.removal),
             [
                 vec![
                     remove_key(
@@ -508,11 +656,12 @@ mod tests {
         let tools = &items[0];
         assert_eq!(tools.id, "plugin:claude:project:tools@acme");
         assert_eq!(tools.kind, Kind::Plugin);
+        assert_eq!(tools.installer, Installer::ClaudeCli);
         assert_eq!(tools.scope, Scope::Project);
         assert_eq!(tools.children.len(), 5);
         let p = &f.env.project;
         assert_eq!(
-            tools.removal,
+            files(&tools.removal),
             [
                 vec![
                     remove_key(
@@ -557,6 +706,7 @@ mod tests {
 
         let acme = by_id(&items, "marketplace:claude:acme");
         assert_eq!(acme.kind, Kind::Marketplace);
+        assert_eq!(acme.installer, Installer::ClaudeCli);
         assert_eq!(acme.name, "acme");
         assert_eq!(acme.group, "acme");
         assert_eq!(acme.source.as_deref(), Some("acme/plugins"));
@@ -564,7 +714,7 @@ mod tests {
         let p = &f.env.project;
         let other = f.env.project.parent().unwrap().join("other");
         assert_eq!(
-            acme.removal,
+            files(&acme.removal),
             [
                 vec![
                     remove_key(&global_settings, &["enabledPlugins", "tools@acme"]),
@@ -604,7 +754,7 @@ mod tests {
         let other_mp = by_id(&items, "marketplace:claude:other");
         assert_eq!(other_mp.children, ["lint"]);
         assert_eq!(
-            other_mp.removal,
+            files(&other_mp.removal),
             [
                 vec![
                     remove_key(&global_settings, &["enabledPlugins", "lint@other"]),
@@ -632,7 +782,7 @@ mod tests {
                 .filter(|a| a.kind == Kind::Plugin && a.name == "tools@acme")
                 .flat_map(|a| a.removal)
                 .collect();
-            crate::action::execute(&plan).unwrap();
+            crate::action::execute(&plan, &crate::runner::NoCommands).unwrap();
             let installed = read_json(&installed_file(&f.env.home)).unwrap();
             let kept = installed["plugins"].get("tools@acme").is_some();
             (kept, f.cache.exists(), data.exists())
@@ -713,7 +863,7 @@ mod tests {
                 install_location: loc.into(),
             };
             assert_eq!(
-                marketplace(home, &m, &[]).removal,
+                files(&marketplace(home, &m, &[]).removal),
                 [
                     remove_key(&marketplaces_file(home), &["local"]),
                     remove_key(
@@ -772,5 +922,125 @@ mod tests {
         assert_eq!(mp_of("a@b@c"), "c");
         assert!(installs_from(&json!({"plugins": {"x@y": "nope"}})).is_empty());
         assert!(installs_from(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn usage_counts_loose_skills_and_used_plugins() {
+        let json = json!({
+            "skillUsage": {
+                "tdd": {"usageCount": 3, "lastUsedAt": 10},
+                "caveman:caveman": {"usageCount": 1, "lastUsedAt": 20},
+                "broken": {"usageCount": 1}
+            },
+            "pluginUsage": {
+                "caveman@caveman": {"usageCount": 5, "lastUsedAt": 30},
+                "idle@mp": {"usageCount": 0, "lastUsedAt": 40}
+            }
+        });
+        let mut uses = claude_uses(&json);
+        uses.sort();
+        assert_eq!(
+            uses,
+            [
+                ("plugin:caveman@caveman".into(), 30),
+                ("pskill:caveman:caveman".into(), 20),
+                ("skill:tdd".into(), 10)
+            ]
+        );
+    }
+
+    #[test]
+    fn plugins_and_marketplaces_remove_with_claude_first() {
+        let home = Path::new("/h");
+        let user = Install {
+            id: "p@mp".into(),
+            project: None,
+            scope: "user".into(),
+            install_path: None,
+        };
+        let local = Install {
+            project: Some(PathBuf::from("/proj")),
+            scope: "local".into(),
+            ..user.clone()
+        };
+        let first = |i: &Install| plugin_removal(home, i).into_iter().next().unwrap();
+        let uninstall = |scope: &str, cwd: &str| Action::Run {
+            program: "claude".into(),
+            args: ["plugin", "uninstall", "p@mp", "--scope", scope]
+                .map(String::from)
+                .to_vec(),
+            cwd: cwd.into(),
+            fallback: true,
+        };
+        assert_eq!(first(&user), uninstall("user", "/h"));
+        assert_eq!(first(&local), uninstall("local", "/proj"));
+        let flag = Install {
+            id: "-x@mp".into(),
+            ..user.clone()
+        };
+        assert!(
+            !plugin_removal(home, &flag)
+                .iter()
+                .any(|a| matches!(a, Action::Run { .. }))
+        );
+
+        let m = Marketplace {
+            name: "mp".into(),
+            source: None,
+            install_location: String::new(),
+        };
+        let plan = marketplace(home, &m, &[user]).removal;
+        let runs: Vec<&Action> = plan
+            .iter()
+            .filter(|a| matches!(a, Action::Run { .. }))
+            .collect();
+        assert_eq!(runs.len(), 2);
+        assert_eq!(*runs[0], uninstall("user", "/h"));
+        assert!(
+            matches!(runs[1], Action::Run { args, .. } if args[..3] == ["plugin", "marketplace", "remove"])
+        );
+    }
+
+    #[test]
+    fn context_tokens_forms() {
+        let t = context_tokens;
+        assert_eq!(t("~100"), Some(100));
+        assert_eq!(t("1.2k"), Some(1200));
+        assert_eq!(t("~1.3k"), Some(1300));
+        assert_eq!(t("< 20"), Some(10));
+        assert_eq!(t("Tokens"), None);
+        assert_eq!(t("------"), None);
+    }
+
+    #[test]
+    fn context_report_gives_loose_skills_and_per_plugin_sums() {
+        let text = include_str!("../../tests/fixtures/claude_context.md");
+        let rows = parse_context(text);
+        let sum = |key: &str| -> u32 { rows.iter().filter(|(k, _)| k == key).map(|r| r.1).sum() };
+        assert_eq!(sum("skill:tdd"), 50);
+        assert_eq!(sum("skill:dataviz"), 0, "built-in skills are not ours");
+        // caveman: 21 skills plus 3 agents in the fixture
+        assert!(sum("plugin:caveman") > 1500);
+        assert!(
+            rows.iter()
+                .all(|(k, _)| k.starts_with("skill:") || k.starts_with("plugin:"))
+        );
+    }
+
+    #[test]
+    fn missing_claude_falls_back_to_estimates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill = tmp.path().join("home/.claude/skills/tdd");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "---\nname: tdd\n---\n").unwrap();
+        let env = Env {
+            home: tmp.path().join("home"),
+            project: tmp.path().join("proj"),
+        };
+        let rows = Claude
+            .context_costs(&env, &crate::runner::NoCommands)
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "skill:tdd");
     }
 }

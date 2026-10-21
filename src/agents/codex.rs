@@ -1,12 +1,16 @@
+use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
+use serde_json::Value;
 use toml_edit::{DocumentMut, Item};
 
 use super::AgentAdapter;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Kind, SKILL_CHILD, Scope};
+use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
 use crate::npx_skills;
 
 pub struct Codex;
@@ -14,6 +18,14 @@ pub struct Codex;
 impl AgentAdapter for Codex {
     fn agent(&self) -> Agent {
         Agent::Codex
+    }
+
+    fn npx_id(&self) -> &'static str {
+        "codex"
+    }
+
+    fn home_dir_names(&self) -> &'static [&'static str] {
+        &["codex", "agents"]
     }
 
     fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
@@ -68,6 +80,31 @@ impl AgentAdapter for Codex {
             })
             .collect::<Vec<_>>();
         Ok(mps.into_iter().chain(plugins).collect())
+    }
+
+    /// Codex keeps no counters: a tool call in a session log under
+    /// `~/.codex/{sessions,archived_sessions}` whose input reads `.../skills/<name>/SKILL.md`
+    /// is a use, and a path under `plugins/cache/<mp>/<plugin>/` is a use of that plugin.
+    fn usage(&self, env: &Env) -> anyhow::Result<Vec<(String, u64)>> {
+        let mut uses = vec![];
+        for dir in ["sessions", "archived_sessions"] {
+            let pattern =
+                glob::Pattern::escape(&env.home.join(".codex").join(dir).to_string_lossy());
+            for log in glob::glob(&format!("{pattern}/**/*.jsonl"))
+                .into_iter()
+                .flatten()
+                .flatten()
+            {
+                read_log(&log, &mut uses);
+            }
+        }
+        Ok(uses)
+    }
+
+    /// Only skill reads leave a record, so a plugin without skills never shows a use.
+    fn tracks(&self, item: &Augmentation) -> bool {
+        item.kind == Kind::Skill
+            || (item.kind == Kind::Plugin && item.plugin_skills().next().is_some())
     }
 }
 
@@ -177,7 +214,8 @@ fn plugin(
 ) -> Augmentation {
     let (name, mp) = split_id(id);
     let plugin_cache = cache.join(mp).join(name);
-    let mut removal = vec![toml_remove(config, &["plugins", id])];
+    let mut removal = native(scope, config, &["plugin", "remove", id], id);
+    removal.push(toml_remove(config, &["plugins", id]));
     removal.extend(
         hook_state_keys(doc, id)
             .iter()
@@ -197,6 +235,7 @@ fn plugin(
             .iter()
             .find(|m| m.name == mp)
             .and_then(|m| m.source.clone()),
+        installer: Installer::CodexCli,
         children: plugin_children(&plugin_cache),
         removal,
     }
@@ -212,6 +251,12 @@ fn marketplace(
 ) -> Augmentation {
     let own: Vec<&Augmentation> = plugins.iter().filter(|p| p.group == m.name).collect();
     let mut removal: Vec<Action> = own.iter().flat_map(|p| p.removal.clone()).collect();
+    removal.extend(native(
+        scope,
+        config,
+        &["plugin", "marketplace", "remove", &m.name],
+        &m.name,
+    ));
     removal.push(toml_remove(config, &["marketplaces", &m.name]));
     if scope == Scope::Global && !keep_cache {
         removal.extend(RemovalTarget::new(cache, [&m.name]).map(Action::RemovePath));
@@ -224,8 +269,21 @@ fn marketplace(
         scope,
         group: m.name.clone(),
         source: m.source.clone(),
+        installer: Installer::CodexCli,
         children: own.iter().map(|p| p.name.clone()).collect(),
         removal,
+    }
+}
+
+/// `codex plugin …` always works on the user config, so only global items use it; a project's
+/// `.codex/config.toml` is edited directly.
+fn native(scope: Scope, config: &Path, args: &[&str], name: &str) -> Vec<Action> {
+    let home = config.parent().and_then(Path::parent);
+    match (scope, home) {
+        (Scope::Global, Some(cwd)) => Action::native("codex", args, &[name], cwd)
+            .into_iter()
+            .collect(),
+        _ => vec![],
     }
 }
 
@@ -261,9 +319,107 @@ fn plugin_children(plugin_cache: &Path) -> Vec<String> {
         .collect()
 }
 
+/// A use is dated by its record's own `timestamp`; the log's mtime (its last write) stands in
+/// for a record without one.
+fn read_log(log: &Path, uses: &mut Vec<(String, u64)>) {
+    let Ok(file) = fs::File::open(log) else {
+        return;
+    };
+    let mtime = file
+        .metadata()
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_millis() as u64);
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        if line.contains("SKILL.md") {
+            let ms = record_ms(&line).unwrap_or(mtime);
+            uses.extend(codex_uses(&line).into_iter().map(|key| (key, ms)));
+        }
+    }
+}
+
+/// `"timestamp": "2026-10-20T16:48:58.870Z"` of a session record, in ms since the epoch.
+fn record_ms(line: &str) -> Option<u64> {
+    let record: Value = serde_json::from_str(line).ok()?;
+    let ts = record["timestamp"].as_str()?.strip_suffix('Z')?;
+    let (date, time) = ts.split_once('T')?;
+    let mut d = date.split('-').map(|n| n.parse::<i64>());
+    let (y, m, day) = (d.next()?.ok()?, d.next()?.ok()?, d.next()?.ok()?);
+    let (hms, frac) = time.split_once('.').unwrap_or((time, "0"));
+    let mut t = hms.split(':').map(|n| n.parse::<i64>());
+    let (h, min, sec) = (t.next()?.ok()?, t.next()?.ok()?, t.next()?.ok()?);
+    // days since 1970-01-01 (Howard Hinnant's civil-from-days, inverted)
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468;
+    let millis = format!("{frac:0<3}")[..3].parse::<i64>().ok()?;
+    u64::try_from(((days * 24 + h) * 60 + min) * 60_000 + sec * 1000 + millis).ok()
+}
+
+/// Usage keys for one session log line: only tool calls count, since every session's prompt
+/// lists the path of each installed skill.
+fn codex_uses(line: &str) -> Vec<String> {
+    let Ok(record) = serde_json::from_str::<Value>(line) else {
+        return vec![];
+    };
+    let payload = &record["payload"];
+    let is_call = record["type"] == "response_item"
+        && matches!(
+            payload["type"].as_str(),
+            Some("custom_tool_call" | "function_call")
+        );
+    let input = payload["input"].as_str().or(payload["arguments"].as_str());
+    match (is_call, input) {
+        (true, Some(input)) => skill_paths(input).flat_map(use_keys).collect(),
+        _ => vec![],
+    }
+}
+
+/// Every `.../SKILL.md` path in shell- or JS-ish text.
+fn skill_paths(text: &str) -> impl Iterator<Item = &str> {
+    text.match_indices("/SKILL.md").map(move |(end, m)| {
+        let start = text[..end]
+            .rfind(|c: char| c.is_whitespace() || "\"'`(=,:".contains(c))
+            .map_or(0, |i| i + 1);
+        &text[start..end + m.len()]
+    })
+}
+
+fn use_keys(path: &str) -> Vec<String> {
+    let parts: Vec<&str> = path.split('/').collect();
+    let n = parts.len();
+    if n < 3 || parts[n - 3] != "skills" {
+        return vec![];
+    }
+    let skill = parts[n - 2];
+    match parts
+        .windows(4)
+        .find(|w| w[0] == "plugins" && w[1] == "cache")
+    {
+        Some(w) => vec![
+            format!("plugin:{}@{}", w[3], w[2]),
+            format!("pskill:{}:{skill}", w[3]),
+        ],
+        None => vec![format!("skill:{skill}")],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A removal plan without its native-tool commands.
+    fn files(plan: &[Action]) -> Vec<Action> {
+        plan.iter()
+            .filter(|a| !matches!(a, Action::Run { .. }))
+            .cloned()
+            .collect()
+    }
+
+    use crate::model::Installer;
     use std::fs;
 
     const CONFIG: &str = r#"
@@ -420,6 +576,7 @@ enabled = true
 
         let review = find(&items, "plugin:codex:global:review@killall");
         assert_eq!(review.kind, Kind::Plugin);
+        assert_eq!(review.installer, Installer::CodexCli);
         assert_eq!(review.name, "review@killall");
         assert_eq!(review.group, "killall");
         assert_eq!(review.agents, vec![Agent::Codex]);
@@ -427,7 +584,7 @@ enabled = true
         assert_eq!(review.source.as_deref(), Some("killallgit/killall-skills"));
         assert_eq!(review.children.len(), 3);
         assert_eq!(
-            review.removal,
+            files(&review.removal),
             vec![
                 rm_key(&config, "plugins", "review@killall"),
                 rm_state(&config, REVIEW_START),
@@ -449,12 +606,13 @@ enabled = true
 
         let mp = find(&items, "marketplace:codex:global:killall");
         assert_eq!(mp.kind, Kind::Marketplace);
+        assert_eq!(mp.installer, Installer::CodexCli);
         assert_eq!(mp.name, "killall");
         assert_eq!(mp.group, "killall");
         assert_eq!(mp.source.as_deref(), Some("killallgit/killall-skills"));
         assert_eq!(mp.children.len(), 2);
         assert_eq!(
-            mp.removal,
+            files(&mp.removal),
             vec![
                 rm_key(&config, "plugins", "review@killall"),
                 rm_state(&config, REVIEW_START),
@@ -471,7 +629,7 @@ enabled = true
         assert_eq!(local.source.as_deref(), Some("/src/my-plugins"));
         assert!(local.children.is_empty());
         assert_eq!(
-            local.removal,
+            files(&local.removal),
             vec![
                 rm_key(&config, "marketplaces", "localdev"),
                 rm(&cache, &["localdev"]),
@@ -500,15 +658,15 @@ enabled = true
         ];
         let items = Codex.discover(&env, Scope::Global).unwrap();
         assert_eq!(
-            find(&items, "plugin:codex:global:review@killall").removal,
+            files(&find(&items, "plugin:codex:global:review@killall").removal),
             review
         );
         assert_eq!(
-            find(&items, "plugin:codex:global:commit@killall").removal,
+            files(&find(&items, "plugin:codex:global:commit@killall").removal),
             commit
         );
         assert_eq!(
-            find(&items, "marketplace:codex:global:killall").removal,
+            files(&find(&items, "marketplace:codex:global:killall").removal),
             [
                 review,
                 commit,
@@ -524,7 +682,7 @@ enabled = true
             items
                 .iter()
                 .flat_map(|a| &a.removal)
-                .all(|a| matches!(a, Action::Edit { .. }))
+                .all(|a| matches!(a, Action::Edit { .. } | Action::Run { .. }))
         );
 
         // Run from home: the "project" config is the global one and protects nothing.
@@ -596,22 +754,22 @@ enabled = true
             ]
         );
         assert_eq!(
-            find(&items, "marketplace:codex:global:..").removal,
+            files(&find(&items, "marketplace:codex:global:..").removal),
             vec![
                 rm_key(&config, "plugins", "x@.."),
                 rm_key(&config, "marketplaces", ".."),
             ]
         );
         assert_eq!(
-            find(&items, "marketplace:codex:global:a/b").removal,
+            files(&find(&items, "marketplace:codex:global:a/b").removal),
             vec![rm_key(&config, "marketplaces", "a/b")]
         );
         assert_eq!(
-            find(&items, r"plugin:codex:global:..\evil@ok").removal,
+            files(&find(&items, r"plugin:codex:global:..\evil@ok").removal),
             vec![rm_key(&config, "plugins", r"..\evil@ok")]
         );
         assert_eq!(
-            find(&items, "plugin:codex:global:p@").removal,
+            files(&find(&items, "plugin:codex:global:p@").removal),
             vec![rm_key(&config, "plugins", "p@")]
         );
     }
@@ -637,7 +795,7 @@ enabled = true
         assert_eq!(review.source, None);
         assert_eq!(review.children.len(), 3);
         assert_eq!(
-            review.removal,
+            files(&review.removal),
             vec![rm_key(&config, "plugins", "review@killall")]
         );
 
@@ -657,7 +815,10 @@ enabled = true
         let items = Codex.discover(&env, Scope::Project).unwrap();
         let mp = find(&items, "marketplace:codex:project:team");
         assert_eq!(mp.source.as_deref(), Some("git@example.com:t/p.git"));
-        assert_eq!(mp.removal, vec![rm_key(&config, "marketplaces", "team")]);
+        assert_eq!(
+            files(&mp.removal),
+            vec![rm_key(&config, "marketplaces", "team")]
+        );
     }
 
     #[test]
@@ -701,5 +862,69 @@ enabled = true
         assert_eq!(display_source("https://github.com/a/b.git"), "a/b");
         assert_eq!(display_source("https://github.com/a/b"), "a/b");
         assert_eq!(display_source("/local/path"), "/local/path");
+    }
+
+    fn call(kind: &str, field: &str, text: &str) -> String {
+        serde_json::json!({"type": "response_item", "payload": {"type": kind, field: text}})
+            .to_string()
+    }
+
+    #[test]
+    fn usage_counts_skill_reads_in_tool_calls_only() {
+        let read = "cat /h/.agents/skills/tdd/SKILL.md && sed -n 1p \
+                    \"/h/.codex/plugins/cache/mp/review/1.0/skills/lint/SKILL.md\"";
+        assert_eq!(
+            codex_uses(&call("custom_tool_call", "input", read)),
+            ["skill:tdd", "plugin:review@mp", "pskill:review:lint"]
+        );
+        let args = serde_json::json!({"cmd": "cat ~/.codex/skills/ship/SKILL.md"}).to_string();
+        assert_eq!(
+            codex_uses(&call("function_call", "arguments", &args)),
+            ["skill:ship"]
+        );
+        let listing = call("message", "input", "/h/.agents/skills/tdd/SKILL.md");
+        let not_a_skill = call("custom_tool_call", "input", "cat /h/docs/SKILL.md");
+        for line in [listing, not_a_skill, "not json SKILL.md".to_string()] {
+            assert!(codex_uses(&line).is_empty());
+        }
+    }
+
+    fn runs(plan: &[Action]) -> Vec<Vec<String>> {
+        plan.iter()
+            .filter_map(|a| match a {
+                Action::Run { program, args, .. } => {
+                    Some([program.clone()].into_iter().chain(args.clone()).collect())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn global_items_remove_with_codex_and_project_items_with_file_edits() {
+        let doc = "[plugins.\"p@mp\"]\nenabled = true\n"
+            .parse::<DocumentMut>()
+            .unwrap();
+        let config = Path::new("/h/.codex/config.toml");
+        let cache = Path::new("/h/.codex/plugins/cache");
+        let global = plugin("p@mp", Scope::Global, config, cache, &[], &doc, false);
+        assert_eq!(
+            runs(&global.removal),
+            [["codex", "plugin", "remove", "p@mp"]]
+        );
+        let project = plugin("p@mp", Scope::Project, config, cache, &[], &doc, false);
+        assert!(runs(&project.removal).is_empty());
+        let flag = plugin("-x@mp", Scope::Global, config, cache, &[], &doc, false);
+        assert!(runs(&flag.removal).is_empty());
+    }
+
+    #[test]
+    fn record_timestamps_parse_to_epoch_ms() {
+        let at = |ts: &str| record_ms(&serde_json::json!({"timestamp": ts}).to_string());
+        assert_eq!(at("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(at("2026-10-20T16:48:58.870Z"), Some(1_792_514_938_870));
+        assert_eq!(at("2024-02-29T12:00:00.5Z"), Some(1_709_208_000_500));
+        assert_eq!(at("garbage"), None);
+        assert_eq!(record_ms("not json"), None);
     }
 }

@@ -69,7 +69,7 @@ fn redact(arg: &str) -> String {
     }
 }
 
-pub(super) fn run_checked(
+pub(crate) fn run_checked(
     runner: &dyn CommandRunner,
     program: &str,
     args: &[String],

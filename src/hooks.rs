@@ -6,7 +6,7 @@ use anyhow::Context;
 use serde_json::Value;
 
 use crate::action::{Action, Edit, edit_json};
-use crate::model::{Agent, Augmentation, Kind, Scope};
+use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
 
 /// One hook handler as written in a hooks config file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,8 +195,9 @@ const WRAPPERS: &[&str] = &[
     "if", "then", "test", "[", "[[", "!",
 ];
 
-/// Hidden home dirs that belong to agents or the OS, not to a hook-installing tool.
-const SHARED_DIRS: &[&str] = &["claude", "codex", "cursor", "agents", "config", "local"];
+/// Hidden home dirs that belong to the OS, not to a hook-installing tool. Agents add their own
+/// (`AgentAdapter::home_dir_names`).
+const SHARED_DIRS: &[&str] = &["config", "local"];
 
 /// Name of the tool a hook command belongs to, so related hooks group together.
 /// e.g. `bd prime --hook-json` -> `bd`, `bash '/x/.claude/hooks/herdr-agent-state.sh' s` -> `herdr-agent-state`.
@@ -231,7 +232,10 @@ fn is_assignment(token: &str) -> bool {
 }
 
 fn program_group(token: &str) -> String {
-    if token.contains("${CLAUDE_PLUGIN_ROOT}") {
+    if crate::agents::plugin_root_vars()
+        .iter()
+        .any(|var| token.contains(&format!("${{{var}}}")))
+    {
         return "plugin".to_string();
     }
     let path = Path::new(token);
@@ -247,10 +251,16 @@ fn program_group(token: &str) -> String {
 /// `/home/me/.orca/hooks/x.sh` -> `orca`: the first hidden directory not shared by agents.
 fn tool_dir(path: &Path) -> Option<String> {
     let parent = path.parent()?;
+    let agent_dirs = crate::agents::home_dir_names();
     parent
         .components()
         .filter_map(|c| c.as_os_str().to_str()?.strip_prefix('.'))
-        .find(|name| !name.is_empty() && !name.starts_with('.') && !SHARED_DIRS.contains(name))
+        .find(|name| {
+            !name.is_empty()
+                && !name.starts_with('.')
+                && !SHARED_DIRS.contains(name)
+                && !agent_dirs.contains(name)
+        })
         .map(str::to_string)
 }
 
@@ -301,8 +311,9 @@ fn augmentation(
         kind: Kind::Hook,
         agents: vec![agent],
         scope,
-        group: "hooks".to_string(),
+        group: format!("{agent} hooks"),
         source: None,
+        installer: Installer::Local,
         children: entries.iter().map(child_label).collect(),
         removal,
         name,
@@ -319,6 +330,7 @@ fn child_label(e: &HookEntry) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Installer;
     use serde_json::json;
 
     fn entry(event: &str, matcher: Option<&str>, command: &str) -> HookEntry {
@@ -448,9 +460,10 @@ mod tests {
         let rtk = &found[1];
         assert_eq!(rtk.id, format!("hook:{}:rtk", file.display()));
         assert_eq!(rtk.kind, Kind::Hook);
+        assert_eq!(rtk.installer, Installer::Local);
         assert_eq!(rtk.agents, vec![Agent::Codex]);
         assert_eq!(rtk.scope, Scope::Project);
-        assert_eq!(rtk.group, "hooks");
+        assert_eq!(rtk.group, format!("{} hooks", Agent::Codex));
         assert_eq!(rtk.source, None);
         assert_eq!(rtk.children.len(), 3);
         let remove = |event: &str| Action::Edit {
@@ -481,7 +494,7 @@ mod tests {
             .into_iter()
             .flat_map(|a| a.removal)
             .collect();
-        crate::action::execute(&plan).unwrap();
+        crate::action::execute(&plan, &crate::runner::NoCommands).unwrap();
         let after: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(after, json!({"version": 1, "hooks": {}}));
     }
