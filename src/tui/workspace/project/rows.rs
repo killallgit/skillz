@@ -42,16 +42,6 @@ pub(super) enum Row {
     Item(Item),
 }
 
-pub(super) fn section_title(kind: ItemKind) -> &'static str {
-    match kind {
-        ItemKind::Skill => "Skills",
-        ItemKind::Plugin => "Plugins",
-        ItemKind::Mcp => "MCP servers",
-        ItemKind::Hook => "Hooks",
-        ItemKind::Subagent => "Subagents",
-    }
-}
-
 /// Every section that has something, each followed by its items, in preorder.
 pub(super) fn build(installed: &[Augmentation], library: &Catalog) -> Vec<Row> {
     let available: Vec<&LibraryItem> = library
@@ -73,7 +63,7 @@ pub(super) fn shape(rows: &[Row]) -> Vec<Shape> {
         .map(|(id, row)| match row {
             Row::Section { kind, .. } => {
                 section = Some(id);
-                (None, section_title(*kind).to_string())
+                (None, kind.title().to_string())
             }
             Row::Item(item) => (section, item.label.clone()),
         })

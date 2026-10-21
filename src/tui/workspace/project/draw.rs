@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::header;
-use super::rows::{Item, Row, State, section_title};
+use super::rows::{Item, Row, State};
 use super::{Popup, ProjectTab};
 use crate::tui::filter;
 use crate::tui::theme::Theme;
@@ -68,7 +68,7 @@ impl ProjectTab {
             } => {
                 let caret = self.outline.caret(id, &theme.glyphs);
                 Line::from(vec![
-                    Span::styled(format!("{caret} {}", section_title(*kind)), theme.title),
+                    Span::styled(format!("{caret} {}", kind.title()), theme.title),
                     Span::styled(format!("  {installed} of {total}"), theme.muted),
                 ])
             }
