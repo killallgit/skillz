@@ -25,3 +25,29 @@ pub(super) fn record_since(
         Ok(())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agents::registry;
+    use crate::cli::scope::project_env;
+    use crate::install::test_support::{FakeRunner, ScriptedPrompter};
+
+    #[test]
+    fn recording_an_install_also_picks_up_what_else_is_installed_at_user_level() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = dir.path().join(".claude/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        let hook = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"fmt"}]}]}}"#;
+        std::fs::write(&settings, hook).unwrap();
+        let (runner, prompter) = (FakeRunner::new(|_| {}), ScriptedPrompter::new(&[], true));
+        let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+        let env = project_env(&deps, &dir.path().join("proj"));
+        let store = Store::in_env(&env);
+
+        record_since(&deps, &store, (&env, Scope::Project), &[]).unwrap();
+
+        // Assert the global hook, which the install did not touch, is in the library.
+        assert_eq!(store.read().unwrap().items.items().len(), 1);
+    }
+}

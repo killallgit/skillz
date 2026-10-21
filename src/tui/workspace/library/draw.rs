@@ -51,7 +51,10 @@ impl LibraryTab {
         }
         vec![
             Line::styled("The library is empty", theme.text),
-            Line::styled("a adds an item, i syncs with what is installed", theme.muted),
+            Line::styled(
+                "a adds an item, i syncs with what is installed",
+                theme.muted,
+            ),
         ]
     }
 

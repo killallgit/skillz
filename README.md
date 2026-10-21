@@ -21,6 +21,7 @@ is also a command.
 | `update` | update installed items with the tool that installed them; `--check` lists the ones with a newer version (`--json` for scripts) |
 | `reset` | remove every skill, plugin and marketplace in scope |
 | `prune` | find duplicate and unused skills and plugins, remove the ones picked |
+| `sync` | add everything installed, in the project and at user level, to the library (`-p PATH`, `-g` for user level only, `--dry-run`, `--json`); never removes anything from it |
 | `install` (`add`) | install skills with `npx skills`, or Claude plugins from a marketplace |
 | `use` | load a profile into a project (or globally), swapping out the one that is there |
 | `run` | run a command against one profile in config dirs of its own |
@@ -171,8 +172,19 @@ every skill, plugin, MCP server, hook and subagent you have installed or typed i
 anything installed once can be installed again from the Project tab. Each item records its
 provenance: the `link` it was fetched from, the `engine` that installed it, the `version` (a
 plugin version, or the content hash `npx skills` locked) and when it was `recorded_at`. Every
-successful `install`, `use` and workspace change adds what it installed; the Library tab's
-import adds everything already installed. Installing a skill again fetches it from its recorded
+successful `install`, `use` and workspace change adds what it installed.
+
+The library is a master record, so it also learns what you installed some other way. When the
+workspace opens, a background scan reads everything installed in the project and at user level,
+for every agent (skills, plugins, MCP servers, hooks, subagents), and adds what the library does
+not have yet, marked as *detected* in its provenance. The workspace is shown at once; when the scan
+ends the Library tab fills and a toast says how many were new (and how many MCP servers were left
+out for needing secrets). The same scan runs as `skillz sync`, after every install, update or
+change, and on `i` in the Library tab. It only ever adds: a second run adds nothing, labels you
+gave are kept, and items that are no longer installed stay. The only way out of the library is its
+remove key (`x`) or removing it by hand in `store.json`. `SKILLZ_NO_SYNC=1` turns the startup scan
+off. Items without something to reinstall them from, such as a hand-made skill, are not recorded.
+Installing a skill again fetches it from its recorded
 link when there is one.
 
 The version is recorded and shown, not pinned: `npx skills add`, `claude plugin install` and
@@ -220,8 +232,10 @@ at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
   no reliable check and are never marked. `SKILLZ_NO_UPDATE_CHECK=1` turns the check off;
   `skillz update --check` runs it from the command line.
 - **Library**: the items skillz knows about, with where each came from. The line under the list
-  shows the link, how it was installed (`npx skills`, `claude plugin`, `codex plugin`, `manual`
-  for items typed in) and the version or hash recorded.
+  starts with how it got there (*detected*, *added by skillz* or *added by hand*), then shows the
+  link, how it was installed (`npx skills`, `claude plugin`, `codex plugin`, `manual`) and the
+  version or hash recorded. A `project` or `global` tag after a name says where the item is
+  installed right now; no tag means it is only in the library.
 - **Profiles**: your saved combinations, each with how it compares with the project. Apply one
   (adds what is missing) or apply it exactly (also removes the rest, after a preview), build one
   from library items, save what is installed as a new one, or delete one.
