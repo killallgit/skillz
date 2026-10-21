@@ -6,12 +6,12 @@ use super::deps::Deps;
 use super::isolate::run_isolated;
 use super::list::{ListView, list};
 use super::profile::profile_command;
-use super::project::project_command;
 use super::prune::prune;
 use super::removal::{UninstallRequest, reset, uninstall};
-use super::scope::{Scene, resolve, single_scope, split_target};
+use super::scope::{Scene, resolve, resolve_project, split_target};
 use super::use_profile::{Switching, Target, use_profile};
 use crate::install::{self, InstallRequest, SkillSelection};
+use crate::model::Scope;
 
 /// Runs the command and returns the process exit code: the child's for `run`, else 0.
 pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<i32> {
@@ -23,8 +23,9 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         Command::Reset(args) => succeeded(run_reset(deps, args, out)),
         Command::Use(args) => succeeded(run_use(deps, args, out)),
         Command::Install(args) => succeeded(run_install(deps, args)),
-        Command::Profile { action } => succeeded(profile_command(deps, action, out)),
-        Command::Project { action } => succeeded(project_command(deps, action, out)),
+        Command::Profile { action, project } => {
+            succeeded(profile_command(deps, action, project, out))
+        }
     }
 }
 
@@ -72,20 +73,21 @@ fn run_reset(deps: &Deps, args: ResetArgs, out: &mut dyn Write) -> anyhow::Resul
 }
 
 fn run_use(deps: &Deps, args: UseArgs, out: &mut dyn Write) -> anyhow::Result<()> {
-    let (env, scopes) = resolve(deps, args.project.as_deref(), args.global)?;
+    let env = resolve_project(deps, args.project.as_deref())?;
     let target = Target {
         env: &env,
-        scope: single_scope(&scopes, args.global),
+        scope: Scope::Project,
     };
     let switching = Switching {
-        profile: args.profile.as_deref(),
+        profile: &args.profile,
+        exact: args.exact,
         dry_run: args.dry_run,
     };
     use_profile(deps, &target, &switching, out)
 }
 
 fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
-    let (env, scopes) = resolve(deps, args.project.as_deref(), args.global)?;
+    let env = resolve_project(deps, args.project.as_deref())?;
     let request = InstallRequest {
         source: args.source,
         cwd: deps.cwd.clone(),
@@ -94,7 +96,7 @@ fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
         } else {
             args.agents
         },
-        scope: single_scope(&scopes, args.global),
+        scope: Scope::Project,
         selection: skill_selection(args.all, args.skill),
     };
     let ctx = install::Ctx {

@@ -8,7 +8,6 @@ mod list;
 mod notice;
 mod plan_view;
 mod profile;
-mod project;
 mod prune;
 mod removal;
 mod run;
@@ -26,8 +25,8 @@ use clap::Parser;
 
 use args::wants_auto_yes;
 pub use args::{
-    Cli, Command, Filter, InstallArgs, ListArgs, ProfileCommand, ProjectCommand, PruneArgs,
-    ResetArgs, UninstallArgs, UseArgs,
+    Cli, Command, Filter, InstallArgs, ListArgs, ProfileCommand, PruneArgs, ResetArgs,
+    UninstallArgs, UseArgs,
 };
 pub use deps::Deps;
 pub use run::run;

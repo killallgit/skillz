@@ -8,12 +8,8 @@ use crate::agents;
 use crate::env::Env;
 use crate::model::{Augmentation, Scope};
 
-/// Scope rule: a path alone means that project, `-g` alone means global, neither means both.
-pub(super) fn resolve(
-    deps: &Deps,
-    path: Option<&Path>,
-    global: bool,
-) -> anyhow::Result<(Env, Vec<Scope>)> {
+/// The environment of the project at `path` (default: cwd).
+pub(super) fn resolve_project(deps: &Deps, path: Option<&Path>) -> anyhow::Result<Env> {
     let project = match path {
         Some(p) => deps.cwd.join(p),
         None => deps.cwd.clone(),
@@ -25,15 +21,24 @@ pub(super) fn resolve(
         .home
         .canonicalize()
         .unwrap_or_else(|_| deps.home.clone());
-    // In the home dir "project" files are the global ones, so that project is global scope.
-    let scopes = match (project == home, path.is_some(), global) {
+    Ok(Env {
+        home,
+        ..project_env(deps, &project)
+    })
+}
+
+/// Scope rule for discovery: a path alone means that project, `-g` alone means global, neither
+/// means both. In the home dir "project" files are the global ones, so that project is global.
+pub(super) fn resolve(
+    deps: &Deps,
+    path: Option<&Path>,
+    global: bool,
+) -> anyhow::Result<(Env, Vec<Scope>)> {
+    let env = resolve_project(deps, path)?;
+    let scopes = match (env.project == env.home, path.is_some(), global) {
         (true, _, _) | (false, false, true) => vec![Scope::Global],
         (false, true, false) => vec![Scope::Project],
         _ => vec![Scope::Global, Scope::Project],
-    };
-    let env = Env {
-        home,
-        ..project_env(deps, &project)
     };
     Ok((env, scopes))
 }
@@ -103,16 +108,7 @@ pub(super) fn installed(deps: &Deps, env: &Env, scope: Scope) -> Vec<Augmentatio
     gather(deps, env, &[scope], &Filter::default())
 }
 
-/// One scope at a time: the project, unless asked for global or this is the home dir.
-pub(super) fn single_scope(scopes: &[Scope], global: bool) -> Scope {
-    if global || !scopes.contains(&Scope::Project) {
-        Scope::Global
-    } else {
-        Scope::Project
-    }
-}
-
-/// The environment of one registered project, with the config dirs this run redirects.
+/// The environment of one project, with the config dirs this run redirects.
 pub(super) fn project_env(deps: &Deps, dir: &Path) -> Env {
     Env {
         project: dir.to_path_buf(),

@@ -74,24 +74,13 @@ pub struct Current {
     pub profile: Option<String>,
 }
 
-/// Directories the path picker starts from and abbreviates.
-#[derive(Default)]
-pub struct Places {
-    /// Where skillz was run.
-    pub start: PathBuf,
-    pub home: PathBuf,
-}
-
 #[derive(Default)]
 pub struct Model {
-    pub places: Places,
     pub current: Option<Current>,
     pub projects: Vec<ProjectRow>,
     pub profiles: Vec<ProfileRow>,
     /// Shown as a toast until the next key: what the last action did or why it failed.
     pub notice: Option<String>,
-    /// What the undo key asks for while the notice is the latest thing that happened.
-    pub undo: Option<Act>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -127,11 +116,6 @@ pub enum Act {
         project: PathBuf,
         profile: String,
     },
-    Unload {
-        project: PathBuf,
-    },
-    AddProject(String),
-    ForgetProject(PathBuf),
     NewProfile(String),
     SaveProfile {
         name: String,

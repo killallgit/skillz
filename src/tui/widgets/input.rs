@@ -43,6 +43,10 @@ impl InputField {
     }
 
     /// Replace the text, leaving the cursor at its end.
+    #[allow(
+        dead_code,
+        reason = "used by the path picker, wired back in by the next TUI bead"
+    )]
     pub fn replace(&mut self, value: &str) {
         self.value = value.to_string();
         self.cursor = self.char_count();

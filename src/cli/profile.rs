@@ -1,57 +1,49 @@
 use std::io::Write;
 
+use std::path::PathBuf;
+
 use anyhow::bail;
 
 use super::args::ProfileCommand;
 use super::deps::Deps;
-use super::scope::{installed, project_env, resolve, single_scope};
-use super::screen::Rows;
+use super::scope::{installed, resolve_project};
+use super::screen::profile_rows;
 use crate::model::{Augmentation, Scope};
 use crate::{profile, snapshot};
 
 pub(super) fn profile_command(
     deps: &Deps,
     action: ProfileCommand,
+    project: Option<PathBuf>,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let store = profile::Store::in_env(&project_env(deps, &deps.cwd));
+    let env = resolve_project(deps, project.as_deref())?;
+    let store = profile::Store::in_env(&env);
     match action {
-        ProfileCommand::List => list_profiles(deps, &store, out),
+        ProfileCommand::List => list_profiles(&store, out),
         ProfileCommand::Show { name } => Ok(write!(out, "{}", store.load(&name)?.to_text()?)?),
         ProfileCommand::Delete { name } => {
             store.load(&name)?;
             store.delete(&name)
         }
-        ProfileCommand::Save {
-            name,
-            global,
-            project,
-            force,
-        } => {
-            let (env, scopes) = resolve(deps, project.as_deref(), global)?;
-            let scope = single_scope(&scopes, global);
-            let items = installed(deps, &env, scope);
+        ProfileCommand::Save { name, force } => {
+            let items = installed(deps, &env, Scope::Project);
             let snap = save_profile(&store, &items, &name, force)?;
-            print_saved(out, &name, scope, &snap)
+            print_saved(out, &name, &snap)
         }
     }
 }
 
-fn list_profiles(deps: &Deps, store: &profile::Store, out: &mut dyn Write) -> anyhow::Result<()> {
-    for row in Rows::new(deps, store).profiles()? {
+fn list_profiles(store: &profile::Store, out: &mut dyn Write) -> anyhow::Result<()> {
+    for row in profile_rows(store)? {
         let unreadable = if row.broken { "  (unreadable)" } else { "" };
         writeln!(out, "{}{unreadable}", row.name)?;
     }
     Ok(())
 }
 
-fn print_saved(
-    out: &mut dyn Write,
-    name: &str,
-    scope: Scope,
-    snap: &snapshot::Snapshot,
-) -> anyhow::Result<()> {
-    writeln!(out, "saved {name} from the {scope} config:")?;
+fn print_saved(out: &mut dyn Write, name: &str, snap: &snapshot::Snapshot) -> anyhow::Result<()> {
+    writeln!(out, "saved {name} from the project config:")?;
     for entry in &snap.profile.entries {
         writeln!(out, "  {entry}")?;
     }

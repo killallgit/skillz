@@ -3,10 +3,10 @@
 mod common;
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use common::*;
-use skillz::cli::{Command, Deps, InstallArgs};
+use skillz::cli::{Command, InstallArgs};
 use skillz::model::Agent;
 
 const SKILL_MD: &str = "---\nname: tdd\ndescription: d\n---\n";
@@ -21,7 +21,6 @@ fn write_skill(repo: &Path, name: &str) {
 fn install_args(source: &str) -> InstallArgs {
     InstallArgs {
         source: source.into(),
-        global: false,
         agents: vec![Agent::Codex],
         all: true,
         skill: vec![],
@@ -53,11 +52,10 @@ fn world_with_commit_skills() -> (World, String) {
     (w, source)
 }
 
-fn install_commit_skills_globally() -> Vec<Call> {
+fn install_commit_skills() -> Vec<Call> {
     let (w, source) = world_with_commit_skills();
     let (r, p) = (Recorder::default(), Scripted::yes());
     let cmd = Command::Install(InstallArgs {
-        global: true,
         agents: vec![Agent::Claude],
         all: false,
         skill: vec!["*commit".into()],
@@ -67,33 +65,16 @@ fn install_commit_skills_globally() -> Vec<Call> {
     r.calls()
 }
 
-fn install_from_home(project: impl FnOnce(&World) -> Option<PathBuf>) -> Vec<Call> {
-    let w = world();
-    let src = w.project.join("src-repo");
-    write(&src.join("skills/tdd/SKILL.md"), SKILL_MD);
-    let (r, p) = (Recorder::default(), Scripted::yes());
-    let from_home = Deps {
-        cwd: w.home.clone(),
-        ..deps(&w, &r, &p)
-    };
-    let cmd = Command::Install(InstallArgs {
-        project: project(&w),
-        ..install_args(&src.display().to_string())
-    });
-    run_quiet(cmd, &from_home).unwrap();
-    r.calls()
-}
-
 #[test]
 fn a_local_source_is_installed_with_npx() {
-    let calls = install_commit_skills_globally();
+    let calls = install_commit_skills();
 
     assert_eq!(calls.last().unwrap().0, "npx");
 }
 
 #[test]
 fn a_skill_pattern_selects_only_the_matching_skills() {
-    let calls = install_commit_skills_globally();
+    let calls = install_commit_skills();
 
     let mut chosen = skill_flags(&calls.last().unwrap().1);
 
@@ -102,10 +83,10 @@ fn a_skill_pattern_selects_only_the_matching_skills() {
 }
 
 #[test]
-fn global_install_passes_the_global_flag() {
-    let calls = install_commit_skills_globally();
+fn an_install_is_never_global() {
+    let calls = install_commit_skills();
 
-    assert!(calls.last().unwrap().1.contains(&"-g".to_string()));
+    assert!(!calls.last().unwrap().1.contains(&"-g".to_string()));
 }
 
 #[test]
@@ -127,20 +108,6 @@ fn a_relative_source_resolves_against_the_cwd_not_the_project_dir() {
         Path::new(&calls[0].1[3]).canonicalize().unwrap(),
         w.project.join("src-repo").canonicalize().unwrap()
     );
-}
-
-#[test]
-fn installing_from_home_is_global() {
-    let calls = install_from_home(|_| None);
-
-    assert!(calls.last().unwrap().1.contains(&"-g".to_string()));
-}
-
-#[test]
-fn installing_into_the_home_project_is_global() {
-    let calls = install_from_home(|w| Some(w.home.clone()));
-
-    assert!(calls.last().unwrap().1.contains(&"-g".to_string()));
 }
 
 #[test]

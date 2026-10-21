@@ -9,7 +9,6 @@ use crate::tui::help::{Help, Verdict as HelpVerdict};
 use crate::tui::keymap::{self, Scope};
 use crate::tui::widgets::confirm::{ConfirmDialog, Outcome as Verdict};
 use crate::tui::widgets::input::{InputField, Outcome as Edit};
-use crate::tui::widgets::path_picker::{PathPicker, Verdict as PathVerdict};
 
 impl Home {
     pub(super) fn handle_help(&mut self, mut help: Help, key: KeyEvent) -> Option<Act> {
@@ -45,14 +44,6 @@ impl Home {
                 ask.act(answer, self.project_id(), self.profile_id())
             }
             Edit::Submit | Edit::Editing => self.open(Popup::Input(ask, field)),
-        }
-    }
-
-    pub(super) fn handle_path(&mut self, mut picker: PathPicker, key: KeyEvent) -> Option<Act> {
-        match picker.handle(key) {
-            PathVerdict::Chosen(path) => Some(Act::AddProject(path)),
-            PathVerdict::Cancelled => None,
-            PathVerdict::Open => self.open(Popup::Path(picker)),
         }
     }
 

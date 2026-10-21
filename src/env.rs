@@ -59,7 +59,7 @@ impl Env {
         }
     }
 
-    /// skillz's own config: profiles and the workspace registry.
+    /// skillz's own config: the profiles and the dirs `run` keeps.
     pub fn skillz_dir(&self) -> PathBuf {
         self.home.join(".config/skillz")
     }

@@ -1,18 +1,17 @@
-//! Switching profiles against a fake `npx skills` that installs into a temp project.
+//! Applying profiles against a fake `npx skills` that installs into a temp project.
 
 use std::cell::RefCell;
 use std::fs;
 use std::path::Path;
 
 use super::*;
-use crate::action::Action;
 use crate::agents::registry;
 use crate::model::Agent;
 use crate::profile::{Entry, Profile};
 use crate::runner::{CommandRunner, Output};
 
-/// Installs the skills named by `--skill` into the project's npx store when asked to
-/// `skills add`, like the real tool would; every command fails when `fail` is set.
+/// Installs the skills named by `--skill` into the project like `npx skills add` would: the
+/// files, the link for Claude and the lock entry that records the source.
 struct NpxFake {
     project: std::path::PathBuf,
     calls: RefCell<Vec<Vec<String>>>,
@@ -45,7 +44,7 @@ impl CommandRunner for NpxFake {
         self.calls.borrow_mut().push(args.to_vec());
         if !self.fail && args.iter().any(|a| a == "add") {
             for pair in args.windows(2).filter(|w| w[0] == "--skill") {
-                write_skill(&self.project, &pair[1]);
+                install_skill(&self.project, &pair[1]);
             }
         }
         Ok(Output {
@@ -55,19 +54,18 @@ impl CommandRunner for NpxFake {
     }
 }
 
-/// Lets the skill land, then fails the plugin command.
-struct FailsOnClaude(NpxFake);
-
-impl CommandRunner for FailsOnClaude {
-    fn run(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output> {
-        if program == "claude" {
-            return Ok(Output {
-                success: false,
-                stderr: "no".into(),
-            });
-        }
-        self.0.run(program, args, cwd)
-    }
+fn install_skill(root: &Path, name: &str) {
+    write_skill(root, name);
+    let links = root.join(".claude/skills");
+    fs::create_dir_all(&links).unwrap();
+    std::os::unix::fs::symlink(root.join(".agents/skills").join(name), links.join(name)).unwrap();
+    let lock = root.join("skills-lock.json");
+    let mut skills = fs::read_to_string(&lock)
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .map_or_else(|| serde_json::json!({}), |v| v["skills"].clone());
+    skills[name] = serde_json::json!({"source": "o/r"});
+    fs::write(lock, serde_json::json!({"skills": skills}).to_string()).unwrap();
 }
 
 fn write_skill(root: &Path, name: &str) {
@@ -84,17 +82,14 @@ struct Fx {
     _dirs: (tempfile::TempDir, tempfile::TempDir),
     env: Env,
     adapters: Vec<Box<dyn AgentAdapter>>,
-    ledger: Ledger,
 }
 
 impl Fx {
     fn new() -> Self {
         let (home, project) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        let env = Env::new(home.path().into(), project.path().into());
         Fx {
-            ledger: Ledger::in_env(&env),
+            env: Env::new(home.path().into(), project.path().into()),
             adapters: registry(),
-            env,
             _dirs: (home, project),
         }
     }
@@ -104,7 +99,6 @@ impl Fx {
             adapters: &self.adapters,
             env: &self.env,
             scope: Scope::Project,
-            ledger: &self.ledger,
         }
     }
 
@@ -112,44 +106,32 @@ impl Fx {
         NpxFake::new(&self.env.project)
     }
 
-    fn plan(&self, target: Option<&Profile>) -> Switch {
-        self.applier().plan(target).unwrap()
+    fn plan(&self, target: &Profile, exact: bool) -> Switch {
+        self.applier().plan(target, exact).unwrap()
     }
 
     fn run(&self, switch: &Switch, runner: &dyn CommandRunner) -> anyhow::Result<Done> {
         self.applier().run(switch, runner, &mut |_| {})
     }
 
-    fn switch_to(&self, target: Option<&Profile>, runner: &dyn CommandRunner) -> Done {
-        self.run(&self.plan(target), runner).unwrap()
-    }
-
-    fn record(&self) -> Option<Record> {
-        self.ledger
-            .get(&Ledger::key(&self.env, Scope::Project))
-            .unwrap()
-    }
-
-    fn owned_names(&self) -> Vec<String> {
-        let mut names: Vec<String> = self
-            .record()
-            .into_iter()
-            .flat_map(|r| r.entries)
-            .flat_map(|l| l.items)
-            .map(|o| o.name)
-            .collect();
-        names.sort();
-        names
+    fn apply(&self, target: &Profile, exact: bool, runner: &dyn CommandRunner) -> Done {
+        self.run(&self.plan(target, exact), runner).unwrap()
     }
 
     fn has_skill(&self, name: &str) -> bool {
         self.env.project.join(".agents/skills").join(name).exists()
     }
+
+    fn matches(&self, target: &Profile) -> bool {
+        let installed = self.applier().installed().unwrap();
+        compare(&target.resolved(), &installed).matches()
+    }
 }
 
-/// A profile with one skill entry per name.
+/// A Claude profile with one skill entry per name.
 fn profile(name: &str, skills: &[&str]) -> Profile {
     let mut p = Profile::new(name);
+    p.agents = vec![Agent::Claude];
     p.entries = skills
         .iter()
         .map(|s| Entry::Skill {
@@ -161,98 +143,54 @@ fn profile(name: &str, skills: &[&str]) -> Profile {
     p
 }
 
-fn plugin_entry() -> Entry {
-    Entry::Plugin {
-        source: "o/mp".into(),
-        marketplace: "mp".into(),
-        name: "pp".into(),
-        agents: vec![Agent::Claude],
-    }
-}
-
 #[test]
-fn loading_a_profile_records_what_appeared_and_unloading_removes_exactly_that() {
+fn applying_installs_what_is_missing_and_then_the_project_matches() {
     let fx = Fx::new();
-    let by_hand = fx.env.project.join(".claude/skills/mine");
-    fs::create_dir_all(&by_hand).unwrap();
-    fs::write(
-        by_hand.join("SKILL.md"),
-        "---\nname: mine\ndescription: d\n---\n",
-    )
-    .unwrap();
-    let runner = fx.npx();
+    let web = profile("web", &["tdd"]);
 
-    let loaded = fx.switch_to(Some(&profile("web", &["tdd"])), &runner);
-    assert_eq!(loaded.added.len(), 1);
-    assert_eq!(fx.record().unwrap().profile, "web");
+    fx.apply(&web, false, &fx.npx());
 
-    let unloaded = fx.switch_to(None, &runner);
-
-    assert!(unloaded.removed.unwrap().still_installed.is_empty());
-    assert!(!fx.has_skill("tdd"));
-    assert!(by_hand.exists(), "hand-installed skill survives");
-    assert!(fx.record().is_none());
-}
-
-#[test]
-fn items_that_were_already_installed_are_not_owned() {
-    let fx = Fx::new();
-    write_skill(&fx.env.project, "tdd");
-    let runner = fx.npx();
-
-    let loaded = fx.switch_to(Some(&profile("web", &["tdd"])), &runner);
-    fx.switch_to(None, &runner);
-
-    assert!(loaded.added.is_empty());
     assert!(fx.has_skill("tdd"));
+    assert!(fx.matches(&web));
 }
 
 #[test]
-fn loading_the_same_profile_again_changes_nothing() {
+fn applying_never_removes_what_the_profile_does_not_name() {
+    let fx = Fx::new();
+    let runner = fx.npx();
+    install_skill(&fx.env.project, "other");
+    write_skill(&fx.env.project, "mine");
+
+    fx.apply(&profile("web", &["tdd"]), false, &runner);
+
+    assert!(fx.has_skill("other") && fx.has_skill("mine") && fx.has_skill("tdd"));
+}
+
+#[test]
+fn applying_what_is_all_there_plans_and_runs_nothing() {
     let fx = Fx::new();
     let runner = fx.npx();
     let web = profile("web", &["tdd"]);
-    fx.switch_to(Some(&web), &runner);
+    fx.apply(&web, false, &runner);
 
-    let again = fx.plan(Some(&web));
+    let again = fx.plan(&web, false);
 
     assert!(again.is_empty());
-    assert!(again.steps().is_empty());
     assert_eq!(runner.count(), 1);
 }
 
 #[test]
-fn swapping_touches_only_the_difference() {
+fn only_the_missing_skills_are_installed() {
     let fx = Fx::new();
     let runner = fx.npx();
-    fx.switch_to(Some(&profile("a", &["tdd", "old"])), &runner);
+    install_skill(&fx.env.project, "tdd");
 
-    let switch = fx.plan(Some(&profile("b", &["tdd", "new"])));
+    let switch = fx.plan(&profile("web", &["tdd", "new"]), false);
     fx.run(&switch, &runner).unwrap();
 
-    assert_eq!(
-        (
-            switch.kept.len(),
-            switch.dropped.len(),
-            switch.installs.len()
-        ),
-        (1, 1, 1)
-    );
-    assert_eq!(runner.count(), 3, "only the new skill was installed");
-    assert!(fx.has_skill("tdd") && fx.has_skill("new") && !fx.has_skill("old"));
-    assert_eq!(fx.owned_names(), ["new", "tdd"]);
-    assert_eq!(fx.record().unwrap().profile, "b");
-}
-
-#[test]
-fn swapping_names_where_it_came_from_and_where_it_goes() {
-    let fx = Fx::new();
-    fx.switch_to(Some(&profile("a", &["tdd"])), &fx.npx());
-
-    let switch = fx.plan(Some(&profile("b", &["tdd"])));
-
-    assert_eq!(switch.from.as_deref(), Some("a"));
-    assert_eq!(switch.to.as_deref(), Some("b"));
+    assert_eq!(switch.present.len(), 1);
+    assert_eq!(switch.installs.len(), 1);
+    assert_eq!(runner.count(), 1);
 }
 
 #[test]
@@ -260,82 +198,78 @@ fn duplicate_entries_install_once() {
     let fx = Fx::new();
     let runner = fx.npx();
 
-    fx.switch_to(Some(&profile("a", &["tdd", "tdd"])), &runner);
+    fx.apply(&profile("a", &["tdd", "tdd"]), false, &runner);
 
     assert_eq!(runner.count(), 1);
 }
 
 #[test]
-fn a_profile_whose_agents_differ_is_a_different_entry() {
+fn a_profile_for_another_agent_is_not_matched_by_a_claude_install() {
     let fx = Fx::new();
-    fx.switch_to(Some(&profile("a", &["tdd"])), &fx.npx());
-    let mut b = profile("b", &["tdd"]);
-    b.agents = vec![Agent::Codex];
+    install_skill(&fx.env.project, "tdd");
+    let mut cursor = profile("c", &["tdd"]);
+    cursor.agents = vec![Agent::Cursor];
 
-    let switch = fx.plan(Some(&b));
-
-    assert_eq!(
-        (
-            switch.kept.len(),
-            switch.dropped.len(),
-            switch.installs.len()
-        ),
-        (0, 1, 1)
-    );
+    assert!(!fx.matches(&cursor));
 }
 
 #[test]
-fn a_failed_install_leaves_no_record_when_nothing_landed() {
+fn exact_removes_what_the_profile_does_not_want_and_keeps_what_it_does() {
+    let fx = Fx::new();
+    let runner = fx.npx();
+    install_skill(&fx.env.project, "tdd");
+    install_skill(&fx.env.project, "old");
+
+    let switch = fx.plan(&profile("web", &["tdd"]), true);
+    let done = fx.run(&switch, &runner).unwrap();
+
+    assert_eq!(switch.removals.len(), 1);
+    assert!(done.removed.unwrap().still_installed.is_empty());
+    assert!(fx.has_skill("tdd") && !fx.has_skill("old"));
+}
+
+#[test]
+fn exact_flags_an_item_no_profile_could_install_again() {
+    let fx = Fx::new();
+    write_skill(&fx.env.project, "mine");
+    fs::create_dir_all(fx.env.project.join(".claude/skills")).unwrap();
+    std::os::unix::fs::symlink(
+        fx.env.project.join(".agents/skills/mine"),
+        fx.env.project.join(".claude/skills/mine"),
+    )
+    .unwrap();
+
+    let switch = fx.plan(&profile("web", &[]), true);
+
+    assert_eq!(switch.removals.len(), 1);
+    assert!(switch.is_unsourced(&switch.removals[0]));
+}
+
+#[test]
+fn exact_has_nothing_to_do_when_nothing_is_extra() {
+    let fx = Fx::new();
+    let runner = fx.npx();
+    let web = profile("web", &["tdd"]);
+    fx.apply(&web, false, &runner);
+
+    let exact = fx.plan(&web, true);
+
+    assert!(exact.is_empty());
+}
+
+#[test]
+fn a_failed_install_is_an_error() {
     let fx = Fx::new();
     let runner = NpxFake::failing(&fx.env.project);
-    let switch = fx.plan(Some(&profile("a", &["tdd"])));
+    let switch = fx.plan(&profile("a", &["tdd"]), false);
 
     let result = fx.run(&switch, &runner);
 
     assert!(result.is_err());
-    assert!(fx.record().is_none());
 }
 
 #[test]
-fn unloading_with_nothing_loaded_does_nothing() {
-    let fx = Fx::new();
-    let runner = fx.npx();
-    let switch = fx.plan(None);
-
-    fx.run(&switch, &runner).unwrap();
-
-    assert!(switch.is_empty());
-    assert_eq!(runner.count(), 0);
-    assert!(fx.record().is_none());
-}
-
-#[test]
-fn a_partial_install_is_recorded_so_it_can_be_unloaded() {
-    let fx = Fx::new();
-    let mut p = profile("web", &["tdd"]);
-    p.entries.push(plugin_entry());
-    let runner = FailsOnClaude(fx.npx());
-
-    let result = fx.run(&fx.plan(Some(&p)), &runner);
-    let recorded = fx.owned_names();
-    fx.switch_to(None, &runner);
-
-    assert!(result.is_err());
-    assert_eq!(recorded, ["tdd"]);
-    assert!(!fx.has_skill("tdd"));
-}
-
-#[test]
-fn a_corrupt_ledger_stops_planning() {
-    let fx = Fx::new();
-    fs::create_dir_all(fx.env.skillz_dir()).unwrap();
-    fs::write(fx.env.skillz_dir().join("applied.json"), "{nope").unwrap();
-
-    assert!(fx.applier().plan(None).is_err());
-}
-
-#[test]
-fn a_loaded_hook_lands_in_the_settings_and_unloading_takes_it_out_again() {
+fn a_hook_lands_in_the_settings_and_an_exact_empty_profile_takes_it_out_again() {
     let fx = Fx::new();
     let settings = fx.env.project.join(".claude/settings.local.json");
     let mut p = Profile::new("notify");
@@ -347,78 +281,23 @@ fn a_loaded_hook_lands_in_the_settings_and_unloading_takes_it_out_again() {
     });
     let runner = fx.npx();
 
-    fx.switch_to(Some(&p), &runner);
+    fx.apply(&p, false, &runner);
     let loaded = fs::read_to_string(&settings).unwrap();
-    fx.switch_to(None, &runner);
+    fx.apply(&Profile::new("none"), true, &runner);
     let unloaded = fs::read_to_string(&settings).unwrap();
 
     assert!(loaded.contains("say done"));
     assert!(!unloaded.contains("say done"));
 }
 
-fn two_source_profile() -> Profile {
-    let mut p = profile("web", &["tdd"]);
-    p.entries.push(Entry::Skill {
-        source: "o/other".into(),
-        names: vec!["lint".into()],
-        agents: vec![],
-    });
-    p
-}
-
 #[test]
-fn each_entry_is_recorded_before_the_next_one_installs() {
-    let fx = Fx::new();
-    let runner = fx.npx();
-    let switch = fx.plan(Some(&two_source_profile()));
-    let mut owned_at_each_step = Vec::new();
-
-    fx.applier()
-        .run(&switch, &runner, &mut |_| {
-            owned_at_each_step.push(fx.owned_names());
-        })
-        .unwrap();
-
-    // the second install starts only after the first is in the ledger
-    assert_eq!(
-        owned_at_each_step,
-        [Vec::<String>::new(), vec!["tdd".to_string()]]
-    );
-}
-
-#[test]
-fn removals_reach_the_ledger_before_installs_begin() {
-    let fx = Fx::new();
-    let runner = fx.npx();
-    fx.switch_to(Some(&profile("a", &["old"])), &runner);
-    let switch = fx.plan(Some(&profile("b", &["new"])));
-    let mut owned_when_install_starts = None;
-
-    fx.applier()
-        .run(&switch, &runner, &mut |step| {
-            if matches!(step, Action::Run { .. }) {
-                owned_when_install_starts = Some(fx.owned_names());
-            }
-        })
-        .unwrap();
-
-    // by the time the install runs, the dropped skill is no longer claimed
-    assert_eq!(owned_when_install_starts, Some(vec![]));
-}
-
-#[test]
-fn an_unreadable_inventory_stops_the_install_instead_of_guessing() {
+fn an_unreadable_inventory_stops_planning_instead_of_guessing() {
     let fx = Fx::new();
     let settings = fx.env.project.join(".claude/settings.local.json");
     fs::create_dir_all(settings.parent().unwrap()).unwrap();
     fs::write(&settings, "{nope").unwrap();
-    let runner = fx.npx();
-    let switch = fx.plan(Some(&profile("web", &["tdd"])));
 
-    let result = fx.run(&switch, &runner);
+    let planned = fx.applier().plan(&profile("web", &["tdd"]), false);
 
-    // nothing may run when what was already there cannot be read
-    assert!(result.is_err());
-    assert_eq!(runner.count(), 0);
-    assert!(fx.record().is_none());
+    assert!(planned.is_err());
 }

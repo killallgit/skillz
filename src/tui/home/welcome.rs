@@ -1,4 +1,4 @@
-//! What an empty workspace says: a welcome with three steps, and a hint per empty pane.
+//! What an empty workspace says: a welcome with two steps, and a hint per empty pane.
 
 use ratatui::text::{Line, Span};
 
@@ -28,9 +28,12 @@ pub(super) fn welcome(theme: &Theme) -> Vec<Line<'static>> {
     vec![
         Line::styled("Welcome to skillz", theme.title),
         Line::raw(""),
-        step("1", Action::AddProject, "add a project"),
-        step("2", Action::SaveProfile, "save its setup as a profile"),
-        step("3", Action::Select, "apply a profile to another project"),
+        step(
+            "1",
+            Action::SaveProfile,
+            "save the project's setup as a profile",
+        ),
+        step("2", Action::Select, "apply a profile to the project"),
     ]
 }
 
@@ -46,14 +49,7 @@ pub(super) fn pane_hint(pane: Focus, filtered: bool, theme: &Theme) -> Vec<Line<
         ];
     }
     match pane {
-        Focus::Projects => vec![
-            Line::styled("No projects yet", theme.muted),
-            Line::from(vec![
-                text("press ", theme),
-                key(Action::AddProject, theme),
-                text(" to add one", theme),
-            ]),
-        ],
+        Focus::Projects => vec![Line::styled("No project", theme.muted)],
         Focus::Profiles => vec![
             Line::styled("No profiles yet", theme.muted),
             Line::from(vec![
@@ -89,19 +85,18 @@ mod tests {
 
         assert_eq!(
             keys,
-            [Action::AddProject, Action::SaveProfile, Action::Select]
-                .map(|a| keys_for(Scope::Home, a))
+            [Action::SaveProfile, Action::Select].map(|a| keys_for(Scope::Home, a))
         );
     }
 
     #[test]
-    fn each_empty_pane_points_at_a_key_that_fills_it() {
+    fn an_empty_profiles_pane_points_at_the_keys_that_fill_it() {
         let theme = Theme::dark();
 
         let projects = accented_keys(&pane_hint(Focus::Projects, false, &theme));
         let profiles = accented_keys(&pane_hint(Focus::Profiles, false, &theme));
 
-        assert_eq!(projects, [keys_for(Scope::Home, Action::AddProject)]);
+        assert!(projects.is_empty());
         assert_eq!(profiles.len(), 2);
     }
 

@@ -1,4 +1,4 @@
-//! What the workspace screen shows: the rows for registered projects and for profiles.
+//! What the home screen shows: the row for the current project and the rows for profiles.
 
 use std::path::{Path, PathBuf};
 
@@ -6,98 +6,66 @@ use super::deps::Deps;
 use super::detail;
 use super::notice::Notice;
 use super::scope::project_env;
+use crate::agents;
 use crate::apply;
 use crate::model::Scope;
 use crate::profile;
-use crate::tui::home::{Current, Model, Places, ProfileRow, ProjectRow};
-use crate::workspace::Workspace;
+use crate::tui::home::{Current, Model, ProfileRow, ProjectRow};
 
-/// Builds the project and profile rows from one ledger and profile store.
-pub(super) struct Rows<'a> {
-    deps: &'a Deps<'a>,
-    ledger: apply::Ledger,
-    store: &'a profile::Store,
+pub(super) fn profile_rows(store: &profile::Store) -> anyhow::Result<Vec<ProfileRow>> {
+    Ok(store
+        .names()?
+        .into_iter()
+        .map(|name| profile_row(store, name))
+        .collect())
 }
 
-impl<'a> Rows<'a> {
-    pub(super) fn new(deps: &'a Deps<'a>, store: &'a profile::Store) -> Self {
-        Rows {
-            deps,
-            ledger: apply::Ledger::in_env(&project_env(deps, &deps.cwd)),
-            store,
-        }
+fn profile_row(store: &profile::Store, name: String) -> ProfileRow {
+    match store.load(&name) {
+        Ok(p) => ProfileRow {
+            detail: detail::profile(&p),
+            broken: false,
+            name,
+        },
+        Err(e) => ProfileRow {
+            detail: detail::broken(&e),
+            broken: true,
+            name,
+        },
     }
+}
 
-    pub(super) fn projects(&self, workspace: &Workspace) -> anyhow::Result<Vec<ProjectRow>> {
-        workspace
-            .projects()?
-            .into_iter()
-            .map(|path| self.project(path))
-            .collect()
-    }
-
-    pub(super) fn profiles(&self) -> anyhow::Result<Vec<ProfileRow>> {
-        Ok(self
-            .store
-            .names()?
-            .into_iter()
-            .map(|name| self.profile(name))
-            .collect())
-    }
-
-    fn project(&self, path: PathBuf) -> anyhow::Result<ProjectRow> {
-        let key = apply::Ledger::key(&project_env(self.deps, &path), Scope::Project);
-        let record = self.ledger.get(&key)?;
-        let missing = !path.is_dir();
-        let wanted = record
-            .as_ref()
-            .and_then(|r| self.store.load_flat(&r.profile).ok())
-            .map(|p| p.entries);
-        Ok(ProjectRow {
-            profile: record.as_ref().map(|r| r.profile.clone()),
-            short: short_path(self.deps, &path),
-            missing,
-            detail: detail::project(&path, missing, record.as_ref(), wanted),
-            path,
-        })
-    }
-
-    fn profile(&self, name: String) -> ProfileRow {
-        match self.store.load(&name) {
-            Ok(p) => ProfileRow {
-                detail: detail::profile(&p),
-                broken: false,
-                name,
-            },
-            Err(e) => ProfileRow {
-                detail: detail::broken(&e),
-                broken: true,
-                name,
-            },
-        }
-    }
+fn project_row(deps: &Deps, store: &profile::Store, path: PathBuf) -> anyhow::Result<ProjectRow> {
+    let installed = agents::inventory(&deps.adapters, &project_env(deps, &path), &[Scope::Project]);
+    let profiles: Vec<profile::Profile> = store
+        .names()?
+        .iter()
+        .filter_map(|name| store.load_flat(name).ok())
+        .collect();
+    let loaded = apply::loaded(&profiles, &installed.items);
+    Ok(ProjectRow {
+        profile: loaded.as_ref().map(|(p, _)| p.name.clone()),
+        short: short_path(deps, &path),
+        missing: false,
+        detail: detail::project(&path, loaded.as_ref().map(|(p, s)| (*p, s))),
+        path,
+    })
 }
 
 pub(super) fn screen_model(
     deps: &Deps,
     store: &profile::Store,
-    workspace: &Workspace,
+    project: &Path,
     notice: Option<Notice>,
 ) -> anyhow::Result<Model> {
-    let rows = Rows::new(deps, store);
-    let here = rows.project(deps.cwd.clone())?;
+    let here = project_row(deps, store, project.to_path_buf())?;
     Ok(Model {
-        places: Places {
-            start: deps.cwd.clone(),
-            home: deps.home.clone(),
-        },
         current: Some(Current {
-            short: here.short,
-            profile: here.profile,
+            short: here.short.clone(),
+            profile: here.profile.clone(),
         }),
-        projects: rows.projects(workspace)?,
-        profiles: rows.profiles()?,
-        undo: notice.as_ref().and_then(Notice::undo),
+        projects: vec![here],
+        profiles: profile_rows(store)?,
         notice: notice.map(|n| n.to_string()),
     })
 }
@@ -123,33 +91,14 @@ mod tests {
     }
 
     #[test]
-    fn a_project_row_records_its_profile_and_whether_the_directory_is_gone() {
+    fn a_project_matching_no_profile_has_none_on_its_row() {
         with_deps(|deps, dir| {
             let store = profile::Store::in_env(&project_env(deps, dir));
-            let rows = Rows::new(deps, &store);
 
-            let here = rows.project(dir.to_path_buf()).unwrap();
-            let gone = rows.project(dir.join("gone")).unwrap();
+            let here = project_row(deps, &store, dir.to_path_buf()).unwrap();
 
-            // Assert the typed rows carry no profile and the missing flag.
+            // Assert the typed row carries no profile.
             assert_eq!(here.profile, None);
-            assert!(!here.missing);
-            assert!(gone.missing);
-        });
-    }
-
-    #[test]
-    fn an_unreadable_ledger_fails_the_rows_instead_of_hiding_the_profile() {
-        with_deps(|deps, dir| {
-            let env = project_env(deps, dir);
-            let store = profile::Store::in_env(&env);
-            std::fs::create_dir_all(env.skillz_dir()).unwrap();
-            std::fs::write(env.skillz_dir().join("applied.json"), "{not json").unwrap();
-
-            let row = Rows::new(deps, &store).project(dir.to_path_buf());
-
-            // A corrupt ledger is an error, not a silently empty row.
-            assert!(row.is_err());
         });
     }
 
@@ -159,7 +108,7 @@ mod tests {
             let store = profile::Store::in_env(&project_env(deps, dir));
             store.save(&profile::Profile::new("ok")).unwrap();
 
-            let rows = Rows::new(deps, &store).profiles().unwrap();
+            let rows = profile_rows(&store).unwrap();
 
             // Assert the name and the broken flag, not the rendered detail.
             assert_eq!((rows[0].name.as_str(), rows[0].broken), ("ok", false));

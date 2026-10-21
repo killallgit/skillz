@@ -116,8 +116,8 @@ can (see below); anything an agent cannot take is shown as skipped in the plan, 
 | mcp | `claude mcp add`, scope `user` (global) or `local` (project) | `codex mcp add`, global only, no SSE |
 
 Subagents are copied from the source and remembered in `.skillz-sources.json` beside them, so
-`list --subagents` groups them by source, a snapshot can name the source, and unloading deletes
-exactly those files. skillz never overwrites a file it did not put there.
+`list --subagents` groups them by source, a snapshot can name the source, and an exact apply deletes
+those files. skillz never overwrites a file it did not put there.
 
 ### Extending
 
@@ -130,34 +130,32 @@ its own settings (agents, launch) and goes after the inherited ones. An inherite
 entry that names several things loses only the ones the child names. Of two bases, the later one
 wins.
 
-### Switching
+### Applying
 
 ```sh
-skillz profile save web          # snapshot what this project has installed (-g: global; --force replaces)
+skillz profile save web          # snapshot what this project has installed (--force replaces)
 skillz profile ls | show web | rm web
-skillz use web --dry-run         # what swapping this project to `web` would remove and install
-skillz use web                   # shows the plan, asks, then swaps: only the difference changes
-skillz use --none                # unload the current profile
-skillz use web -g                # the global config instead of a project (-y skips the question)
-skillz project add . | ls | rm . # projects the workspace shows
+skillz use web --dry-run         # what installing `web` into this project would do
+skillz use web                   # shows the plan, asks, then installs what is missing
+skillz use web --exact           # also removes what `web` does not want (-y skips the question)
 ```
+
+skillz works on one directory: the current one, or the one given with `-p PATH`. Profiles are
+global (`~/.config/skillz/profiles`); nothing about a project is stored.
 
 `profile save` keeps only what can be installed again: skills fetched by `npx skills` from a
 source, plugins whose marketplace has one, subagents with a recorded source, hooks, and MCP
-servers that need no secrets. The rest is listed as not saved, with the reason. Deleting a profile
-leaves what it installed in place until you `use` another.
+servers that need no secrets. The rest is listed as not saved, with the reason.
 
-`use` records what each entry added in `~/.config/skillz/applied.json` (one record per project, or
-`global`, and per `CLAUDE_CONFIG_DIR`/`CODEX_HOME` when set). It finds that by reading the
-inventory before and after each entry installs, so swapping or unloading removes exactly those
-items and never what was already there or was installed by hand since. Entries in both profiles are
-left alone. `use` in a project also registers it.
+`use` is additive: it reads the project's inventory and installs only the entries (or the names
+within an entry) that are not there yet, and never removes anything. `--exact` also removes every
+installed item the profile does not want, after showing the plan; items with no known source
+(hand-made skills and the like) are flagged because no profile can bring them back. An item
+shared with a wanted entry, such as a skill for two agents of which the profile wants one, stays.
 
-### Project registry
-
-`project add [PATH]` registers a directory in `~/.config/skillz/workspace.toml` (by real path);
-`project ls` shows each with its loaded profile; `project rm` forgets it and changes nothing
-installed there. A registered project whose directory is gone stays listed, marked missing.
+Which profile a project has loaded is never stored. A project matches a profile when nothing the
+profile wants is missing from the inventory; the home screen shows the matching profile with the
+most entries in place.
 
 ## Running one profile in isolation
 
@@ -178,7 +176,7 @@ never `~/.claude` or `~/.codex`. The variable is also set on every command skill
 
 ## Workspace
 
-Registered projects on the left, profiles in the middle, details on the right. It needs a
+The current project on the left, profiles in the middle, details on the right. It needs a
 terminal. Wide terminals (100+ columns) show three panes, 60+ two, 40+ one behind tabs; anything
 smaller than 40x10 says so.
 
@@ -186,16 +184,13 @@ smaller than 40x10 says so.
 | --- | --- |
 | `tab`, `←` `→`, `h` `l` | switch pane (tabs: `1`-`9`, `[` `]` in the one-pane layout) |
 | `↑↓` `j` `k`, `PgUp` `PgDn`, `^u` `^d`, `g` `G` | move |
-| `enter` | apply the selected profile to the selected project |
-| `u` | unload the project's profile |
-| `U` | undo the last switch (re-applies the previous profile, or unloads) |
-| `a` | add a project |
+| `enter` | install what the project lacks of the selected profile |
 | `n` | new empty profile |
 | `s` | save the project's installs as a profile |
 | `i` | add items the project has installed to the profile |
 | `t` | type an entry: `skill SOURCE NAMES`, `subagent SOURCE NAMES`, `plugin SOURCE MARKETPLACE NAME`, `hook EVENT COMMAND`, `mcp NAME COMMAND\|URL [ARGS]` |
 | `r` | remove entries from the profile |
-| `d` | forget the project (projects pane) or delete the profile after a confirm (profiles pane) |
+| `d` | delete the profile after a confirm (profiles pane) |
 | `[` `]` | scroll the details |
 | `/` | filter the focused pane; `esc` clears it |
 | `?` | all keys for the screen |
@@ -237,11 +232,10 @@ non-UTF-8 locale). `SKILLZ_NO_MOUSE` (any value) turns mouse capture off.
 - **Native tools first.** Items an agent's own CLI installed are removed with that CLI
   (`claude plugin uninstall`, `codex mcp remove`, `npx skills remove`, ...); skillz then cleans
   what is left. A failing command aborts before any file is touched.
-- **Ownership by inventory diff.** Profiles only ever remove items recorded in the ledger
-  (`applied.json`, locked while written), which was rewritten after the removals and after each
-  entry, so a crash or failed step loses nothing that landed. A failed install that did add
-  something is recorded so it can be unloaded.
-- **Atomic writes.** skillz's own files (profiles, ledger, registry, source manifest) are written
+- **Additive by default.** `use` only installs; removal needs `--exact` and shows the plan first.
+  A skill, hook or server is wanted when any one of its claims is, so what a wanted entry shares
+  is never removed.
+- **Atomic writes.** skillz's own files (profiles, source manifest) are written
   to a temp file and renamed. Edits to agent config files are staged beside the original with its
   permissions, follow symlinks (dotfiles stay links), are re-parsed before writing, and are
   written all or none; if a file changed since the plan was made, nothing is written. No backups

@@ -11,7 +11,7 @@ use anyhow::Context;
 
 use super::args::RunArgs;
 use super::deps::Deps;
-use super::scope::resolve;
+use super::scope::resolve_project;
 use super::use_profile::{Switching, Target, use_profile};
 use crate::env::Env;
 use crate::model::Scope;
@@ -19,7 +19,7 @@ use crate::profile;
 
 pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> anyhow::Result<i32> {
     profile::check_name(&args.profile)?;
-    let (env, _) = resolve(deps, args.project.as_deref(), false)?;
+    let env = resolve_project(deps, args.project.as_deref())?;
     let isolated = isolated_env(&env, &args.profile);
     create_dirs(&isolated)?;
 
@@ -35,7 +35,8 @@ pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> a
         scope: Scope::Global,
     };
     let switching = Switching {
-        profile: Some(&args.profile),
+        profile: &args.profile,
+        exact: false,
         dry_run: false,
     };
     use_profile(&inside, &target, &switching, out)?;

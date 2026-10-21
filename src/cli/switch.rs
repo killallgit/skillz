@@ -2,7 +2,7 @@
 //! while the steps run, then report how it ended. The terminal stays up throughout, since the
 //! tools run with their output captured.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::deps::Deps;
 use super::notice::Notice;
@@ -15,34 +15,26 @@ use crate::profile;
 use crate::remove;
 use crate::review::{Next, Outcome, Verdict};
 
-/// What one switch works on: the project's environment, ledger and profile store.
+/// What one switch works on: the project's environment and the profile store.
 struct Job<'a> {
     deps: &'a Deps<'a>,
     env: Env,
-    ledger: apply::Ledger,
     store: profile::Store,
-    project: PathBuf,
 }
 
-/// Load `profile` into `project` (or unload with `None`) once the user approves the plan. A
-/// failed run can be retried from its result screen; the plan is made again each time.
-pub(super) fn switch(
-    deps: &Deps,
-    project: &Path,
-    profile: Option<&str>,
-) -> anyhow::Result<Option<Notice>> {
+/// Install what `project` lacks of `profile` once the user approves the plan. A failed run
+/// can be retried from its result screen; the plan is made again each time.
+pub(super) fn switch(deps: &Deps, project: &Path, profile: &str) -> anyhow::Result<Option<Notice>> {
     let env = project_env(deps, project);
     let job = Job {
         deps,
-        ledger: apply::Ledger::in_env(&env),
         store: profile::Store::in_env(&env),
         env,
-        project: project.to_path_buf(),
     };
     loop {
         let applier = job.applier();
-        let wanted = profile.map(|n| job.store.load_flat(n)).transpose()?;
-        let switch = applier.plan(wanted.as_ref())?;
+        let wanted = job.store.load_flat(profile)?;
+        let switch = applier.plan(&wanted, false)?;
         if switch.is_empty() {
             return Ok(Some(Notice::UpToDate));
         }
@@ -64,7 +56,6 @@ impl Job<'_> {
             adapters: &self.deps.adapters,
             env: &self.env,
             scope: Scope::Project,
-            ledger: &self.ledger,
         }
     }
 
@@ -91,8 +82,6 @@ impl Job<'_> {
         match outcome.problems().lines().next() {
             Some(problem) => Notice::Failed(problem.to_string()),
             None => Notice::Switched {
-                project: self.project.clone(),
-                from: switch.from.clone(),
                 to: switch.to.clone(),
             },
         }
@@ -104,7 +93,7 @@ fn outcome_of(switch: &Switch, result: anyhow::Result<Done>) -> Outcome {
     match result {
         Ok(done) => Outcome {
             removed: switch.removals.len(),
-            installed: done.added.len(),
+            installed: switch.installs.len(),
             skipped,
             still_installed: done
                 .removed
@@ -126,11 +115,10 @@ mod tests {
 
     fn empty_switch() -> Switch {
         Switch {
-            from: None,
-            to: None,
-            kept: vec![],
-            dropped: vec![],
+            to: "p".into(),
+            present: vec![],
             removals: vec![],
+            unsourced: vec![],
             installs: vec![],
             unsupported: vec![],
         }
@@ -144,7 +132,6 @@ mod tests {
             Ok(Done {
                 removed: None,
                 installed: Default::default(),
-                added: vec![],
             }),
         );
 

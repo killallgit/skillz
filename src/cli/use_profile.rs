@@ -5,7 +5,6 @@ use anyhow::bail;
 use super::deps::Deps;
 use crate::env::Env;
 use crate::model::Scope;
-use crate::workspace::Workspace;
 use crate::{apply, profile, remove, spinner};
 
 /// Where a profile is loaded: one scope of one project's environment.
@@ -15,12 +14,13 @@ pub(super) struct Target<'a> {
 }
 
 pub(super) struct Switching<'a> {
-    /// The profile to load; `None` unloads the current one.
-    pub(super) profile: Option<&'a str>,
+    pub(super) profile: &'a str,
+    /// Also remove what the profile does not want.
+    pub(super) exact: bool,
     pub(super) dry_run: bool,
 }
 
-/// Show what moving the target to the named profile changes, ask, then do it with one status
+/// Show what bringing the target to the named profile changes, ask, then do it with one status
 /// line.
 pub(super) fn use_profile(
     deps: &Deps,
@@ -28,13 +28,9 @@ pub(super) fn use_profile(
     switching: &Switching,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let ledger = apply::Ledger::in_env(target.env);
-    let profile = switching
-        .profile
-        .map(|name| profile::Store::in_env(target.env).load_flat(name))
-        .transpose()?;
-    let applier = make_applier(deps, target, &ledger);
-    let switch = applier.plan(profile.as_ref())?;
+    let profile = profile::Store::in_env(target.env).load_flat(switching.profile)?;
+    let applier = make_applier(deps, target);
+    let switch = applier.plan(&profile, switching.exact)?;
 
     print_switch(out, &switch, target.scope)?;
     if switch.is_empty() {
@@ -50,25 +46,21 @@ pub(super) fn use_profile(
         return Ok(());
     }
     let done = execute(deps, &applier, &switch)?;
-    if let Err(e) = remember_project(target) {
-        writeln!(out, "warning: could not remember this project: {e:#}")?;
-    }
     report(out, &switch, &done)
 }
 
 fn print_switch(out: &mut dyn Write, switch: &apply::Switch, scope: Scope) -> anyhow::Result<()> {
-    let name = |p: &Option<String>| p.clone().unwrap_or_else(|| "none".into());
-    writeln!(
-        out,
-        "{scope}: {} -> {}",
-        name(&switch.from),
-        name(&switch.to)
-    )?;
-    for l in &switch.kept {
-        writeln!(out, "  keep    {}", l.entry)?;
+    writeln!(out, "{scope}: {}", switch.to)?;
+    for entry in &switch.present {
+        writeln!(out, "  keep    {entry}")?;
     }
-    for l in &switch.dropped {
-        writeln!(out, "  remove  {}", l.entry)?;
+    for item in &switch.removals {
+        let unsourced = if switch.is_unsourced(item) {
+            "  (no known source: cannot be reinstalled)"
+        } else {
+            ""
+        };
+        writeln!(out, "  remove  {}{unsourced}", item.label(true))?;
     }
     for (entry, _) in &switch.installs {
         writeln!(out, "  install {entry}")?;
@@ -91,16 +83,11 @@ fn print_steps(out: &mut dyn Write, switch: &apply::Switch) -> anyhow::Result<()
     Ok(())
 }
 
-fn make_applier<'a>(
-    deps: &'a Deps,
-    target: &'a Target,
-    ledger: &'a apply::Ledger,
-) -> apply::Applier<'a> {
+fn make_applier<'a>(deps: &'a Deps, target: &'a Target) -> apply::Applier<'a> {
     apply::Applier {
         adapters: &deps.adapters,
         env: target.env,
         scope: target.scope,
-        ledger,
     }
 }
 
@@ -126,21 +113,12 @@ fn execute(
     result
 }
 
-/// Remembering the project is a convenience: a failure is reported, not fatal, since the
-/// switch itself already worked.
-fn remember_project(target: &Target) -> anyhow::Result<()> {
-    if target.scope == Scope::Project {
-        Workspace::in_env(target.env).add(&target.env.project)?;
-    }
-    Ok(())
-}
-
 fn report(out: &mut dyn Write, switch: &apply::Switch, done: &apply::Done) -> anyhow::Result<()> {
     writeln!(
         out,
-        "removed {} items, installed {} items",
+        "removed {} items, installed {} entries",
         switch.removals.len(),
-        done.added.len()
+        switch.installs.len()
     )?;
     if let Some(left) = done
         .removed
@@ -153,24 +131,4 @@ fn report(out: &mut dyn Write, switch: &apply::Switch, done: &apply::Done) -> an
         );
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_workspace_that_cannot_be_updated_is_an_error_not_silence() {
-        let home = tempfile::tempdir().unwrap();
-        let project = tempfile::tempdir().unwrap();
-        let env = Env::new(home.path().into(), project.path().into());
-        std::fs::create_dir_all(env.skillz_dir()).unwrap();
-        std::fs::write(env.skillz_dir().join("workspace.toml"), "projects = 3").unwrap();
-        let target = Target {
-            env: &env,
-            scope: Scope::Project,
-        };
-
-        assert!(remember_project(&target).is_err());
-    }
 }

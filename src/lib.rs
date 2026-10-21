@@ -39,4 +39,3 @@ pub(crate) mod subagents;
 pub mod tree;
 pub mod tui;
 pub mod usage;
-pub mod workspace;

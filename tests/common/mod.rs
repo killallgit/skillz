@@ -7,19 +7,16 @@ mod sandbox;
 pub use sandbox::*;
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use skillz::agents;
-use skillz::apply::Record;
 use skillz::cli::{Command, Deps, Filter, ListArgs, ResetArgs, UninstallArgs, UseArgs, run};
 use skillz::env::Env;
 use skillz::profile::{Profile, Store};
 use skillz::prompt::Prompter;
 use skillz::runner::{CommandRunner, Output};
-use skillz::workspace::Workspace;
 
 pub type Call = (String, Vec<String>);
 
@@ -140,12 +137,6 @@ impl World {
         Store::new(self.skillz_dir().join("profiles"))
     }
 
-    pub fn registered_projects(&self) -> Vec<PathBuf> {
-        Workspace::new(self.skillz_dir().join("workspace.toml"))
-            .projects()
-            .unwrap()
-    }
-
     pub fn profile(&self, name: &str) -> Profile {
         self.profiles().load(name).unwrap()
     }
@@ -163,31 +154,6 @@ impl World {
 
     pub fn write_skill_profile(&self, name: &str, skill: &str) {
         self.write_profile(name, &skill_profile_text(skill));
-    }
-
-    /// What each applied scope holds, keyed as the ledger keys it.
-    pub fn ledger(&self) -> BTreeMap<String, Record> {
-        match fs::read_to_string(self.skillz_dir().join("applied.json")) {
-            Ok(text) => serde_json::from_str(&text).unwrap(),
-            Err(_) => BTreeMap::new(),
-        }
-    }
-
-    pub fn ledger_exists(&self) -> bool {
-        self.skillz_dir().join("applied.json").exists()
-    }
-
-    pub fn applied_profiles(&self) -> Vec<String> {
-        self.ledger().into_values().map(|r| r.profile).collect()
-    }
-
-    pub fn applied_item_names(&self) -> Vec<String> {
-        self.ledger()
-            .into_values()
-            .flat_map(|r| r.entries)
-            .flat_map(|e| e.items)
-            .map(|i| i.name)
-            .collect()
     }
 }
 
@@ -246,6 +212,31 @@ pub fn world() -> World {
         home,
         project,
     }
+}
+
+/// A project that has a skill (from a lock file) and a Claude hook installed in it.
+pub fn world_with_project_setup() -> World {
+    let w = world();
+    write(
+        &w.project.join(".agents/skills/tdd/SKILL.md"),
+        "---\nname: tdd\n---\n",
+    );
+    write(
+        &w.project.join("skills-lock.json"),
+        &json!({"version": 3, "skills": {"tdd": {"source": "mattpocock/skills"}}}).to_string(),
+    );
+    fs::create_dir_all(w.project.join(".claude/skills")).unwrap();
+    std::os::unix::fs::symlink(
+        w.project.join(".agents/skills/tdd"),
+        w.project.join(".claude/skills/tdd"),
+    )
+    .unwrap();
+    write(
+        &w.project.join(".claude/settings.local.json"),
+        &json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "say done"}]}]}})
+            .to_string(),
+    );
+    w
 }
 
 /// Servers in every place the agents keep them: Claude user and local scope in `.claude.json`,
@@ -342,14 +333,23 @@ pub fn reset_forced(filter: Filter) -> Command {
     })
 }
 
-pub fn use_cmd(profile: Option<&str>, dry_run: bool) -> Command {
+pub fn use_cmd(profile: &str, dry_run: bool) -> Command {
     Command::Use(UseArgs {
-        profile: profile.map(String::from),
-        none: profile.is_none(),
-        global: false,
+        profile: profile.into(),
+        exact: false,
         project: Some(PathBuf::from(".")),
         yes: true,
         dry_run,
+    })
+}
+
+pub fn use_exact_cmd(profile: &str) -> Command {
+    Command::Use(UseArgs {
+        exact: true,
+        ..match use_cmd(profile, false) {
+            Command::Use(args) => args,
+            _ => unreachable!(),
+        }
     })
 }
 
