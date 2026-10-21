@@ -54,6 +54,7 @@ Top level (`src/`):
 | `cost` | always-on context tokens per skill/plugin, merged from each adapter's `context_costs()`; `list --json` adds `tokens` |
 | `prune` | pure checks: duplicate loose skills, never-used and 7+ days unused skills/plugins |
 | `remove` | removal as data: `candidates` (query + `--yes` rule), `Plan` (steps, owner), `run` (execute, re-read the inventory, `Outcome`); prints and prompts nothing |
+| `update` | `steps(item, cwd)`: the tool command that updates an item (empty when it has none), `can_update`; `update::check`: the `UpdateCheck` trait, `NoCheck`, the Claude marketplace check and `spawn` (a worker thread sending outdated ids on a channel) |
 | `provision` | `plan` / `plan_entries`: profile entries as install `Action`s. Skills go through `npx skills` for all agents at once; other entries ask each `AgentAdapter::provision`, and what an agent cannot take comes back as `unsupported` |
 | `mcp` | MCP servers: `Server`/`Launch`, read from json (Claude) or toml (Codex), shown as `Augmentation::children` lines (secret names only, never values), read back by `snapshot` |
 | `subagents` | subagent discovery (name from frontmatter/toml, source from the manifest) and the `provision` step that copies them |
@@ -226,6 +227,40 @@ subagents). Removal uses this to pick the tool's own uninstall.
   each install (`install`, `use`, workspace changes) `cli::recording` adds the installed items
   that are new or changed since before the run to the library, with their provenance; a picked
   library item is installed from its recorded link (`Catalog::installable`).
+
+## Updating
+
+`update::steps` maps `(Installer, Kind)` to the command of the tool that installed the item, as
+`Action::Run` steps, so the plan popup, `--dry-run` and `Applier::run_each` (one failure does not
+stop the rest; failures are reported by item name) work as for installs. A `Switch` carries them
+as `updates`. What each tool supports was read off its `--help`:
+
+| Item | Tool | Update |
+| --- | --- | --- |
+| skill (npx) | `npx skills` | `skills update [skills...] [-g or -p] [-y]` (alias `upgrade`): updates to the latest version |
+| Claude plugin | `claude plugin` | `plugin update <plugin>` (a restart of Claude applies it) |
+| Claude marketplace | `claude plugin` | `plugin marketplace update [name]` |
+| Codex marketplace | `codex plugin` | `plugin marketplace upgrade [name]` (remote marketplaces only) |
+| Codex plugin | `codex plugin` | no update command (`add`, `list`, `marketplace`, `remove` only): `marketplace upgrade <mp>` then `plugin add <id>`. That `add` over an installed plugin replaces it was not verified |
+| subagent with a recorded source | skillz | copied again from the source (`CopyAgents`) |
+| hook, MCP server, hand-made skill, subagent without a source | none | no update; `u` ignores them |
+
+After a run, the usual recording path (`cli::recording`) compares the inventory before and after,
+so an item whose lock hash or version changed gets its provenance in the library rewritten.
+
+**Update check.** The Project tab marks rows that have a newer version (bold, `*` after the
+name). `cli::workspace` starts `update::check::spawn` on a worker thread over the installed items
+and the tab takes ids off the channel when it draws (the shell redraws on every 200 ms tick, so
+results show without a key press). The cache is the `Workspace`'s, per session, never written to
+disk; applying an update forgets the ids and checks those items again. A checker is a
+`Deps::checker` (`NoCheck` in tests). Only one kind can be told without side effects: a Claude
+marketplace is a clone, so `rev-parse HEAD` in the clone is compared with `ls-remote origin HEAD`
+(read-only, `GIT_TERMINAL_PROMPT=0`; any failure reads as no update). Nothing else is checked:
+`npx skills` has no read-only outdated command (its lock hash is a folder hash, not comparable
+with a remote head), Claude plugins record a version that only the marketplace's manifest could
+be compared with, and Codex records no revision of a marketplace. Those kinds show no marker.
+`SKILLZ_NO_UPDATE_CHECK` (set to anything) turns the check off. `skillz update --check [--json]`
+runs the same checker once, in the foreground.
 
 ## Removal semantics (complete removal, no backups)
 

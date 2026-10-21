@@ -18,6 +18,7 @@ is also a command.
 | --- | --- |
 | `list` (`ls`) | show what is installed as a tree, or browse it with `-i` |
 | `uninstall` (`rm`, `delete`) | fuzzy match, pick, confirm, remove completely |
+| `update` | update installed items with the tool that installed them; `--check` lists the ones with a newer version (`--json` for scripts) |
 | `reset` | remove every skill, plugin and marketplace in scope |
 | `prune` | find duplicate and unused skills and plugins, remove the ones picked |
 | `install` (`add`) | install skills with `npx skills`, or Claude plugins from a marketplace |
@@ -205,6 +206,10 @@ at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
   (shown unchecked). A header shows the directory and how it compares with a profile you chose:
   matching, or `N missing` / `N extra`. Picked rows get their own marker and a `to install` /
   `to remove` note, and each group shows its count of picks.
+  In the background the tab checks whether installed Claude marketplaces have a newer version
+  (a read-only `ls-remote`) and shows those in bold with a `*` after the name. Other kinds have
+  no reliable check and are never marked. `SKILLZ_NO_UPDATE_CHECK=1` turns the check off;
+  `skillz update --check` runs it from the command line.
 - **Library**: the items skillz knows about, with where each came from. The line under the list
   shows the link, how it was installed (`npx skills`, `claude plugin`, `codex plugin`, `manual`
   for items typed in) and the version or hash recorded.
@@ -217,6 +222,7 @@ at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
 | `space` | pick the item under the cursor: a library item to install, an installed item to remove; again to unpick (on a group header: open or close it) |
 | `enter` | apply all picks as one change, with one plan to review; with nothing picked, open or close the group |
 | `esc` | clear the picks (with none, clear the filter) |
+| `u` | update the installed item under the cursor, or every installed item of the group, after a plan to review; library items that are not installed and kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
 | `p` | choose the profile the header compares with |
 | `a` | install what the chosen profile has that the project lacks |
 | `←` `→`, `h` `l` | close / open a group (`←` on an item jumps to its group) |
@@ -225,8 +231,8 @@ at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
 | `?` | all keys for the screen |
 | `q`, `^c` | quit |
 
-Installing, removing and applying show a plan first: `=` kept, `-` removed, `+` installed, `~`
-skipped, framed in red when it removes something. `enter` or `y` goes ahead, `d` turns on dry run,
+Installing, removing, updating and applying show a plan first: `=` kept, `-` removed, `+`
+installed, `^` updated, `~` skipped, framed in red when it removes something. `enter` or `y` goes ahead, `d` turns on dry run,
 `s` shows the raw steps, `esc` cancels. A progress screen follows, then a result with counts and
 any failures: `c` copies them (through the terminal, so it works over ssh), `r` retries, `enter`
 closes. A toast says what happened.
