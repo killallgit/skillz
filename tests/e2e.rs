@@ -1087,11 +1087,12 @@ type Screen = (Vec<String>, Vec<String>, Option<String>);
 struct Home {
     acts: RefCell<std::collections::VecDeque<Act>>,
     seen: RefCell<Vec<Screen>>,
+    picks: RefCell<std::collections::VecDeque<Vec<usize>>>,
 }
 
 impl Prompter for Home {
     fn multi_select(&self, _: &str, _: &[String]) -> anyhow::Result<Vec<usize>> {
-        Ok(vec![])
+        Ok(self.picks.borrow_mut().pop_front().unwrap_or_default())
     }
     fn confirm(&self, _: &str) -> anyhow::Result<bool> {
         Ok(true)
@@ -1134,6 +1135,7 @@ fn the_workspace_manages_projects_and_profiles_and_survives_errors() {
             .into(),
         ),
         seen: RefCell::default(),
+        picks: RefCell::default(),
     };
     let r = Recorder::default();
     let mut d = deps(
@@ -1164,4 +1166,62 @@ fn the_workspace_manages_projects_and_profiles_and_survives_errors() {
     assert!(seen[6].0[0].starts_with('-'), "unloaded");
     assert_eq!(seen[7].1, ["snap", "web"]);
     assert!(seen[8].0.is_empty());
+}
+
+#[test]
+fn profiles_are_edited_from_installed_items_typed_lines_and_removals() {
+    let w = world();
+    write(
+        &w.project.join(".agents/skills/tdd/SKILL.md"),
+        "---\nname: tdd\ndescription: d\n---\n",
+    );
+    write(
+        &w.project.join("skills-lock.json"),
+        &json!({"skills": {"tdd": {"source": "o/r"}}}).to_string(),
+    );
+    let home = Home {
+        acts: RefCell::new(
+            [
+                Act::AddProject(".".into()),
+                Act::NewProfile("p".into()),
+                Act::AddInstalled {
+                    profile: 0,
+                    project: 0,
+                },
+                Act::AddTyped {
+                    profile: 0,
+                    spec: "plugin o/mp mp pp".into(),
+                },
+                Act::AddTyped {
+                    profile: 0,
+                    spec: "nonsense".into(),
+                },
+                Act::RemoveEntries { profile: 0 },
+            ]
+            .into(),
+        ),
+        seen: RefCell::default(),
+        picks: RefCell::new([vec![0], vec![0]].into()),
+    };
+    let r = Recorder::default();
+    let mut d = deps(
+        &w,
+        &r,
+        &Scripted {
+            pick: None,
+            confirm: true,
+        },
+    );
+    d.prompter = &home;
+    workspace(&d, &mut Vec::new()).unwrap();
+
+    let file = fs::read_to_string(w.home.join(".config/skillz/profiles/p.toml")).unwrap();
+    assert!(file.contains("plugin") && file.contains("o/mp"));
+    assert!(
+        !file.contains("tdd"),
+        "the skill entry was removed again:\n{file}"
+    );
+    let seen = home.seen.borrow();
+    assert!(seen[3].2.as_deref().unwrap().contains("added 1"));
+    assert!(seen[5].2.is_some(), "a bad line is reported, not fatal");
 }

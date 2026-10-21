@@ -56,13 +56,34 @@ pub struct Pos {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Act {
     Quit,
-    Apply { project: usize, profile: usize },
-    Unload { project: usize },
+    Apply {
+        project: usize,
+        profile: usize,
+    },
+    Unload {
+        project: usize,
+    },
     AddProject(String),
     ForgetProject(usize),
     NewProfile(String),
-    SaveProfile { name: String, project: usize },
+    SaveProfile {
+        name: String,
+        project: usize,
+    },
     DeleteProfile(usize),
+    /// Offer the project's installed items for the profile.
+    AddInstalled {
+        profile: usize,
+        project: usize,
+    },
+    /// Offer the profile's entries for removal.
+    RemoveEntries {
+        profile: usize,
+    },
+    AddTyped {
+        profile: usize,
+        spec: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +91,7 @@ enum Ask {
     AddProject,
     NewProfile,
     SaveProfile,
+    AddEntry,
 }
 
 impl Ask {
@@ -78,6 +100,9 @@ impl Ask {
             Ask::AddProject => "add project (path)",
             Ask::NewProfile => "new profile (name)",
             Ask::SaveProfile => "save the selected project's setup as profile (name)",
+            Ask::AddEntry => {
+                "add to the profile: skill SOURCE NAMES | plugin SOURCE MARKETPLACE NAME"
+            }
         }
     }
 }
@@ -142,6 +167,17 @@ impl Home {
                     self.input = Some((Ask::SaveProfile, String::new()));
                 }
             }
+            KeyCode::Char('i') if profile < self.model.profiles.len() => {
+                if self.model.projects.get(project).is_some_and(|p| !p.missing) {
+                    return Some(Act::AddInstalled { profile, project });
+                }
+            }
+            KeyCode::Char('r') if profile < self.model.profiles.len() => {
+                return Some(Act::RemoveEntries { profile });
+            }
+            KeyCode::Char('t') if profile < self.model.profiles.len() => {
+                self.input = Some((Ask::AddEntry, String::new()));
+            }
             KeyCode::Char('d') => match self.pos.focus {
                 Focus::Projects if project < self.model.projects.len() => {
                     return Some(Act::ForgetProject(project));
@@ -190,6 +226,10 @@ impl Home {
                 return Some(match ask {
                     Ask::AddProject => Act::AddProject(text),
                     Ask::NewProfile => Act::NewProfile(text),
+                    Ask::AddEntry => Act::AddTyped {
+                        profile: self.pos.profile,
+                        spec: text,
+                    },
                     Ask::SaveProfile => Act::SaveProfile {
                         name: text,
                         project: self.pos.project,
@@ -212,7 +252,7 @@ impl Home {
         if let Some(notice) = &self.model.notice {
             return notice.clone();
         }
-        "Tab pane · Enter apply · u unload · a add project · n new profile · s save as profile · d delete · q quit".into()
+        "Tab pane · Enter apply · u unload · a project · n/s new/save profile · i/t/r add installed/typed/remove entries · d delete · q quit".into()
     }
 
     pub fn draw(&self, frame: &mut Frame) {
@@ -412,6 +452,34 @@ mod tests {
         let mut empty = Home::new(Model::default(), Pos::default());
         assert_eq!(empty.handle(key(KeyCode::Enter)), None);
         assert_eq!(press(&mut empty, "jjkdus"), None);
+    }
+
+    #[test]
+    fn editing_keys_name_the_selected_profile() {
+        let mut h = home();
+        press(&mut h, "j");
+        h.handle(key(KeyCode::Tab));
+        press(&mut h, "j");
+        assert_eq!(
+            press(&mut h, "i"),
+            Some(Act::AddInstalled {
+                profile: 1,
+                project: 1
+            })
+        );
+        assert_eq!(press(&mut h, "r"), Some(Act::RemoveEntries { profile: 1 }));
+        press(&mut h, "t");
+        press(&mut h, "skill o/r a");
+        assert_eq!(
+            h.handle(key(KeyCode::Enter)),
+            Some(Act::AddTyped {
+                profile: 1,
+                spec: "skill o/r a".into()
+            })
+        );
+        let mut none = Home::new(Model::default(), Pos::default());
+        assert_eq!(press(&mut none, "irt"), None);
+        assert!(none.input.is_none());
     }
 
     #[test]

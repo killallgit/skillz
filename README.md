@@ -52,7 +52,8 @@ Browser (`list -i`, multi-group queries): `space`/`→←` expand, `x`/`tab` mar
 the middle, details on the right. `Tab` switches pane, `Enter` applies the selected profile to
 the selected project (the plan is shown and confirmed first), `u` unloads a project's profile,
 `a` adds a project, `n` creates an empty profile, `s` saves what the project has installed as a
-profile, `d` deletes, `q` quits.
+profile, `d` deletes, `q` quits. On a profile: `i` adds items the selected project has installed,
+`t` types an entry (`skill SOURCE NAMES` or `plugin SOURCE MARKETPLACE NAME`), `r` removes entries.
 
 The same from the command line:
 

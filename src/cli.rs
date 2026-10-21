@@ -1088,6 +1088,59 @@ fn workspace_step(
                 store.delete(name)?;
             }
         }
+        Act::AddInstalled { profile, project } => {
+            let (Some(name), Some(dir)) = (names.get(profile), projects.get(project)) else {
+                return Ok(Flow::Stay);
+            };
+            let mut p = store.load(name)?;
+            let items = gather(
+                deps,
+                &project_env(deps, dir),
+                &[Scope::Project],
+                &Filter::default(),
+            );
+            let have = p.resolved();
+            let offered: Vec<profile::Entry> = snapshot::snapshot(name, &items)
+                .profile
+                .entries
+                .into_iter()
+                .filter(|e| !have.contains(e))
+                .collect();
+            let labels: Vec<String> = offered.iter().map(ToString::to_string).collect();
+            let picked = deps
+                .prompter
+                .multi_select(&format!("Add to {name}"), &labels)?;
+            let added = picked.len();
+            p.entries
+                .extend(picked.into_iter().filter_map(|i| offered.get(i).cloned()));
+            store.save(&p)?;
+            *notice = Some(format!("added {added} entries to {name}"));
+        }
+        Act::RemoveEntries { profile } => {
+            let Some(name) = names.get(profile) else {
+                return Ok(Flow::Stay);
+            };
+            let mut p = store.load(name)?;
+            let labels: Vec<String> = p.entries.iter().map(ToString::to_string).collect();
+            let picked = deps
+                .prompter
+                .multi_select(&format!("Remove from {name}"), &labels)?;
+            let mut index = 0;
+            p.entries.retain(|_| {
+                index += 1;
+                !picked.contains(&(index - 1))
+            });
+            store.save(&p)?;
+            *notice = Some(format!("removed {} entries from {name}", picked.len()));
+        }
+        Act::AddTyped { profile, spec } => {
+            let Some(name) = names.get(profile) else {
+                return Ok(Flow::Stay);
+            };
+            let mut p = store.load(name)?;
+            p.entries.push(profile::Entry::parse_spec(&spec)?);
+            store.save(&p)?;
+        }
     }
     Ok(Flow::Stay)
 }

@@ -41,6 +41,34 @@ impl Entry {
         }
     }
 
+    /// An entry from a line typed by hand: `skill SOURCE NAME[,NAME...]` or
+    /// `plugin SOURCE MARKETPLACE NAME`. It uses the profile's agents.
+    pub fn parse_spec(spec: &str) -> anyhow::Result<Entry> {
+        let words: Vec<&str> = spec.split_whitespace().collect();
+        let entry = match words.as_slice() {
+            ["skill" | "skills", source, names] => Entry::Skill {
+                source: source.to_string(),
+                names: names
+                    .split(',')
+                    .filter(|n| !n.is_empty())
+                    .map(String::from)
+                    .collect(),
+                agents: vec![],
+            },
+            ["plugin", source, marketplace, name] => Entry::Plugin {
+                source: source.to_string(),
+                marketplace: marketplace.to_string(),
+                name: name.to_string(),
+                agents: vec![],
+            },
+            _ => anyhow::bail!(
+                "expected `skill SOURCE NAME[,NAME]` or `plugin SOURCE MARKETPLACE NAME`"
+            ),
+        };
+        entry.validate()?;
+        Ok(entry)
+    }
+
     /// Every value here ends up as a command-line argument, so none may be empty or option-like.
     pub fn validate(&self) -> anyhow::Result<()> {
         let args: Vec<&str> = match self {
@@ -284,6 +312,32 @@ mod tests {
         ];
         for text in bad {
             assert!(Profile::parse("x", text).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn entries_can_be_typed_by_hand() {
+        assert_eq!(
+            Entry::parse_spec("skill o/r tdd,grill").unwrap(),
+            Entry::Skill {
+                source: "o/r".into(),
+                names: vec!["tdd".into(), "grill".into()],
+                agents: vec![]
+            }
+        );
+        assert!(matches!(
+            Entry::parse_spec(" plugin o/mp mp pp ").unwrap(),
+            Entry::Plugin { .. }
+        ));
+        for bad in [
+            "",
+            "skill o/r",
+            "skill o/r ,",
+            "skill -g a",
+            "plugin o/mp mp",
+            "hook x y",
+        ] {
+            assert!(Entry::parse_spec(bad).is_err(), "{bad:?}");
         }
     }
 
