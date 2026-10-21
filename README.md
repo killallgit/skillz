@@ -208,7 +208,9 @@ at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
 - **Library**: the items skillz knows about, with where each came from. The line under the list
   shows the link, how it was installed (`npx skills`, `claude plugin`, `codex plugin`, `manual`
   for items typed in) and the version or hash recorded.
-- **Profiles**: placeholder for now.
+- **Profiles**: your saved combinations, each with how it compares with the project. Apply one
+  (adds what is missing) or apply it exactly (also removes the rest, after a preview), build one
+  from library items, save what is installed as a new one, or delete one.
 
 | Key | Does |
 | --- | --- |
