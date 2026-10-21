@@ -279,7 +279,7 @@ fn a_dry_run_writes_no_hook() {
 }
 
 #[test]
-fn saving_a_profile_skips_the_hooks_in_the_config() {
+fn saving_a_profile_keeps_the_hooks_in_the_config() {
     // Assemble
     let sb = Sandbox::new();
     write(
@@ -304,13 +304,18 @@ fn saving_a_profile_skips_the_hooks_in_the_config() {
     // Act
     let out = sb.skillz(&["profile", "save", "-g", "mine"]);
 
-    // Assert: the profile holds the skill and no hook
+    // Assert: the profile holds the skill and the hook
     let saved = skillz::profile::Store::new(sb.skillz_dir().join("profiles"))
         .load("mine")
         .unwrap();
     assert!(out.status.success());
-    assert!(matches!(
-        saved.entries.as_slice(),
-        [skillz::profile::Entry::Skill { names, .. }] if names == &["tdd"]
+    assert!(
+        saved
+            .entries
+            .iter()
+            .any(|e| matches!(e, skillz::profile::Entry::Skill { names, .. } if names == &["tdd"]))
+    );
+    assert!(saved.entries.iter().any(
+        |e| matches!(e, skillz::profile::Entry::Hook { command, .. } if command == "say done")
     ));
 }
