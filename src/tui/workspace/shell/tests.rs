@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::*;
+use crate::review::{Phase, Target};
 use crate::tui::widgets::testing::{ctrl, key, render_to_buffer, row_text};
 
 /// What a fake tab saw: the keys it was given and how many snapshots it loaded.
@@ -10,6 +11,8 @@ use crate::tui::widgets::testing::{ctrl, key, render_to_buffer, row_text};
 struct Seen {
     keys: Vec<KeyCode>,
     loads: usize,
+    notes: usize,
+    ticks: usize,
 }
 
 struct FakeTab {
@@ -25,6 +28,14 @@ impl Tab for FakeTab {
 
     fn load(&mut self, _model: &Model) {
         self.seen.lock().unwrap().loads += 1;
+    }
+
+    fn note(&mut self, _event: &ItemEvent) {
+        self.seen.lock().unwrap().notes += 1;
+    }
+
+    fn tick(&mut self) {
+        self.seen.lock().unwrap().ticks += 1;
     }
 
     fn handle(&mut self, key: KeyEvent) -> Option<Act> {
@@ -155,4 +166,27 @@ fn the_tab_bar_names_every_tab_on_the_first_row() {
 
     let bar = row_text(&buffer, 0);
     assert!(["one", "two", "three"].iter().all(|t| bar.contains(t)));
+}
+
+#[test]
+fn item_events_and_ticks_reach_every_tab_not_just_the_shown_one() {
+    let (mut ws, seen) = workspace(false);
+    let event = ItemEvent {
+        target: Target::Remove("x".into()),
+        label: "x".into(),
+        phase: Phase::Started,
+    };
+
+    ws.note(&event);
+    ws.tick();
+    ws.tick();
+
+    let counts: Vec<(usize, usize)> = seen
+        .iter()
+        .map(|s| {
+            let seen = s.lock().unwrap();
+            (seen.notes, seen.ticks)
+        })
+        .collect();
+    assert_eq!(counts, [(1, 2); 3]);
 }

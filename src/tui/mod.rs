@@ -9,6 +9,7 @@ pub mod glyphs;
 pub mod help;
 mod hygiene;
 mod keymap;
+mod live;
 mod plan;
 mod progress;
 pub mod prompter;
