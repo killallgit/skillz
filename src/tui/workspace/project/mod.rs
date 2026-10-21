@@ -16,6 +16,9 @@ mod picker;
 mod picking_tests;
 mod presence;
 mod rows;
+mod status;
+#[cfg(test)]
+mod status_tests;
 #[cfg(test)]
 mod tests;
 mod update;
@@ -33,11 +36,13 @@ use self::drift::{Drift, drift};
 use self::pending::Pending;
 use self::picker::Picker;
 use self::rows::{Row, Sources, build, shape};
+use self::status::Statuses;
 use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
 use crate::model::Augmentation;
 use crate::profile::Profile;
+use crate::review::ItemEvent;
 use crate::tui::keymap::Scope;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::confirm::ConfirmDialog;
@@ -66,6 +71,7 @@ pub struct ProjectTab {
     popup: Popup,
     /// Ids of installed items the background check found newer versions of.
     outdated: BTreeSet<String>,
+    statuses: Statuses,
 }
 
 impl ProjectTab {
@@ -80,6 +86,7 @@ impl ProjectTab {
             compare: None,
             popup: Popup::None,
             outdated: BTreeSet::new(),
+            statuses: Statuses::default(),
         }
     }
 
@@ -109,6 +116,7 @@ impl Tab for ProjectTab {
             library: &model.library,
         });
         self.pending.keep_existing(&self.rows);
+        self.statuses.clear();
         self.outline.reshape(shape(&self.rows));
     }
 
@@ -117,7 +125,16 @@ impl Tab for ProjectTab {
     }
 
     fn handle(&mut self, key: KeyEvent) -> Option<Act> {
+        self.statuses.clear();
         self.handle_key(key)
+    }
+
+    fn note(&mut self, event: &ItemEvent) {
+        self.statuses.note(event);
+    }
+
+    fn tick(&mut self) {
+        self.statuses.tick();
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

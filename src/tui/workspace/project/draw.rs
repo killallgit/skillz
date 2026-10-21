@@ -8,6 +8,7 @@ use ratatui::widgets::Paragraph;
 
 use super::header;
 use super::rows::{Item, Row, State};
+use super::status::Status;
 use super::{Popup, ProjectTab};
 use crate::tui::filter;
 use crate::tui::theme::Theme;
@@ -16,8 +17,8 @@ use crate::tui::widgets::panel::Panel;
 
 /// Room before a section's caret, under its group's.
 const SECTION_INDENT: &str = "  ";
-/// Room before an item's label: the section's indent, then the checkbox.
-const ITEM_INDENT: &str = "    ";
+/// Room before an item's status mark: the section's indent.
+const ITEM_MARGIN: &str = "  ";
 
 impl ProjectTab {
     pub(super) fn draw_body(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -102,6 +103,19 @@ impl ProjectTab {
         Some(Span::styled(format!("  {text}"), theme.accent))
     }
 
+    /// The spinner, tick or cross of a change under way on the row; a space otherwise.
+    fn status_mark(&self, state: &State, theme: &Theme) -> Span<'static> {
+        let glyphs = &theme.glyphs;
+        match self.statuses.of(state) {
+            Some(Status::Working) => {
+                Span::styled(glyphs.frame(self.statuses.ticks()), theme.accent)
+            }
+            Some(Status::Done) => Span::styled(glyphs.loaded, theme.ok),
+            Some(Status::Failed) => Span::styled(glyphs.failed, theme.danger),
+            None => Span::raw(" "),
+        }
+    }
+
     fn item_line(&self, id: usize, item: &Item, theme: &Theme) -> Line<'static> {
         let glyphs = &theme.glyphs;
         let picked = self.pending.contains(&item.state);
@@ -117,10 +131,11 @@ impl ProjectTab {
                 (glyphs.unchecked, theme.muted, theme.muted, "")
             }
         };
-        let mut spans = vec![Span::styled(
-            format!("{ITEM_INDENT}{box_glyph} "),
-            box_style,
-        )];
+        let mut spans = vec![
+            Span::raw(ITEM_MARGIN),
+            self.status_mark(&item.state, theme),
+            Span::styled(format!(" {box_glyph} "), box_style),
+        ];
         let outdated = self.is_outdated(&item.state);
         let text_style = match outdated {
             true => text_style.add_modifier(Modifier::BOLD),

@@ -1,5 +1,4 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
@@ -16,7 +15,7 @@ struct Seen {
 struct FakeTab {
     title: &'static str,
     captures: bool,
-    seen: Rc<RefCell<Seen>>,
+    seen: Arc<Mutex<Seen>>,
 }
 
 impl Tab for FakeTab {
@@ -25,11 +24,11 @@ impl Tab for FakeTab {
     }
 
     fn load(&mut self, _model: &Model) {
-        self.seen.borrow_mut().loads += 1;
+        self.seen.lock().unwrap().loads += 1;
     }
 
     fn handle(&mut self, key: KeyEvent) -> Option<Act> {
-        self.seen.borrow_mut().keys.push(key.code);
+        self.seen.lock().unwrap().keys.push(key.code);
         None
     }
 
@@ -40,8 +39,8 @@ impl Tab for FakeTab {
     }
 }
 
-fn workspace(captures: bool) -> (Workspace, Vec<Rc<RefCell<Seen>>>) {
-    let seen: Vec<_> = (0..3).map(|_| Rc::default()).collect();
+fn workspace(captures: bool) -> (Workspace, Vec<Arc<Mutex<Seen>>>) {
+    let seen: Vec<_> = (0..3).map(|_| Arc::default()).collect();
     let tabs = ["one", "two", "three"]
         .into_iter()
         .zip(&seen)
@@ -49,7 +48,7 @@ fn workspace(captures: bool) -> (Workspace, Vec<Rc<RefCell<Seen>>>) {
             Box::new(FakeTab {
                 title,
                 captures,
-                seen: Rc::clone(seen),
+                seen: Arc::clone(seen),
             })
         })
         .collect();
@@ -81,7 +80,7 @@ fn keys_the_workspace_does_not_use_go_to_the_selected_tab_only() {
 
     press(&mut ws, KeyCode::Char('x'));
 
-    let given: Vec<usize> = seen.iter().map(|s| s.borrow().keys.len()).collect();
+    let given: Vec<usize> = seen.iter().map(|s| s.lock().unwrap().keys.len()).collect();
     assert_eq!(given, [0, 1, 0]);
 }
 
@@ -103,7 +102,7 @@ fn a_capturing_tab_gets_tab_digits_and_q_instead_of_the_workspace() {
     let acts = [KeyCode::Tab, KeyCode::Char('2'), KeyCode::Char('q')].map(|c| press(&mut ws, c));
 
     assert_eq!(acts, [None, None, None]);
-    assert_eq!(seen[0].borrow().keys.len(), 3);
+    assert_eq!(seen[0].lock().unwrap().keys.len(), 3);
     assert_eq!(ws.bar.selected(), 0);
 }
 
@@ -117,7 +116,7 @@ fn help_takes_the_keys_until_it_is_closed() {
     press(&mut ws, KeyCode::Esc);
 
     assert!(open && ws.help.is_none());
-    assert!(seen[0].borrow().keys.is_empty());
+    assert!(seen[0].lock().unwrap().keys.is_empty());
 }
 
 #[test]
@@ -129,7 +128,10 @@ fn every_tab_gets_each_snapshot_and_a_notice_becomes_a_toast() {
         ..Model::default()
     });
 
-    assert_eq!(seen.iter().map(|s| s.borrow().loads).sum::<usize>(), 3);
+    assert_eq!(
+        seen.iter().map(|s| s.lock().unwrap().loads).sum::<usize>(),
+        3
+    );
     assert_eq!(ws.toasts.len(), 1);
 }
 
