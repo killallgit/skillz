@@ -14,7 +14,7 @@ use skillz::action::{Action, RemovalTarget};
 use skillz::agents::{self, AgentAdapter, PluginInstall, PluginOutcome};
 use skillz::cli::{Command, Deps, Filter, UninstallArgs, run};
 use skillz::env::Env;
-use skillz::install::{InstallRequest, SkillSelection, install};
+use skillz::install::{Ctx, InstallRequest, SkillSelection, install};
 use skillz::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
 use skillz::prompt::Prompter;
 use skillz::prune;
@@ -208,6 +208,13 @@ fn install_asks_the_fake_to_install_plugins_and_runs_no_other_command() {
         source: src.to_string_lossy().into_owned(),
         ..req
     };
-    install(&w.adapters(), &req, &w.env, &NoRun, &Yes).unwrap();
+    let adapters = w.adapters();
+    let ctx = Ctx {
+        adapters: &adapters,
+        env: &w.env,
+        runner: &NoRun,
+        prompter: &Yes,
+    };
+    install(&ctx, &req).unwrap();
     assert_eq!(w.installs.get(), 1);
 }

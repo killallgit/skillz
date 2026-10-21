@@ -16,7 +16,7 @@ use crate::env::Env;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 use crate::npx_skills;
 use crate::profile::Entry;
-use crate::subagents;
+use crate::subagents::{self, AgentDir};
 use config::{project_plugin_ids, read_config};
 use plugins::{Cx, marketplaces, marketplaces_from, plugins_from};
 
@@ -56,7 +56,7 @@ impl AgentAdapter for Codex {
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
         let config = env.codex_scope_dir(scope).join("config.toml");
         let agents_dir = env.codex_scope_dir(scope).join("agents");
-        let agents = subagents::discover(&agents_dir, "toml", Agent::Codex, scope);
+        let agents = subagents::discover(&AgentDir::new(&agents_dir, "toml"), Agent::Codex, scope);
         let Some(doc) = read_config(&config)? else {
             return Ok(agents);
         };
@@ -88,7 +88,7 @@ impl AgentAdapter for Codex {
             Entry::Mcp { .. } => mcp::provision(entry, scope, env),
             Entry::Subagent { .. } => {
                 let to = env.codex_scope_dir(scope).join("agents");
-                subagents::provision(entry, to, "toml", env)
+                subagents::provision(entry, &AgentDir::new(&to, "toml"), env)
             }
             Entry::Plugin { .. } => plugins::provision(entry, scope, env),
             Entry::Skill { .. } => None,

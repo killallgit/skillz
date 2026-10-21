@@ -1,51 +1,48 @@
 use std::path::Path;
 
-use anyhow::Context;
-
-use crate::env::Env;
+use crate::fswalk;
 use crate::matcher::pattern_matches;
-use crate::model::{Agent, Scope};
+use crate::model::Agent;
 use crate::npx_skills;
 use crate::prompt::Prompter;
-use crate::runner::CommandRunner;
 
-use super::SkillSelection;
 use super::source::run_checked;
+use super::{Ctx, InstallRequest, SkillSelection, Tree};
 
-/// Pick skills found under `src` and install them with `npx skills add <source>`.
-#[allow(clippy::too_many_arguments)]
+/// Pick skills found under the tree and install them with `npx skills add <source>`.
 pub(super) fn install(
-    selection: &SkillSelection,
+    ctx: &Ctx,
+    req: &InstallRequest,
+    tree: &Tree,
     agents: &[Agent],
-    scope: Scope,
-    src: &Path,
-    source: &str,
-    env: &Env,
-    runner: &dyn CommandRunner,
-    prompter: &dyn Prompter,
 ) -> anyhow::Result<()> {
-    let names = scan_available(src)?;
-    let chosen = match selection {
-        SkillSelection::Interactive => {
-            let picked = prompter.multi_select("Skills to install", &names)?;
-            if picked.is_empty() {
-                return Ok(());
-            }
-            picked.iter().map(|&i| names[i].clone()).collect()
-        }
-        _ => {
-            let chosen = select_skills(&names, selection);
-            anyhow::ensure!(!chosen.is_empty(), "no skills to install from {source}");
-            if matches!(selection, SkillSelection::Patterns(_))
-                && !prompter.confirm(&format!("Install {}?", chosen.join(", ")))?
-            {
-                return Ok(());
-            }
-            chosen
-        }
+    let names = scan_available(tree.src)?;
+    let Some(chosen) = choose(ctx.prompter, &req.selection, &names, tree.source)? else {
+        return Ok(());
     };
-    let (program, args) = npx_skills::add_command(source, &chosen, agents, scope);
-    run_checked(runner, &program, &args, &env.project)
+    let (program, args) = npx_skills::add_command(tree.source, &chosen, agents, req.scope);
+    run_checked(ctx.runner, &program, &args, &ctx.env.project)
+}
+
+/// The skills to install, or `None` when the user backed out.
+fn choose(
+    prompter: &dyn Prompter,
+    selection: &SkillSelection,
+    names: &[String],
+    source: &str,
+) -> anyhow::Result<Option<Vec<String>>> {
+    if *selection == SkillSelection::Interactive {
+        let picked = prompter.multi_select("Skills to install", names)?;
+        let chosen: Vec<String> = picked.iter().map(|&i| names[i].clone()).collect();
+        return Ok((!chosen.is_empty()).then_some(chosen));
+    }
+    let chosen = select_skills(names, selection);
+    anyhow::ensure!(!chosen.is_empty(), "no skills to install from {source}");
+    let needs_confirm = matches!(selection, SkillSelection::Patterns(_));
+    if needs_confirm && !prompter.confirm(&format!("Install {}?", chosen.join(", ")))? {
+        return Ok(None);
+    }
+    Ok(Some(chosen))
 }
 
 /// Skill names picked by a non-interactive selection. `Interactive` yields every candidate.
@@ -69,36 +66,24 @@ fn select_skills(names: &[String], selection: &SkillSelection) -> Vec<String> {
 }
 
 /// Frontmatter names of every skill (dir containing `SKILL.md`) under `root`, recursively,
-/// sorted: the names npx `skills --skill` matches. Skips the dirs npx skips.
+/// sorted: the names npx `skills --skill` matches.
 fn scan_available(root: &Path) -> anyhow::Result<Vec<String>> {
     let mut found = Vec::new();
-    walk(root, &mut found)?;
+    fswalk::walk(root, &mut |path, is_dir| {
+        if is_dir {
+            found.extend(skill_name(path));
+        }
+    })?;
     found.sort();
     found.dedup();
     Ok(found)
 }
 
-fn walk(dir: &Path, found: &mut Vec<String>) -> anyhow::Result<()> {
-    if let Ok(md) = std::fs::read_to_string(dir.join("SKILL.md"))
-        && let Some(name) = frontmatter_name(&md)
-        // Names become `--skill <name>` args; npx would parse `-g` as a flag.
-        && !name.starts_with('-')
-    {
-        found.push(name.to_string());
-    }
-    let entries = std::fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))?;
-    for entry in entries {
-        let entry = entry?;
-        let skip = matches!(
-            entry.file_name().to_str(),
-            Some(".git" | "node_modules" | "dist" | "build" | "__pycache__")
-        );
-        // file_type() does not follow symlinks, so symlink loops can't recurse forever.
-        if !skip && entry.file_type()?.is_dir() {
-            walk(&entry.path(), found)?;
-        }
-    }
-    Ok(())
+/// The name of the skill in `dir`, unless npx would parse it as a flag.
+fn skill_name(dir: &Path) -> Option<String> {
+    let md = std::fs::read_to_string(dir.join("SKILL.md")).ok()?;
+    let name = frontmatter_name(&md)?;
+    (!name.starts_with('-')).then(|| name.to_string())
 }
 
 /// `name:` from the leading `---` frontmatter block; `None` (npx skips the skill) unless both
@@ -148,6 +133,7 @@ fn unquote(v: &str) -> &str {
 mod tests {
     use super::*;
     use crate::install::test_support::*;
+    use crate::model::Scope;
 
     /// Run the installer on the fixture's `repo/`, handing npx the source `"o/r"`.
     fn run(
@@ -158,16 +144,24 @@ mod tests {
         prompter: &ScriptedPrompter,
     ) -> anyhow::Result<()> {
         let src = fx.env.project.join("repo");
-        install(
-            &selection,
-            &[agent],
-            Scope::Project,
-            &src,
-            "o/r",
-            &fx.env,
+        let ctx = Ctx {
+            adapters: &[],
+            env: &fx.env,
             runner,
             prompter,
-        )
+        };
+        let req = InstallRequest {
+            source: "o/r".into(),
+            cwd: fx.env.project.clone(),
+            agents: vec![agent],
+            scope: Scope::Project,
+            selection,
+        };
+        let tree = Tree {
+            src: &src,
+            source: "o/r",
+        };
+        install(&ctx, &req, &tree, &[agent])
     }
 
     #[test]

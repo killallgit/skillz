@@ -147,18 +147,17 @@ fn print_plan(out: &mut dyn Write, plan: &remove::Plan, list_items: bool) -> any
 /// One status line while it works: the thing being removed, not each command's chatter.
 fn execute_plan(scene: &Scene, plan: &remove::Plan) -> anyhow::Result<remove::Outcome> {
     let spinner = spinner::Spinner::start("removing");
-    let result = remove::run(
-        plan,
-        &scene.deps.adapters,
-        scene.env,
-        scene.scopes,
-        scene.deps.runner,
-        &mut |step| {
-            if let Some(s) = &spinner {
-                s.set(&format!("removing {}", plan.owner(step)));
-            }
-        },
-    );
+    let removal = remove::Removal {
+        adapters: &scene.deps.adapters,
+        env: scene.env,
+        scopes: scene.scopes,
+        runner: scene.deps.runner,
+    };
+    let result = remove::run(plan, &removal, &mut |step| {
+        if let Some(s) = &spinner {
+            s.set(&format!("removing {}", plan.owner(step)));
+        }
+    });
     drop(spinner);
     result
 }

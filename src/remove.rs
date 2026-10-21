@@ -96,6 +96,12 @@ impl<'a> Plan<'a> {
         }
     }
 
+    /// Remove every one of `items`, with no agent filter.
+    pub fn from_owned(items: &'a [Augmentation]) -> Self {
+        let refs: Vec<&Augmentation> = items.iter().collect();
+        Plan::new(&refs, &[])
+    }
+
     /// The name of the first chosen item whose plan holds `step`.
     pub fn owner(&self, step: &Action) -> &str {
         self.chosen
@@ -113,18 +119,23 @@ pub struct Outcome {
     pub still_installed: Vec<String>,
 }
 
+/// What a removal runs against and re-reads the inventory from.
+pub struct Removal<'a> {
+    pub adapters: &'a [Box<dyn AgentAdapter>],
+    pub env: &'a Env,
+    pub scopes: &'a [Scope],
+    pub runner: &'a dyn CommandRunner,
+}
+
 /// Run the plan, then re-read the inventory to see whether every chosen item is gone.
 /// `on_step` is told about each step as it starts.
 pub fn run(
     plan: &Plan,
-    adapters: &[Box<dyn AgentAdapter>],
-    env: &Env,
-    scopes: &[Scope],
-    runner: &dyn CommandRunner,
+    removal: &Removal,
     on_step: &mut dyn FnMut(&Action),
 ) -> anyhow::Result<Outcome> {
-    let report = action::execute_with(&plan.steps, runner, on_step)?;
-    let after = agents::inventory(adapters, env, scopes);
+    let report = action::execute_with(&plan.steps, removal.runner, on_step)?;
+    let after = agents::inventory(removal.adapters, removal.env, removal.scopes);
     let still_installed = plan
         .chosen
         .iter()
@@ -200,10 +211,13 @@ mod tests {
         let plan = Plan::new(&[&a], &[]);
         let env = Env::new(dir.path().into(), dir.path().into());
         let mut seen = 0;
-        let out = run(&plan, &[], &env, &[Scope::Global], &NoCommands, &mut |_| {
-            seen += 1
-        })
-        .unwrap();
+        let removal = Removal {
+            adapters: &[],
+            env: &env,
+            scopes: &[Scope::Global],
+            runner: &NoCommands,
+        };
+        let out = run(&plan, &removal, &mut |_| seen += 1).unwrap();
         assert_eq!(out.report.removed.len(), 1);
         assert!(out.still_installed.is_empty());
         assert_eq!(seen, 1);

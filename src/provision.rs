@@ -3,7 +3,7 @@
 //! agent's adapter (`AgentAdapter::provision`).
 
 use crate::action::Action;
-use crate::agents::AgentAdapter;
+use crate::agents::{AgentAdapter, adapter_for};
 use crate::env::Env;
 use crate::model::{Agent, Scope};
 use crate::npx_skills;
@@ -80,10 +80,7 @@ fn provision_per_agent(
     out: &mut Provision,
 ) {
     for &agent in entry.agents() {
-        let steps = adapters
-            .iter()
-            .find(|a| a.agent() == agent)
-            .and_then(|a| a.provision(entry, scope, env));
+        let steps = adapter_for(adapters, agent).and_then(|a| a.provision(entry, scope, env));
         match steps {
             Some(steps) => out.steps.extend(steps),
             None => out.unsupported.push(Unsupported {

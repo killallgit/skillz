@@ -79,11 +79,6 @@ fn marketplace_source(market: &Value) -> Option<String> {
         .map(String::from)
 }
 
-/// Marketplace part of a `name@mp` plugin id.
-pub(super) fn mp_of(id: &str) -> &str {
-    id.rsplit_once('@').map_or(id, |(_, mp)| mp)
-}
-
 pub(super) fn same_path(a: &Path, b: &Path) -> bool {
     a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
 }
@@ -108,8 +103,6 @@ mod tests {
 
     #[test]
     fn plugin_without_marketplace_suffix() {
-        assert_eq!(mp_of("bare"), "bare");
-        assert_eq!(mp_of("a@b@c"), "c");
         assert!(installs_from(&json!({"plugins": {"x@y": "nope"}})).is_empty());
         assert!(installs_from(&json!({})).is_empty());
     }

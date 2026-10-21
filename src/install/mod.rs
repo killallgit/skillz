@@ -4,13 +4,13 @@
 
 mod skills;
 mod source;
-pub(crate) use source::{clone_command, run_checked, unique_name};
+pub(crate) use source::{run_checked, with_tmp_clone};
 #[cfg(test)]
 pub(crate) mod test_support;
 
 use std::path::{Path, PathBuf};
 
-use crate::agents::{AgentAdapter, PluginInstall, PluginOutcome};
+use crate::agents::{AgentAdapter, PluginInstall, PluginOutcome, adapter_for};
 use crate::env::Env;
 use crate::model::{Agent, Scope};
 use crate::prompt::Prompter;
@@ -40,67 +40,70 @@ pub struct InstallRequest {
 
 pub(crate) type Cmd = (String, Vec<String>);
 
-pub fn install(
-    adapters: &[Box<dyn AgentAdapter>],
-    req: &InstallRequest,
-    env: &Env,
-    runner: &dyn CommandRunner,
-    prompter: &dyn Prompter,
-) -> anyhow::Result<()> {
-    source::with_source(&req.source, &req.cwd, env, runner, |src, source| {
-        install_from(adapters, req, src, source, env, runner, prompter)
-    })
+/// What an install talks to: the registered agents and the outside world.
+pub struct Ctx<'a> {
+    pub adapters: &'a [Box<dyn AgentAdapter>],
+    pub env: &'a Env,
+    pub runner: &'a dyn CommandRunner,
+    pub prompter: &'a dyn Prompter,
 }
 
 /// `src` is the tree to inspect; `source` is what we hand to `npx`/`claude` (never a tmp clone).
-fn install_from(
-    adapters: &[Box<dyn AgentAdapter>],
-    req: &InstallRequest,
-    src: &Path,
-    source: &str,
-    env: &Env,
-    runner: &dyn CommandRunner,
-    prompter: &dyn Prompter,
-) -> anyhow::Result<()> {
-    let skills = |agents: &[Agent]| {
-        skills::install(
-            &req.selection,
-            agents,
-            req.scope,
-            src,
-            source,
-            env,
-            runner,
-            prompter,
-        )
-    };
-    let mut rest = req.agents.clone();
-    if req.selection == SkillSelection::Interactive {
-        let plugin_req = PluginInstall {
-            src,
-            source,
-            scope: req.scope,
-            env,
-            runner,
-            prompter,
-        };
-        rest.clear();
-        for &agent in &req.agents {
-            let outcome = match adapters.iter().find(|a| a.agent() == agent) {
-                Some(a) => a.install_plugins(&plugin_req)?,
-                None => PluginOutcome::Unsupported,
-            };
-            match outcome {
-                PluginOutcome::Unsupported => rest.push(agent),
-                PluginOutcome::Declined => return Ok(()),
-                PluginOutcome::Installed => {}
-            }
+struct Tree<'a> {
+    src: &'a Path,
+    source: &'a str,
+}
+
+pub fn install(ctx: &Ctx, req: &InstallRequest) -> anyhow::Result<()> {
+    source::with_source(&req.source, &req.cwd, ctx.env, ctx.runner, |src, source| {
+        install_from(ctx, req, &Tree { src, source })
+    })
+}
+
+fn install_from(ctx: &Ctx, req: &InstallRequest, tree: &Tree) -> anyhow::Result<()> {
+    let rest = if req.selection == SkillSelection::Interactive {
+        match offer_plugins(ctx, req, tree)? {
+            Some(rest) => rest,
+            None => return Ok(()),
         }
-    }
+    } else {
+        req.agents.clone()
+    };
     if rest.is_empty() {
         return Ok(());
     }
-    skills(&rest)
+    skills::install(ctx, req, tree, &rest)
+}
+
+/// Let each requested agent install the source's marketplace plugins. Returns the agents that
+/// have no plugin install and still need their skills installed, or `None` when the user
+/// declined the plugins.
+fn offer_plugins(
+    ctx: &Ctx,
+    req: &InstallRequest,
+    tree: &Tree,
+) -> anyhow::Result<Option<Vec<Agent>>> {
+    let plugin_req = PluginInstall {
+        src: tree.src,
+        source: tree.source,
+        scope: req.scope,
+        env: ctx.env,
+        runner: ctx.runner,
+        prompter: ctx.prompter,
+    };
+    let mut rest = vec![];
+    for &agent in &req.agents {
+        let outcome = match adapter_for(ctx.adapters, agent) {
+            Some(a) => a.install_plugins(&plugin_req)?,
+            None => PluginOutcome::Unsupported,
+        };
+        match outcome {
+            PluginOutcome::Unsupported => rest.push(agent),
+            PluginOutcome::Declined => return Ok(None),
+            PluginOutcome::Installed => {}
+        }
+    }
+    Ok(Some(rest))
 }
 
 #[cfg(test)]
@@ -108,6 +111,22 @@ mod tests {
     use super::test_support::*;
     use super::*;
     use crate::agents::registry;
+
+    fn run_install(
+        fx: &Fixture,
+        req: &InstallRequest,
+        runner: &FakeRunner,
+        prompter: &ScriptedPrompter,
+    ) -> anyhow::Result<()> {
+        let adapters = registry();
+        let ctx = Ctx {
+            adapters: &adapters,
+            env: &fx.env,
+            runner,
+            prompter,
+        };
+        install(&ctx, req)
+    }
 
     #[test]
     fn local_path_all_installs_every_skill_from_absolute_path() {
@@ -120,14 +139,7 @@ mod tests {
             Scope::Project,
             SkillSelection::All,
         );
-        install(
-            &registry(),
-            &r,
-            &fx.env,
-            &runner,
-            &ScriptedPrompter::new(&[], true),
-        )
-        .unwrap();
+        run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
         let src = fx.env.project.join("repo").to_string_lossy().into_owned();
         let expected = npx(
             &src,
@@ -162,14 +174,7 @@ mod tests {
             Scope::Global,
             SkillSelection::Interactive,
         );
-        install(
-            &registry(),
-            &r,
-            &fx.env,
-            &runner,
-            &ScriptedPrompter::new(&[2], true),
-        )
-        .unwrap();
+        run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[2], true)).unwrap();
         let calls = runner.calls();
         assert_eq!(calls.len(), 2);
         let (prog, args, cwd) = &calls[0];
@@ -198,7 +203,7 @@ mod tests {
             SkillSelection::Interactive,
         );
         let prompter = ScriptedPrompter::new(&[1], true);
-        install(&registry(), &r, &fx.env, &runner, &prompter).unwrap();
+        run_install(&fx, &r, &runner, &prompter).unwrap();
         assert_eq!(prompter.offered.borrow()[1], s(&["alpha", "beta"]));
         let calls = runner.calls();
         assert_eq!(
@@ -222,14 +227,7 @@ mod tests {
             let fx = project_with(marketplace_fixture);
             let runner = FakeRunner::new(|_| {});
             let r = req(&fx, "repo", &agents, Scope::Project, sel);
-            install(
-                &registry(),
-                &r,
-                &fx.env,
-                &runner,
-                &ScriptedPrompter::new(&[0], true),
-            )
-            .unwrap();
+            run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[0], true)).unwrap();
             let calls = runner.calls();
             assert_eq!(calls.len(), 1);
             assert_eq!(calls[0].0, "npx");

@@ -4,7 +4,7 @@ use anyhow::bail;
 
 use super::deps::Deps;
 use crate::env::Env;
-use crate::model::{Augmentation, Scope};
+use crate::model::Scope;
 use crate::workspace::Workspace;
 use crate::{apply, profile, remove, spinner};
 
@@ -109,8 +109,7 @@ fn execute(
     switch: &apply::Switch,
 ) -> anyhow::Result<apply::Done> {
     let spinner = spinner::Spinner::start("switching");
-    let refs: Vec<&Augmentation> = switch.removals.iter().collect();
-    let removal = remove::Plan::new(&refs, &[]);
+    let removal = remove::Plan::from_owned(&switch.removals);
     let result = applier.run(switch, deps.runner, &mut |step| {
         let Some(s) = &spinner else { return };
         let installing = switch

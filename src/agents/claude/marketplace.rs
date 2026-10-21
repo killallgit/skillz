@@ -6,16 +6,19 @@ use std::path::Path;
 use anyhow::Context;
 
 use super::files::{EXTRA_KNOWN_MARKETPLACES, marketplaces_file};
-use super::records::{Install, Marketplace, mp_of};
+use super::records::{Install, Marketplace};
 use super::removal::{plugin_removal, unique_in_order};
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::agents::{PluginInstall, PluginOutcome};
 use crate::install::{Cmd, run_checked};
-use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
+use crate::model::{Agent, Augmentation, Installer, Kind, Scope, split_plugin_id};
 
 /// One augmentation for an installed marketplace, removing it with all its plugins.
 pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> Augmentation {
-    let own: Vec<&Install> = installs.iter().filter(|i| mp_of(&i.id) == m.name).collect();
+    let own: Vec<&Install> = installs
+        .iter()
+        .filter(|i| split_plugin_id(&i.id).1 == m.name)
+        .collect();
     Augmentation {
         id: format!("marketplace:claude:{}", m.name),
         name: m.name.clone(),
@@ -33,7 +36,7 @@ pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> 
 fn plugin_names(installs: &[&Install]) -> Vec<String> {
     let names: BTreeSet<String> = installs
         .iter()
-        .map(|i| i.id.rsplit_once('@').map_or(&*i.id, |(n, _)| n).to_string())
+        .map(|i| split_plugin_id(&i.id).0.to_string())
         .collect();
     names.into_iter().collect()
 }

@@ -10,6 +10,7 @@ use super::files::{
 use super::plugins::dir_entries;
 use super::records::Install;
 use crate::action::{Action, Edit, RemovalTarget};
+use crate::model::split_plugin_id;
 
 pub(super) fn plugin_removal(claude: &Path, install: &Install) -> Vec<Action> {
     let settings = match &install.project {
@@ -78,9 +79,10 @@ fn unused_record(claude: &Path, id: &str, target: RemovalTarget) -> Action {
 /// whichever selected items drop its last install record take them; none unless both are
 /// valid targets.
 fn plugin_dirs(claude: &Path, id: &str) -> Vec<Action> {
-    let Some((name, mp)) = id.rsplit_once('@') else {
+    let (name, mp) = split_plugin_id(id);
+    if mp.is_empty() {
         return vec![];
-    };
+    }
     let dir = claude.join("plugins");
     let cache = RemovalTarget::new(&dir.join("cache"), [mp, name]);
     let data = RemovalTarget::new(&dir.join("data"), [format!("{name}-{mp}")]);
@@ -120,7 +122,7 @@ fn rivals(claude: &Path, name: &str) -> Vec<String> {
         .and_then(|j| j.get(PLUGINS).and_then(Value::as_object).cloned())
         .map(|m| {
             m.keys()
-                .filter_map(|k| k.rsplit_once('@').map(|(n, _)| n.to_string()))
+                .map(|k| split_plugin_id(k).0.to_string())
                 .filter(|n| n.len() > name.len() && n.starts_with(name))
                 .collect()
         })
@@ -133,10 +135,8 @@ fn rivals(claude: &Path, name: &str) -> Vec<String> {
 /// skipped when another installed plugin's longer name claims the file (`killall` vs
 /// `killall-agents`). Global installs only; names under 4 chars are too generic to match.
 fn leftovers(claude: &Path, id: &str) -> Vec<Action> {
-    let Some((name, _)) = id.rsplit_once('@') else {
-        return vec![];
-    };
-    if name.len() < 4 {
+    let (name, mp) = split_plugin_id(id);
+    if mp.is_empty() || name.len() < 4 {
         return vec![];
     }
     let matcher = Leftovers {
