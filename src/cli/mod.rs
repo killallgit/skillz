@@ -2,18 +2,13 @@
 
 mod args;
 mod deps;
-mod detail;
 mod isolate;
 mod list;
-mod notice;
-mod plan_view;
 mod profile;
 mod prune;
 mod removal;
 mod run;
 mod scope;
-mod screen;
-mod switch;
 mod use_profile;
 mod workspace;
 
@@ -63,7 +58,7 @@ pub fn main() -> anyhow::Result<i32> {
     };
     match cli.command {
         Some(command) => run(command, &deps, &mut std::io::stdout()),
-        None => workspace(&deps).map(|()| 0),
+        None => workspace(&deps, cli.path.as_deref()).map(|()| 0),
     }
 }
 

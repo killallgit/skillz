@@ -57,34 +57,23 @@ impl Outline {
         outline
     }
 
-    /// The same outline over a new shape: rows that were open stay open when a row with the
-    /// same label and children is still there; the filter and the cursor stay where they were.
+    /// The same outline over a new shape. A row with children that was closed stays closed when
+    /// a row with the same label is still there; every other such row is open. The filter and
+    /// the cursor stay where they were.
     pub fn reshape(&mut self, shape: Vec<Shape>) {
-        let open: Vec<String> = self
-            .expanded
-            .iter()
-            .map(|&id| self.labels[id].clone())
+        let closed: Vec<String> = (0..self.labels.len())
+            .filter(|&id| self.has_children[id] && !self.expanded.contains(&id))
+            .map(|id| self.labels[id].clone())
             .collect();
         let at = self.list.selected().unwrap_or(0);
         let filter = self.filter.clone();
         *self = Outline::new(shape);
         self.expanded = (0..self.labels.len())
-            .filter(|&id| self.has_children[id] && open.contains(&self.labels[id]))
+            .filter(|&id| self.has_children[id] && !closed.contains(&self.labels[id]))
             .collect();
         self.filter = filter;
         self.refresh();
         self.list.select(at);
-    }
-
-    pub fn expand_all(&mut self) {
-        self.expanded = (0..self.labels.len())
-            .filter(|&id| self.has_children[id])
-            .collect();
-        self.refresh();
-    }
-
-    pub fn total(&self) -> usize {
-        self.labels.len()
     }
 
     /// Row ids in display order.
@@ -99,6 +88,7 @@ impl Outline {
             .and_then(|at| self.visible.get(at).copied())
     }
 
+    #[cfg(test)]
     pub fn selected(&self) -> Option<usize> {
         self.list.selected()
     }
@@ -109,10 +99,6 @@ impl Outline {
 
     pub fn parent(&self, id: usize) -> Option<usize> {
         self.parents[id]
-    }
-
-    pub fn has_children(&self, id: usize) -> bool {
-        self.has_children[id]
     }
 
     pub fn depth(&self, id: usize) -> usize {

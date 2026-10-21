@@ -10,10 +10,13 @@ use crate::model::{Agent, Augmentation, Kind};
     version,
     about = "Manage skills, plugins, marketplaces and hooks for Claude, Codex and Cursor"
 )]
+#[command(args_conflicts_with_subcommands = true)]
 pub struct Cli {
     /// Without one, opens the TUI
     #[command(subcommand)]
     pub command: Option<Command>,
+    /// Directory the TUI opens on (default: cwd)
+    pub path: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -297,5 +300,16 @@ mod tests {
             project(&["prune", "/p", "--dry-run"]),
             Some(PathBuf::from("/p"))
         );
+    }
+
+    #[test]
+    fn a_bare_path_opens_the_tui_there_and_a_subcommand_still_wins() {
+        let bare = Cli::try_parse_from(["skillz", "some/dir"]).unwrap();
+        let none = Cli::try_parse_from(["skillz"]).unwrap();
+        let listing = Cli::try_parse_from(["skillz", "list"]).unwrap();
+
+        assert_eq!(bare.path, Some(PathBuf::from("some/dir")));
+        assert!(bare.command.is_none() && none.path.is_none());
+        assert!(listing.command.is_some() && listing.path.is_none());
     }
 }

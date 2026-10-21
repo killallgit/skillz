@@ -1,13 +1,11 @@
-//! A tab bar. `1`-`9` jump to a tab, `[` and `]` step through them.
+//! A tab bar: which tab is selected, and stepping through them with wrap-around.
 
 use ratatui::Frame;
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::Outcome;
 use crate::tui::theme::Theme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,28 +33,13 @@ impl Tabs {
         }
     }
 
-    pub fn handle(&mut self, key: KeyEvent) -> Outcome {
-        let target = match key.code {
-            KeyCode::Char(c @ '1'..='9') => Some(c as usize - '1' as usize),
-            KeyCode::Char(']') => Some(self.next()),
-            KeyCode::Char('[') => Some(self.previous()),
-            _ => None,
-        };
-        match target {
-            Some(t) if t < self.titles.len() && t != self.selected => {
-                self.selected = t;
-                Outcome::Changed
-            }
-            _ => Outcome::Ignored,
-        }
+    pub fn next(&mut self) {
+        self.selected = (self.selected + 1) % self.titles.len().max(1);
     }
 
-    fn next(&self) -> usize {
-        (self.selected + 1) % self.titles.len().max(1)
-    }
-
-    fn previous(&self) -> usize {
-        (self.selected + self.titles.len().max(1) - 1) % self.titles.len().max(1)
+    pub fn previous(&mut self) {
+        let count = self.titles.len().max(1);
+        self.selected = (self.selected + count - 1) % count;
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -87,17 +70,10 @@ impl Tabs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::widgets::testing::{key, render_to_buffer};
+    use crate::tui::widgets::testing::render_to_buffer;
 
     fn tabs() -> Tabs {
         Tabs::new(&["alpha", "beta", "gamma"])
-    }
-
-    #[test]
-    fn number_keys_select_that_tab() {
-        let mut t = tabs();
-        assert_eq!(t.handle(key(KeyCode::Char('3'))), Outcome::Changed);
-        assert_eq!(t.selected(), 2);
     }
 
     #[test]
@@ -111,37 +87,36 @@ mod tests {
     }
 
     #[test]
-    fn out_of_range_number_is_ignored() {
+    fn next_steps_forward_and_wraps() {
         let mut t = tabs();
-        assert_eq!(t.handle(key(KeyCode::Char('7'))), Outcome::Ignored);
-        assert_eq!(t.selected(), 0);
+
+        let visited: Vec<usize> = (0..3)
+            .map(|_| {
+                t.next();
+                t.selected()
+            })
+            .collect();
+
+        assert_eq!(visited, [1, 2, 0]);
     }
 
     #[test]
-    fn reselecting_the_current_tab_changes_nothing() {
-        assert_eq!(tabs().handle(key(KeyCode::Char('1'))), Outcome::Ignored);
-    }
-
-    #[test]
-    fn right_bracket_steps_forward_and_wraps() {
+    fn previous_wraps_backwards_from_the_first_tab() {
         let mut t = tabs();
-        for _ in 0..3 {
-            t.handle(key(KeyCode::Char(']')));
-        }
-        assert_eq!(t.selected(), 0);
-    }
 
-    #[test]
-    fn left_bracket_wraps_backwards_from_the_first_tab() {
-        let mut t = tabs();
-        t.handle(key(KeyCode::Char('[')));
+        t.previous();
+
         assert_eq!(t.selected(), 2);
     }
 
     #[test]
-    fn brackets_do_nothing_with_one_tab() {
+    fn stepping_with_one_tab_stays_put() {
         let mut t = Tabs::new(&["only"]);
-        assert_eq!(t.handle(key(KeyCode::Char(']'))), Outcome::Ignored);
+
+        t.next();
+        t.previous();
+
+        assert_eq!(t.selected(), 0);
     }
 
     #[test]

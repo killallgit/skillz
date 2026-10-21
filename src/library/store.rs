@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::catalog::Catalog;
 use super::item::LibraryItem;
 use crate::atomic::write_atomic;
+use crate::env::Env;
 use crate::read_optional::read_optional;
 
 /// The library file exists but is not a valid library; it is left untouched.
@@ -38,6 +39,11 @@ impl Store {
         Store { path }
     }
 
+    /// `<skillz dir>/library.toml`.
+    pub fn in_env(env: &Env) -> Self {
+        Store::new(env.skillz_dir().join("library.toml"))
+    }
+
     /// The saved catalog; empty when there is no file, [`Corrupt`] when it cannot be read.
     pub fn load(&self) -> anyhow::Result<Catalog> {
         let Some(text) = read_optional(&self.path)? else {
@@ -65,6 +71,15 @@ mod tests {
 
     fn store_in(dir: &tempfile::TempDir) -> Store {
         Store::new(dir.path().join("skillz/library.toml"))
+    }
+
+    #[test]
+    fn the_library_lives_beside_the_profiles_in_the_skillz_dir() {
+        let env = Env::new("/home/me".into(), "/work".into());
+
+        let store = Store::in_env(&env);
+
+        assert_eq!(store.path, env.skillz_dir().join("library.toml"));
     }
 
     #[test]

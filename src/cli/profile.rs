@@ -7,7 +7,6 @@ use anyhow::bail;
 use super::args::ProfileCommand;
 use super::deps::Deps;
 use super::scope::{installed, resolve_project};
-use super::screen::profile_rows;
 use crate::model::{Augmentation, Scope};
 use crate::{profile, snapshot};
 
@@ -35,9 +34,13 @@ pub(super) fn profile_command(
 }
 
 fn list_profiles(store: &profile::Store, out: &mut dyn Write) -> anyhow::Result<()> {
-    for row in profile_rows(store)? {
-        let unreadable = if row.broken { "  (unreadable)" } else { "" };
-        writeln!(out, "{}{unreadable}", row.name)?;
+    for name in store.names()? {
+        let unreadable = if store.load(&name).is_err() {
+            "  (unreadable)"
+        } else {
+            ""
+        };
+        writeln!(out, "{name}{unreadable}")?;
     }
     Ok(())
 }

@@ -42,16 +42,6 @@ impl InputField {
         self.cursor
     }
 
-    /// Replace the text, leaving the cursor at its end.
-    #[allow(
-        dead_code,
-        reason = "used by the path picker, wired back in by the next TUI bead"
-    )]
-    pub fn replace(&mut self, value: &str) {
-        self.value = value.to_string();
-        self.cursor = self.char_count();
-    }
-
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match (key.code, ctrl) {

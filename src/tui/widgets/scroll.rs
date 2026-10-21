@@ -47,15 +47,6 @@ impl Scroll {
         true
     }
 
-    /// A page up or down over `len` lines.
-    pub fn page(&mut self, down: bool, len: usize) {
-        if down {
-            self.down(PAGE, len);
-        } else {
-            self.up(PAGE);
-        }
-    }
-
     fn up(&mut self, by: usize) {
         self.offset = self.offset.saturating_sub(by);
     }
