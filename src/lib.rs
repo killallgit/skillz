@@ -9,6 +9,7 @@ pub mod cli;
 pub mod cost;
 pub mod env;
 pub mod hooks;
+pub mod info;
 pub mod install;
 pub mod matcher;
 pub mod model;

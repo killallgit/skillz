@@ -5,10 +5,11 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
 
-use crate::action::{self, Action, Edit};
+use crate::action::{self, Action};
 use crate::agents::{self, AgentAdapter};
 use crate::cost;
 use crate::env::Env;
+use crate::info;
 use crate::install::{self, InstallRequest, SkillSelection};
 use crate::matcher;
 use crate::model::{Agent, Augmentation, Kind, Scope};
@@ -410,6 +411,29 @@ fn queried(items: &[Augmentation], hits: &[&Augmentation]) -> Vec<Augmentation> 
         .collect()
 }
 
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// `tree::build` plus each row's info-modal text. Last-use data is optional: if an agent's
+/// records cannot be read the modal just omits it.
+fn display_tree(deps: &Deps, env: &Env, items: &[Augmentation]) -> Vec<tree::Node> {
+    let usage = usage::read(&deps.adapters, env).ok();
+    let now = now_ms();
+    let mut nodes = tree::build(items);
+    tree::attach_info(&mut nodes, &|i| {
+        let item = &items[i];
+        let used = match (&usage, prune::tracked(item, &deps.adapters)) {
+            (Some(u), true) => u.last_used(item).map_or(info::Used::Never, info::Used::At),
+            _ => info::Used::NotTracked,
+        };
+        info::item_lines(item, used, now)
+    });
+    nodes
+}
+
 /// Browse `items` in the tree UI, then show or remove whatever the user marks.
 fn browse(
     deps: &Deps,
@@ -419,13 +443,7 @@ fn browse(
     items: &[Augmentation],
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let nodes: Vec<tree::Node> = tree::build(items)
-        .into_iter()
-        .map(|mut node| {
-            node.label = format!("{}  ({})", node.label, node.children.len());
-            node
-        })
-        .collect();
+    let nodes = display_tree(deps, env, items);
     let Some((choice, picked)) = deps.prompter.browse("skillz", &nodes)? else {
         return Ok(());
     };
@@ -571,7 +589,7 @@ fn uninstall(
     } else {
         let owned: Vec<Augmentation> = candidates.iter().map(|&c| c.clone()).collect();
         deps.prompter
-            .select_items("Select items to remove", &tree::build(&owned))?
+            .select_items("Select items to remove", &display_tree(deps, env, &owned))?
     };
     let chosen: Vec<&Augmentation> = picked
         .into_iter()
@@ -680,9 +698,10 @@ fn prune(
         chosen.extend(&unused);
     } else if !unused.is_empty() {
         let owned: Vec<Augmentation> = unused.iter().map(|&i| i.clone()).collect();
-        let picked = deps
-            .prompter
-            .select_items("Select unused items to remove", &tree::build(&owned))?;
+        let picked = deps.prompter.select_items(
+            "Select unused items to remove",
+            &display_tree(deps, env, &owned),
+        )?;
         chosen.extend(picked.into_iter().filter_map(|i| unused.get(i).copied()));
     }
     // A dry run already listed every item, with its age, in the sections above.
@@ -725,7 +744,7 @@ fn remove(
     }
     writeln!(out, "Plan:")?;
     for step in &plan {
-        writeln!(out, "  {}", describe(step))?;
+        writeln!(out, "  {}", step.describe())?;
     }
     if dry_run {
         return Ok(());
@@ -754,31 +773,6 @@ fn remove(
         bail!("still installed after removal: {}", left.join(", "));
     }
     Ok(())
-}
-
-fn describe(step: &Action) -> String {
-    match step {
-        Action::Run { program, args, .. } => format!("run {program} {}", args.join(" ")),
-        Action::RemovePath(t) => format!("rm {}", t.path().display()),
-        Action::RemovePathIfJsonAbsent { target, file, key } => format!(
-            "rm {} (if {} then has no {})",
-            target.path().display(),
-            file.display(),
-            key.join(".")
-        ),
-        Action::Edit { file, edit } => {
-            let what = match edit {
-                Edit::RemoveHook { event, command } => format!("hook {event}: {command}"),
-                Edit::JsonRemoveKey { path } | Edit::TomlRemoveKey { path } => path.join("."),
-                Edit::JsonRemoveArrayItems { path, fields } => {
-                    let when: Vec<String> =
-                        fields.iter().map(|(k, v)| format!("{k}={v}")).collect();
-                    format!("{}[{}]", path.join("."), when.join(","))
-                }
-            };
-            format!("edit {} (remove {what})", file.display())
-        }
-    }
 }
 
 #[cfg(test)]

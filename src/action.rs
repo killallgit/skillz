@@ -52,6 +52,32 @@ impl Action {
             fallback: true,
         })
     }
+
+    /// One line saying what this step does, for plans and the info modal.
+    pub fn describe(&self) -> String {
+        match self {
+            Action::Run { program, args, .. } => format!("run {program} {}", args.join(" ")),
+            Action::RemovePath(t) => format!("rm {}", t.path().display()),
+            Action::RemovePathIfJsonAbsent { target, file, key } => format!(
+                "rm {} (if {} then has no {})",
+                target.path().display(),
+                file.display(),
+                key.join(".")
+            ),
+            Action::Edit { file, edit } => {
+                let what = match edit {
+                    Edit::RemoveHook { event, command } => format!("hook {event}: {command}"),
+                    Edit::JsonRemoveKey { path } | Edit::TomlRemoveKey { path } => path.join("."),
+                    Edit::JsonRemoveArrayItems { path, fields } => {
+                        let when: Vec<String> =
+                            fields.iter().map(|(k, v)| format!("{k}={v}")).collect();
+                        format!("{}[{}]", path.join("."), when.join(","))
+                    }
+                };
+                format!("edit {} (remove {what})", file.display())
+            }
+        }
+    }
 }
 
 /// A pure transformation of a config file's text.

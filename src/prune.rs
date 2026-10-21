@@ -89,7 +89,7 @@ fn is_duplicate(skill: &Augmentation, items: &[Augmentation]) -> bool {
 }
 
 /// Items some adapter can see a use of (hooks and marketplaces never are).
-fn tracked(item: &Augmentation, adapters: &[Box<dyn AgentAdapter>]) -> bool {
+pub fn tracked(item: &Augmentation, adapters: &[Box<dyn AgentAdapter>]) -> bool {
     matches!(item.kind, Kind::Skill | Kind::Plugin)
         && adapters
             .iter()

@@ -247,8 +247,10 @@ columns out, and the plain `list` output (`tree::render`) uses the same `Widths`
 terminal list and the piped table match. JSON output is built from the items, not the rows.
 Keys: `↑↓/jk` move, `space` expand/collapse, `→/l` expand, `←/h` collapse (or jump to parent),
 `x`/`tab` mark a group (all its items) or one item, `/` filter keeps matching nodes and their
-ancestors, `i` yields `Outcome::Info` (the info modal, skillz-atj, handles it; until then it
-is ignored), `q/esc` quit. In the browser `enter` opens the Show / Remove… / Cancel menu for
+ancestors, `i` opens the info modal (kind, scope, agents, group, source, installer, last used,
+contents, and the commands removing it runs; a group shows its members), `esc`/`q`/`i`/`enter`
+close it. Its text is plain data on `Node::info`, built before the terminal opens
+(`info::item_lines`, `tree::attach_info`) so drawing never reads the filesystem, `q/esc` quit. In the browser `enter` opens the Show / Remove… / Cancel menu for
 the marks (or the row under the cursor); in a picker `enter` accepts them
 (`Prompter::select_items` returns `Node::item` indices). Rows map back to items through
 `tree::Node::item`.

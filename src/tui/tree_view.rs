@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Flex, Layout};
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Clear, List, ListState};
+use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 
 use super::{FilterKey, Mark, draw_list, event_loop, filter_key, is_ctrl_c, step_cursor};
 use crate::matcher::fuzzy_rank;
@@ -16,8 +16,6 @@ pub enum Outcome {
     Continue,
     Quit,
     Accept(Choice, Picked),
-    /// `i` on this row (an index into the tree's rows).
-    Info(usize),
 }
 
 /// Menu entries shown on Enter; `None` closes the menu.
@@ -31,6 +29,7 @@ const MENU: [(&str, Option<Choice>); 3] = [
 #[derive(Debug, Clone)]
 struct Row {
     label: String,
+    info: Vec<String>,
     cells: [String; COLUMNS.len()],
     depth: usize,
     parent: Option<usize>,
@@ -43,6 +42,7 @@ fn flatten(nodes: &[Node], depth: usize, parent: Option<usize>, rows: &mut Vec<R
         let id = rows.len();
         rows.push(Row {
             label: node.label.clone(),
+            info: node.info.clone(),
             cells: node.cells.clone(),
             depth,
             parent,
@@ -69,6 +69,8 @@ pub struct TreeState {
     /// A picker: Enter accepts the marks directly instead of opening the action menu.
     pick: bool,
     widths: Widths,
+    /// The row whose info modal is open.
+    info: Option<usize>,
 }
 
 impl TreeState {
@@ -86,6 +88,7 @@ impl TreeState {
             menu: None,
             pick: false,
             widths: Widths::of(nodes, 2),
+            info: None,
         };
         state.refresh();
         state
@@ -102,6 +105,15 @@ impl TreeState {
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
         if is_ctrl_c(key) {
             return Outcome::Quit;
+        }
+        if self.info.is_some() {
+            if matches!(
+                key.code,
+                KeyCode::Esc | KeyCode::Char('q' | 'i') | KeyCode::Enter
+            ) {
+                self.info = None;
+            }
+            return Outcome::Continue;
         }
         if let Some(at) = self.menu {
             return self.handle_menu(at, key.code);
@@ -123,7 +135,9 @@ impl TreeState {
         match key.code {
             KeyCode::Char('/') => self.filtering = true,
             KeyCode::Char('x') | KeyCode::Tab => self.toggle_mark(),
-            KeyCode::Char('i') => return self.current().map_or(Outcome::Continue, Outcome::Info),
+            KeyCode::Char('i') => {
+                self.info = self.current().filter(|&id| !self.rows[id].info.is_empty())
+            }
             KeyCode::Enter if self.current().is_some() || !self.marks.is_empty() => {
                 if self.pick {
                     return Outcome::Accept(Choice::Remove, self.picked());
@@ -333,6 +347,21 @@ impl TreeState {
             footer,
         );
 
+        if let Some(id) = self.info {
+            let row = &self.rows[id];
+            let height = (row.info.len() as u16 + 2).min(body.height);
+            let [area] = Layout::vertical([Constraint::Length(height)])
+                .flex(Flex::Center)
+                .areas(body);
+            let [area] = Layout::horizontal([Constraint::Percentage(80)])
+                .flex(Flex::Center)
+                .areas(area);
+            let modal = Paragraph::new(row.info.join("\n"))
+                .block(Block::bordered().title(format!(" {} · esc closes ", row.label)));
+            frame.render_widget(Clear, area);
+            frame.render_widget(modal, area);
+        }
+
         if let Some(at) = self.menu {
             let [area] = Layout::vertical([Constraint::Length(MENU.len() as u16 + 2)])
                 .flex(Flex::Center)
@@ -359,8 +388,7 @@ pub fn browse(title: &str, nodes: &[Node]) -> anyhow::Result<Option<(Choice, Pic
         &mut TreeState::new(nodes),
         |s, f| s.draw(title, f),
         |s, k| match s.handle(k) {
-            // The info modal (skillz-atj) takes over `Info`.
-            Outcome::Continue | Outcome::Info(_) => None,
+            Outcome::Continue => None,
             Outcome::Quit => Some(None),
             Outcome::Accept(choice, picked) => Some(Some((choice, picked))),
         },
@@ -374,7 +402,7 @@ pub fn pick(title: &str, nodes: &[Node]) -> anyhow::Result<Vec<usize>> {
         &mut TreeState::picker(nodes),
         |s, f| s.draw(title, f),
         |s, k| match s.handle(k) {
-            Outcome::Continue | Outcome::Info(_) => None,
+            Outcome::Continue => None,
             Outcome::Quit => Some(vec![]),
             Outcome::Accept(_, picked) => Some(picked.item_indices(nodes)),
         },
@@ -547,18 +575,24 @@ mod tests {
     }
 
     #[test]
-    fn i_reports_the_row_under_the_cursor_for_every_row_kind() {
-        let mut s = TreeState::new(&sample());
-        assert_eq!(s.handle(key(KeyCode::Char('i'))), Outcome::Info(0));
-        feed(&mut s, keys(" j"));
-        assert_eq!(s.handle(key(KeyCode::Char('i'))), Outcome::Info(1));
-        feed(&mut s, keys("l"));
+    fn i_opens_the_modal_for_rows_with_info_and_esc_closes_it() {
+        let mut nodes = sample();
+        nodes[0].info = vec!["kind  group".into()];
+        nodes[0].children[0].info = vec!["kind  skill".into()];
+        let mut s = TreeState::new(&nodes);
+        feed(&mut s, keys("i"));
+        assert_eq!(s.info, Some(0));
+        // Keys other than the closing ones do nothing while it is open.
+        feed(&mut s, keys("jx"));
+        assert_eq!((s.info, s.cursor, s.marks.len()), (Some(0), 0, 0));
+        let mut term = Terminal::new(TestBackend::new(60, 10)).unwrap();
+        term.draw(|f| s.draw("t", f)).unwrap();
+        feed(&mut s, [key(KeyCode::Esc)]);
+        assert_eq!(s.info, None);
+        // A row with no info (g1) has no modal.
         feed(&mut s, keys("j"));
-        // a child row that is not itself markable still answers
-        assert!(matches!(
-            s.handle(key(KeyCode::Char('i'))),
-            Outcome::Info(_)
-        ));
+        feed(&mut s, keys("i"));
+        assert_eq!(s.info, None);
     }
 
     #[test]

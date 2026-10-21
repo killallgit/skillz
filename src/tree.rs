@@ -14,6 +14,8 @@ pub const COLUMNS: [&str; 4] = ["KIND", "AGENTS", "SCOPE", "ITEMS"];
 pub struct Node {
     /// The row's name; group rows read like `source` or `claude hooks`.
     pub label: String,
+    /// What the info modal shows for this row; empty for detail leaves, which have none.
+    pub info: Vec<String>,
     /// The table columns after the name, as `COLUMNS` lists them.
     pub cells: [String; COLUMNS.len()],
     pub children: Vec<Node>,
@@ -112,6 +114,29 @@ fn group_node(group: &str, members: Vec<(usize, &Augmentation)>) -> Node {
         children,
         item: None,
         scope: Some(scope),
+        ..Node::default()
+    }
+}
+
+/// Fill every item row's modal text from `info(item index)`, and each group's with a summary
+/// of its members.
+pub fn attach_info(nodes: &mut [Node], info: &dyn Fn(usize) -> Vec<String>) {
+    for group in nodes {
+        for child in &mut group.children {
+            if let Some(i) = child.item {
+                child.info = info(i);
+            }
+        }
+        let scope = group.cells[2].clone();
+        let members: Vec<String> = group
+            .children
+            .iter()
+            .map(|c| format!("  {}", c.label))
+            .collect();
+        group.info = vec![format!("{} items ({scope})", group.cells[3])]
+            .into_iter()
+            .chain(members)
+            .collect();
     }
 }
 
@@ -151,7 +176,7 @@ fn item_node(index: usize, item: &Augmentation) -> Node {
         ],
         children: item.children.iter().map(Node::leaf).collect(),
         item: Some(index),
-        scope: None,
+        ..Node::default()
     }
 }
 
@@ -432,5 +457,17 @@ mod tests {
         {
             assert!(line.contains(name), "{line:?} lacks {name}");
         }
+    }
+
+    #[test]
+    fn info_is_attached_to_items_and_summarises_groups() {
+        let items = [aug("a", Kind::Skill, "g", None, &["detail"])];
+        let mut nodes = build(&items);
+        attach_info(&mut nodes, &|i| vec![format!("item {i}")]);
+        assert_eq!(nodes[0].children[0].info, ["item 0"]);
+        assert!(nodes[0].info[0].starts_with("1 items"));
+        assert!(nodes[0].info.iter().any(|l| l.contains('a')));
+        // Detail leaves carry no info, so `i` opens no modal on them.
+        assert!(nodes[0].children[0].children[0].info.is_empty());
     }
 }
