@@ -18,10 +18,10 @@ is also a command.
 | --- | --- |
 | `list` (`ls`) | show what is installed as a tree, or browse it with `-i` |
 | `uninstall` (`rm`, `delete`) | fuzzy match, pick, confirm, remove completely |
-| `update` | update installed items with the tool that installed them; `--check` lists the ones with a newer version (`--json` for scripts) |
+| `update` | update installed items with the tool that installed them (`-g`: the user's); `--check` lists the ones with a newer version (`--json` for scripts) |
 | `reset` | remove every skill, plugin and marketplace in scope |
 | `prune` | find duplicate and unused skills and plugins, remove the ones picked |
-| `install` (`add`) | install skills with `npx skills`, or Claude plugins from a marketplace |
+| `install` (`add`) | install skills with `npx skills`, or Claude plugins from a marketplace; `-g` installs for the user instead of the project |
 | `use` | load a profile into a project (or globally), swapping out the one that is there |
 | `run` | run a command against one profile in config dirs of its own |
 | `profile` | `list` (`ls`), `show` (`export`), `import FILE`, `save`, `delete` (`rm`) |
@@ -55,6 +55,8 @@ skillz prune --dry-run | --force
 
 skillz install mattpocock/skills --skill 'tdd,*commit'   # glob match, confirm, npx skills add
 skillz install mattpocock/skills --all
+skillz install mattpocock/skills --all -g                 # for the user, not the project
+skillz update tdd -g                                     # update a user-level skill
 skillz install killallgit/killall-skills                 # has a marketplace: pick Claude plugins
 ```
 
@@ -62,8 +64,9 @@ If a skill you ask for is already installed globally and not in the project, `in
 and asks before installing it into the project too (`-y` goes ahead).
 
 Scope for `list`, `uninstall`, `reset` and `prune`: a `PATH` (or `-p PATH`) means that project only,
-`-g` means global only, neither means both (project = cwd). `install`, `use`, `run`, `profile` and
-the TUI always act on one project. A project that is your home directory counts as global. A `list` PATH must
+`-g` means global only, neither means both (project = cwd). `install` and `update` act on one
+project, or with `-g` on the user's installs; `use`, `run` and `profile` always act on one project,
+and the workspace has a tab for each. A project that is your home directory counts as global. A `list` PATH must
 start with `.`, `..` or `/` (`./sub`, not `sub`); any other word is a query.
 
 ## Profiles
@@ -168,7 +171,7 @@ profile you choose.
 `~/.config/skillz/store.json` is the only file skillz keeps for itself (apart from the scratch
 config dirs `run` makes). It holds `version`, `items` (the library) and `profiles`. The library is
 every skill, plugin, MCP server, hook and subagent you have installed or typed in, so that
-anything installed once can be installed again from the Project tab. Each item records its
+anything installed once can be installed again from the Project or Global tab. Each item records its
 provenance: the `link` it was fetched from, the `engine` that installed it, the `version` (a
 plugin version, or the content hash `npx skills` locked) and when it was `recorded_at`. Every
 successful `install`, `use` and workspace change adds what it installed; the Library tab's
@@ -202,20 +205,21 @@ never `~/.claude` or `~/.codex`. The variable is also set on every command skill
 
 `skillz [PATH]` opens a workspace for one directory (default: the current one). It keeps nothing
 per project: what is installed is read from the agents' own config each time. It needs a terminal
-at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
+at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 
-- **Project**: three groups, each split into Skills, Plugins, MCP servers, Hooks and Subagents
-  with counts. **Project** is what this directory has installed (checked); **Global** is what you
-  have installed at user level, outside any project; **Available** is library items installed
-  nowhere. An item installed both ways is in both groups. A global row is checked only when the
-  project has it too, and `i` on it installs it into the project. Every installed row shows where
-  it lives on disk (the skill's directory, or the config file), so you can see why it counts as
-  project or global; for example `.agents/skills/NAME` inside the directory is project scope. A
-  header shows the directory and how it compares with a profile you chose: matching, or `N missing` /
-  `N extra`. Picked rows get their own marker and a `to install` / `to remove` note, and each
-  section shows its count of picks. A filter keeps the group and kind structure and hides groups
-  with no match.
-  In the background the tab checks whether installed Claude marketplaces have a newer version
+- **Project** and **Global**: the same tab over two scopes. Project is what this directory has
+  installed; Global is what you have installed at user level, outside any project. Each lists its
+  installed items in sections (Skills, Plugins, MCP servers, Hooks, Subagents) with counts, then,
+  below an `Available` rule, the library items not installed in that scope, by kind. In Project, an item
+  that is also installed globally is tagged `global`. Every installed row shows where it lives on
+  disk (the skill's directory, or the config file). The header shows the directory, or `Global
+  (user-level)`; on Project it also shows how the directory compares with a profile you chose:
+  matching, or `N missing` / `N extra`. Picked rows get their own marker and a `to install` /
+  `to remove` note, and each section shows its count of picks. A filter keeps the section
+  structure and hides sections with no match. Installs, removals and updates on Global act on
+  the user's installs (`npx skills -g`, `claude ... --scope user`, the Codex user config).
+  Profiles apply to a project only, so Global has no `p` or `a`.
+  In the background the tabs check whether installed Claude marketplaces have a newer version
   (a read-only `ls-remote`) and shows those in bold with a `*` after the name. Other kinds have
   no reliable check and are never marked. `SKILLZ_NO_UPDATE_CHECK=1` turns the check off;
   `skillz update --check` runs it from the command line.
@@ -228,17 +232,17 @@ at least 40x10. Three tabs, switched with `tab` / `shift-tab` or `1` `2` `3`:
 
 | Key | Does |
 | --- | --- |
-| `space` | pick the item under the cursor: a library item to install, an installed item to remove; again to unpick (on a group header: open or close it) |
-| `enter` | apply all picks as one change, with one plan to review; with nothing picked, open or close the group |
-| `i` | install the item under the cursor into the project at once (after the plan); does nothing on a project row, a group header or a row nothing can install |
-| `r` | remove the item under the cursor from the project at once (after the plan); does nothing on a global or available row. Global installs are never removed from here |
+| `space` | pick the item under the cursor: a library item to install, an installed item to remove; again to unpick (on a section header: open or close it) |
+| `enter` | apply all picks as one change, with one plan to review; with nothing picked, open or close the section |
+| `i` | install the item under the cursor into the tab's scope at once (after the plan); does nothing on an installed row or a header |
+| `r` | remove the item under the cursor from the tab's scope at once (after the plan); does nothing on an available row or a header |
 | `esc` | clear the picks (with none, clear the filter) |
-| `u` | update the installed item under the cursor, or every installed item of the group, after a plan to review; library items that are not installed and kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
-| `p` | choose the profile the header compares with |
-| `a` | install what the chosen profile has that the project lacks |
-| `←` `→`, `h` `l` | close / open a group (`←` on an item jumps to its group) |
+| `u` | update the installed item under the cursor, or every installed item of the section, after a plan to review; library items that are not installed and kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
+| `p` | choose the profile the header compares with (Project only) |
+| `a` | install what the chosen profile has that the project lacks (Project only) |
+| `←` `→`, `h` `l` | close / open a section (`←` on an item jumps to its section) |
 | `↑↓` `j` `k`, `PgUp` `PgDn`, `^u` `^d`, `g` `G` | move |
-| `/` | filter; keeps matching rows and their group, `esc` clears it |
+| `/` | filter; keeps matching rows and their section, `esc` clears it |
 | `?` | all keys for the screen |
 | `q`, `^c` | quit |
 
@@ -248,12 +252,12 @@ installed, `^` updated, `~` skipped, framed in red when it removes something. `e
 any failures: `c` copies them (through the terminal, so it works over ssh), `r` retries, `enter`
 closes. A toast says what happened.
 
-While a change runs, the Project tab stays on screen and each affected row shows a spinner at
+While a change runs, the Project and Global tabs stay on screen and each affected row shows a spinner at
 its left (`⠋`, or `|/-\` in ASCII mode), then a tick or a cross when that item finishes, until the
 next key. The result screen lists what was done (`Installed X`, `Removed Y`, `Updated Z`) and
 every failure with its reason.
 
-Installing an item that is already installed globally (by `i`, or by `enter` on picks) first asks
+Installing into the project an item that is already installed globally (by `i`, or by `enter` on picks) first asks
 whether to also install it into this project, defaulting to No. With several picks it asks once,
 naming the global ones; No drops only those.
 
