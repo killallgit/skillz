@@ -16,6 +16,7 @@ pub mod model;
 pub mod npx_skills;
 pub mod prompt;
 pub mod prune;
+pub mod remove;
 pub mod runner;
 pub mod skills;
 pub mod spinner;

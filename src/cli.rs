@@ -1,23 +1,21 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::io::{IsTerminal, Write};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, bail};
 use clap::{Args, Parser, Subcommand};
 
-use crate::action::{self, Action};
 use crate::agents::{self, AgentAdapter};
 use crate::cost;
 use crate::env::Env;
 use crate::install::{self, InstallRequest, SkillSelection};
-use crate::matcher;
 use crate::model::{Agent, Augmentation, Kind, Scope};
 use crate::prompt::{AssumeYes, Choice, Prompter, TuiPrompter};
 use crate::prune;
 use crate::runner::{CommandRunner, SystemRunner};
 use crate::tree;
 use crate::usage;
-use crate::{info, spinner};
+use crate::{info, remove, spinner};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -254,16 +252,13 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
             dry_run,
         } => {
             let (env, scopes) = resolve(deps, project.as_deref(), filter.global)?;
-            uninstall(
+            let scene = Scene {
                 deps,
-                &env,
-                &scopes,
-                &filter,
-                query.as_deref(),
-                yes,
-                dry_run,
-                out,
-            )
+                env: &env,
+                scopes: &scopes,
+                filter: &filter,
+            };
+            uninstall(&scene, query.as_deref(), yes, dry_run, out)
         }
         Command::Prune {
             project,
@@ -273,15 +268,13 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         } => {
             let (env, scopes) = resolve(deps, project.as_deref(), filter.global)?;
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
-            prune(
+            let scene = Scene {
                 deps,
-                &env,
-                &scopes,
-                &filter,
-                now.as_millis() as u64,
-                dry_run,
-                out,
-            )
+                env: &env,
+                scopes: &scopes,
+                filter: &filter,
+            };
+            prune(&scene, now.as_millis() as u64, dry_run, out)
         }
         Command::Reset {
             project,
@@ -293,7 +286,13 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
             // Destructive, so the project you are in is the default; `-g` alone is global.
             let path = project.or_else(|| (!filter.global).then(|| PathBuf::from(".")));
             let (env, scopes) = resolve(deps, path.as_deref(), filter.global)?;
-            reset(deps, &env, &scopes, &filter, &keep, dry_run, out)
+            let scene = Scene {
+                deps,
+                env: &env,
+                scopes: &scopes,
+                filter: &filter,
+            };
+            reset(&scene, &keep, dry_run, out)
         }
         Command::Install {
             source,
@@ -447,24 +446,10 @@ fn browse(
     let Some((choice, picked)) = deps.prompter.browse("skillz", &nodes)? else {
         return Ok(());
     };
-    // `tree::build` makes one node per group, sorted by group.
-    let groups: Vec<&str> = items
-        .iter()
-        .map(|i| i.group.as_str())
-        .collect::<BTreeSet<_>>()
+    let chosen: Vec<&Augmentation> = picked
+        .item_indices(&nodes)
         .into_iter()
-        .collect();
-    let chosen: Vec<&Augmentation> = items
-        .iter()
-        .enumerate()
-        .filter(|(i, item)| {
-            picked.items.contains(i)
-                || picked
-                    .groups
-                    .iter()
-                    .any(|&g| groups.get(g) == Some(&item.group.as_str()))
-        })
-        .map(|(_, item)| item)
+        .filter_map(|i| items.get(i))
         .collect();
     match choice {
         Choice::Show => {
@@ -475,7 +460,15 @@ fn browse(
             )?;
             Ok(())
         }
-        Choice::Remove => remove(deps, env, scopes, filter, &chosen, false, true, out),
+        Choice::Remove => {
+            let scene = Scene {
+                deps,
+                env,
+                scopes,
+                filter,
+            };
+            confirm_and_remove(&scene, &chosen, false, true, out)
+        }
     }
 }
 
@@ -489,7 +482,7 @@ fn list(
 ) -> anyhow::Result<()> {
     let mut items = gather(deps, env, scopes, filter);
     if let Some(q) = view.query {
-        items = queried(&items, &matches(&items, Some(q)));
+        items = queried(&items, &remove::matches(&items, Some(q)));
     }
     if view.json {
         // Read the costs only here: the report takes a second or so (`claude -p /context`).
@@ -526,92 +519,52 @@ fn list(
     Ok(())
 }
 
-/// Items named exactly `query` (case-insensitive, surrounding whitespace ignored).
-fn named<'a>(items: &'a [Augmentation], query: &str) -> Vec<&'a Augmentation> {
-    items
-        .iter()
-        .filter(|i| i.name.eq_ignore_ascii_case(query.trim()))
-        .collect()
+/// What the removal flows share: where to look and what the filters allow.
+struct Scene<'a, 'd> {
+    deps: &'a Deps<'d>,
+    env: &'a Env,
+    scopes: &'a [Scope],
+    filter: &'a Filter,
 }
 
-/// Items matching `query`: exact (case-insensitive) name matches win over fuzzy ones.
-pub fn matches<'a>(items: &'a [Augmentation], query: Option<&str>) -> Vec<&'a Augmentation> {
-    let Some(query) = query.filter(|q| !q.trim().is_empty()) else {
-        return items.iter().collect();
-    };
-    let exact = named(items, query);
-    if !exact.is_empty() {
-        return exact;
+impl Scene<'_, '_> {
+    fn gather(&self) -> Vec<Augmentation> {
+        gather(self.deps, self.env, self.scopes, self.filter)
     }
-    let haystacks: Vec<String> = items
-        .iter()
-        .map(|i| {
-            format!(
-                "{} {} {}",
-                i.name,
-                i.group,
-                i.source.as_deref().unwrap_or("")
-            )
-        })
-        .collect();
-    matcher::fuzzy_rank(query, &haystacks)
-        .into_iter()
-        .map(|i| &items[i])
-        .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn uninstall(
-    deps: &Deps,
-    env: &Env,
-    scopes: &[Scope],
-    filter: &Filter,
+    scene: &Scene,
     query: Option<&str>,
     yes: bool,
     dry_run: bool,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let items = gather(deps, env, scopes, filter);
-    let candidates = matches(&items, query);
-    if candidates.is_empty() {
-        bail!("nothing installed matches");
-    }
-    // `--yes` selects every candidate, so it only acts on exactly one exact-name match.
-    if yes && query.map_or(0, |q| named(&items, q).len()) != 1 {
-        bail!(
-            "{} items match; refine the query or run without --yes to pick",
-            candidates.len()
-        );
-    }
+    let items = scene.gather();
+    let candidates = remove::candidates(&items, query, yes)?;
     // A dry run changes nothing, so show every candidate's plan without asking.
     let picked = if dry_run {
         (0..candidates.len()).collect()
     } else {
         let owned: Vec<Augmentation> = candidates.iter().map(|&c| c.clone()).collect();
-        deps.prompter
-            .select_items("Select items to remove", &display_tree(deps, env, &owned))?
+        scene.deps.prompter.select_items(
+            "Select items to remove",
+            &display_tree(scene.deps, scene.env, &owned),
+        )?
     };
     let chosen: Vec<&Augmentation> = picked
         .into_iter()
         .filter_map(|i| candidates.get(i).copied())
         .collect();
-    remove(deps, env, scopes, filter, &chosen, dry_run, true, out)
+    confirm_and_remove(scene, &chosen, dry_run, true, out)
 }
 
 /// Remove everything the filters leave, except what `keep` names. Hooks belong to other tools
 /// (rtk, beads), so they go only when asked for with `--hooks`.
-fn reset(
-    deps: &Deps,
-    env: &Env,
-    scopes: &[Scope],
-    filter: &Filter,
-    keep: &[String],
-    dry_run: bool,
-    out: &mut dyn Write,
-) -> anyhow::Result<()> {
-    let items = gather(deps, env, scopes, filter);
-    let chosen = reset_set(&items, filter, keep);
-    remove(deps, env, scopes, filter, &chosen, dry_run, true, out)
+fn reset(scene: &Scene, keep: &[String], dry_run: bool, out: &mut dyn Write) -> anyhow::Result<()> {
+    let items = scene.gather();
+    let chosen = reset_set(&items, scene.filter, keep);
+    confirm_and_remove(scene, &chosen, dry_run, true, out)
 }
 
 fn reset_set<'a>(
@@ -646,16 +599,9 @@ fn reset_set<'a>(
 }
 
 /// Report findings; duplicates are always in the removal, unused items only when picked.
-fn prune(
-    deps: &Deps,
-    env: &Env,
-    scopes: &[Scope],
-    filter: &Filter,
-    now_ms: u64,
-    dry_run: bool,
-    out: &mut dyn Write,
-) -> anyhow::Result<()> {
-    let items = gather(deps, env, scopes, filter);
+fn prune(scene: &Scene, now_ms: u64, dry_run: bool, out: &mut dyn Write) -> anyhow::Result<()> {
+    let (deps, env) = (scene.deps, scene.env);
+    let items = scene.gather();
     let usage = usage::read(&deps.adapters, env)?;
     let found = prune::check(&items, &deps.adapters, &usage, now_ms);
     let unused: Vec<&Augmentation> = found
@@ -705,45 +651,37 @@ fn prune(
         chosen.extend(picked.into_iter().filter_map(|i| unused.get(i).copied()));
     }
     // A dry run already listed every item, with its age, in the sections above.
-    remove(deps, env, scopes, filter, &chosen, dry_run, !dry_run, out)
+    confirm_and_remove(scene, &chosen, dry_run, !dry_run, out)
 }
 
-#[allow(clippy::too_many_arguments)]
-/// Print the removal plan for `chosen` (and the items themselves if `list_items`), confirm, execute, then verify they are gone.
-fn remove(
-    deps: &Deps,
-    env: &Env,
-    scopes: &[Scope],
-    filter: &Filter,
+/// Show the removal plan for `chosen` (and the items themselves if `list_items`), confirm,
+/// run it, and report what it did.
+fn confirm_and_remove(
+    scene: &Scene,
     chosen: &[&Augmentation],
     dry_run: bool,
     list_items: bool,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
+    let deps = scene.deps;
     if chosen.is_empty() {
         writeln!(out, "nothing selected")?;
         return Ok(());
     }
 
-    let plan: Vec<Action> = chosen.iter().flat_map(|c| c.removal.clone()).collect();
+    let plan = remove::Plan::new(chosen, &scene.filter.agents);
     if list_items {
         writeln!(out, "Removing:")?;
-    }
-    for c in chosen.iter().filter(|_| list_items) {
-        writeln!(out, "  {}", c.label(true))?;
-        // Removal is always complete, so say when `-a` narrows the view but not the effect.
-        let others: Vec<String> = c
-            .agents
-            .iter()
-            .filter(|a| !filter.agents.is_empty() && !filter.agents.contains(a))
-            .map(Agent::to_string)
-            .collect();
-        if !others.is_empty() {
-            writeln!(out, "    also removes it for: {}", others.join(", "))?;
+        for c in chosen {
+            writeln!(out, "  {}", c.label(true))?;
+            if let Some((_, others)) = plan.also_removes.iter().find(|(i, _)| i.id == c.id) {
+                let others: Vec<String> = others.iter().map(Agent::to_string).collect();
+                writeln!(out, "    also removes it for: {}", others.join(", "))?;
+            }
         }
     }
     writeln!(out, "Plan:")?;
-    for step in &plan {
+    for step in &plan.steps {
         writeln!(out, "  {}", step.describe())?;
     }
     if dry_run {
@@ -756,35 +694,32 @@ fn remove(
 
     // One status line while it works: the thing being removed, not each command's chatter.
     let spinner = spinner::Spinner::start("removing");
-    let owner = |step: &Action| {
-        chosen
-            .iter()
-            .find(|c| c.removal.contains(step))
-            .map_or_else(String::new, |c| c.name.clone())
-    };
-    let result = action::execute_with(&plan, deps.runner, &mut |step| {
-        if let Some(s) = &spinner {
-            s.set(&format!("removing {}", owner(step)));
-        }
-    });
+    let result = remove::run(
+        &plan,
+        &deps.adapters,
+        scene.env,
+        scene.scopes,
+        deps.runner,
+        &mut |step| {
+            if let Some(s) = &spinner {
+                s.set(&format!("removing {}", plan.owner(step)));
+            }
+        },
+    );
     drop(spinner);
-    let report = result?;
+    let outcome = result?;
     writeln!(
         out,
         "ran {} commands, removed {} paths, edited {} files",
-        report.ran.len(),
-        report.removed.len(),
-        report.edited.len()
+        outcome.report.ran.len(),
+        outcome.report.removed.len(),
+        outcome.report.edited.len()
     )?;
-
-    let after = agents::inventory(&deps.adapters, env, scopes);
-    let left: Vec<&str> = chosen
-        .iter()
-        .filter(|c| after.items.iter().any(|i| i.id == c.id))
-        .map(|c| c.name.as_str())
-        .collect();
-    if !left.is_empty() {
-        bail!("still installed after removal: {}", left.join(", "));
+    if !outcome.still_installed.is_empty() {
+        bail!(
+            "still installed after removal: {}",
+            outcome.still_installed.join(", ")
+        );
     }
     Ok(())
 }

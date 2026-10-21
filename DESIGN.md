@@ -53,6 +53,7 @@ All agent knowledge lives in `src/agents/<name>.rs`. Steps:
 | `agents::claude_marketplace` | Claude's `AgentAdapter::install_plugins`: reads `.claude-plugin/marketplace.json`, runs `claude plugin marketplace add` + `plugin install`. `install` asks each agent in turn and sends agents that return `Unsupported` through `npx skills` |
 | `usage` | merges each adapter's `usage()` records into last use per skill/plugin. Sources live in the adapters: Claude `~/.claude.json` `skillUsage`/`pluginUsage`, Codex session logs (tool calls reading a `SKILL.md`) |
 | `cost` | always-on context tokens per skill/plugin, merged from each adapter's `context_costs()`: Claude parses `claude -p "/context"` (exact, per skill and agent; built-in and claude.ai skills left out), others estimate from `SKILL.md` frontmatter (~3.5 chars/token). `list --json` adds `tokens` |
+| `remove` | removal as data: `candidates` (query + `--yes` rule), `Plan` (steps, owner, agents outside a filter), `run` (execute, re-read the inventory, `Outcome`); prints and prompts nothing, `cli` renders it |
 | `prune` | pure checks: duplicate loose skills, never-used and 7+ days unused skills/plugins |
 | `cli` | clap definitions, wiring, list/uninstall/install commands |
 
