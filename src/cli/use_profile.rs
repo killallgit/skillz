@@ -14,7 +14,6 @@ pub(super) struct Target<'a> {
     pub(super) scope: Scope,
 }
 
-/// What `use` was asked to do.
 pub(super) struct Switching<'a> {
     /// The profile to load; `None` unloads the current one.
     pub(super) profile: Option<&'a str>,

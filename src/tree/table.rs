@@ -36,7 +36,6 @@ impl Widths {
         }
     }
 
-    /// The header line.
     pub fn header(&self) -> String {
         self.join("NAME", &COLUMNS.map(String::from))
     }
@@ -47,7 +46,6 @@ impl Widths {
         self.line(prefix, &node.label, &node.cells, node.item.is_none())
     }
 
-    /// `row` from a node's parts; `maybe_detail` rows without cells print as plain text.
     pub fn line(
         &self,
         prefix: &str,
@@ -87,7 +85,6 @@ pub fn render(nodes: &[Node]) -> String {
     let widths = Widths::of(nodes, 0);
     let mut out = format!("{}\n", widths.header());
     for (i, node) in nodes.iter().enumerate() {
-        // Blank line between the project groups and the global ones.
         if i > 0 && nodes[i - 1].scope != node.scope {
             out.push('\n');
         }

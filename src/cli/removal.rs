@@ -8,7 +8,6 @@ use super::scope::Scene;
 use crate::model::{Agent, Augmentation, Kind};
 use crate::{remove, spinner};
 
-/// What `skillz uninstall` was asked for.
 pub(super) struct UninstallRequest<'a> {
     pub query: Option<&'a str>,
     pub yes: bool,
@@ -27,7 +26,6 @@ pub(super) fn uninstall(
     } = *request;
     let items = scene.gather();
     let candidates = remove::candidates(&items, query, yes)?;
-    // A dry run changes nothing, so show every candidate's plan without asking.
     let picked = if dry_run {
         (0..candidates.len()).collect()
     } else {
@@ -108,11 +106,9 @@ fn reset_set<'a>(
 #[derive(Clone, Copy)]
 pub(super) struct Review {
     pub(super) dry_run: bool,
-    /// Print the chosen items before the plan.
     pub(super) list_items: bool,
 }
 
-/// Show the removal plan for `chosen`, confirm, run it, and report what it did.
 pub(super) fn confirm_and_remove(
     scene: &Scene,
     chosen: &[&Augmentation],

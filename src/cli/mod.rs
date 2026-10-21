@@ -39,7 +39,6 @@ use crate::runner::SystemRunner;
 use crate::tui::prompter::TuiPrompter;
 use crate::tui::theme::Theme;
 
-/// Returns the process exit code.
 pub fn main() -> anyhow::Result<i32> {
     let cli = Cli::parse();
     let theme = Theme::detect(&|name| std::env::var(name).ok());
@@ -69,7 +68,6 @@ pub fn main() -> anyhow::Result<i32> {
     }
 }
 
-/// The directory an agent's config is redirected to, when the variable is set.
 fn redirected_dir(variable: &str) -> Option<PathBuf> {
     std::env::var_os(variable)
         .filter(|v| !v.is_empty())
