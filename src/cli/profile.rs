@@ -36,14 +36,43 @@ pub(super) fn profile_command(
     }
 }
 
-fn list_profiles(store: &profile::Store, out: &mut dyn Write) -> anyhow::Result<()> {
-    for name in store.names()? {
-        match store.load(&name) {
-            Ok(p) => writeln!(out, "{name}  ({} entries)", p.entries.len())?,
-            Err(e) => writeln!(out, "{name}  (unreadable: {e:#})")?,
+/// One stored profile: its entry count, or why it could not be read.
+#[derive(Debug, PartialEq, Eq)]
+struct ProfileRow {
+    name: String,
+    summary: Result<usize, String>,
+}
+
+fn profile_row(name: String, loaded: anyhow::Result<profile::Profile>) -> ProfileRow {
+    let summary = loaded
+        .map(|p| p.entries.len())
+        .map_err(|e| format!("{e:#}"));
+    ProfileRow { name, summary }
+}
+
+fn profile_rows(store: &profile::Store) -> anyhow::Result<Vec<ProfileRow>> {
+    Ok(store
+        .names()?
+        .into_iter()
+        .map(|name| {
+            let loaded = store.load(&name);
+            profile_row(name, loaded)
+        })
+        .collect())
+}
+
+fn render_profiles(rows: &[ProfileRow], out: &mut dyn Write) -> anyhow::Result<()> {
+    for ProfileRow { name, summary } in rows {
+        match summary {
+            Ok(entries) => writeln!(out, "{name}  ({entries} entries)")?,
+            Err(e) => writeln!(out, "{name}  (unreadable: {e})")?,
         }
     }
     Ok(())
+}
+
+fn list_profiles(store: &profile::Store, out: &mut dyn Write) -> anyhow::Result<()> {
+    render_profiles(&profile_rows(store)?, out)
 }
 
 fn print_saved(
@@ -56,8 +85,8 @@ fn print_saved(
     for entry in &snap.profile.entries {
         writeln!(out, "  {entry}")?;
     }
-    for label in &snap.skipped {
-        writeln!(out, "  not saved (nothing to reinstall it from): {label}")?;
+    for skipped in &snap.skipped {
+        writeln!(out, "  not saved ({}): {}", skipped.reason, skipped.label)?;
     }
     Ok(())
 }
@@ -76,4 +105,19 @@ pub(super) fn save_profile(
     let snap = snapshot::snapshot(name, items);
     store.save(&snap.profile)?;
     Ok(snap)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_profile_row_counts_entries_or_keeps_the_load_error() {
+        let ok = profile_row("a".into(), Ok(profile::Profile::new("a")));
+        let bad = profile_row("b".into(), Err(anyhow::anyhow!("boom")));
+
+        // Assert the readable profile has a count and the broken one carries its error.
+        assert_eq!(ok.summary, Ok(0));
+        assert!(bad.summary.is_err());
+    }
 }
