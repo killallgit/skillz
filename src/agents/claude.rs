@@ -10,6 +10,7 @@ use super::{AgentAdapter, PluginInstall, PluginOutcome, claude_marketplace};
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
+use crate::profile::Entry;
 use crate::runner::CommandRunner;
 
 pub struct Claude;
@@ -74,6 +75,25 @@ impl AgentAdapter for Claude {
                 Ok(crate::cost::estimate_dirs(&dirs))
             }
         }
+    }
+
+    fn provision(&self, entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+        let Entry::Plugin {
+            source,
+            marketplace,
+            name,
+            ..
+        } = entry
+        else {
+            return None;
+        };
+        Some(claude_marketplace::provision(
+            source,
+            marketplace,
+            name,
+            scope,
+            &env.project,
+        ))
     }
 
     fn install_plugins(&self, req: &PluginInstall) -> anyhow::Result<PluginOutcome> {

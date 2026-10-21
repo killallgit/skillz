@@ -10,7 +10,8 @@ use serde_json::{Map, Value};
 use crate::hooks::{self, Format};
 use crate::runner::CommandRunner;
 
-/// A single side effect needed to remove an augmentation.
+/// A single side effect of changing what is installed: removing an augmentation, or (from a
+/// profile) installing one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
@@ -51,6 +52,18 @@ impl Action {
             cwd: cwd.into(),
             fallback: true,
         })
+    }
+
+    /// A `Run` that must work: a program that cannot start is an error, not a skip. Installs use
+    /// this; there is no file step to fall back on. Callers vet the arguments first (see
+    /// `Entry::validate`).
+    pub fn required(program: &str, args: Vec<String>, cwd: &Path) -> Action {
+        Action::Run {
+            program: program.into(),
+            args,
+            cwd: cwd.into(),
+            fallback: false,
+        }
     }
 
     /// One line saying what this step does, for plans and the info modal.

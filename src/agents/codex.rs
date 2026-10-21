@@ -12,6 +12,7 @@ use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
 use crate::npx_skills;
+use crate::profile::Entry;
 
 pub struct Codex;
 
@@ -44,6 +45,31 @@ impl AgentAdapter for Codex {
     fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
         let dir = env.codex_scope_dir(scope);
         vec![dir.join("hooks.json"), dir.join("config.toml")]
+    }
+
+    /// `codex plugin …` only works on the user config, so project scope has no way in.
+    fn provision(&self, entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+        let (
+            Entry::Plugin {
+                source,
+                marketplace,
+                name,
+                ..
+            },
+            Scope::Global,
+        ) = (entry, scope)
+        else {
+            return None;
+        };
+        let cwd = env.codex_dir();
+        let cwd = cwd.parent().unwrap_or(&env.home);
+        let run = |args: &[&str]| {
+            Action::required("codex", args.iter().map(|a| a.to_string()).collect(), cwd)
+        };
+        Some(vec![
+            run(&["plugin", "marketplace", "add", source]),
+            run(&["plugin", "add", &format!("{name}@{marketplace}")]),
+        ])
     }
 
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {

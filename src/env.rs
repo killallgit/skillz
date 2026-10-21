@@ -53,6 +53,11 @@ impl Env {
         }
     }
 
+    /// skillz's own config: profiles and the workspace registry.
+    pub fn skillz_dir(&self) -> PathBuf {
+        self.home.join(".config/skillz")
+    }
+
     pub fn root(&self, scope: Scope) -> &Path {
         match scope {
             Scope::Global => &self.home,

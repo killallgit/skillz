@@ -9,9 +9,11 @@ pub mod cursor;
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use crate::action::Action;
 use crate::env::Env;
 use crate::hooks;
 use crate::model::{Agent, Augmentation, Kind, Scope};
+use crate::profile::Entry;
 use crate::prompt::Prompter;
 use crate::runner::CommandRunner;
 use crate::skills::{self, SkillDir};
@@ -58,6 +60,12 @@ pub trait AgentAdapter {
     /// `Unsupported`.
     fn install_plugins(&self, _req: &PluginInstall) -> anyhow::Result<PluginOutcome> {
         Ok(PluginOutcome::Unsupported)
+    }
+    /// Steps that install a profile `entry` for this agent at `scope`, or `None` when this agent
+    /// has no way to take that entry there. Skills are not asked of adapters: `provision::plan`
+    /// sends them through `npx skills` for every agent at once.
+    fn provision(&self, _entry: &Entry, _scope: Scope, _env: &Env) -> Option<Vec<Action>> {
+        None
     }
     /// Last-use records `(key, ms since the epoch)`, keyed `skill:<name>` or
     /// `plugin:<name@mp>`. The default is no usage source.

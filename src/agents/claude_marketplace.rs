@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::Context;
 
+use crate::action::Action;
 use crate::env::Env;
 use crate::model::Scope;
 use crate::prompt::Prompter;
@@ -79,17 +80,19 @@ fn install(
         return Ok(false);
     }
     let chosen: Vec<String> = picked.iter().map(|&i| mp.plugins[i].clone()).collect();
+    let scope = match scope {
+        Scope::Global => "user",
+        Scope::Project => "project",
+    };
     for (program, args) in commands(source, &mp.name, &chosen, scope) {
         run_checked(runner, &program, &args, &env.project)?;
     }
     Ok(true)
 }
 
-fn commands(source: &str, marketplace: &str, plugins: &[String], scope: Scope) -> Vec<Cmd> {
-    let scope = match scope {
-        Scope::Global => "user",
-        Scope::Project => "project",
-    };
+/// `claude plugin marketplace add` then `plugin install` for each plugin; `scope` is the
+/// `--scope` value (user, project or local).
+fn commands(source: &str, marketplace: &str, plugins: &[String], scope: &str) -> Vec<Cmd> {
     let claude = |args: &[&str]| {
         (
             "claude".to_string(),
@@ -106,6 +109,25 @@ fn commands(source: &str, marketplace: &str, plugins: &[String], scope: Scope) -
                 scope,
             ])
         }))
+        .collect()
+}
+
+/// A profile's plugin for `scope`. A project's plugins go in the `local` scope, so they never
+/// touch the settings file the team shares.
+pub(super) fn provision(
+    source: &str,
+    marketplace: &str,
+    plugin: &str,
+    scope: Scope,
+    cwd: &Path,
+) -> Vec<Action> {
+    let scope = match scope {
+        Scope::Global => "user",
+        Scope::Project => "local",
+    };
+    commands(source, marketplace, &[plugin.to_string()], scope)
+        .into_iter()
+        .map(|(program, args)| Action::required(&program, args, cwd))
         .collect()
 }
 
@@ -199,12 +221,12 @@ mod tests {
 
     #[test]
     fn commands_scope_flags() {
-        let user = commands("o/r", "mp", &s(&["p"]), Scope::Global);
+        let user = commands("o/r", "mp", &s(&["p"]), "user");
         assert_eq!(
             user[1].1,
             s(&["plugin", "install", "p@mp", "--scope", "user"])
         );
-        let proj = commands("o/r", "mp", &s(&["p"]), Scope::Project);
+        let proj = commands("o/r", "mp", &s(&["p"]), "project");
         assert_eq!(
             proj[1].1,
             s(&["plugin", "install", "p@mp", "--scope", "project"])
