@@ -55,9 +55,9 @@ pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
                     all.dedup();
                 }
                 Some(server) => skipped.push(format!(
-                    "{} (needs {}: secrets are not saved in a profile)",
+                    "{} (has {} env vars or headers, which a profile does not carry)",
                     item.label(true),
-                    server.secrets.join(", ")
+                    server.secrets.len()
                 )),
                 None => skipped.push(item.label(true)),
             },
