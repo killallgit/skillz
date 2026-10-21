@@ -9,6 +9,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use super::app::{Screen, Step};
 use super::clipboard;
+use super::result_items::done_lines;
 use super::theme::Theme;
 use super::widgets::modal::{self, ModalSize};
 use super::widgets::panel::Panel;
@@ -71,6 +72,7 @@ impl ResultScreen {
 
     fn lines(&self, theme: &Theme) -> Vec<Line<'static>> {
         let mut lines = vec![counts(&self.outcome, theme)];
+        lines.extend(done_lines(&self.outcome, theme));
         lines.extend(problem_lines(&self.outcome, theme));
         if !self.outcome.log.is_empty() {
             lines.push(Line::default());

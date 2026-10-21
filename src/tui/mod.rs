@@ -13,6 +13,7 @@ mod plan;
 mod progress;
 pub mod prompter;
 mod result;
+mod result_items;
 mod shell;
 pub mod theme;
 pub mod tree_view;
