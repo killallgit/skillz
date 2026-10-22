@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::library::Catalog;
@@ -13,6 +15,10 @@ pub struct Document {
     pub items: Catalog,
     #[serde(default)]
     pub profiles: Vec<Profile>,
+    /// The profile last applied to each project directory. The directory's own config stays the
+    /// truth about what is installed; this only remembers which profile it was brought to.
+    #[serde(default)]
+    pub applied: BTreeMap<String, String>,
 }
 
 impl Default for Document {
@@ -21,6 +27,7 @@ impl Default for Document {
             version: VERSION,
             items: Catalog::default(),
             profiles: vec![],
+            applied: BTreeMap::new(),
         }
     }
 }

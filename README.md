@@ -83,11 +83,11 @@ then the same install and removal steps):
 | `space` picks, `enter` removes the picks as one plan | `uninstall QUERY...` (`-y`, `--dry-run`) |
 | `r` remove / `u` update the highlighted item | `uninstall`, `update` |
 | `A` add from a repo: type `owner/repo`, a git URL or a path | `install SOURCE` |
-| `p` compare with a profile, the header's matches / N missing / N extra | `profile status [NAME] [--json]`, `profile list [--json]` |
-| Profiles: `a` / `enter` apply, `e` apply exactly; Project: `a` pick a profile to replace the project with (exact) | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`) |
+| The Project header: the applied profile, matches / N missing / N extra | `profile status [NAME] [--json]`, `profile list [--json]` |
+| Project: `a` apply a profile (`m` switches replace / add what is missing), `p` keep some of its entries, `c` clear | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`), `uninstall` |
 | Library: `a` add a typed line, `x` remove, `i` sync installed | `library add "skill o/r tdd"`, `library remove QUERY`, `sync` |
 | Library: origin, link, version, installed in project / global | `library list [--json]` |
-| Profiles: `n` new, `b` edit; Project: `s` save the project as a profile; Profiles: `s` save, `x` delete | `profile new`, `profile add` / `profile remove`, `profile save`, `profile delete` |
+| Profiles: `n` new, `enter` / `e` edit, `x` delete; Project: `s` save the project as a profile | `profile new`, `profile add` / `profile remove`, `profile save`, `profile delete` |
 | `/` filter, `space` fold, `?` help, `tab`, movement keys | on screen only: `list QUERY` and `list --all` do the same for the command line |
 
 ## Profiles
@@ -269,8 +269,8 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   `npx skills list` does: an `owner/repo` or `local files`. `hooks` are only the hooks no plugin
   declares. Every row shows its agents and where it lives on disk (the skill's directory, or the
   config file). The panel title is the directory, or `User-level, all projects`; on Project a
-  line above it shows how the directory compares with a profile you chose: matching, or
-  `N missing` / `N extra`. Picked rows get their own marker and a `to remove` note, and each
+  line above it names the profile last applied to the directory and how the directory compares
+  with it: matching, or `N missing` / `N extra` (`no profile applied` before the first apply). Picked rows get their own marker and a `to remove` note, and each
   section or package shows its count of picks. `space`, `r` and `u` on a package row act on
   everything in it (the plan shows what, and nothing happens until you confirm it); on an item
   row they act on that item; on a section `space` folds it, `r` marks every item in it for removal and `u` does nothing. A thing installed for
@@ -278,7 +278,7 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   codex`, or `claude, codex +2` when there are many; removing it removes every copy. A filter
   keeps the section structure and hides rows with no match. Removals and updates on Global act on
   the user's installs (`npx skills -g`, `claude ... --scope user`, the Codex user config).
-  Profiles apply to a project only, so Global has no `p`, `a` or `s`. Adding is `A`, or the
+  Profiles apply to a project only, so Global has no `a`, `p`, `c` or `s`. Adding is `A`, or the
   Library tab and profiles.
   In the background the tabs check whether installed Claude marketplaces have a newer version
   (a read-only `ls-remote`) and shows those in bold with a `*` after the name. Other kinds have
@@ -290,12 +290,11 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   link, how it was installed (`npx skills`, `claude plugin`, `codex plugin`, `manual`) and the
   version or hash recorded. A `project` or `global` tag after a name says where the item is
   installed right now; no tag means it is only in the library.
-- **Profiles**: your saved combinations, each with how it compares with the project. Apply one
-  (adds what is missing) or apply it exactly (also removes the rest, after a preview), save what
-  is installed as a new one, or delete one. It is one list, each profile with its entries under
-  it. `n` opens a single modal: type the name, `tab` to the library items, `space` to check
-  them, and `s` (or `enter` in the name) saves. `b` edits the profile under the cursor in the
-  same modal.
+- **Profiles**: your saved combinations, kept apart from any project: make, edit and delete
+  them here, and apply them from the Project tab. It is one list, each profile with its entries
+  under it. `n` opens a single modal: type the name, `tab` to the library items, `space` to
+  check them, and `s` (or `enter` in the name) saves. `enter` or `e` edits the profile under the
+  cursor in the same modal; `x` deletes it.
 
 | Key | Does |
 | --- | --- |
@@ -304,9 +303,10 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 | `r` | remove the item under the cursor from the tab's scope at once (after the plan); on a package row, removes everything in it; on a section, marks every item in it for removal. When the items are installed for more than one agent, the plan shows an Agents list above what will be removed; every agent starts checked and `space` unchecks one (`↑↓` moves) before `enter` applies |
 | `esc` | clear the picks (with none, clear the filter) |
 | `u` | update the installed item under the cursor, or every installed item of the package, after a plan to review; kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
-| `p` | choose the profile the header compares with (Project only) |
-| `a` | list the profiles; the one you choose replaces everything in the project (installs what is missing, removes the rest) after a plan to review (Project only) |
-| `s` | save what the project has installed as a new profile, after typing its name (Project only) |
+| `a` | list the profiles and apply the one you choose, after a plan to review. It replaces everything in the project (installs what is missing, removes the rest); `m` in the list switches to only adding what is missing. The project remembers it as its applied profile (Project only) |
+| `p` | list the applied profile's entries, those the project has checked; `space` checks or unchecks, `enter` installs the checked ones and removes the unchecked ones, after a plan (Project only) |
+| `c` | clear: remove everything the project has, after a plan to review. The applied profile stays, so `p` or `a` can bring back all or part of it (Project only) |
+| `s` | save what the project has installed as a new profile, after typing its name; the project then counts that profile as applied (Project only) |
 | `←` `→`, `h` `l` | close / open a section (`←` on an item jumps to its section) |
 | `↑↓` `j` `k`, `PgUp` `PgDn`, `^u` `^d`, `g` `G` | move |
 | `/` | filter; keeps matching rows and their section, `esc` clears it |

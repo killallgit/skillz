@@ -1,6 +1,6 @@
 //! The one global file skillz keeps: `store.json`, holding the library of available items with
 //! where they came from, and the named profiles. A project's own state is its native tool
-//! config, never kept here.
+//! config, never kept here; only the name of the profile last applied to it is.
 
 mod document;
 mod lock;

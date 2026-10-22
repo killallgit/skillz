@@ -41,6 +41,7 @@ fn model() -> Model {
             LibraryItem::from_entry(skill("b")),
         ]),
         profiles: vec![profile("api", &["a"]), profile("web", &["a", "b"])],
+        applied: None,
         notice: None,
     }
 }
@@ -89,46 +90,26 @@ fn each_profile_is_followed_by_its_entries_in_one_list() {
 }
 
 #[test]
-fn applying_from_an_entry_applies_its_profile() {
+fn enter_and_e_open_the_editor_and_a_and_s_do_nothing() {
     let mut tab = loaded();
-    press(&mut tab, KeyCode::Down);
 
-    let act = press(&mut tab, KeyCode::Enter);
+    let ignored = (char_key(&mut tab, 'a'), char_key(&mut tab, 's'));
+    let idle = tab.captures_keys();
+    press(&mut tab, KeyCode::Enter);
+    let editing = tab.captures_keys();
 
-    assert_eq!(
-        act,
-        Some(Act::Apply {
-            profile: "api".into()
-        })
-    );
+    assert_eq!(ignored, (None, None));
+    assert!(!idle && editing);
 }
 
 #[test]
-fn enter_and_a_apply_additively_and_e_applies_exactly() {
-    let mut tab = loaded();
-
-    let enter = press(&mut tab, KeyCode::Enter);
-    let a = char_key(&mut tab, 'a');
-    let exact = char_key(&mut tab, 'e');
-
-    let apply = Some(Act::Apply {
-        profile: "api".into(),
-    });
-    assert_eq!((enter, a), (apply.clone(), apply));
-    assert_eq!(
-        exact,
-        Some(Act::ApplyExact {
-            profile: "api".into()
-        })
-    );
-}
-
-#[test]
-fn applying_with_no_profiles_asks_for_nothing() {
+fn editing_with_no_profiles_opens_nothing() {
     let mut tab = ProfilesTab::new();
 
-    assert_eq!(press(&mut tab, KeyCode::Enter), None);
-    assert_eq!(char_key(&mut tab, 'e'), None);
+    press(&mut tab, KeyCode::Enter);
+    char_key(&mut tab, 'e');
+
+    assert!(!tab.captures_keys());
 }
 
 #[test]
@@ -177,22 +158,6 @@ fn enter_in_the_name_saves_the_new_profile_and_a_blank_name_saves_nothing() {
 }
 
 #[test]
-fn s_asks_for_a_name_then_saves_the_project() {
-    let mut tab = loaded();
-
-    char_key(&mut tab, 's');
-    type_in(&mut tab, "snap");
-    let act = press(&mut tab, KeyCode::Enter);
-
-    assert_eq!(
-        act,
-        Some(Act::SaveCurrent {
-            name: "snap".into()
-        })
-    );
-}
-
-#[test]
 fn escape_leaves_the_name_prompt_without_an_act() {
     let mut tab = loaded();
     char_key(&mut tab, 'n');
@@ -206,7 +171,7 @@ fn escape_leaves_the_name_prompt_without_an_act() {
 fn editing_writes_the_checked_library_items_into_the_profile() {
     let mut tab = loaded();
 
-    char_key(&mut tab, 'b');
+    char_key(&mut tab, 'e');
     // The section, a (checked), b: check b.
     [KeyCode::Down, KeyCode::Down, KeyCode::Char(' ')]
         .into_iter()

@@ -43,6 +43,23 @@ impl Session<'_, '_> {
         Ok(Notice::Updated(name.into()))
     }
 
+    /// The profile last applied to this project, if it is still stored.
+    pub(in crate::cli) fn applied(&self) -> Option<String> {
+        self.store.read().ok()?.applied.remove(&self.project_key())
+    }
+
+    pub(in crate::cli) fn remember_applied(&self, name: &str) -> anyhow::Result<()> {
+        let key = self.project_key();
+        self.store.update(|document| {
+            document.applied.insert(key, name.into());
+            Ok(())
+        })
+    }
+
+    fn project_key(&self) -> String {
+        self.project.display().to_string()
+    }
+
     pub(in crate::cli) fn delete_profile(&self, name: &str) -> anyhow::Result<Notice> {
         self.profiles.delete(name)?;
         Ok(Notice::Deleted(name.into()))

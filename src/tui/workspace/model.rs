@@ -16,6 +16,8 @@ pub struct Model {
     pub library: Catalog,
     /// The readable profiles, with what they extend already merged in.
     pub profiles: Vec<Profile>,
+    /// The profile last applied to the project.
+    pub applied: Option<String>,
     /// Shown as a toast: what the last act did or why it failed.
     pub notice: Option<String>,
 }

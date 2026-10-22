@@ -137,3 +137,21 @@ fn saving_over_an_existing_profile_is_refused() {
         assert!(session.save_current("snap").is_err());
     });
 }
+
+#[test]
+fn the_applied_profile_is_remembered_per_project_and_replaced_by_the_next() {
+    with_session(|here, dir| {
+        let elsewhere = Session {
+            project: dir.join("other"),
+            ..session(here.deps, dir)
+        };
+
+        let before = here.applied();
+        here.remember_applied("web").unwrap();
+        here.remember_applied("api").unwrap();
+
+        assert_eq!(before, None);
+        assert_eq!(here.applied().as_deref(), Some("api"));
+        assert_eq!(elsewhere.applied(), None);
+    });
+}
