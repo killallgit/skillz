@@ -42,3 +42,25 @@ pub fn now_secs() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
 }
+
+/// How an item came to be in the library.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Cue {
+    /// Typed in by hand.
+    Manual,
+    /// Found already installed by a scan.
+    Detected,
+    /// Recorded when skillz installed it.
+    Skillz,
+}
+
+impl Cue {
+    pub fn of(provenance: Option<&Provenance>) -> Cue {
+        match provenance {
+            None => Cue::Manual,
+            Some(p) if p.detected => Cue::Detected,
+            Some(_) => Cue::Skillz,
+        }
+    }
+}

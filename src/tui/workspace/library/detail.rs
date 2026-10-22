@@ -1,29 +1,7 @@
 //! What the line under the library says about the highlighted item.
 
-use crate::library::{ItemKind, LibraryItem, Provenance};
+use crate::library::{Cue, ItemKind, LibraryItem, Provenance};
 use crate::model::Agent;
-use crate::profile::Entry;
-
-/// How an item came to be in the library.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Cue {
-    /// Typed in by hand.
-    Manual,
-    /// Found already installed by a scan.
-    Detected,
-    /// Recorded when skillz installed it.
-    Skillz,
-}
-
-impl Cue {
-    fn of(provenance: Option<&Provenance>) -> Cue {
-        match provenance {
-            None => Cue::Manual,
-            Some(p) if p.detected => Cue::Detected,
-            Some(_) => Cue::Skillz,
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Detail {
@@ -38,16 +16,9 @@ pub(super) struct Detail {
 }
 
 pub(super) fn detail(item: &LibraryItem) -> Detail {
-    let source = match &item.entry {
-        Entry::Skill { source, .. }
-        | Entry::Subagent { source, .. }
-        | Entry::Plugin { source, .. } => source.clone(),
-        Entry::Hook { command, .. } => command.clone(),
-        Entry::Mcp { command, url, .. } => command.clone().or(url.clone()).unwrap_or_default(),
-    };
     Detail {
         kind: item.kind(),
-        source,
+        source: item.source(),
         agents: item.entry.agents().to_vec(),
         provenance: item.provenance.clone(),
         cue: Cue::of(item.provenance.as_ref()),

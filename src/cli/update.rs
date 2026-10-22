@@ -34,9 +34,10 @@ pub(super) fn update(
     if items.is_empty() {
         bail!("nothing here can be updated");
     }
+    let queries: Vec<String> = request.query.iter().map(|q| q.to_string()).collect();
     let pick = Pick {
         title: "Select items to update",
-        query: request.query,
+        queries: &queries,
         yes: request.yes,
         dry_run: request.dry_run,
     };

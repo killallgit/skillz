@@ -9,7 +9,7 @@ use crate::model::{Agent, Augmentation, Kind};
 use crate::{remove, spinner};
 
 pub(super) struct UninstallRequest<'a> {
-    pub query: Option<&'a str>,
+    pub queries: &'a [String],
     pub yes: bool,
     pub dry_run: bool,
 }
@@ -20,14 +20,14 @@ pub(super) fn uninstall(
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let UninstallRequest {
-        query,
+        queries,
         yes,
         dry_run,
     } = *request;
     let items = scene.gather();
     let pick = Pick {
         title: "Select items to remove",
-        query,
+        queries,
         yes,
         dry_run,
     };
@@ -46,7 +46,7 @@ pub(super) fn uninstall(
 /// How a command picks among the items a query matches.
 pub(super) struct Pick<'a> {
     pub title: &'a str,
-    pub query: Option<&'a str>,
+    pub queries: &'a [String],
     pub yes: bool,
     pub dry_run: bool,
 }
@@ -58,7 +58,7 @@ pub(super) fn choose<'a>(
     items: &'a [Augmentation],
     pick: &Pick,
 ) -> anyhow::Result<Vec<&'a Augmentation>> {
-    let candidates = remove::candidates(items, pick.query, pick.yes)?;
+    let candidates = remove::candidates_each(items, pick.queries, pick.yes)?;
     let picked = if pick.dry_run {
         (0..candidates.len()).collect()
     } else {

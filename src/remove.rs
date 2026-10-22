@@ -64,6 +64,27 @@ pub fn candidates<'a>(
     Ok(found)
 }
 
+/// The items any of `queries` may offer, each judged as `candidates` does, without repeats; all
+/// the items when there is no query.
+pub fn candidates_each<'a>(
+    items: &'a [Augmentation],
+    queries: &[String],
+    yes: bool,
+) -> anyhow::Result<Vec<&'a Augmentation>> {
+    if queries.is_empty() {
+        return candidates(items, None, yes);
+    }
+    let mut found: Vec<&Augmentation> = Vec::new();
+    for query in queries {
+        for item in candidates(items, Some(query), yes)? {
+            if !found.iter().any(|have| have.id == item.id) {
+                found.push(item);
+            }
+        }
+    }
+    Ok(found)
+}
+
 /// What removing `chosen` would do.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Plan<'a> {

@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 
+use super::library_args::LibraryCommand;
+use super::profile_args::ProfileCommand;
 use crate::model::{Agent, Augmentation, Kind};
 
 #[derive(Debug, Parser)]
@@ -43,6 +45,15 @@ pub enum Command {
         #[arg(short = 'p', long, global = true)]
         project: Option<PathBuf>,
     },
+    /// List, add to, remove from and install from the library of available items
+    #[command(visible_alias = "lib")]
+    Library {
+        #[command(subcommand)]
+        action: LibraryCommand,
+        /// Project directory (default: cwd)
+        #[arg(short = 'p', long, global = true)]
+        project: Option<PathBuf>,
+    },
     /// Run a command (say `claude`) in a config dir of its own that holds just one profile
     Run(RunArgs),
     /// Add everything installed, in the project and at user level, to the library; never removes
@@ -62,9 +73,15 @@ pub struct ListArgs {
     /// Expand every group
     #[arg(long)]
     pub all: bool,
-    /// Print the matching items (with their removal plans) as JSON, no tree
+    /// Print the matching items (with their location and removal plans) as JSON, no tree
     #[arg(long, conflicts_with = "interactive")]
     pub json: bool,
+    /// With --json, say which items have a newer version (needs the network)
+    #[arg(long, requires = "json")]
+    pub check: bool,
+    /// List what the library offers that the project (with -g: the user) does not have installed
+    #[arg(long, conflicts_with_all = ["interactive", "all", "check"])]
+    pub available: bool,
     #[command(flatten)]
     pub filter: Filter,
     /// Browse in a collapsible tree
@@ -89,14 +106,14 @@ pub struct RunArgs {
 
 #[derive(Debug, Args)]
 pub struct UninstallArgs {
-    /// Fuzzy query over name, group and source
-    pub query: Option<String>,
+    /// Fuzzy queries over name, group and source; the items of all of them go in one plan
+    pub queries: Vec<String>,
     /// Project directory (default: cwd)
     #[arg(short = 'p', long)]
     pub project: Option<PathBuf>,
     #[command(flatten)]
     pub filter: Filter,
-    /// Don't prompt; requires an unambiguous query
+    /// Don't prompt; requires every query to be unambiguous
     #[arg(short, long)]
     pub yes: bool,
     /// Print the removal plan without changing anything
@@ -218,28 +235,6 @@ pub struct InstallArgs {
     pub yes: bool,
 }
 
-#[derive(Debug, Subcommand)]
-pub enum ProfileCommand {
-    /// List profiles
-    #[command(visible_alias = "ls")]
-    List,
-    /// Print a profile as TOML, to read or copy (`export`)
-    #[command(visible_alias = "export")]
-    Show { name: String },
-    /// Store the profile in a TOML file printed by `show`, replacing one of the same name
-    Import { file: PathBuf },
-    /// Save what is installed in the project as a profile
-    Save {
-        name: String,
-        /// Replace a profile of that name
-        #[arg(long)]
-        force: bool,
-    },
-    /// Delete a profile (what it installed stays until you `use` another)
-    #[command(visible_alias = "rm")]
-    Delete { name: String },
-}
-
 #[derive(Debug, Args, Default, Clone)]
 pub struct Filter {
     /// Global scope only
@@ -292,6 +287,22 @@ pub(super) fn wants_auto_yes(command: &Command) -> bool {
         Command::Update(a) => a.yes,
         Command::Use(a) => a.yes,
         Command::Run(a) => a.yes,
+        Command::Library {
+            action: LibraryCommand::Remove(a),
+            ..
+        } => a.yes,
+        Command::Library {
+            action: LibraryCommand::Install(a),
+            ..
+        } => a.yes,
+        Command::Profile {
+            action: ProfileCommand::Add(a),
+            ..
+        } => a.yes,
+        Command::Profile {
+            action: ProfileCommand::Remove(a),
+            ..
+        } => a.yes,
         Command::Prune(a) => a.force,
         Command::Reset(a) => a.force,
         _ => false,
@@ -313,6 +324,15 @@ mod tests {
             &["use", "x", "--exact"],
             &["sync", "-g", "--dry-run", "--json"],
             &["sync", "-p", "."],
+            &["library", "ls", "--json", "--skills"],
+            &["library", "add", "hook Stop --x"],
+            &["library", "remove", "tdd", "-y", "--dry-run"],
+            &["library", "install", "a", "b", "-g", "-y"],
+            &["profile", "add", "web", "--from-library", "tdd"],
+            &["profile", "remove", "web", "tdd"],
+            &["profile", "status", "--json"],
+            &["list", "--available", "-g", "--json"],
+            &["list", "--json", "--check"],
         ] {
             assert!(
                 Cli::try_parse_from([&["skillz"], args].concat()).is_ok(),

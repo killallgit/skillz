@@ -2,39 +2,29 @@
 
 use std::path::Path;
 
-use super::Session;
-use super::notice::Notice;
+use super::super::session::{Notice, Session};
 use crate::cli::scope::{installed, project_env};
 use crate::library::Catalog;
 use crate::model::Scope;
-use crate::profile::{self, Profile};
 use crate::tui::workspace::Model;
 
 /// The snapshot to show next, with `notice` to toast; an unreadable library is shown empty and
 /// reported in its place, along with the profiles kept beside it.
 pub(super) fn snapshot(session: &Session, notice: Option<Notice>) -> anyhow::Result<Model> {
-    let deps = session.deps;
-    let env = project_env(deps, &session.project);
-    let (library, problem) = match session.store.read() {
+    let deps = session.deps();
+    let env = project_env(deps, session.project());
+    let (library, problem) = match session.library().read() {
         Ok(document) => (document.items, None),
         Err(e) => (Catalog::default(), Some(Notice::Failed(format!("{e:#}")))),
     };
     Ok(Model {
-        dir: short_path(&session.project, &deps.home),
+        dir: short_path(session.project(), &deps.home),
         installed: installed(deps, &env, Scope::Project),
         global: installed(deps, &env, Scope::Global),
         library,
-        profiles: readable_profiles(&session.profiles).unwrap_or_default(),
+        profiles: session.profiles().readable().unwrap_or_default(),
         notice: notice.or(problem).map(|n| n.to_string()),
     })
-}
-
-fn readable_profiles(store: &profile::Store) -> anyhow::Result<Vec<Profile>> {
-    let names = store.names()?;
-    Ok(names
-        .iter()
-        .filter_map(|name| store.load_flat(name).ok())
-        .collect())
 }
 
 fn short_path(path: &Path, home: &Path) -> String {

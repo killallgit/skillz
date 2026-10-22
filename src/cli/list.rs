@@ -6,6 +6,7 @@ use super::removal::{Review, confirm_and_remove};
 use super::scope::Scene;
 use crate::cost;
 use crate::env::Env;
+use crate::location::location;
 use crate::mcp;
 use crate::model::{Augmentation, Kind};
 use crate::prompt::Choice;
@@ -18,6 +19,7 @@ pub(super) struct ListView<'a> {
     pub(super) query: Option<&'a str>,
     pub(super) all: bool,
     pub(super) json: bool,
+    pub(super) check: bool,
     pub(super) interactive: bool,
 }
 
@@ -99,7 +101,7 @@ pub(super) fn list(scene: &Scene, view: ListView, out: &mut dyn Write) -> anyhow
         items = queried(&items, &remove::matches(&items, Some(q)));
     }
     if view.json {
-        return print_json(scene, &items, out);
+        return print_json(scene, &items, view.check, out);
     }
     if deps.interactive && (view.interactive || (view.query.is_some() && spans_groups(&items))) {
         return browse(scene, &items, out);
@@ -113,7 +115,12 @@ fn spans_groups(items: &[Augmentation]) -> bool {
 }
 
 /// The items and their removal plans, with each one's context cost.
-fn print_json(scene: &Scene, items: &[Augmentation], out: &mut dyn Write) -> anyhow::Result<()> {
+fn print_json(
+    scene: &Scene,
+    items: &[Augmentation],
+    check: bool,
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
     // Read the costs only here: the report takes a second or so (`claude -p /context`).
     let costs = cost::read(&scene.deps.adapters, scene.env, scene.deps.runner);
     let rows: Vec<serde_json::Value> = items
@@ -122,6 +129,10 @@ fn print_json(scene: &Scene, items: &[Augmentation], out: &mut dyn Write) -> any
             let mut row = serde_json::to_value(i)?;
             row["children"] = serde_json::json!(mcp::shown_children(i));
             row["tokens"] = serde_json::json!(costs.tokens(i));
+            row["location"] = serde_json::json!(location(i));
+            if check {
+                row["update_available"] = serde_json::json!(scene.deps.checker.available(i));
+            }
             anyhow::Ok(row)
         })
         .collect::<Result<_, _>>()?;
@@ -236,6 +247,7 @@ mod tests {
             query,
             all,
             json: false,
+            check: false,
             interactive: false,
         }
     }

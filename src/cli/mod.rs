@@ -3,13 +3,20 @@
 mod args;
 mod deps;
 mod isolate;
+mod library;
+mod library_args;
 mod list;
+mod pick;
 mod profile;
+mod profile_args;
+mod profile_entries;
+mod profile_status;
 mod prune;
 mod recording;
 mod removal;
 mod run;
 mod scope;
+mod session;
 mod sync;
 mod update;
 mod use_profile;
@@ -24,10 +31,14 @@ use clap::Parser;
 
 use args::wants_auto_yes;
 pub use args::{
-    Cli, Command, Filter, InstallArgs, ListArgs, ProfileCommand, PruneArgs, ResetArgs, SyncArgs,
-    UninstallArgs, UpdateArgs, UseArgs,
+    Cli, Command, Filter, InstallArgs, ListArgs, PruneArgs, ResetArgs, SyncArgs, UninstallArgs,
+    UpdateArgs, UseArgs,
 };
 pub use deps::Deps;
+pub use library_args::{
+    AddArgs, KindFlags, LibraryCommand, LibraryInstallArgs, LibraryListArgs, LibraryRemoveArgs,
+};
+pub use profile_args::{ProfileAddArgs, ProfileCommand, ProfileRemoveArgs};
 pub use run::run;
 pub use workspace::workspace;
 

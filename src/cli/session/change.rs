@@ -20,7 +20,7 @@ use crate::review::{ItemEvent, Next, Outcome, Phase, Verdict};
 use crate::store::Store;
 
 /// What the user asked to change.
-pub(super) enum Change<'a> {
+pub(in crate::cli) enum Change<'a> {
     /// Install what the profile has that the project lacks.
     Apply(&'a str),
     /// Install what the profile has that the project lacks and remove everything else.
@@ -62,7 +62,7 @@ struct Job<'a> {
 
 /// Make the change once the user approves the plan. A failed run can be retried from its
 /// result screen; the plan is made again each time.
-pub(super) fn change(
+pub(in crate::cli) fn change(
     session: &Session,
     scope: Scope,
     what: &Change,

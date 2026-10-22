@@ -2,6 +2,7 @@
 //!
 //! Pure data plus a facade over the store. Turning entries into install steps is `provision`.
 
+mod edit;
 mod entry;
 mod identity;
 mod spec;
@@ -13,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::Agent;
 
+pub use edit::with_added;
 pub use entry::Entry;
 pub(crate) use identity::same_thing;
 pub use identity::{Claim, claims, lacking};

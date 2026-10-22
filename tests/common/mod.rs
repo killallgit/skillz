@@ -306,7 +306,7 @@ pub fn only_mcp() -> Filter {
 
 pub fn uninstall(query: &str, filter: Filter, yes: bool) -> Command {
     Command::Uninstall(UninstallArgs {
-        query: Some(query.into()),
+        queries: vec![query.into()],
         project: None,
         filter,
         yes,
@@ -360,6 +360,8 @@ pub fn list_cmd(target: Option<&str>, all: bool, json: bool) -> Command {
         project: None,
         all,
         json,
+        check: false,
+        available: false,
         filter: Filter::default(),
         interactive: false,
     })

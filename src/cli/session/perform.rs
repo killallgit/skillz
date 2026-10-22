@@ -9,7 +9,7 @@ use crate::tui::workspace::Act;
 
 impl Session<'_, '_> {
     /// What the toast should say, if anything.
-    pub(super) fn perform(&self, act: Act) -> anyhow::Result<Option<Notice>> {
+    pub(in crate::cli) fn perform(&self, act: Act) -> anyhow::Result<Option<Notice>> {
         let what = match &act {
             Act::Quit => return Ok(None),
             Act::Change {

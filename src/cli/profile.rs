@@ -5,9 +5,12 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 
-use super::args::ProfileCommand;
 use super::deps::Deps;
+use super::profile_args::ProfileCommand;
+use super::profile_entries::{add, remove};
+use super::profile_status::{list, status};
 use super::scope::{installed, resolve_project};
+use super::session::with_session;
 use crate::model::{Augmentation, Scope};
 use crate::{profile, snapshot};
 
@@ -20,12 +23,28 @@ pub(super) fn profile_command(
     let env = resolve_project(deps, project.as_deref())?;
     let store = profile::Store::in_env(&env);
     match action {
-        ProfileCommand::List => list_profiles(&store, out),
+        ProfileCommand::List { json } => list(deps, &env, json, out),
+        ProfileCommand::Status { name, json } => status(deps, &env, (name.as_deref(), json), out),
+        ProfileCommand::New { name } => with_session(deps, &env, out, false, |session, console| {
+            console.conclude(Some(session.create_profile(&name)?))
+        }),
+        ProfileCommand::Add(args) => {
+            with_session(deps, &env, out, args.dry_run, |session, console| {
+                add(session, console, &args)
+            })
+        }
+        ProfileCommand::Remove(args) => {
+            with_session(deps, &env, out, args.dry_run, |session, console| {
+                remove(session, console, &args)
+            })
+        }
         ProfileCommand::Show { name } => Ok(write!(out, "{}", store.load(&name)?.to_text()?)?),
         ProfileCommand::Import { file } => import_profile(&store, &file, out),
         ProfileCommand::Delete { name } => {
             store.load(&name)?;
-            store.delete(&name)
+            with_session(deps, &env, out, false, |session, console| {
+                console.conclude(Some(session.delete_profile(&name)?))
+            })
         }
         ProfileCommand::Save { name, force } => {
             let items = installed(deps, &env, Scope::Project);
@@ -40,18 +59,6 @@ fn import_profile(store: &profile::Store, file: &Path, out: &mut dyn Write) -> a
     let profile = profile::Profile::from_text(&text)?;
     store.save(&profile)?;
     writeln!(out, "imported {}", profile.name)?;
-    Ok(())
-}
-
-fn list_profiles(store: &profile::Store, out: &mut dyn Write) -> anyhow::Result<()> {
-    for name in store.names()? {
-        let unreadable = if store.load(&name).is_err() {
-            "  (unreadable)"
-        } else {
-            ""
-        };
-        writeln!(out, "{name}{unreadable}")?;
-    }
     Ok(())
 }
 

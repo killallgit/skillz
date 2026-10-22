@@ -11,7 +11,7 @@ use crate::profile::{Entry, Profile};
 use crate::review::Outcome;
 
 /// What the user picked: entries to install and the ids of installed items to remove.
-pub(super) struct Selection<'a> {
+pub(in crate::cli) struct Selection<'a> {
     pub install: &'a [Entry],
     pub remove: &'a [String],
 }

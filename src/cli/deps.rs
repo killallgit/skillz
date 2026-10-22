@@ -51,6 +51,22 @@ impl<'a> Deps<'a> {
 }
 
 impl<'a> Deps<'a> {
+    /// The same effects asking `prompter` instead.
+    pub(super) fn with_prompter<'b>(&'b self, prompter: &'b dyn Prompter) -> Deps<'b> {
+        Deps {
+            home: self.home.clone(),
+            claude_config: self.claude_config.clone(),
+            codex_home: self.codex_home.clone(),
+            cwd: self.cwd.clone(),
+            adapters: Rc::clone(&self.adapters),
+            runner: self.runner,
+            prompter,
+            interactive: self.interactive,
+            checker: Arc::clone(&self.checker),
+            scanner: self.scanner.clone(),
+        }
+    }
+
     /// The same effects aimed at other config dirs, running commands with `runner`.
     pub(super) fn redirected(
         &self,

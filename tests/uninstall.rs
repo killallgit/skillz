@@ -193,7 +193,7 @@ fn picking_nothing_in_the_picker_removes_nothing() {
 fn a_project_path_limits_removal_to_that_project() {
     let w = world();
     let cmd = Command::Uninstall(UninstallArgs {
-        query: Some("bd".into()),
+        queries: vec!["bd".into()],
         project: Some(w.project.clone()),
         filter: Filter::default(),
         yes: true,
@@ -211,7 +211,7 @@ fn a_project_path_limits_removal_to_that_project() {
 fn a_project_path_leaves_global_hooks() {
     let w = world();
     let cmd = Command::Uninstall(UninstallArgs {
-        query: Some("bd".into()),
+        queries: vec!["bd".into()],
         project: Some(w.project.clone()),
         filter: Filter::default(),
         yes: true,
@@ -227,7 +227,7 @@ fn a_project_path_leaves_global_hooks() {
 fn a_dry_run_changes_nothing() {
     let w = world();
     let cmd = Command::Uninstall(UninstallArgs {
-        query: Some("tdd".into()),
+        queries: vec!["tdd".into()],
         project: None,
         filter: Filter::default(),
         yes: true,
@@ -275,6 +275,8 @@ fn after_browser_removes_the_skills_group() -> World {
         project: None,
         all: false,
         json: false,
+        check: false,
+        available: false,
         filter: Filter::default(),
         interactive: true,
     });
@@ -297,4 +299,48 @@ fn the_browser_leaves_unmarked_groups() {
     let hooks = read_json(&w.claude_settings());
 
     assert!(!hooks["hooks"].as_object().unwrap().is_empty());
+}
+
+fn uninstall_each(queries: &[&str]) -> Command {
+    Command::Uninstall(UninstallArgs {
+        queries: queries.iter().map(|q| q.to_string()).collect(),
+        project: None,
+        filter: global(),
+        yes: true,
+        dry_run: false,
+    })
+}
+
+#[test]
+fn several_queries_remove_all_their_items_in_one_run() {
+    // Assemble
+    let w = world();
+
+    // Act
+    uninstall_with(&w, uninstall_each(&["tdd", "rtk"]), &Scripted::yes()).unwrap();
+
+    // Assert: the skill and the hook tool are both gone
+    assert!(!w.tdd_store().exists());
+    assert!(
+        read_json(&w.claude_settings())["hooks"]
+            .get("PreToolUse")
+            .is_none()
+    );
+}
+
+#[test]
+fn one_unmatched_query_among_several_removes_nothing() {
+    // Assemble
+    let w = world();
+
+    // Act
+    let result = uninstall_with(
+        &w,
+        uninstall_each(&["tdd", "zzz-nothing"]),
+        &Scripted::yes(),
+    );
+
+    // Assert
+    assert!(result.is_err());
+    assert!(w.tdd_store().exists());
 }

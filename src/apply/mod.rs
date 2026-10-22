@@ -2,6 +2,7 @@
 //! to be exact, remove what it holds that the profile does not want. Which profile a directory
 //! has loaded is never stored; it is read off the inventory (`standing`).
 
+mod drift;
 #[cfg(test)]
 mod each_tests;
 mod plan;
@@ -12,6 +13,7 @@ mod switch;
 #[cfg(test)]
 mod tests;
 
+pub use drift::{Drift, drift};
 pub use run::Done;
 pub use run_each::{Each, Watch};
 pub use standing::{Standing, compare, holds, loaded};
