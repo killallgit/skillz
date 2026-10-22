@@ -1,4 +1,5 @@
-//! The popup that chooses which profile the project is compared with.
+//! The popup that chooses a profile: the one the project is compared with, or the one to
+//! replace the project with.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
@@ -26,6 +27,9 @@ pub(super) enum Pick {
 pub(super) struct Picker {
     names: Vec<String>,
     list: ListView,
+    title: &'static str,
+    /// Whether the first row is "(no profile)".
+    none_row: bool,
 }
 
 impl Picker {
@@ -34,7 +38,22 @@ impl Picker {
         let mut list = ListView::new(names.len() + 1);
         let at = names.iter().position(|n| Some(n.as_str()) == current);
         list.select(at.map_or(0, |at| at + 1));
-        Picker { names, list }
+        Picker {
+            names,
+            list,
+            title: "Compare with",
+            none_row: true,
+        }
+    }
+
+    /// A list of just the profiles, to pick the one to apply.
+    pub fn applying(names: Vec<String>) -> Self {
+        Picker {
+            list: ListView::new(names.len()),
+            names,
+            title: "Replace the project with",
+            none_row: false,
+        }
     }
 
     pub fn handle(&mut self, key: KeyEvent) -> Pick {
@@ -50,17 +69,24 @@ impl Picker {
     }
 
     fn chosen(&self) -> Option<String> {
-        let at = self.list.selected()?.checked_sub(1)?;
+        let at = self
+            .list
+            .selected()?
+            .checked_sub(usize::from(self.none_row))?;
         self.names.get(at).cloned()
     }
 
     pub fn render(&mut self, frame: &mut Frame, theme: &Theme) {
         let size = ModalSize {
             width: WIDTH,
-            height: (self.names.len() as u16 + 3).min(frame.area().height),
+            height: (self.names.len() as u16 + u16::from(self.none_row) + 2)
+                .min(frame.area().height),
         };
-        let inner = modal::open(frame, size, Panel::new("Compare with"), theme);
-        let rows: Vec<Line<'static>> = std::iter::once(NO_PROFILE)
+        let inner = modal::open(frame, size, Panel::new(self.title), theme);
+        let rows: Vec<Line<'static>> = self
+            .none_row
+            .then_some(NO_PROFILE)
+            .into_iter()
             .chain(self.names.iter().map(String::as_str))
             .map(|name| Line::from(name.to_string()))
             .collect();

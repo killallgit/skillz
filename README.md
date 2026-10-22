@@ -84,10 +84,10 @@ then the same install and removal steps):
 | `r` remove / `u` update the highlighted item | `uninstall`, `update` |
 | `A` add from a repo: type `owner/repo`, a git URL or a path | `install SOURCE` |
 | `p` compare with a profile, the header's matches / N missing / N extra | `profile status [NAME] [--json]`, `profile list [--json]` |
-| `a` apply a profile, `e` apply exactly | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`) |
+| Profiles: `a` / `enter` apply, `e` apply exactly; Project: `a` pick a profile to replace the project with (exact) | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`) |
 | Library: `a` add a typed line, `x` remove, `i` sync installed | `library add "skill o/r tdd"`, `library remove QUERY`, `sync` |
 | Library: origin, link, version, installed in project / global | `library list [--json]` |
-| Profiles: `n` new, `b` edit, `s` save, `x` delete | `profile new`, `profile add` / `profile remove`, `profile save`, `profile delete` |
+| Profiles: `n` new, `b` edit; Project: `s` save the project as a profile; Profiles: `s` save, `x` delete | `profile new`, `profile add` / `profile remove`, `profile save`, `profile delete` |
 | `/` filter, `space` fold, `?` help, `tab`, movement keys | on screen only: `list QUERY` and `list --all` do the same for the command line |
 
 ## Profiles
@@ -278,7 +278,7 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   codex`, or `claude, codex +2` when there are many; removing it removes every copy. A filter
   keeps the section structure and hides rows with no match. Removals and updates on Global act on
   the user's installs (`npx skills -g`, `claude ... --scope user`, the Codex user config).
-  Profiles apply to a project only, so Global has no `p` or `a`. Adding is `A`, or the
+  Profiles apply to a project only, so Global has no `p`, `a` or `s`. Adding is `A`, or the
   Library tab and profiles.
   In the background the tabs check whether installed Claude marketplaces have a newer version
   (a read-only `ls-remote`) and shows those in bold with a `*` after the name. Other kinds have
@@ -305,7 +305,8 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 | `esc` | clear the picks (with none, clear the filter) |
 | `u` | update the installed item under the cursor, or every installed item of the package, after a plan to review; kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
 | `p` | choose the profile the header compares with (Project only) |
-| `a` | install what the chosen profile has that the project lacks (Project only) |
+| `a` | list the profiles; the one you choose replaces everything in the project (installs what is missing, removes the rest) after a plan to review (Project only) |
+| `s` | save what the project has installed as a new profile, after typing its name (Project only) |
 | `←` `→`, `h` `l` | close / open a section (`←` on an item jumps to its section) |
 | `↑↓` `j` `k`, `PgUp` `PgDn`, `^u` `^d`, `g` `G` | move |
 | `/` | filter; keeps matching rows and their section, `esc` clears it |

@@ -10,6 +10,7 @@ use crate::tui::widgets::input::{InputField, Outcome as Edit};
 use crate::tui::workspace::Tab;
 use crate::tui::workspace::act::Act;
 
+const NAME_PLACEHOLDER: &str = "profile name";
 const SOURCE_PLACEHOLDER: &str = "owner/repo, git URL or path";
 
 impl InstalledTab {
@@ -18,6 +19,8 @@ impl InstalledTab {
             Popup::None => self.handle_idle(key),
             Popup::Filter => self.handle_filter(key),
             Popup::Profiles(picker) => self.handle_picker(picker, key),
+            Popup::Apply(picker) => self.handle_apply(picker, key),
+            Popup::Save(field) => self.handle_save(field, key),
             Popup::Source(field) => self.handle_source(field, key),
         }
     }
@@ -28,9 +31,8 @@ impl InstalledTab {
             Action::Back if !self.pending.is_empty() => self.pending.clear(),
             Action::Back if self.outline.is_filtered() => self.outline.clear_filter(),
             Action::PickProfile => self.open_picker(),
-            Action::ApplyProfile => {
-                return self.compare.clone().map(|profile| Act::Apply { profile });
-            }
+            Action::ApplyProfile => self.open_apply(),
+            Action::SaveCurrent => self.popup = Popup::Save(InputField::new(NAME_PLACEHOLDER)),
             Action::Update => return self.update(),
             Action::AddSource => self.popup = Popup::Source(InputField::new(SOURCE_PLACEHOLDER)),
             Action::Remove => return self.remove_current(),
@@ -52,6 +54,13 @@ impl InstalledTab {
     fn open_picker(&mut self) {
         let names = self.profiles.iter().map(|p| p.name.clone()).collect();
         self.popup = Popup::Profiles(Picker::new(names, self.compare.as_deref()));
+    }
+
+    fn open_apply(&mut self) {
+        if !self.profiles.is_empty() {
+            let names = self.profiles.iter().map(|p| p.name.clone()).collect();
+            self.popup = Popup::Apply(Picker::applying(names));
+        }
     }
 
     fn toggle(&mut self) {
@@ -121,6 +130,32 @@ impl InstalledTab {
                 let source = field.value().trim().to_string();
                 let scope = self.scope;
                 return (!source.is_empty()).then_some(Act::InstallSource { scope, source });
+            }
+            Edit::Cancel => {}
+        }
+        None
+    }
+
+    /// The chosen profile replaces everything in the scope, after a plan to review.
+    fn handle_apply(&mut self, mut picker: Picker, key: KeyEvent) -> Option<Act> {
+        match picker.handle(key) {
+            Pick::Open => self.popup = Popup::Apply(picker),
+            Pick::Chosen(profile) => return profile.map(|profile| Act::ApplyExact { profile }),
+            Pick::Closed => {}
+        }
+        None
+    }
+
+    fn handle_save(&mut self, mut field: InputField, key: KeyEvent) -> Option<Act> {
+        match field.handle(key) {
+            Edit::Editing => self.popup = Popup::Save(field),
+            Edit::Submit => {
+                let name = field.value().trim().to_string();
+                if name.is_empty() {
+                    self.popup = Popup::Save(field);
+                    return None;
+                }
+                return Some(Act::SaveCurrent { name });
             }
             Edit::Cancel => {}
         }

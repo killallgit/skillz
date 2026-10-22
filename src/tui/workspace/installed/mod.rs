@@ -54,6 +54,10 @@ enum Popup {
     None,
     Filter,
     Profiles(Picker),
+    /// Choosing the profile that replaces everything in the scope.
+    Apply(Picker),
+    /// Typing the name to save what is installed as a profile.
+    Save(InputField),
     /// Typing the repo or path to install from.
     Source(InputField),
 }
