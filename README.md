@@ -299,8 +299,8 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 | --- | --- |
 | `space` | pick the item under the cursor: a library item to install, an installed item to remove; again to unpick (on a section header: open or close it) |
 | `enter` | apply all picks as one change, with one plan to review; with nothing picked, open or close the section |
-| `i` | install the item under the cursor into the tab's scope at once (after the plan); does nothing on an installed row or a header |
-| `r` | remove the item under the cursor from the tab's scope at once (after the plan); does nothing on an available row or a header |
+| `i` | install the item under the cursor into the tab's scope at once (after the plan); on a package row, installs its available items; does nothing on an installed row |
+| `r` | remove the item under the cursor from the tab's scope at once (after the plan); on a package row, removes its installed items; does nothing on an available row |
 | `esc` | clear the picks (with none, clear the filter) |
 | `u` | update the installed item under the cursor, or every installed item of the section, after a plan to review; library items that are not installed and kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
 | `p` | choose the profile the header compares with (Project only) |
