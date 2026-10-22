@@ -5,6 +5,8 @@
 #[cfg(test)]
 mod tests;
 
+use std::path::Path;
+
 use crate::hooks::UNOWNED_HOOKS;
 use crate::model::{Augmentation, Kind};
 use crate::profile::Entry;
@@ -42,7 +44,13 @@ impl Package {
             Entry::Skill { source, .. } | Entry::Subagent { source, .. } => {
                 Package::Source(source.clone())
             }
-            Entry::Plugin { marketplace, .. } => Package::Marketplace(marketplace.clone()),
+            Entry::Plugin {
+                source,
+                marketplace,
+                ..
+            } if Path::new(source).is_absolute() => Package::Marketplace(marketplace.clone()),
+            // A marketplace hosted in a repo sits with that repo's skills.
+            Entry::Plugin { source, .. } => Package::Source(source.clone()),
             Entry::Mcp { .. } => Package::Mcp,
             Entry::Hook { .. } => Package::Hooks,
         }

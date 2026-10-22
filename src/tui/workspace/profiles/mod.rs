@@ -1,9 +1,9 @@
-//! The Profiles tab: the named sets of library items, how each compares with the project, and
-//! the highlighted profile's entries by kind. Profiles are built from the library, applied to
-//! the project, and saved from what the project has.
+//! The Profiles tab: one list of the named sets of library items, each with how it compares
+//! with the project and its entries beneath it. Profiles are made and edited in one modal,
+//! applied to the project, and saved from what the project has.
 
-mod chooser;
 mod draw;
+mod editor;
 mod keys;
 mod naming;
 mod rows;
@@ -14,9 +14,8 @@ use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
-use self::chooser::Chooser;
+use self::editor::Editor;
 use self::naming::Naming;
-use self::rows::Row;
 use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
@@ -36,16 +35,9 @@ enum Popup {
     None,
     Filter,
     Name(Naming),
-    Build(Box<Chooser>),
+    Edit(Box<Editor>),
     /// Deleting the named profile, once confirmed.
     Delete(String, ConfirmDialog),
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-enum Focus {
-    #[default]
-    List,
-    Entries,
 }
 
 struct ProfileRow {
@@ -57,9 +49,7 @@ pub struct ProfilesTab {
     profiles: Vec<ProfileRow>,
     library: Catalog,
     list: Outline,
-    rows: Vec<Row>,
-    entries: Outline,
-    focus: Focus,
+    list_rows: Vec<rows::ListRow>,
     popup: Popup,
 }
 
@@ -69,27 +59,22 @@ impl ProfilesTab {
             profiles: vec![],
             library: Catalog::default(),
             list: Outline::new(vec![]),
-            rows: vec![],
-            entries: Outline::new(vec![]),
-            focus: Focus::List,
+            list_rows: vec![],
             popup: Popup::None,
         }
     }
 
-    /// The profile under the list cursor.
+    /// The profile under the cursor, or the one whose entry is.
     fn current(&self) -> Option<&Profile> {
-        self.list.current().map(|id| &self.profiles[id].profile)
+        let id = self.list.current()?;
+        let at = self.list_rows.get(id)?.profile();
+        Some(&self.profiles[at].profile)
     }
 
     fn current_name(&self) -> Option<String> {
         self.current().map(|p| p.name.clone())
     }
 
-    fn show_entries(&mut self) {
-        let entries = self.current().map(|p| p.entries.clone());
-        self.rows = rows::of_entries(&entries.unwrap_or_default());
-        self.entries.reshape(rows::shape(&self.rows));
-    }
 }
 
 impl Tab for ProfilesTab {
@@ -111,12 +96,9 @@ impl Tab for ProfilesTab {
             })
             .collect();
         self.library = model.library.clone();
-        let names = self
-            .profiles
-            .iter()
-            .map(|row| (None, row.profile.name.clone()));
-        self.list.reshape(names.collect());
-        self.show_entries();
+        self.list_rows = rows::of_profiles(self.profiles.iter().map(|row| &row.profile));
+        let names: Vec<String> = self.profiles.iter().map(|r| r.profile.name.clone()).collect();
+        self.list.reshape(rows::list_shape(&self.list_rows, &names));
     }
 
     fn handle(&mut self, key: KeyEvent) -> Option<Act> {

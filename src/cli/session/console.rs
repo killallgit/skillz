@@ -81,6 +81,7 @@ mod tests {
             heading: "project: new".into(),
             groups: vec![(Group::Install, vec!["skills tdd [o/r]".into()])],
             steps: vec!["npx skills add o/r".into()],
+            targets: None,
         }
     }
 

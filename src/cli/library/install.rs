@@ -27,6 +27,7 @@ pub(super) fn install(
     let selection = Selection {
         install: &entries,
         remove: &[],
+        only: None,
     };
     console.conclude(change(session, scope, &Change::Selection(&selection))?)
 }

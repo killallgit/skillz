@@ -56,11 +56,12 @@ fn items_hang_under_the_package_they_come_from() {
 }
 
 #[test]
-fn skills_and_a_marketplace_plugin_are_separate_packages() {
+fn a_plugin_sits_with_the_skills_of_the_repo_hosting_its_marketplace() {
     let catalog = Catalog::from_items(vec![
-        skill("o/r", "a"),
+        skill("o/mp", "a"),
         plugin("mp", "p"),
         plugin("mp", "q"),
+        skill("o/r", "b"),
     ]);
 
     let rows = build(&catalog);
@@ -68,7 +69,7 @@ fn skills_and_a_marketplace_plugin_are_separate_packages() {
     assert_eq!(
         packages(&rows),
         [
-            Package::Marketplace("mp".into()),
+            Package::Source("o/mp".into()),
             Package::Source("o/r".into())
         ]
     );

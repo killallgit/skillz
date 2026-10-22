@@ -14,6 +14,7 @@ use super::installed::InstalledTab;
 use super::library::LibraryTab;
 use super::model::Model;
 use super::profiles::ProfilesTab;
+use super::run::RunModal;
 use super::syncs::{Synced, Syncs};
 use super::tab::Tab;
 use crate::review::ItemEvent;
@@ -40,6 +41,8 @@ pub struct Workspace {
     checks: Checks,
     syncs: Syncs,
     model: Model,
+    /// The change under way, listed over the tab.
+    run: Option<RunModal>,
 }
 
 impl Workspace {
@@ -53,6 +56,7 @@ impl Workspace {
             checks: Checks::default(),
             syncs: Syncs::default(),
             model: Model::default(),
+            run: None,
         }
     }
 
@@ -73,12 +77,27 @@ impl Workspace {
 
     /// Show where an item's change stands on every tab.
     pub fn note(&mut self, event: &ItemEvent) {
+        if let Some(run) = &mut self.run {
+            run.note(event);
+        }
         self.tabs.iter_mut().for_each(|tab| tab.note(event));
     }
 
     /// Move the animations on a frame.
     pub fn tick(&mut self) {
+        if let Some(run) = &mut self.run {
+            run.tick();
+        }
         self.tabs.iter_mut().for_each(|tab| tab.tick());
+    }
+
+    /// List `planned` over the workspace until `finish_run`.
+    pub fn begin_run(&mut self, title: &str, planned: &[ItemEvent]) {
+        self.run = Some(RunModal::new(title, planned));
+    }
+
+    pub fn finish_run(&mut self) {
+        self.run = None;
     }
 
     /// Project, Global, Library and Profiles.
@@ -184,6 +203,9 @@ impl Workspace {
         self.toasts.render(frame, area, theme);
         if let Some(help) = &mut self.help {
             help.render(frame, theme);
+        }
+        if let Some(run) = &self.run {
+            run.draw(frame, theme);
         }
     }
 

@@ -64,7 +64,16 @@ pub struct LiveProgress<'a> {
 
 impl<'a> LiveProgress<'a> {
     /// Start painting `screen`; a terminal that cannot be entered leaves the work unpainted.
-    pub fn start(shell: &'a Shell, theme: &Theme, screen: Shared) -> Self {
+    pub fn start(
+        shell: &'a Shell,
+        theme: &Theme,
+        screen: Shared,
+        (title, planned): (&str, &[ItemEvent]),
+    ) -> Self {
+        screen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .begin_run(title, planned);
         let hold = shell.hold();
         let painter = shell
             .lend_terminal()
@@ -94,5 +103,9 @@ impl Drop for LiveProgress<'_> {
             self.shell.take_back(terminal);
         }
         self.shell.discard_input();
+        self.screen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .finish_run();
     }
 }

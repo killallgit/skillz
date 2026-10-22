@@ -1,38 +1,55 @@
-//! The popup that builds a profile: library items under their kinds with checkboxes, the ones
-//! the profile already has checked.
+//! The popup that makes or edits a profile: its name, when it is new, above the library items
+//! under their kinds with checkboxes, the ones the profile already has checked. One modal, one
+//! save.
 
 use std::collections::BTreeSet;
 
 use ratatui::Frame;
-use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::layout::{Constraint, Layout};
 use ratatui::text::{Line, Span};
+use ratatui::widgets::Paragraph;
 
 use super::rows::{self, Row, section_title};
 use crate::library::Catalog;
 use crate::profile::{Entry, Profile, same_thing};
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
+use crate::tui::widgets::input::{InputField, Outcome};
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::outline::Outline;
 use crate::tui::widgets::panel::Panel;
 
 const SIZE: ModalSize = ModalSize {
     width: 70,
-    height: 22,
+    height: 24,
 };
 
-/// What a key did to the chooser.
+/// What a key did to the editor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Choice {
     Open,
-    /// The profile's new entries.
-    Done(Vec<Entry>),
+    /// Make the profile `name`, new or existing, hold exactly these entries.
+    Save {
+        name: String,
+        entries: Vec<Entry>,
+        new: bool,
+    },
     Closed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Focus {
+    Name,
+    Items,
+}
+
 #[derive(Debug, Clone)]
-pub(super) struct Chooser {
+pub(super) struct Editor {
+    /// Typed by the user when the profile is new.
+    name: Option<InputField>,
     profile: String,
+    focus: Focus,
     /// What the profile has that the library does not offer; kept as it is.
     kept: Vec<Entry>,
     rows: Vec<Row>,
@@ -40,35 +57,79 @@ pub(super) struct Chooser {
     checked: BTreeSet<usize>,
 }
 
-impl Chooser {
-    pub fn new(profile: &Profile, library: &Catalog) -> Self {
+impl Editor {
+    /// A new profile: named here, with nothing checked.
+    pub fn creating(library: &Catalog) -> Self {
+        Editor {
+            name: Some(InputField::new("name")),
+            focus: Focus::Name,
+            ..Self::editing(&Profile::new(""), library)
+        }
+    }
+
+    pub fn editing(profile: &Profile, library: &Catalog) -> Self {
         let rows = rows::of_library(library);
         let has = |entry: &Entry| profile.entries.iter().any(|e| same_thing(e, entry));
         let checked = (0..rows.len())
             .filter(|&id| matches!(&rows[id], Row::Item(item) if has(&item.entry)))
             .collect();
         let offered = |entry: &Entry| library.items().iter().any(|i| same_thing(&i.entry, entry));
-        Chooser {
+        let mut outline = Outline::new(rows::shape(&rows));
+        outline.open_all();
+        Editor {
+            name: None,
             profile: profile.name.clone(),
+            focus: Focus::Items,
             kept: profile
                 .entries
                 .iter()
                 .filter(|e| !offered(e))
                 .cloned()
                 .collect(),
-            outline: Outline::new(rows::shape(&rows)),
+            outline,
             rows,
             checked,
         }
     }
 
-    pub fn profile(&self) -> &str {
-        &self.profile
+    pub fn handle(&mut self, key: KeyEvent) -> Choice {
+        match self.focus {
+            Focus::Name => self.handle_name(key),
+            Focus::Items => self.handle_items(key),
+        }
     }
 
-    pub fn handle(&mut self, key: KeyEvent) -> Choice {
+    fn handle_name(&mut self, key: KeyEvent) -> Choice {
+        if matches!(key.code, KeyCode::Tab | KeyCode::Down) {
+            self.focus = Focus::Items;
+            return Choice::Open;
+        }
+        let Some(field) = self.name.as_mut() else {
+            return Choice::Open;
+        };
+        match field.handle(key) {
+            Outcome::Editing => Choice::Open,
+            Outcome::Submit => self.save(),
+            Outcome::Cancel => Choice::Closed,
+        }
+    }
+
+    fn handle_items(&mut self, key: KeyEvent) -> Choice {
+        let plain = key.modifiers.is_empty();
+        match (key.code, plain) {
+            (KeyCode::Char('s'), true) => return self.save(),
+            (KeyCode::Tab | KeyCode::BackTab, _) if self.name.is_some() => {
+                self.focus = Focus::Name;
+                return Choice::Open;
+            }
+            (KeyCode::Up, _) if self.name.is_some() && self.outline.current() == Some(0) => {
+                self.focus = Focus::Name;
+                return Choice::Open;
+            }
+            _ => {}
+        }
         match keymap::resolve(Scope::Picker, key) {
-            Some(Action::Select) => Choice::Done(self.entries()),
+            Some(Action::Select) => self.save(),
             Some(Action::Back) => Choice::Closed,
             Some(Action::Toggle) => {
                 self.toggle_current();
@@ -79,6 +140,21 @@ impl Chooser {
                 Choice::Open
             }
             None => Choice::Open,
+        }
+    }
+
+    fn save(&self) -> Choice {
+        let name = match &self.name {
+            Some(field) => field.value().trim().to_string(),
+            None => self.profile.clone(),
+        };
+        if name.is_empty() {
+            return Choice::Open;
+        }
+        Choice::Save {
+            name,
+            entries: self.entries(),
+            new: self.name.is_some(),
         }
     }
 
@@ -106,15 +182,49 @@ impl Chooser {
     }
 
     pub fn render(&mut self, frame: &mut Frame, theme: &Theme) {
-        let panel = Panel::new(format!("Build {}", self.profile)).badge(self.outline.badge());
+        let title = match &self.name {
+            Some(_) => "New profile".to_string(),
+            None => format!("Edit {}", self.profile),
+        };
+        let panel = Panel::new(title).badge(self.outline.badge());
         let inner = modal::open(frame, SIZE, panel, theme);
+        let name_height = u16::from(self.name.is_some()) * 2;
+        let [name, list, foot] = Layout::vertical([
+            Constraint::Length(name_height),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .areas(inner);
+        if let Some(field) = &self.name {
+            let [label, input] =
+                Layout::horizontal([Constraint::Length(6), Constraint::Min(1)]).areas(name);
+            let style = match self.focus {
+                Focus::Name => theme.accent,
+                Focus::Items => theme.muted,
+            };
+            frame.render_widget(Paragraph::new(Span::styled("Name", style)), label);
+            if self.focus == Focus::Name {
+                field.render(frame, input, theme);
+            } else {
+                frame.render_widget(Paragraph::new(field.value().to_string()), input);
+            }
+        }
         let lines: Vec<Line<'static>> = self
             .outline
             .visible()
             .iter()
             .map(|&id| self.line(id, theme))
             .collect();
-        self.outline.render(frame, inner, &lines, theme);
+        self.outline.render(frame, list, &lines, theme);
+        frame.render_widget(Paragraph::new(self.hints(theme)), foot);
+    }
+
+    fn hints(&self, theme: &Theme) -> Line<'static> {
+        let mut hints = vec!["space check", "s save", "esc cancel"];
+        if self.name.is_some() {
+            hints.insert(0, "tab name/list");
+        }
+        Line::styled(hints.join("  "), theme.muted)
     }
 
     fn line(&self, id: usize, theme: &Theme) -> Line<'static> {
@@ -163,27 +273,35 @@ mod tests {
         profile
     }
 
-    fn press(chooser: &mut Chooser, codes: &[KeyCode]) -> Choice {
+    fn press(chooser: &mut Editor, codes: &[KeyCode]) -> Choice {
         codes
             .iter()
             .fold(Choice::Open, |_, code| chooser.handle(key(*code)))
+    }
+
+    fn saved(entries: Vec<Entry>) -> Choice {
+        Choice::Save {
+            name: "web".into(),
+            entries,
+            new: false,
+        }
     }
 
     const SPACE: KeyCode = KeyCode::Char(' ');
 
     #[test]
     fn items_the_profile_has_start_checked_and_saving_keeps_them() {
-        let mut chooser = Chooser::new(&profile_with(vec![skill("a")]), &library());
+        let mut chooser = Editor::editing(&profile_with(vec![skill("a")]), &library());
         chooser.outline.open_all();
 
         let choice = press(&mut chooser, &[KeyCode::Enter]);
 
-        assert_eq!(choice, Choice::Done(vec![skill("a")]));
+        assert_eq!(choice, saved(vec![skill("a")]));
     }
 
     #[test]
     fn space_checks_and_unchecks_the_item_under_the_cursor() {
-        let mut chooser = Chooser::new(&profile_with(vec![skill("a")]), &library());
+        let mut chooser = Editor::editing(&profile_with(vec![skill("a")]), &library());
         chooser.outline.open_all();
 
         // Section, a, b: check b, then uncheck a.
@@ -191,35 +309,35 @@ mod tests {
         press(&mut chooser, &[KeyCode::Up, SPACE]);
         let choice = press(&mut chooser, &[KeyCode::Enter]);
 
-        assert_eq!(choice, Choice::Done(vec![skill("b")]));
+        assert_eq!(choice, saved(vec![skill("b")]));
     }
 
     #[test]
     fn entries_the_library_does_not_offer_are_kept() {
         let mine = skill("mine");
-        let mut chooser = Chooser::new(&profile_with(vec![mine.clone()]), &library());
+        let mut chooser = Editor::editing(&profile_with(vec![mine.clone()]), &library());
         chooser.outline.open_all();
 
         press(&mut chooser, &[KeyCode::Down, SPACE]);
         let choice = press(&mut chooser, &[KeyCode::Enter]);
 
-        assert_eq!(choice, Choice::Done(vec![mine, skill("a")]));
+        assert_eq!(choice, saved(vec![mine, skill("a")]));
     }
 
     #[test]
     fn space_on_a_section_collapses_it_without_checking_anything() {
-        let mut chooser = Chooser::new(&profile_with(vec![]), &library());
+        let mut chooser = Editor::editing(&profile_with(vec![]), &library());
         chooser.outline.open_all();
 
         press(&mut chooser, &[SPACE]);
 
         assert_eq!(chooser.outline.visible().len(), 1);
-        assert_eq!(press(&mut chooser, &[KeyCode::Enter]), Choice::Done(vec![]));
+        assert_eq!(press(&mut chooser, &[KeyCode::Enter]), saved(vec![]));
     }
 
     #[test]
     fn escape_closes_without_a_result() {
-        let mut chooser = Chooser::new(&profile_with(vec![]), &library());
+        let mut chooser = Editor::editing(&profile_with(vec![]), &library());
         chooser.outline.open_all();
 
         assert_eq!(press(&mut chooser, &[KeyCode::Esc]), Choice::Closed);

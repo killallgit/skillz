@@ -7,13 +7,18 @@ use crate::cli::deps::Deps;
 use crate::cli::scope::complete_installed;
 use crate::env::Env;
 use crate::library::Catalog;
+use crate::merge::merge;
+use crate::model::{Agent, Augmentation};
 use crate::profile::{Entry, Profile};
 use crate::review::Outcome;
 
 /// What the user picked: entries to install and the ids of installed items to remove.
+#[derive(Clone, Copy)]
 pub(in crate::cli) struct Selection<'a> {
     pub install: &'a [Entry],
     pub remove: &'a [String],
+    /// The agents to remove from; every agent when `None`.
+    pub only: Option<&'a [Agent]>,
 }
 
 /// Installs for what is missing (from the link the library recorded, when it has one),
@@ -35,8 +40,26 @@ pub(super) fn selection_plan(
     switch.removals = complete_installed(deps, env, applier.scope)?
         .into_iter()
         .filter(|item| picked.remove.contains(&item.id))
+        .filter_map(|item| match picked.only {
+            Some(agents) => only_for(item, agents),
+            None => Some(item),
+        })
         .collect();
     Ok(switch)
+}
+
+/// The copies of `item` seen through `agents`, folded back into one item; `None` when no copy is.
+fn only_for(item: Augmentation, agents: &[Agent]) -> Option<Augmentation> {
+    let kept: Vec<Augmentation> = item
+        .parts()
+        .iter()
+        .filter(|part| part.agents.iter().any(|agent| agents.contains(agent)))
+        .cloned()
+        .collect();
+    match kept.len() == item.parts().len() {
+        true => Some(item),
+        false => merge(kept).into_iter().next(),
+    }
 }
 
 pub(super) fn outcome_of(switch: &Switch, each: Report) -> Outcome {
@@ -56,5 +79,50 @@ pub(super) fn outcome_of(switch: &Switch, each: Report) -> Outcome {
             .unwrap_or_default(),
         failures: each.failures,
         ..Outcome::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Installer, Kind, Scope};
+
+    fn subagent(agent: Agent) -> Augmentation {
+        Augmentation {
+            details: Default::default(),
+            id: format!("subagent:{agent}:reviewer"),
+            name: "reviewer".into(),
+            kind: Kind::Subagent,
+            agents: vec![agent],
+            scope: Scope::Project,
+            group: "local".into(),
+            source: None,
+            installer: Installer::Local,
+            origin: Default::default(),
+            children: vec![],
+            hooks: vec![],
+            members: vec![],
+            removal: vec![],
+        }
+    }
+
+    fn both() -> Augmentation {
+        merge(vec![subagent(Agent::Claude), subagent(Agent::Codex)]).remove(0)
+    }
+
+    #[test]
+    fn removal_narrowed_to_one_agent_keeps_only_that_agents_copy() {
+        let narrowed = only_for(both(), &[Agent::Codex]).unwrap();
+
+        assert_eq!(narrowed.agents, [Agent::Codex]);
+        assert_eq!(narrowed.id, "subagent:codex:reviewer");
+    }
+
+    #[test]
+    fn every_agent_leaves_the_item_whole_and_none_drops_it() {
+        let whole = only_for(both(), &[Agent::Claude, Agent::Codex]).unwrap();
+
+        assert_eq!(whole.agents, [Agent::Claude, Agent::Codex]);
+        assert!(only_for(both(), &[Agent::Cursor]).is_none());
     }
 }

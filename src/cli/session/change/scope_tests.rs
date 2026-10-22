@@ -42,6 +42,7 @@ fn installing_at_global_scope_gives_npx_the_global_flag_and_project_scope_does_n
     let picked = Selection {
         install: &entries,
         remove: &[],
+        only: None,
     };
 
     let global = run_in(
@@ -101,6 +102,7 @@ fn removing_at_global_scope_removes_only_the_global_item() {
     let picked = Selection {
         install: &[],
         remove: &[id],
+        only: None,
     };
 
     let wrong_scope = change(

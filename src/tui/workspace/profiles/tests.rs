@@ -48,7 +48,7 @@ fn model() -> Model {
 fn loaded() -> ProfilesTab {
     let mut tab = ProfilesTab::new();
     tab.load(&model());
-    tab.entries.open_all();
+    tab.list.open_all();
     tab
 }
 
@@ -81,13 +81,26 @@ fn each_profile_counts_what_the_project_lacks_of_it() {
 }
 
 #[test]
-fn the_entries_follow_the_profile_under_the_cursor() {
-    let mut tab = loaded();
-    let api = tab.rows.len();
+fn each_profile_is_followed_by_its_entries_in_one_list() {
+    let tab = loaded();
 
+    // api, its one entry, web, its two.
+    assert_eq!(tab.list.visible(), [0, 1, 2, 3, 4]);
+}
+
+#[test]
+fn applying_from_an_entry_applies_its_profile() {
+    let mut tab = loaded();
     press(&mut tab, KeyCode::Down);
 
-    assert_eq!((api, tab.rows.len()), (2, 3));
+    let act = press(&mut tab, KeyCode::Enter);
+
+    assert_eq!(
+        act,
+        Some(Act::Apply {
+            profile: "api".into()
+        })
+    );
 }
 
 #[test]
@@ -119,19 +132,44 @@ fn applying_with_no_profiles_asks_for_nothing() {
 }
 
 #[test]
-fn n_asks_for_a_name_then_creates_the_profile() {
+fn n_opens_one_modal_that_names_and_fills_the_new_profile() {
     let mut tab = loaded();
 
     char_key(&mut tab, 'n');
     let capturing = tab.captures_keys();
     type_in(&mut tab, "docs");
-    let act = press(&mut tab, KeyCode::Enter);
+    // Move to the list, open past the section, check the first library skill, save.
+    press(&mut tab, KeyCode::Tab);
+    [KeyCode::Down, KeyCode::Char(' ')].into_iter().for_each(|code| {
+        press(&mut tab, code);
+    });
+    let act = char_key(&mut tab, 's');
 
     assert!(capturing && !tab.captures_keys());
     assert_eq!(
         act,
-        Some(Act::NewProfile {
-            name: "docs".into()
+        Some(Act::CreateProfile {
+            name: "docs".into(),
+            entries: vec![skill("a")]
+        })
+    );
+}
+
+#[test]
+fn enter_in_the_name_saves_the_new_profile_and_a_blank_name_saves_nothing() {
+    let mut tab = loaded();
+    char_key(&mut tab, 'n');
+
+    let blank = press(&mut tab, KeyCode::Enter);
+    type_in(&mut tab, "docs");
+    let named = press(&mut tab, KeyCode::Enter);
+
+    assert_eq!(blank, None);
+    assert_eq!(
+        named,
+        Some(Act::CreateProfile {
+            name: "docs".into(),
+            entries: vec![]
         })
     );
 }
@@ -163,21 +201,16 @@ fn escape_leaves_the_name_prompt_without_an_act() {
 }
 
 #[test]
-fn building_writes_the_checked_library_items_into_the_profile() {
+fn editing_writes_the_checked_library_items_into_the_profile() {
     let mut tab = loaded();
 
     char_key(&mut tab, 'b');
-    // Open the section, then a (checked), b: check b.
-    [
-        KeyCode::Right,
-        KeyCode::Down,
-        KeyCode::Down,
-        KeyCode::Char(' '),
-    ]
-    .into_iter()
-    .for_each(|code| {
-        press(&mut tab, code);
-    });
+    // The section, a (checked), b: check b.
+    [KeyCode::Down, KeyCode::Down, KeyCode::Char(' ')]
+        .into_iter()
+        .for_each(|code| {
+            press(&mut tab, code);
+        });
     let act = press(&mut tab, KeyCode::Enter);
 
     assert_eq!(
@@ -203,7 +236,7 @@ fn deleting_needs_a_yes_and_defaults_to_no() {
 }
 
 #[test]
-fn the_filter_narrows_the_profiles_and_the_entries_follow() {
+fn the_filter_narrows_the_list() {
     let mut tab = loaded();
 
     char_key(&mut tab, '/');
@@ -212,25 +245,22 @@ fn the_filter_narrows_the_profiles_and_the_entries_follow() {
     press(&mut tab, KeyCode::Enter);
 
     assert!(typing && tab.prompt().is_none());
-    assert_eq!(tab.list.visible(), [1]);
-    assert_eq!(tab.rows.len(), 3);
+    assert_eq!(tab.current_name().as_deref(), Some("web"));
 }
 
 #[test]
-fn right_moves_into_the_entries_where_space_collapses_a_section() {
+fn space_folds_a_profile_and_picks_nothing() {
     let mut tab = loaded();
 
-    press(&mut tab, KeyCode::Right);
     char_key(&mut tab, ' ');
 
-    assert_eq!(tab.entries.visible().len(), 1);
-    press(&mut tab, KeyCode::Left);
-    assert_eq!(tab.focus, Focus::List);
+    assert_eq!(tab.list.visible(), [0, 2, 3, 4]);
 }
 
 #[test]
 fn a_new_snapshot_keeps_the_cursor_on_the_same_row() {
     let mut tab = loaded();
+    press(&mut tab, KeyCode::Down);
     press(&mut tab, KeyCode::Down);
 
     tab.load(&model());

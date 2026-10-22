@@ -13,10 +13,10 @@ use crate::cli::deps::Deps;
 use crate::cli::recording::record_since;
 use crate::cli::scope::{complete_installed, project_env};
 use crate::env::Env;
-use crate::model::Scope;
+use crate::model::{Agent, Scope};
 use crate::profile;
 use crate::remove;
-use crate::review::{ItemEvent, Next, Outcome, Phase, Target, Verdict};
+use crate::review::{ItemEvent, Next, Outcome, Phase, Target, Targets, Verdict};
 use crate::stale::Disk;
 use crate::store::Store;
 
@@ -38,6 +38,16 @@ impl Change<'_> {
             Change::Apply(_) | Change::ApplyExact(_) => "Apply",
             Change::Selection(_) => "Change",
             Change::Update(_) => "Update",
+        }
+    }
+
+    /// What the plan modal is titled: the change, the profile it names and where it lands.
+    fn heading(&self, scope: Scope) -> String {
+        match self {
+            Change::Apply(name) => format!("Apply {name} ({scope})"),
+            Change::ApplyExact(name) => format!("Apply {name} exactly ({scope})"),
+            Change::Selection(_) => format!("Change ({scope})"),
+            Change::Update(_) => format!("Update ({scope})"),
         }
     }
 
@@ -76,18 +86,31 @@ pub(in crate::cli) fn change(
         scope,
     };
     let mut completed_updates = std::collections::HashSet::new();
+    let mut targets: Option<Targets> = None;
     loop {
         let applier = job.applier();
-        let mut switch = job.plan(&applier, what)?;
+        let mut switch = job.plan(&applier, what, None)?;
+        targets = targets.or_else(|| job.offered_targets(what, &switch));
+        if let Some(chosen) = &targets {
+            switch = job.plan(&applier, what, Some(&chosen.checked()))?;
+        }
         switch
             .updates
             .retain(|(item, _)| !completed_updates.contains(&item.id));
-        if switch.is_empty() {
+        if switch.is_empty() && targets.is_none() {
             return Ok(Some(Notice::UpToDate));
         }
-        match deps.prompter.plan(&plan_view(&switch, job.scope))? {
+        let mut view = plan_view(&switch, job.scope);
+        view.targets.clone_from(&targets);
+        view.heading = what.heading(job.scope);
+        match deps.prompter.plan(&view)? {
             Verdict::Cancel => return Ok(None),
             Verdict::DryRun => return Ok(Some(Notice::DryRun(switch.steps().len()))),
+            Verdict::Retarget(chosen) => {
+                targets = Some(chosen);
+                continue;
+            }
+            Verdict::Apply if switch.is_empty() => return Ok(Some(Notice::UpToDate)),
             Verdict::Apply => {}
         }
         let before = complete_installed(deps, &job.env, job.scope)?;
@@ -114,13 +137,34 @@ impl Job<'_> {
         }
     }
 
-    fn plan(&self, applier: &apply::Applier, what: &Change) -> anyhow::Result<Switch> {
+    /// The agents a removal could reach, when it spans more than one.
+    fn offered_targets(&self, what: &Change, switch: &Switch) -> Option<Targets> {
+        if !matches!(what, Change::Selection(_)) {
+            return None;
+        }
+        let mut agents: Vec<Agent> = switch
+            .removals
+            .iter()
+            .flat_map(|item| item.parts().iter().flat_map(|part| part.agents.clone()))
+            .collect();
+        agents.sort();
+        agents.dedup();
+        (agents.len() > 1).then(|| Targets::all(agents))
+    }
+
+    fn plan(
+        &self,
+        applier: &apply::Applier,
+        what: &Change,
+        only: Option<&[Agent]>,
+    ) -> anyhow::Result<Switch> {
         match what {
             Change::Apply(name) => self.apply_plan(applier, name, false),
             Change::ApplyExact(name) => self.apply_plan(applier, name, true),
             Change::Selection(picked) => {
                 let library = self.store.read()?.items.in_env(&self.env);
-                selection_plan(self.deps, &self.env, applier, (picked, &library))
+                let narrowed = Selection { only, ..**picked };
+                selection_plan(self.deps, &self.env, applier, (&narrowed, &library))
             }
             Change::Update(ids) => update_plan(self.deps, &self.env, self.scope, ids),
         }
@@ -137,7 +181,9 @@ impl Job<'_> {
     }
 
     fn apply(&self, applier: &apply::Applier, switch: &Switch, what: &Change) -> Outcome {
-        let progress = self.deps.prompter.live(what.title(), switch.steps().len());
+        let progress = self.deps
+            .prompter
+            .live(what.title(), switch.steps().len(), &switch.planned());
         let removal = remove::Plan::from_owned(&switch.removals);
         let mut log = Vec::new();
         let mut items = Vec::new();

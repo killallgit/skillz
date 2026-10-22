@@ -16,7 +16,7 @@ use super::tree_view;
 use super::widgets::confirm::ConfirmDialog;
 use super::workspace::{self, Act, Shared};
 use crate::prompt::{Choice, Hold, Picked, Prompter};
-use crate::review::{Next, Outcome, PlanView, Progress, Verdict};
+use crate::review::{ItemEvent, Next, Outcome, PlanView, Progress, Verdict};
 use crate::tree::{self, Node};
 
 /// Terminal prompter. The theme is chosen once by the caller and handed to every screen; the
@@ -84,9 +84,19 @@ impl Prompter for TuiPrompter {
         Box::new(TuiProgress::start(self.ui(), title, total))
     }
 
-    fn live(&self, title: &str, total: usize) -> Box<dyn Progress + '_> {
+    fn live(
+        &self,
+        title: &str,
+        total: usize,
+        planned: &[ItemEvent],
+    ) -> Box<dyn Progress + '_> {
         match self.shown.borrow().clone() {
-            Some(screen) => Box::new(LiveProgress::start(&self.shell, &self.theme, screen)),
+            Some(screen) => Box::new(LiveProgress::start(
+                &self.shell,
+                &self.theme,
+                screen,
+                (title, planned),
+            )),
             None => self.progress(title, total),
         }
     }

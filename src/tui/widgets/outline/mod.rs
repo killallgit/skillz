@@ -144,7 +144,6 @@ impl Outline {
         match_positions(self.query(), &self.labels[id])
     }
 
-    #[cfg(test)]
     pub fn open_all(&mut self) {
         self.expanded = (0..self.labels.len())
             .filter(|&id| self.has_children[id])

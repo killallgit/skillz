@@ -26,7 +26,7 @@ pub(super) fn profile_command(
         ProfileCommand::List { json } => list(deps, &env, json, out),
         ProfileCommand::Status { name, json } => status(deps, &env, (name.as_deref(), json), out),
         ProfileCommand::New { name } => with_session(deps, &env, out, false, |session, console| {
-            console.conclude(Some(session.create_profile(&name)?))
+            console.conclude(Some(session.create_profile(&name, &[])?))
         }),
         ProfileCommand::Add(args) => {
             with_session(deps, &env, out, args.dry_run, |session, console| {

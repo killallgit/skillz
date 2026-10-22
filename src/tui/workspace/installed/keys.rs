@@ -89,6 +89,16 @@ impl InstalledTab {
         }
     }
 
+    /// The ids of every item in the highlighted section, when a section is highlighted.
+    pub(super) fn section_ids(&self) -> Option<Vec<String>> {
+        let at = self.outline.current()?;
+        matches!(self.rows[at], Row::Section(_)).then(|| {
+            items_of(&self.rows, at)
+                .map(|item| item.id.clone())
+                .collect()
+        })
+    }
+
     fn fold(&mut self) {
         if let Some(id) = self.outline.current() {
             self.outline.toggle_open(id);

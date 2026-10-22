@@ -37,8 +37,8 @@ fn skill(name: &str) -> Entry {
 #[test]
 fn a_created_profile_is_stored_empty_and_cannot_be_created_twice() {
     with_session(|session, _| {
-        let first = session.create_profile("web");
-        let again = session.create_profile("web");
+        let first = session.create_profile("web", &[]);
+        let again = session.create_profile("web", &[]);
 
         assert!(first.is_ok() && again.is_err());
         assert!(session.profiles.load("web").unwrap().entries.is_empty());
@@ -48,7 +48,7 @@ fn a_created_profile_is_stored_empty_and_cannot_be_created_twice() {
 #[test]
 fn setting_entries_replaces_the_stored_ones() {
     with_session(|session, _| {
-        session.create_profile("web").unwrap();
+        session.create_profile("web", &[]).unwrap();
 
         session.set_entries("web", &[skill("tdd")]).unwrap();
         session.set_entries("web", &[skill("grill")]).unwrap();
@@ -63,7 +63,7 @@ fn setting_entries_replaces_the_stored_ones() {
 #[test]
 fn deleting_a_profile_others_extend_fails_with_the_typed_error() {
     with_session(|session, _| {
-        session.create_profile("base").unwrap();
+        session.create_profile("base", &[]).unwrap();
         let mut web = Profile::new("web");
         web.extends = vec!["base".into()];
         session.profiles.save(&web).unwrap();
@@ -78,7 +78,7 @@ fn deleting_a_profile_others_extend_fails_with_the_typed_error() {
 #[test]
 fn deleting_removes_the_profile() {
     with_session(|session, _| {
-        session.create_profile("web").unwrap();
+        session.create_profile("web", &[]).unwrap();
 
         session.delete_profile("web").unwrap();
 
@@ -132,7 +132,7 @@ fn saving_the_project_keeps_a_hand_made_skill_by_the_dir_holding_it() {
 #[test]
 fn saving_over_an_existing_profile_is_refused() {
     with_session(|session, _| {
-        session.create_profile("snap").unwrap();
+        session.create_profile("snap", &[]).unwrap();
 
         assert!(session.save_current("snap").is_err());
     });

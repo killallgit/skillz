@@ -1,6 +1,7 @@
 //! What a switch shows the user before, while and after it runs, as typed data. Screens decide
 //! how to draw it; flows decide how to build it.
 
+use crate::model::Agent;
 use crate::profile::Entry;
 
 /// The kinds of line in a plan, in the order they are shown.
@@ -37,8 +38,51 @@ impl Group {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PlanView {
     pub heading: String,
+    /// Which agents the plan reaches, when the user may narrow it.
+    pub targets: Option<Targets>,
     pub groups: Vec<(Group, Vec<String>)>,
     pub steps: Vec<String>,
+}
+
+/// The agents a plan offers to act on, each checked or not, and the one under the cursor.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Targets {
+    pub agents: Vec<(Agent, bool)>,
+    pub cursor: usize,
+}
+
+impl Targets {
+    /// All of `agents`, checked.
+    pub fn all(agents: Vec<Agent>) -> Self {
+        Targets {
+            agents: agents.into_iter().map(|agent| (agent, true)).collect(),
+            cursor: 0,
+        }
+    }
+
+    pub fn checked(&self) -> Vec<Agent> {
+        self.agents
+            .iter()
+            .filter(|(_, on)| *on)
+            .map(|(agent, _)| *agent)
+            .collect()
+    }
+
+    pub fn toggled(mut self) -> Self {
+        if let Some((_, on)) = self.agents.get_mut(self.cursor) {
+            *on = !*on;
+        }
+        self
+    }
+
+    pub fn moved(mut self, down: bool) -> Self {
+        let last = self.agents.len().saturating_sub(1);
+        self.cursor = match down {
+            true => (self.cursor + 1).min(last),
+            false => self.cursor.saturating_sub(1),
+        };
+        self
+    }
 }
 
 impl PlanView {
@@ -56,9 +100,11 @@ impl PlanView {
 }
 
 /// What the user decided about a plan.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
     Apply,
+    /// The user changed the agents; plan again for these.
+    Retarget(Targets),
     /// Show that it would run, change nothing.
     DryRun,
     Cancel,

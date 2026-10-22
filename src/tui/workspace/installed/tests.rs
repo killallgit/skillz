@@ -138,11 +138,11 @@ fn what_a_plugin_provides_is_not_listed_among_the_skills_or_hooks() {
 }
 
 #[test]
-fn keys_on_a_section_pick_and_remove_nothing() {
+fn update_and_space_on_a_section_pick_and_remove_nothing() {
     let mut tab = loaded();
     on_item(&mut tab, PLUGINS);
 
-    let acts: Vec<Option<Act>> = "ru"
+    let acts: Vec<Option<Act>> = "u"
         .chars()
         .map(KeyCode::Char)
         .map(|code| press(&mut tab, code))

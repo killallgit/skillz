@@ -27,7 +27,7 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
         .iter()
         .map(|u| {
             format!(
-                "{} for {}: not supported at {scope} scope",
+                "{}: not available for {} at {scope} scope",
                 u.entry, u.agent
             )
         })
@@ -40,6 +40,7 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
         (Group::Skip, skip),
     ];
     PlanView {
+        targets: None,
         heading: format!("{scope}: {}", switch.to),
         groups: groups
             .into_iter()

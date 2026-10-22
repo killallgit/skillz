@@ -2,7 +2,7 @@
 //! a profile's entries and for the library items a profile can be built from.
 
 use crate::library::{Catalog, ItemKind};
-use crate::profile::Entry;
+use crate::profile::{Entry, Profile};
 use crate::tui::widgets::outline::Shape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,12 +27,49 @@ pub(super) fn section_title(kind: ItemKind) -> &'static str {
     }
 }
 
-pub(super) fn of_entries(entries: &[Entry]) -> Vec<Row> {
-    let items = entries.iter().map(|entry| Item {
-        label: entry.to_string(),
-        entry: entry.clone(),
-    });
-    grouped(items.collect())
+/// One line of the profile list: a profile, or one of its entries beneath it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ListRow {
+    Profile(usize),
+    Entry { profile: usize, label: String },
+}
+
+impl ListRow {
+    /// The index of the profile the row is, or belongs to.
+    pub fn profile(&self) -> usize {
+        match self {
+            ListRow::Profile(at) | ListRow::Entry { profile: at, .. } => *at,
+        }
+    }
+}
+
+/// Each profile followed by its entries.
+pub(super) fn of_profiles<'a>(profiles: impl Iterator<Item = &'a Profile>) -> Vec<ListRow> {
+    profiles
+        .enumerate()
+        .flat_map(|(at, profile)| {
+            let entries = profile.entries.iter().map(move |entry| ListRow::Entry {
+                profile: at,
+                label: entry.to_string(),
+            });
+            std::iter::once(ListRow::Profile(at)).chain(entries)
+        })
+        .collect()
+}
+
+/// The list's shape: entries hang under the profile before them.
+pub(super) fn list_shape(rows: &[ListRow], names: &[String]) -> Vec<Shape> {
+    let mut profile = None;
+    rows.iter()
+        .enumerate()
+        .map(|(id, row)| match row {
+            ListRow::Profile(at) => {
+                profile = Some(id);
+                (None, names[*at].clone())
+            }
+            ListRow::Entry { label, .. } => (profile, label.clone()),
+        })
+        .collect()
 }
 
 pub(super) fn of_library(library: &Catalog) -> Vec<Row> {
@@ -87,57 +124,21 @@ pub(super) mod tests {
         }
     }
 
-    fn hook() -> Entry {
-        Entry::Hook {
-            event: "Stop".into(),
-            matcher: None,
-            command: "x".into(),
-            agents: vec![],
-        }
-    }
-
     #[test]
-    fn entries_are_grouped_under_a_section_per_kind() {
-        let rows = of_entries(&[hook(), skill("b"), skill("a")]);
+    fn each_profile_is_followed_by_its_entries() {
+        let mut web = Profile::new("web");
+        web.entries = vec![skill("a"), skill("b")];
+        let api = Profile::new("api");
 
-        let kinds: Vec<Option<ItemKind>> = rows
-            .iter()
-            .map(|row| match row {
-                Row::Section { kind, .. } => Some(*kind),
-                Row::Item(_) => None,
-            })
-            .collect();
+        let rows = of_profiles([&web, &api].into_iter());
+
         assert_eq!(
-            kinds,
-            [
-                Some(ItemKind::Skill),
-                None,
-                None,
-                Some(ItemKind::Hook),
-                None
-            ]
+            rows.iter().map(ListRow::profile).collect::<Vec<_>>(),
+            [0, 0, 0, 1]
         );
-        assert_eq!(
-            rows[0],
-            Row::Section {
-                kind: ItemKind::Skill,
-                count: 2
-            }
-        );
-    }
-
-    #[test]
-    fn items_within_a_kind_are_sorted_by_label() {
-        let rows = of_entries(&[skill("b"), skill("a")]);
-
-        let entries: Vec<&Entry> = rows
-            .iter()
-            .filter_map(|row| match row {
-                Row::Item(item) => Some(&item.entry),
-                Row::Section { .. } => None,
-            })
-            .collect();
-        assert_eq!(entries, [&skill("a"), &skill("b")]);
+        let names = ["web".to_string(), "api".to_string()];
+        let parents: Vec<_> = list_shape(&rows, &names).into_iter().map(|s| s.0).collect();
+        assert_eq!(parents, [None, Some(0), Some(0), None]);
     }
 
     #[test]
@@ -150,8 +151,4 @@ pub(super) mod tests {
         assert_eq!(shape(&rows)[1].0, Some(0));
     }
 
-    #[test]
-    fn nothing_makes_no_rows() {
-        assert!(of_entries(&[]).is_empty());
-    }
 }

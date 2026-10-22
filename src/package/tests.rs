@@ -137,8 +137,5 @@ fn a_library_entry_belongs_to_the_package_it_is_fetched_from() {
     };
 
     assert_eq!(Package::of_entry(&skill), Package::Source("o/r".into()));
-    assert_eq!(
-        Package::of_entry(&plugin),
-        Package::Marketplace("mp".into())
-    );
+    assert_eq!(Package::of_entry(&plugin), Package::Source("o/mp".into()));
 }
