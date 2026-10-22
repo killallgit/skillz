@@ -11,3 +11,7 @@ tasks:
       - cargo build --release
       - mkdir -p "$HOME/.local/bin"
       - ln -sf "{{.ROOT_DIR}}/target/release/skillz" "$HOME/.local/bin/skillz"
+
+  test:
+    desc: All tests, killed (with the whole process tree) if the run outlives five minutes
+    cmd: python3 scripts/with_timeout.py 300 cargo test

@@ -129,7 +129,7 @@ bd prime                # Refresh Beads context
 
 ```bash
 task dev                        # cargo build
-cargo test
+task test                       # cargo test, killed after 5 minutes (cargo nextest run enforces a per-test limit)
 cargo clippy --all-targets -- -D warnings
 cargo llvm-cov --summary-only   # keep line coverage > 75%
 ```
