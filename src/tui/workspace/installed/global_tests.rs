@@ -48,8 +48,12 @@ fn the_global_tab_has_no_profile_keys() {
 
     let compare = press(&mut tab, KeyCode::Char('p'));
     let apply = press(&mut tab, KeyCode::Char('a'));
+    let save = press(&mut tab, KeyCode::Char('s'));
 
-    assert_eq!((compare, apply, tab.captures_keys()), (None, None, false));
+    assert_eq!(
+        (compare, apply, save, tab.captures_keys()),
+        (None, None, None, false)
+    );
 }
 
 #[test]

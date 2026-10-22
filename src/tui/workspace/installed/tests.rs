@@ -238,3 +238,48 @@ fn escape_or_an_empty_source_installs_nothing_and_closes_the_prompt() {
     assert_eq!((empty, escaped), (None, None));
     assert!(!tab.captures_keys());
 }
+
+#[test]
+fn the_apply_list_chooses_the_profile_under_the_cursor_and_escape_closes_it() {
+    let mut tab = InstalledTab::project();
+    let mut model = model();
+    model.profiles.push(Profile::new("api"));
+    tab.load(&model);
+
+    press(&mut tab, KeyCode::Char('a'));
+    press(&mut tab, KeyCode::Down);
+    let chosen = press(&mut tab, KeyCode::Enter);
+    press(&mut tab, KeyCode::Char('a'));
+    let escaped = press(&mut tab, KeyCode::Esc);
+
+    assert_eq!(
+        chosen,
+        Some(Act::ApplyExact {
+            profile: "api".into()
+        })
+    );
+    assert_eq!((escaped, tab.captures_keys()), (None, false));
+}
+
+#[test]
+fn the_save_prompt_trims_the_name_stays_open_while_blank_and_escape_closes_it() {
+    let mut tab = loaded();
+
+    press(&mut tab, KeyCode::Char('s'));
+    type_text(&mut tab, "  ");
+    let blank = press(&mut tab, KeyCode::Enter);
+    let still_open = tab.captures_keys();
+    type_text(&mut tab, "snap ");
+    let saved = press(&mut tab, KeyCode::Enter);
+    press(&mut tab, KeyCode::Char('s'));
+    let escaped = press(&mut tab, KeyCode::Esc);
+
+    assert_eq!((blank, still_open), (None, true));
+    assert_eq!(
+        saved,
+        Some(Act::SaveCurrent {
+            name: "snap".into()
+        })
+    );
+    assert_eq!((escaped, tab.captures_keys()), (None, false));
+}

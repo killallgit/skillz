@@ -84,10 +84,10 @@ then the same install and removal steps):
 | `r` remove / `u` update the highlighted item | `uninstall`, `update` |
 | `A` add from a repo: type `owner/repo`, a git URL or a path | `install SOURCE` |
 | `p` compare with a profile, the header's matches / N missing / N extra | `profile status [NAME] [--json]`, `profile list [--json]` |
-| `a` apply a profile, `e` apply exactly | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`) |
+| Profiles: `a` / `enter` apply, `e` apply exactly; Project: `a` pick a profile to replace the project with (exact) | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`) |
 | Library: `a` add a typed line, `x` remove, `i` sync installed | `library add "skill o/r tdd"`, `library remove QUERY`, `sync` |
 | Library: origin, link, version, installed in project / global | `library list [--json]` |
-| Profiles: `n` new, `b` edit, `s` save, `x` delete | `profile new`, `profile add` / `profile remove`, `profile save`, `profile delete` |
+| Profiles: `n` new, `b` edit; Project: `s` save the project as a profile; Profiles: `s` save, `x` delete | `profile new`, `profile add` / `profile remove`, `profile save`, `profile delete` |
 | `/` filter, `space` fold, `?` help, `tab`, movement keys | on screen only: `list QUERY` and `list --all` do the same for the command line |
 
 ## Profiles

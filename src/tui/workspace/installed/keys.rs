@@ -151,7 +151,11 @@ impl InstalledTab {
             Edit::Editing => self.popup = Popup::Save(field),
             Edit::Submit => {
                 let name = field.value().trim().to_string();
-                return (!name.is_empty()).then_some(Act::SaveCurrent { name });
+                if name.is_empty() {
+                    self.popup = Popup::Save(field);
+                    return None;
+                }
+                return Some(Act::SaveCurrent { name });
             }
             Edit::Cancel => {}
         }
