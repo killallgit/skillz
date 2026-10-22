@@ -12,8 +12,8 @@ use super::scope::{Scene, installed};
 use crate::apply::{Applier, Switch, Watch};
 use crate::model::{Augmentation, Scope};
 use crate::stale::Disk;
-use crate::update::check::any_available;
 use crate::store::Store;
+use crate::update::check::any_available;
 use crate::{remove, update};
 
 pub(super) struct UpdateRequest<'a> {

@@ -65,13 +65,48 @@ fn r_removes_the_highlighted_project_item_at_once() {
 }
 
 #[test]
+fn r_on_a_package_removes_everything_installed_from_it() {
+    let mut tab = InstalledTab::project();
+    tab.load(&Model {
+        installed: vec![
+            installed("tdd", Kind::Skill, Some("o/r")),
+            installed("grill", Kind::Skill, Some("o/r")),
+            installed("other", Kind::Skill, Some("x/y")),
+        ],
+        ..Model::default()
+    });
+    on_item(&mut tab, 0);
+
+    let act = press(&mut tab, KeyCode::Char('r'));
+
+    assert_eq!(act, change(vec![], vec!["skill:grill", "skill:tdd"]));
+}
+
+#[test]
+fn i_on_an_available_package_installs_everything_it_offers() {
+    let mut tab = InstalledTab::project();
+    tab.load(&Model {
+        library: Catalog::from_items(vec![
+            library_skill("o/r", "grill"),
+            library_skill("o/r", "zoom"),
+        ]),
+        ..Model::default()
+    });
+    on_item(&mut tab, 1);
+
+    let act = press(&mut tab, KeyCode::Char('i'));
+
+    assert_eq!(act, change(vec![entry("grill"), entry("zoom")], vec![]));
+}
+
+#[test]
 fn i_and_r_do_nothing_where_they_do_not_apply() {
     let mut tab = loaded();
     let cases = [
         (TDD, 'i'),
         (GRILL, 'r'),
         (0, 'i'),
-        (0, 'r'),
+        (3, 'r'),
         (2, 'i'),
         (2, 'r'),
     ];

@@ -57,7 +57,10 @@ fn subagents_of_two_agents_become_one_with_both_agents_and_every_removal_step() 
 
     assert_eq!(merged.len(), 1);
     assert_eq!(merged[0].agents, [Agent::Claude, Agent::Codex]);
-    assert_eq!(merged[0].removal, [claude.removal.clone(), codex.removal.clone()].concat());
+    assert_eq!(
+        merged[0].removal,
+        [claude.removal.clone(), codex.removal.clone()].concat()
+    );
     assert_eq!(merged[0].members, [claude, codex]);
 }
 
@@ -125,7 +128,10 @@ fn mcp_servers_launched_differently_are_not_merged() {
         ..item(Kind::Mcp, "github", agent)
     };
 
-    let merged = merge(vec![server(Agent::Claude, "npx a"), server(Agent::Codex, "npx b")]);
+    let merged = merge(vec![
+        server(Agent::Claude, "npx a"),
+        server(Agent::Codex, "npx b"),
+    ]);
 
     assert_eq!(merged.len(), 2);
 }

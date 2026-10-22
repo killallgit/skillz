@@ -145,6 +145,23 @@ fn keys_on_a_hook_a_plugin_owns_do_nothing_and_pick_nothing() {
     assert_eq!(tab.outline.visible().len(), visible);
 }
 
+#[test]
+fn enter_on_a_plugin_folds_the_skills_it_provides() {
+    let mut plugin = installed("p@mp", Kind::Plugin, Some("mp"));
+    plugin.children = vec![format!("{}tdd", crate::model::SKILL_CHILD)];
+    let mut tab = InstalledTab::project();
+    tab.load(&Model {
+        installed: vec![plugin],
+        ..Model::default()
+    });
+    let open = tab.outline.visible().len();
+    on_item(&mut tab, 1);
+
+    press(&mut tab, KeyCode::Enter);
+
+    assert_eq!((open, tab.outline.visible().len()), (3, 2));
+}
+
 fn checkboxes(tab: &mut InstalledTab, width: u16, height: u16) -> (usize, usize) {
     let theme = Theme::dark();
     let buffer = render_to_buffer(width, height, |f| tab.draw(f, f.area(), &theme));

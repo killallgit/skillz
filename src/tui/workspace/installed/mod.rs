@@ -6,6 +6,7 @@ mod direct;
 #[cfg(test)]
 mod direct_tests;
 mod draw;
+mod draw_group;
 #[cfg(test)]
 mod global_tests;
 mod header;

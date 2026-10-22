@@ -3,7 +3,7 @@
 use ratatui::crossterm::event::KeyEvent;
 
 use super::picker::{Pick, Picker};
-use super::rows::{Item, Row};
+use super::rows::{Row, State, items_of};
 use super::{InstalledTab, Popup};
 use crate::tui::keymap::{self, Action};
 use crate::tui::widgets::input::Outcome as Edit;
@@ -53,9 +53,9 @@ impl InstalledTab {
     }
 
     fn toggle(&mut self) {
-        match self.current_item().map(|item| item.state.clone()) {
-            Some(state) => self.pending.toggle(&state),
-            None => self.fold(),
+        match self.acted_on().as_slice() {
+            [] => self.fold(),
+            states => self.pending.toggle_all(states),
         }
     }
 
@@ -69,18 +69,23 @@ impl InstalledTab {
         self.propose(install, remove)
     }
 
-    pub(super) fn current_item(&self) -> Option<&Item> {
-        match &self.rows[self.outline.current()?] {
-            Row::Item(item) => Some(item),
-            _ => None,
+    /// The states of what the highlighted row stands for: the item itself, or everything its
+    /// package provides.
+    pub(super) fn acted_on(&self) -> Vec<State> {
+        let Some(at) = self.outline.current() else {
+            return vec![];
+        };
+        match &self.rows[at] {
+            Row::Item(item) => vec![item.state.clone()],
+            Row::Package(_) => items_of(&self.rows, at)
+                .map(|item| item.state.clone())
+                .collect(),
+            Row::Available { .. } | Row::Owned(_) => vec![],
         }
     }
 
     fn fold(&mut self) {
-        let Some(id) = self.outline.current() else {
-            return;
-        };
-        if !matches!(self.rows[id], Row::Item(_) | Row::Owned(_)) {
+        if let Some(id) = self.outline.current() {
             self.outline.toggle_open(id);
         }
     }

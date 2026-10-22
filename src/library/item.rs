@@ -24,6 +24,23 @@ impl ItemKind {
         }
     }
 
+    /// What one of this kind is called: `skill`, `MCP server`.
+    pub fn noun(self) -> &'static str {
+        match self {
+            ItemKind::Skill => "skill",
+            ItemKind::Plugin => "plugin",
+            ItemKind::Mcp => "MCP server",
+            ItemKind::Hook => "hook",
+            ItemKind::Subagent => "subagent",
+        }
+    }
+
+    /// `1 skill`, `3 skills`.
+    pub fn counted(self, count: usize) -> String {
+        let plural = if count == 1 { "" } else { "s" };
+        format!("{count} {}{plural}", self.noun())
+    }
+
     pub fn of_entry(entry: &Entry) -> ItemKind {
         match entry {
             Entry::Skill { .. } => ItemKind::Skill,
@@ -127,6 +144,14 @@ impl LibraryItem {
         ItemKind::of_entry(&self.entry)
     }
 
+    /// The label inside its package: the thing's own name, unless the item was given a label.
+    pub fn short_label(&self) -> String {
+        match self.label == self.entry.to_string() {
+            true => self.entry.name(),
+            false => self.label.clone(),
+        }
+    }
+
     pub fn is_same_thing_as(&self, other: &LibraryItem) -> bool {
         same_thing(&self.entry, &other.entry)
     }
@@ -163,6 +188,20 @@ pub(super) mod tests {
     fn a_skill_comes_from_its_source_and_a_hook_runs_its_command() {
         assert_eq!(skill("o/r", "a").source(), "o/r");
         assert_eq!(hook("notify").source(), "notify");
+    }
+
+    #[test]
+    fn counts_say_one_thing_or_several() {
+        assert_eq!(ItemKind::Skill.counted(1), "1 skill");
+        assert_eq!(ItemKind::Mcp.counted(2), "2 MCP servers");
+    }
+
+    #[test]
+    fn inside_its_package_an_item_shows_its_own_name_unless_relabelled() {
+        let relabelled = LibraryItem::new("mine", skill("o/r", "a").entry);
+
+        assert_eq!(skill("o/r", "a").short_label(), "a");
+        assert_eq!(relabelled.short_label(), "mine");
     }
 
     #[test]

@@ -64,13 +64,16 @@ fn escape_clears_the_picks_before_anything_else() {
 }
 
 #[test]
-fn space_on_a_section_folds_it_and_picks_nothing() {
+fn space_on_a_package_picks_everything_in_it_and_again_unpicks_it() {
     let mut tab = loaded();
 
     press(&mut tab, space());
+    let picked = tab.pending.picks();
+    press(&mut tab, space());
 
-    assert_eq!(tab.outline.visible().len(), 4);
+    assert_eq!(picked, (vec![], vec!["skill:tdd".to_string()]));
     assert!(tab.pending.is_empty());
+    assert_eq!(tab.outline.visible().len(), 5);
 }
 
 #[test]

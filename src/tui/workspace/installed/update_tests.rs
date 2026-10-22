@@ -25,7 +25,7 @@ fn u_on_an_installed_item_asks_to_update_it() {
 }
 
 #[test]
-fn u_on_a_section_asks_to_update_every_installed_item_in_it() {
+fn u_on_a_package_asks_to_update_every_installed_item_in_it() {
     let mut tab = loaded();
 
     let act = press(&mut tab, u());
