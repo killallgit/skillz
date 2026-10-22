@@ -57,6 +57,7 @@ mod tests {
                 matcher: None,
                 command: "say done".into(),
             }],
+            members: Vec::new(),
             id: "plugin:claude:global:p@mp".into(),
             name: "p@mp".into(),
             kind: Kind::Plugin,

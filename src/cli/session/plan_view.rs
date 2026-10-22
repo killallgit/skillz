@@ -85,6 +85,7 @@ mod tests {
     fn removable(name: &str) -> Augmentation {
         Augmentation {
             hooks: vec![],
+            members: Vec::new(),
             id: name.into(),
             name: name.into(),
             kind: Kind::Skill,

@@ -6,6 +6,7 @@ use super::args::Filter;
 use super::deps::Deps;
 use crate::agents;
 use crate::env::Env;
+use crate::merge::merge;
 use crate::model::{Augmentation, Scope};
 
 /// The environment of the project at `path` (default: cwd).
@@ -43,7 +44,18 @@ pub(super) fn resolve(
     Ok((env, scopes))
 }
 
+/// What is installed and passes the filters, one item per thing however many agents have it.
 pub(super) fn gather(
+    deps: &Deps,
+    env: &Env,
+    scopes: &[Scope],
+    filter: &Filter,
+) -> Vec<Augmentation> {
+    merge(gather_per_agent(deps, env, scopes, filter))
+}
+
+/// The same, one item per copy: what prune compares and what `list --json` reports.
+pub(super) fn gather_per_agent(
     deps: &Deps,
     env: &Env,
     scopes: &[Scope],
@@ -100,6 +112,10 @@ impl<'a, 'd> Scene<'a, 'd> {
 
     pub(super) fn gather(&self) -> Vec<Augmentation> {
         gather(self.deps, self.env, self.scopes, self.filter)
+    }
+
+    pub(super) fn gather_per_agent(&self) -> Vec<Augmentation> {
+        gather_per_agent(self.deps, self.env, self.scopes, self.filter)
     }
 }
 

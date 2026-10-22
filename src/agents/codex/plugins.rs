@@ -123,6 +123,7 @@ fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
     children.extend(hooks.iter().map(|h| format!("{HOOK_CHILD}{}", h.label())));
     Augmentation {
         hooks,
+        members: Vec::new(),
         id: format!("plugin:codex:{}:{id}", cx.scope),
         name: id.to_string(),
         kind: Kind::Plugin,
@@ -176,6 +177,7 @@ fn marketplace(
     let own: Vec<&Augmentation> = plugins.iter().filter(|p| p.group == m.name).collect();
     Augmentation {
         hooks: Vec::new(),
+        members: Vec::new(),
         id: format!("marketplace:codex:{}:{}", cx.scope, m.name),
         name: m.name.clone(),
         kind: Kind::Marketplace,

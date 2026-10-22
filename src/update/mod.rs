@@ -9,8 +9,15 @@ use crate::action::Action;
 use crate::model::{Augmentation, Installer, Kind, Scope, split_plugin_id};
 
 /// The steps that bring `item` to the latest version, run from `cwd`; none when it cannot be
-/// updated.
+/// updated. An item seen through several agents is updated through each of them.
 pub fn steps(item: &Augmentation, cwd: &Path) -> Vec<Action> {
+    item.parts()
+        .iter()
+        .flat_map(|part| part_steps(part, cwd))
+        .collect()
+}
+
+fn part_steps(item: &Augmentation, cwd: &Path) -> Vec<Action> {
     let name = item.name.as_str();
     if name.is_empty() || name.starts_with('-') {
         return vec![];
@@ -83,6 +90,7 @@ mod tests {
     fn item(name: &str, kind: Kind, installer: Installer) -> Augmentation {
         Augmentation {
             hooks: vec![],
+            members: Vec::new(),
             id: format!("{kind}:{name}"),
             name: name.into(),
             kind,

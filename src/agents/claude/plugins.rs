@@ -48,6 +48,7 @@ fn plugin(env: &Env, scope: Scope, install: &Install, markets: &[Marketplace]) -
     children.sort();
     Augmentation {
         hooks,
+        members: Vec::new(),
         id: format!("plugin:claude:{scope}:{}", install.id),
         name: install.id.clone(),
         kind: Kind::Plugin,

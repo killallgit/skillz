@@ -14,14 +14,42 @@ pub enum ItemKind {
 }
 
 impl ItemKind {
-    pub fn title(self) -> &'static str {
+    /// What one of this kind is called: `skill`, `MCP server`.
+    pub fn noun(self) -> &'static str {
         match self {
-            ItemKind::Skill => "Skills",
-            ItemKind::Plugin => "Plugins",
-            ItemKind::Mcp => "MCP servers",
-            ItemKind::Hook => "Hooks",
-            ItemKind::Subagent => "Subagents",
+            ItemKind::Skill => "skill",
+            ItemKind::Plugin => "plugin",
+            ItemKind::Mcp => "MCP server",
+            ItemKind::Hook => "hook",
+            ItemKind::Subagent => "subagent",
         }
+    }
+
+    /// `1 skill`, `3 skills`.
+    pub fn counted(self, count: usize) -> String {
+        let plural = if count == 1 { "" } else { "s" };
+        format!("{count} {}{plural}", self.noun())
+    }
+
+    /// How many there are of each kind, in the order the kinds first appear.
+    pub fn tally(kinds: impl Iterator<Item = ItemKind>) -> Vec<(ItemKind, usize)> {
+        let mut counts: Vec<(ItemKind, usize)> = Vec::new();
+        for kind in kinds {
+            match counts.iter_mut().find(|(seen, _)| *seen == kind) {
+                Some((_, count)) => *count += 1,
+                None => counts.push((kind, 1)),
+            }
+        }
+        counts
+    }
+
+    /// `2 skills, 1 plugin`.
+    pub fn summarize(counts: &[(ItemKind, usize)]) -> String {
+        let parts: Vec<String> = counts
+            .iter()
+            .map(|(kind, count)| kind.counted(*count))
+            .collect();
+        parts.join(", ")
     }
 
     pub fn of_entry(entry: &Entry) -> ItemKind {
@@ -127,6 +155,14 @@ impl LibraryItem {
         ItemKind::of_entry(&self.entry)
     }
 
+    /// The label inside its package: the thing's own name, unless the item was given a label.
+    pub fn short_label(&self) -> String {
+        match self.label == self.entry.to_string() {
+            true => self.entry.name(),
+            false => self.label.clone(),
+        }
+    }
+
     pub fn is_same_thing_as(&self, other: &LibraryItem) -> bool {
         same_thing(&self.entry, &other.entry)
     }
@@ -163,6 +199,30 @@ pub(super) mod tests {
     fn a_skill_comes_from_its_source_and_a_hook_runs_its_command() {
         assert_eq!(skill("o/r", "a").source(), "o/r");
         assert_eq!(hook("notify").source(), "notify");
+    }
+
+    #[test]
+    fn counts_say_one_thing_or_several() {
+        assert_eq!(ItemKind::Skill.counted(1), "1 skill");
+        assert_eq!(ItemKind::Mcp.counted(2), "2 MCP servers");
+    }
+
+    #[test]
+    fn kinds_are_tallied_in_first_seen_order_and_summarized() {
+        let kinds = [ItemKind::Plugin, ItemKind::Skill, ItemKind::Plugin];
+
+        let counts = ItemKind::tally(kinds.into_iter());
+
+        assert_eq!(counts, [(ItemKind::Plugin, 2), (ItemKind::Skill, 1)]);
+        assert_eq!(ItemKind::summarize(&counts), "2 plugins, 1 skill");
+    }
+
+    #[test]
+    fn inside_its_package_an_item_shows_its_own_name_unless_relabelled() {
+        let relabelled = LibraryItem::new("mine", skill("o/r", "a").entry);
+
+        assert_eq!(skill("o/r", "a").short_label(), "a");
+        assert_eq!(relabelled.short_label(), "mine");
     }
 
     #[test]

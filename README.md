@@ -42,7 +42,7 @@ skillz list --all                # expand everything
 skillz list --hooks .            # project hooks only
 skillz list -g --skills -a claude
 skillz list -i                   # browser: expand, mark, enter -> Show / Remove…
-skillz list --json | jq '.[].name'  # items + removal plans
+skillz list --json | jq '.[].name'  # items + removal plans; "package", "merged", "members"
 
 skillz rm tdd                    # fuzzy match -> pick -> confirm -> remove
 skillz rm --hook bd -a cursor    # every hook that runs `bd`, for Cursor
@@ -261,23 +261,31 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 
 - **Project** and **Global**: the same tab over two scopes. Project is what this directory has
   installed; Global is what you have installed at user level, outside any project. Each lists its
-  installed items in sections (Skills, Plugins, MCP servers, Hooks, Subagents) with counts, then,
-  below an `Available` rule, the library items not installed in that scope, by kind. In Project, an item
+  installed items grouped by the package they come from, as `npx skills list` does: an
+  `owner/repo`, a plugin marketplace (its plugins, each expanding into the skills and hooks it
+  provides), or `local files` for hand-made items. Each group row shows the package and what it
+  provides (`2 skills, 1 subagent`); a small tag after each name says its kind. MCP servers and
+  `(unknown) hooks` (hooks no plugin declares) keep a group of their own. Below an `Available`
+  rule, the library items not installed in that scope are grouped the same way. In Project, an item
   that is also installed globally is tagged `global`. Every installed row shows where it lives on
   disk (the skill's directory, or the config file). The header shows the directory, or `Global
   (user-level)`; on Project it also shows how the directory compares with a profile you chose:
   matching, or `N missing` / `N extra`. Picked rows get their own marker and a `to install` /
-  `to remove` note, and each section shows its count of picks. A plugin lists the hooks it
-  declares beneath it (read-only, marked `added by <plugin>`; removing the plugin removes them),
-  and the Hooks section, titled `(unknown) hooks`, holds only hooks no plugin declares. A filter keeps the section
-  structure and hides sections with no match. Installs, removals and updates on Global act on
+  `to remove` note, and each group shows its count of picks. `space`, `i`, `r` and `u` on a group
+  row act on everything in it (the plan shows what, and nothing happens until you confirm it); on
+  an item row they act on that item. `enter` folds a group or a plugin. A plugin lists the skills
+  and hooks it provides beneath it (read-only, marked `added by <plugin>`; removing the plugin
+  removes them). A thing installed for several agents (a subagent for Claude and Codex, say) is
+  one row naming its agents, `claude, codex`, or `claude, codex +2` when there are many; removing
+  it removes every copy. A filter keeps the group structure and hides groups with no match. Installs, removals and updates on Global act on
   the user's installs (`npx skills -g`, `claude ... --scope user`, the Codex user config).
   Profiles apply to a project only, so Global has no `p` or `a`.
   In the background the tabs check whether installed Claude marketplaces have a newer version
   (a read-only `ls-remote`) and shows those in bold with a `*` after the name. Other kinds have
   no reliable check and are never marked. `SKILLZ_NO_UPDATE_CHECK=1` turns the check off;
   `skillz update --check` runs it from the command line.
-- **Library**: the items skillz knows about, with where each came from. The line under the list
+- **Library**: the items skillz knows about, grouped by package like the other tabs, with where
+  each came from. The line under the list
   starts with how it got there (*detected*, *added by skillz* or *added by hand*), then shows the
   link, how it was installed (`npx skills`, `claude plugin`, `codex plugin`, `manual`) and the
   version or hash recorded. A `project` or `global` tag after a name says where the item is

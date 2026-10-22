@@ -72,6 +72,7 @@ impl Scan<'_> {
             .map_or_else(|| self.origin(), |_| Origin::default());
         Some(Augmentation {
             hooks: Vec::new(),
+            members: Vec::new(),
             id: format!("subagent:{}:{}:{file}", self.agent, self.scope),
             name,
             kind: Kind::Subagent,

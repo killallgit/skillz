@@ -13,6 +13,7 @@ use crate::apply::{Applier, Switch, Watch};
 use crate::model::{Augmentation, Scope};
 use crate::stale::Disk;
 use crate::store::Store;
+use crate::update::check::any_available;
 use crate::{remove, update};
 
 pub(super) struct UpdateRequest<'a> {
@@ -111,7 +112,7 @@ pub(super) fn check(
     let items = scene.gather();
     let outdated: Vec<&Augmentation> = remove::matches(&items, query)
         .into_iter()
-        .filter(|item| scene.deps.checker.available(item))
+        .filter(|item| any_available(scene.deps.checker.as_ref(), item))
         .collect();
     if json {
         let rows: Vec<_> = outdated

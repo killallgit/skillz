@@ -145,6 +145,7 @@ mod tests {
     fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
         Augmentation {
             hooks: vec![],
+            members: Vec::new(),
             id: format!("{kind}:{name}"),
             name: name.into(),
             kind,

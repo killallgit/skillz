@@ -25,12 +25,18 @@ impl Pending {
         self.picked.contains(state)
     }
 
-    pub fn toggle(&mut self, state: &State) {
-        match self.picked.iter().position(|picked| picked == state) {
-            Some(at) => {
-                self.picked.remove(at);
+    /// Pick all of `states`, or unpick them when all are picked already.
+    pub fn toggle_all(&mut self, states: &[State]) {
+        match states.iter().all(|state| self.contains(state)) {
+            true => self.picked.retain(|picked| !states.contains(picked)),
+            false => {
+                let missing: Vec<State> = states
+                    .iter()
+                    .filter(|state| !self.contains(state))
+                    .cloned()
+                    .collect();
+                self.picked.extend(missing);
             }
-            None => self.picked.push(state.clone()),
         }
     }
 
@@ -63,14 +69,19 @@ impl Pending {
 
     /// The entries to install and the ids to remove.
     pub fn picks(&self) -> (Vec<Entry>, Vec<String>) {
-        self.picked
-            .iter()
-            .fold((vec![], vec![]), |(mut install, mut remove), state| {
-                match state {
-                    State::Available(entry) => install.push(entry.clone()),
-                    State::Installed(id) => remove.push(id.clone()),
-                }
-                (install, remove)
-            })
+        split(&self.picked)
     }
+}
+
+/// The entries among `states` to install and the ids to remove.
+pub fn split(states: &[State]) -> (Vec<Entry>, Vec<String>) {
+    states
+        .iter()
+        .fold((vec![], vec![]), |(mut install, mut remove), state| {
+            match state {
+                State::Available(entry) => install.push(entry.clone()),
+                State::Installed(id) => remove.push(id.clone()),
+            }
+            (install, remove)
+        })
 }

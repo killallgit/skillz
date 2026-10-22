@@ -87,6 +87,17 @@ impl Entry {
     }
 }
 
+impl Entry {
+    /// What the entry is called inside its package.
+    pub fn name(&self) -> String {
+        match self {
+            Entry::Skill { names, .. } | Entry::Subagent { names, .. } => names.join(","),
+            Entry::Plugin { name, .. } | Entry::Mcp { name, .. } => name.clone(),
+            Entry::Hook { event, command, .. } => format!("{event} {command}"),
+        }
+    }
+}
+
 impl fmt::Display for Entry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

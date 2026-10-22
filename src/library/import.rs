@@ -54,6 +54,7 @@ pub(super) mod tests {
     pub fn installed_skill(name: &str, source: Option<&str>) -> Augmentation {
         Augmentation {
             hooks: vec![],
+            members: Vec::new(),
             id: format!("skill:{name}"),
             name: name.into(),
             kind: Kind::Skill,

@@ -185,6 +185,26 @@ entry), `ClaudeCli` / `CodexCli` (plugins, marketplaces and MCP servers in that 
 records), or `Local` (a skill without a lock entry, e.g. copied from a local path, hooks and
 subagents). Removal uses this to pick the tool's own uninstall.
 
+## Packages and merged items
+
+Everything that lists installed items groups them by source package (`package::Package::of`):
+an `owner/repo` that skills and subagents were fetched from, a plugin marketplace (the
+marketplace and its plugins), `local files` for items with no source, and two groups that have no
+package, `MCP servers` and the unowned hooks (`(unknown) hooks`). `package::group_by` orders the
+groups: named packages alphabetically, then local files, MCP servers, hooks; members keep their
+order. The Project, Global and Library tabs, `list` and `list --json` all use it, so no view has a
+separate Skills or Plugins section. The tabs' rows are `Available` header, `Package` (a group
+with counts per kind), `Item` and `Owned` (what a plugin provides, read-only); `space`, `i`, `r`
+and `u` on a `Package` row act on the states of every item below it (`acted_on`).
+
+`merge::merge` runs on every inventory read (`Scene::gather`): the same kind, name, scope, group
+and source seen through several agents (a subagent in `.claude/agents` and `.codex/agents`, an
+identical hook or MCP launch in two configs) becomes one `Augmentation` whose `members` are the
+copies, `agents` the union and `removal` the members' steps in order. Items with different
+sources or scopes never merge. `-a` filters before merging, so they restrict the members.
+`list --json` has one row per merged item, with `package`, `merged` and `members` (`id`,
+`agents`, `location` per copy); `merge::tag` abbreviates agents to `claude, codex +2`.
+
 ## Ids and grouping
 
 - Skill: `skill:<canonical path>` (plus `:project` for a project item whose canonical dir a
@@ -452,7 +472,7 @@ Kind flags: `--skills --hooks --plugins --marketplaces --mcp --subagents` (singu
   both (project = cwd). A project that is the home dir is global only. `use` and `profile save`
   take exactly one scope (`-g` or the project).
 - No kind flag = all kinds. `-a` filters by agent.
-- `list` prints group headers with item counts; when QUERY matches span several groups on a terminal it
+- `list` prints one group per package (scope, then package) with item counts; when QUERY matches span several groups on a terminal it
   opens the browser (`--json` and pipes take all matches); a QUERY (fuzzy, as in uninstall; a matched
   marketplace pulls in its whole group) or `--all` prints the expanded tree. A positional
   starting with `.`, `..` or `/` (`.`, `./sub`, `/abs`) is the project path; any other word is

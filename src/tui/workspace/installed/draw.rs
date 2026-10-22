@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::header::{self, Comparison};
-use super::rows::{self, Item, Owned, Part, Row, State};
+use super::rows::{Item, Row, State};
 use super::status::Status;
 use super::{InstalledTab, Popup};
 use crate::apply::Drift;
@@ -19,7 +19,7 @@ use crate::tui::widgets::panel::Panel;
 use crate::tui::workspace::Tab;
 
 /// Room per level of depth before a row's caret or status mark.
-const INDENT: &str = "  ";
+pub(super) const INDENT: &str = "  ";
 /// Cells of rule before and after the `Available` header's title.
 const RULE_LEAD: usize = 2;
 const RULE_TAIL: usize = 12;
@@ -96,50 +96,10 @@ impl InstalledTab {
                     Span::styled(format!("  {total} {}", rule(RULE_TAIL)), theme.muted),
                 ])
             }
-            Row::Section { kind, total, part } => {
-                let caret = self.outline.caret(id, &theme.glyphs);
-                let indent = INDENT.repeat(self.outline.depth(id));
-                let lead = match part {
-                    Part::Installed => "",
-                    Part::Available => "Available ",
-                };
-                let title = format!("{indent}{caret} {lead}{}", rows::title(*part, *kind));
-                let mut spans = vec![
-                    Span::styled(title, theme.title),
-                    Span::styled(format!("  {total}"), theme.muted),
-                ];
-                spans.extend(self.pending_summary(id, theme));
-                Line::from(spans)
-            }
+            Row::Package(group) => self.group_line(id, group, theme),
             Row::Item(item) => self.item_line(id, item, theme),
             Row::Owned(owned) => self.owned_line(id, owned, theme),
         }
-    }
-
-    fn owned_line(&self, id: usize, owned: &Owned, theme: &Theme) -> Line<'static> {
-        Line::from(vec![
-            Span::raw(INDENT.repeat(self.outline.depth(id))),
-            Span::styled(format!("  {}", owned.label), theme.text),
-            Span::styled(format!("  {}", owned.detail), theme.muted),
-        ])
-    }
-
-    fn pending_summary(&self, section: usize, theme: &Theme) -> Option<Span<'static>> {
-        let items = self.rows[section + 1..]
-            .iter()
-            .take_while(|row| matches!(row, Row::Item(_) | Row::Owned(_)))
-            .filter_map(|row| match row {
-                Row::Item(item) => Some(item),
-                _ => None,
-            });
-        let counts = self.pending.counts(items);
-        let text = match (counts.install, counts.remove) {
-            (0, 0) => return None,
-            (install, 0) => format!("{install} to install"),
-            (0, remove) => format!("{remove} to remove"),
-            (install, remove) => format!("{install} to install, {remove} to remove"),
-        };
-        Some(Span::styled(format!("  {text}"), theme.accent))
     }
 
     /// The spinner, tick or cross of a change under way on the row; a space otherwise.
@@ -185,6 +145,10 @@ impl InstalledTab {
         ));
         if outdated {
             spans.push(Span::styled("*", text_style));
+        }
+        spans.push(Span::styled(format!("  {}", item.kind.noun()), theme.muted));
+        if !item.agents.is_empty() {
+            spans.push(Span::styled(format!("  ({})", item.agents), theme.muted));
         }
         if item.global {
             spans.push(Span::styled(format!("  {GLOBAL_TAG}"), theme.accent));

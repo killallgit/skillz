@@ -44,6 +44,7 @@ fn step(program: &str) -> Action {
 fn installed_skill(name: &str) -> Augmentation {
     Augmentation {
         hooks: vec![],
+        members: Vec::new(),
         id: format!("skill:{name}"),
         name: name.into(),
         kind: Kind::Skill,

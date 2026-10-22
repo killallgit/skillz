@@ -3,6 +3,7 @@
 
 use ratatui::crossterm::event::KeyEvent;
 
+use super::pending::split;
 use super::rows::{Row, State};
 use super::{InstalledTab, Popup};
 use crate::model::Scope;
@@ -46,22 +47,23 @@ impl Proposal {
 }
 
 impl InstalledTab {
-    /// Install the highlighted item into the project; anything else is left alone.
+    /// Install the highlighted library item, or everything its package offers; installed rows
+    /// are left alone.
     pub(super) fn install_current(&mut self) -> Option<Act> {
-        match self.current_item()?.state.clone() {
-            State::Available(entry) => self.propose(vec![entry], vec![]),
-            State::Installed(_) => None,
+        let (install, _) = split(&self.acted_on());
+        match install.is_empty() {
+            true => None,
+            false => self.propose(install, vec![]),
         }
     }
 
-    /// Remove the highlighted installed item; library rows are left alone.
+    /// Remove the highlighted installed item, or everything its package provides; library rows
+    /// are left alone.
     pub(super) fn remove_current(&mut self) -> Option<Act> {
-        match &self.current_item()?.state {
-            State::Installed(id) => {
-                let remove = vec![id.clone()];
-                self.propose(vec![], remove)
-            }
-            State::Available(_) => None,
+        let (_, remove) = split(&self.acted_on());
+        match remove.is_empty() {
+            true => None,
+            false => self.propose(vec![], remove),
         }
     }
 

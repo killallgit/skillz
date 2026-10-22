@@ -169,7 +169,7 @@ pub fn run(
     let still_installed = plan
         .chosen
         .iter()
-        .filter(|c| after.iter().any(|i| i.id == c.id))
+        .filter(|c| c.parts().iter().any(|p| after.iter().any(|i| i.id == p.id)))
         .map(|&c| c.clone())
         .collect();
     Ok(Outcome {
@@ -186,6 +186,7 @@ mod tests {
     fn item(name: &str, agents: &[Agent], removal: Vec<Action>) -> Augmentation {
         Augmentation {
             hooks: Vec::new(),
+            members: Vec::new(),
             id: name.into(),
             name: name.into(),
             kind: Kind::Skill,
