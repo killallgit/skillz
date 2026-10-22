@@ -58,7 +58,7 @@ impl Tabs {
     }
 
     fn tab(&self, index: usize, title: &str, theme: &Theme) -> Span<'static> {
-        let label = format!("{} {title}", index + 1);
+        let label = title.to_string();
         if index == self.selected {
             Span::styled(label, theme.accent.add_modifier(Modifier::BOLD))
         } else {

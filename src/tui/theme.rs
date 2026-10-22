@@ -3,6 +3,7 @@
 use ratatui::style::{Color, Modifier, Style};
 
 use super::glyphs::Glyphs;
+use crate::library::ItemKind;
 
 /// How a status reads at a glance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +26,42 @@ pub struct Theme {
     pub border: Style,
     pub title: Style,
     pub text: Style,
+    pub kinds: Kinds,
     pub glyphs: Glyphs,
+}
+
+/// One style per kind of item, none of them the greens, yellows and reds that mean a state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Kinds {
+    skill: Style,
+    plugin: Style,
+    subagent: Style,
+    mcp: Style,
+    hook: Style,
+}
+
+impl Kinds {
+    fn of(colours: [u8; 5]) -> Self {
+        let [skill, plugin, subagent, mcp, hook] = colours.map(|c| fg(Color::Indexed(c)));
+        Kinds {
+            skill,
+            plugin,
+            subagent,
+            mcp,
+            hook,
+        }
+    }
+
+    /// Kinds told apart by the word alone.
+    fn plain() -> Self {
+        Kinds {
+            skill: Style::new(),
+            plugin: Style::new(),
+            subagent: Style::new(),
+            mcp: Style::new(),
+            hook: Style::new(),
+        }
+    }
 }
 
 fn fg(color: Color) -> Style {
@@ -49,6 +85,7 @@ impl Theme {
             border: fg(Color::DarkGray),
             title: fg(Color::White).add_modifier(Modifier::BOLD),
             text: Style::new(),
+            kinds: Kinds::of([75, 177, 80, 180, 146]),
             glyphs: Glyphs::UNICODE,
         }
     }
@@ -65,6 +102,7 @@ impl Theme {
             border: fg(Color::Gray),
             title: fg(Color::Black).add_modifier(Modifier::BOLD),
             text: Style::new(),
+            kinds: Kinds::of([25, 127, 30, 94, 60]),
             glyphs: Glyphs::UNICODE,
         }
     }
@@ -82,6 +120,7 @@ impl Theme {
             border: modifier(Modifier::DIM),
             title: modifier(Modifier::BOLD),
             text: Style::new(),
+            kinds: Kinds::plain(),
             glyphs: Glyphs {
                 cursor: "> ",
                 ..Glyphs::UNICODE
@@ -129,6 +168,16 @@ impl Theme {
             State::Warn => self.warn,
             State::Danger => self.danger,
             State::Muted => self.muted,
+        }
+    }
+
+    pub fn kind_style(&self, kind: ItemKind) -> Style {
+        match kind {
+            ItemKind::Skill => self.kinds.skill,
+            ItemKind::Plugin => self.kinds.plugin,
+            ItemKind::Subagent => self.kinds.subagent,
+            ItemKind::Mcp => self.kinds.mcp,
+            ItemKind::Hook => self.kinds.hook,
         }
     }
 
@@ -255,6 +304,24 @@ mod tests {
         assert_eq!(t.state_style(State::Warn), t.warn);
         assert_eq!(t.state_style(State::Danger), t.danger);
         assert_eq!(t.state_style(State::Muted), t.muted);
+    }
+
+    #[test]
+    fn every_kind_has_its_own_colour_except_in_mono() {
+        let kinds = [
+            ItemKind::Skill,
+            ItemKind::Plugin,
+            ItemKind::Subagent,
+            ItemKind::Mcp,
+            ItemKind::Hook,
+        ];
+        let colours = |t: Theme| -> Vec<_> { kinds.map(|k| t.kind_style(k).fg).to_vec() };
+        for theme in [Theme::dark(), Theme::light()] {
+            let all = colours(theme);
+            assert!(all.iter().all(Option::is_some));
+            assert!(all.iter().enumerate().all(|(i, c)| !all[..i].contains(c)));
+        }
+        assert!(colours(Theme::mono()).iter().all(Option::is_none));
     }
 
     #[test]

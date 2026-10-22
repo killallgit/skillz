@@ -39,10 +39,10 @@ pub(super) fn space() -> KeyCode {
     KeyCode::Char(' ')
 }
 
-/// The row of the installed skill in `model()`; its section comes first.
+/// The row of the installed skill in `model()`, first under its package.
 pub(super) const TDD: usize = 1;
-/// The row of the library skill in `model()`, after the `Available` header and its section.
-pub(super) const GRILL: usize = 4;
+/// The row of the library skill in `model()`, after the installed one in the same package.
+pub(super) const GRILL: usize = 2;
 
 pub(super) fn on_item(tab: &mut InstalledTab, row: usize) {
     tab.outline.select_row(row);
@@ -55,7 +55,7 @@ fn enter_on_a_section_closes_and_reopens_it_without_asking_for_anything() {
     let closed = (press(&mut tab, KeyCode::Enter), tab.outline.visible().len());
     let opened = (press(&mut tab, KeyCode::Enter), tab.outline.visible().len());
 
-    assert_eq!((closed, opened), ((None, 4), (None, 5)));
+    assert_eq!((closed, opened), ((None, 1), (None, 3)));
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn the_filter_prompt_is_offered_while_typing_and_narrows_the_rows() {
     press(&mut tab, KeyCode::Enter);
 
     assert!(typing && tab.prompt().is_none());
-    assert_eq!(tab.outline.visible(), [2, 3, GRILL]);
+    assert_eq!(tab.outline.visible(), [0, GRILL]);
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn a_new_snapshot_keeps_the_cursor_and_the_closed_sections() {
 
     tab.load(&model());
 
-    assert_eq!(tab.outline.visible().len(), 4);
+    assert_eq!(tab.outline.visible().len(), 1);
 }
 
 #[test]

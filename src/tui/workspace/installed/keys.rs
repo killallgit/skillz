@@ -82,7 +82,7 @@ impl InstalledTab {
             Row::Package(_) => items_of(&self.rows, at)
                 .map(|item| item.state.clone())
                 .collect(),
-            Row::Available { .. } | Row::Owned(_) => vec![],
+            Row::Owned(_) => vec![],
         }
     }
 

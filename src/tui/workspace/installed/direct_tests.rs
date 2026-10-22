@@ -9,8 +9,8 @@ use crate::profile::Entry;
 use crate::tui::widgets::testing::keys;
 
 /// A library skill that is installed globally too, and one that is not.
-const GLOBAL_GRILL: usize = 4;
-const ZOOM: usize = 5;
+const GLOBAL_GRILL: usize = 2;
+const ZOOM: usize = 3;
 
 fn with_global_grill() -> InstalledTab {
     let mut tab = InstalledTab::project();
@@ -92,7 +92,7 @@ fn i_on_an_available_package_installs_everything_it_offers() {
         ]),
         ..Model::default()
     });
-    on_item(&mut tab, 1);
+    on_item(&mut tab, 0);
 
     let act = press(&mut tab, KeyCode::Char('i'));
 
@@ -102,14 +102,7 @@ fn i_on_an_available_package_installs_everything_it_offers() {
 #[test]
 fn i_and_r_do_nothing_where_they_do_not_apply() {
     let mut tab = loaded();
-    let cases = [
-        (TDD, 'i'),
-        (GRILL, 'r'),
-        (0, 'i'),
-        (3, 'r'),
-        (2, 'i'),
-        (2, 'r'),
-    ];
+    let cases = [(TDD, 'i'), (GRILL, 'r')];
 
     let acts: Vec<Option<Act>> = cases
         .into_iter()

@@ -17,13 +17,9 @@ use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
-use crate::tui::workspace::Tab;
 
 /// Room per level of depth before a row's caret or status mark.
 pub(super) const INDENT: &str = "  ";
-/// Cells of rule before and after the `Available` header's title.
-const RULE_LEAD: usize = 2;
-const RULE_TAIL: usize = 12;
 const SOURCE_WIDTH: u16 = 56;
 const GLOBAL_TAG: &str = "global";
 
@@ -53,7 +49,7 @@ impl InstalledTab {
     fn heading(&self) -> &str {
         match self.scope {
             Scope::Project => &self.dir,
-            Scope::Global => "Global (user-level)",
+            Scope::Global => "User-level, all projects",
         }
     }
 
@@ -66,7 +62,7 @@ impl InstalledTab {
     }
 
     fn draw_outline(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let panel = Panel::new(filter::title(self.title(), self.outline.query()))
+        let panel = Panel::new(filter::title("Items", self.outline.query()))
             .focused(true)
             .badge(self.outline.badge());
         let inner = panel.render(frame, area, theme);
@@ -88,24 +84,12 @@ impl InstalledTab {
         }
         vec![
             Line::styled("Nothing installed here", theme.text),
-            Line::styled(
-                "Add skills to the library (tab 3) to install them",
-                theme.muted,
-            ),
+            Line::styled("Add skills to the Library tab to install them", theme.muted),
         ]
     }
 
     fn row_line(&self, id: usize, theme: &Theme) -> Line<'static> {
         match &self.rows[id] {
-            Row::Available { total } => {
-                let rule = |cells| theme.glyphs.rule.repeat(cells);
-                let caret = self.outline.caret(id, &theme.glyphs);
-                let title = format!("{caret} {} Available", rule(RULE_LEAD));
-                Line::from(vec![
-                    Span::styled(title, theme.title),
-                    Span::styled(format!("  {total} {}", rule(RULE_TAIL)), theme.muted),
-                ])
-            }
             Row::Package(group) => self.group_line(id, group, theme),
             Row::Item(item) => self.item_line(id, item, theme),
             Row::Owned(owned) => self.owned_line(id, owned, theme),
@@ -129,17 +113,32 @@ impl InstalledTab {
         let glyphs = &theme.glyphs;
         let picked = self.pending.contains(&item.state);
         let (box_glyph, box_style, text_style, note) = match (&item.state, picked) {
-            (State::Installed(_), false) => (glyphs.checked, theme.ok, theme.text, ""),
-            (State::Available(_), false) => (glyphs.unchecked, theme.muted, theme.muted, ""),
+            (State::Installed(_), false) => (
+                glyphs.checked,
+                theme.ok,
+                theme.text.add_modifier(Modifier::BOLD),
+                "",
+            ),
+            (State::Available(_), false) => (
+                glyphs.unchecked,
+                theme.muted,
+                theme.muted.add_modifier(Modifier::DIM),
+                "",
+            ),
             (State::Installed(_), true) => (glyphs.to_remove, theme.warn, theme.warn, "to remove"),
             (State::Available(_), true) => {
                 (glyphs.to_install, theme.accent, theme.accent, "to install")
             }
         };
+        let kind_style = match item.state {
+            State::Installed(_) => theme.kind_style(item.kind).add_modifier(Modifier::BOLD),
+            State::Available(_) => theme.kind_style(item.kind).add_modifier(Modifier::DIM),
+        };
         let mut spans = vec![
             Span::raw(INDENT.repeat(self.outline.depth(id))),
             self.status_mark(&item.state, theme),
             Span::styled(format!(" {box_glyph} "), box_style),
+            Span::styled(format!("{} ", item.kind.tag()), kind_style),
         ];
         let outdated = self.is_outdated(&item.state);
         let text_style = match outdated {
@@ -156,7 +155,6 @@ impl InstalledTab {
         if outdated {
             spans.push(Span::styled("*", text_style));
         }
-        spans.push(Span::styled(format!("  {}", item.kind.noun()), theme.muted));
         if !item.agents.is_empty() {
             spans.push(Span::styled(format!("  ({})", item.agents), theme.muted));
         }

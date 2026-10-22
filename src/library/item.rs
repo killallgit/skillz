@@ -25,6 +25,17 @@ impl ItemKind {
         }
     }
 
+    /// The kind padded to one width, so a column of rows lines up: `skill `, `agent `.
+    pub fn tag(self) -> &'static str {
+        match self {
+            ItemKind::Skill => "skill ",
+            ItemKind::Plugin => "plugin",
+            ItemKind::Mcp => "mcp   ",
+            ItemKind::Hook => "hook  ",
+            ItemKind::Subagent => "agent ",
+        }
+    }
+
     pub fn of_entry(entry: &Entry) -> ItemKind {
         match entry {
             Entry::Skill { .. } => ItemKind::Skill,
