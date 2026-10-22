@@ -189,3 +189,21 @@ fn parts_of_a_merged_item_are_its_copies_and_of_a_lone_item_itself() {
     assert_eq!(lone.parts(), std::slice::from_ref(&lone));
     assert_eq!(merged[0].parts().len(), 2);
 }
+
+#[test]
+fn a_plugin_installed_for_two_agents_is_one_whatever_source_each_recorded() {
+    let claude = Augmentation {
+        source: Some("o/mp".into()),
+        ..item(Kind::Plugin, "p@mp", Agent::Claude)
+    };
+    let codex = Augmentation {
+        source: None,
+        ..item(Kind::Plugin, "p@mp", Agent::Codex)
+    };
+
+    let merged = merge(vec![claude, codex]);
+
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0].agents, [Agent::Claude, Agent::Codex]);
+    assert_eq!(merged[0].removal.len(), 2);
+}
