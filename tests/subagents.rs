@@ -49,6 +49,8 @@ fn listed_subagents(d: &Deps) -> Vec<Value> {
         project: Some(PathBuf::from(".")),
         all: true,
         json: true,
+        check: false,
+        available: false,
         filter: Filter {
             subagents: true,
             ..Filter::default()

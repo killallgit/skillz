@@ -88,6 +88,62 @@ fn the_listing_says_where_an_item_came_from_and_where_it_is_installed() {
 }
 
 #[test]
+fn available_lists_what_the_library_offers_and_the_project_lacks() {
+    // Assemble
+    let sb = with_library(&[SAY_HI, "skill o/r tdd"]);
+    sb.skillz(&["library", "install", "say hi", "-y"]);
+
+    // Act
+    let in_project = sb.json(&["list", "--available", "--json"]);
+    let for_user = sb.json(&["list", "--available", "--json", "-g"]);
+
+    // Assert: the hook is installed in the project but not for the user
+    assert_eq!(kinds(&in_project), ["skill"]);
+    assert_eq!(kinds(&for_user).len(), 2);
+}
+
+#[test]
+fn available_cannot_be_combined_with_a_check_for_updates() {
+    // Assemble
+    let sb = Sandbox::new();
+
+    // Act
+    let out = sb.skillz(&["list", "--available", "--json", "--check"]);
+
+    // Assert
+    assert!(!out.status.success());
+}
+
+#[test]
+fn the_installed_listing_gives_each_items_location_and_optionally_its_update_marker() {
+    // Assemble
+    let sb = with_library(&[SAY_HI]);
+    sb.skillz(&["library", "install", "say hi", "-y"]);
+
+    // Act
+    let plain = sb.json(&["list", "--json"]);
+    let checked = sb.json(&["list", "--json", "--check"]);
+
+    // Assert
+    let first = |rows: &serde_json::Value| rows.as_array().unwrap()[0].clone();
+    assert!(first(&plain)["location"].is_string());
+    assert!(first(&plain).get("update_available").is_none());
+    assert_eq!(first(&checked)["update_available"], false);
+}
+
+#[test]
+fn a_check_without_json_is_refused() {
+    // Assemble
+    let sb = Sandbox::new();
+
+    // Act
+    let out = sb.skillz(&["list", "--check"]);
+
+    // Assert
+    assert!(!out.status.success());
+}
+
+#[test]
 fn the_listing_can_be_limited_to_kinds() {
     // Assemble
     let sb = with_library(&[SAY_HI, "skill o/r tdd"]);

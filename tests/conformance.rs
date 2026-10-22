@@ -181,7 +181,7 @@ fn uninstall_runs_the_fakes_removal_plan() {
         scanner: None,
     };
     let cmd = Command::Uninstall(UninstallArgs {
-        query: Some(PLUGIN.into()),
+        queries: vec![PLUGIN.into()],
         project: None,
         filter: Filter::default(),
         yes: true,

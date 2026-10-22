@@ -27,6 +27,8 @@ fn listed_mcp_servers() -> Value {
         project: None,
         all: true,
         json: true,
+        check: false,
+        available: false,
         filter: only_mcp(),
         interactive: false,
     });

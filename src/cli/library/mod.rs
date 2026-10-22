@@ -1,6 +1,7 @@
 //! `skillz library`: the library the workspace's Library tab shows, from the command line.
 
 mod install;
+mod listing;
 mod rows;
 
 use std::io::Write;
@@ -9,15 +10,13 @@ use std::path::PathBuf;
 use anyhow::Context;
 
 use super::deps::Deps;
-use super::library_args::{AddArgs, LibraryCommand, LibraryListArgs, LibraryRemoveArgs};
+use super::library_args::{AddArgs, LibraryCommand, LibraryRemoveArgs};
 use super::pick::{Choosing, pick};
-use super::scope::{installed, resolve_project};
+use super::scope::resolve_project;
 use super::session::{Console, Session, with_session};
-use crate::env::Env;
-use crate::library::{Catalog, Held, LibraryItem};
-use crate::model::Scope;
+use crate::library::{Catalog, LibraryItem};
 use crate::profile::Entry;
-pub(super) use rows::{Row, rows};
+pub(super) use listing::available;
 
 pub(super) fn library_command(
     deps: &Deps,
@@ -27,7 +26,7 @@ pub(super) fn library_command(
 ) -> anyhow::Result<()> {
     let env = resolve_project(deps, project.as_deref())?;
     match action {
-        LibraryCommand::List(args) => list(deps, &env, &args, out),
+        LibraryCommand::List(args) => listing::list(deps, &env, &args, out),
         LibraryCommand::Add(args) => {
             with_session(deps, &env, out, args.dry_run, |session, console| {
                 add(session, console, &args)
@@ -44,32 +43,6 @@ pub(super) fn library_command(
             })
         }
     }
-}
-
-/// The library kept in the store, and what the project and the user have installed of it.
-pub(super) fn held_by(deps: &Deps, env: &Env) -> Held {
-    let [project, global] =
-        [Scope::Project, Scope::Global].map(|scope| installed(deps, env, scope));
-    Held::of(&project, &global)
-}
-
-fn list(deps: &Deps, env: &Env, args: &LibraryListArgs, out: &mut dyn Write) -> anyhow::Result<()> {
-    let library = crate::store::Store::in_env(env).read()?.items;
-    let kinds = args.kinds.kinds();
-    let shown = library
-        .items()
-        .iter()
-        .filter(|item| kinds.is_empty() || kinds.contains(&item.kind()))
-        .collect();
-    let rows = rows(shown, &held_by(deps, env));
-    if args.json {
-        let json: Vec<_> = rows.iter().map(Row::json).collect();
-        writeln!(out, "{}", serde_json::to_string_pretty(&json)?)?;
-    } else {
-        rows.iter()
-            .try_for_each(|row| writeln!(out, "{}", row.line()))?;
-    }
-    Ok(())
 }
 
 fn add(session: &Session, console: &Console, args: &AddArgs) -> anyhow::Result<()> {

@@ -73,9 +73,15 @@ pub struct ListArgs {
     /// Expand every group
     #[arg(long)]
     pub all: bool,
-    /// Print the matching items (with their removal plans) as JSON, no tree
+    /// Print the matching items (with their location and removal plans) as JSON, no tree
     #[arg(long, conflicts_with = "interactive")]
     pub json: bool,
+    /// With --json, say which items have a newer version (needs the network)
+    #[arg(long, requires = "json")]
+    pub check: bool,
+    /// List what the library offers that the project (with -g: the user) does not have installed
+    #[arg(long, conflicts_with_all = ["interactive", "all", "check"])]
+    pub available: bool,
     #[command(flatten)]
     pub filter: Filter,
     /// Browse in a collapsible tree
@@ -100,14 +106,14 @@ pub struct RunArgs {
 
 #[derive(Debug, Args)]
 pub struct UninstallArgs {
-    /// Fuzzy query over name, group and source
-    pub query: Option<String>,
+    /// Fuzzy queries over name, group and source; the items of all of them go in one plan
+    pub queries: Vec<String>,
     /// Project directory (default: cwd)
     #[arg(short = 'p', long)]
     pub project: Option<PathBuf>,
     #[command(flatten)]
     pub filter: Filter,
-    /// Don't prompt; requires an unambiguous query
+    /// Don't prompt; requires every query to be unambiguous
     #[arg(short, long)]
     pub yes: bool,
     /// Print the removal plan without changing anything

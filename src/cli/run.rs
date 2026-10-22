@@ -7,7 +7,7 @@ use super::args::{
 };
 use super::deps::Deps;
 use super::isolate::run_isolated;
-use super::library::library_command;
+use super::library::{available, library_command};
 use super::list::{ListView, list};
 use super::profile::profile_command;
 use super::prune::prune;
@@ -48,12 +48,18 @@ fn succeeded(result: anyhow::Result<()>) -> anyhow::Result<i32> {
 }
 
 fn run_list(deps: &Deps, args: ListArgs, out: &mut dyn Write) -> anyhow::Result<()> {
+    if args.available {
+        let scope = scope_of(args.filter.global);
+        let env = resolve_project(deps, args.project.as_deref())?;
+        return available(deps, &env, (scope, args.json), out);
+    }
     let (path, query) = split_target(args.project, args.target);
     let (env, scopes) = resolve(deps, path.as_deref(), args.filter.global)?;
     let view = ListView {
         query: query.as_deref(),
         all: args.all,
         json: args.json,
+        check: args.check,
         interactive: args.interactive,
     };
     list(&Scene::new(deps, &env, &scopes, &args.filter), view, out)
@@ -63,7 +69,7 @@ fn run_uninstall(deps: &Deps, args: UninstallArgs, out: &mut dyn Write) -> anyho
     let (env, scopes) = resolve(deps, args.project.as_deref(), args.filter.global)?;
     let scene = Scene::new(deps, &env, &scopes, &args.filter);
     let request = UninstallRequest {
-        query: args.query.as_deref(),
+        queries: &args.queries,
         yes: args.yes,
         dry_run: args.dry_run,
     };
