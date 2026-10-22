@@ -18,10 +18,11 @@ pub(in crate::cli) enum Notice {
     Applied(String),
     LibraryAdded(String),
     LibraryRemoved(String),
-    /// How many items the library gained from what is installed, and how many installed
-    /// items were left out for needing secrets.
+    /// How many items the library gained from what is installed, how many moved folders it
+    /// followed, and how many installed items were left out for needing secrets.
     Synced {
         added: usize,
+        moved: usize,
         secrets: usize,
     },
     Created(String),
@@ -47,12 +48,19 @@ impl fmt::Display for Notice {
             Notice::Applied(profile) => write!(f, "applied {profile}"),
             Notice::LibraryAdded(what) => write!(f, "added {what} to the library"),
             Notice::LibraryRemoved(what) => write!(f, "removed {what} from the library"),
-            Notice::Synced { added, secrets: 0 } => write!(f, "library: {added} new"),
-            Notice::Synced { added, secrets } => {
-                write!(
-                    f,
-                    "library: {added} new, {secrets} left out for needing secrets"
-                )
+            Notice::Synced {
+                added,
+                moved,
+                secrets,
+            } => {
+                write!(f, "library: {added} new")?;
+                if *moved > 0 {
+                    write!(f, ", moved: {moved}")?;
+                }
+                if *secrets > 0 {
+                    write!(f, ", {secrets} left out for needing secrets")?;
+                }
+                Ok(())
             }
             Notice::Created(name) => write!(f, "created {name}"),
             Notice::Saved { name, skipped } if skipped.is_empty() => write!(f, "saved {name}"),

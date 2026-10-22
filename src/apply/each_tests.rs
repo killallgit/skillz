@@ -10,6 +10,7 @@ use crate::model::{Agent, Installer, Kind, Scope};
 use crate::profile::Entry;
 use crate::review::{ItemEvent, Phase, Target};
 use crate::runner::{CommandRunner, Output};
+use crate::stale::{Disk, Probe};
 
 /// Runs every program successfully except the one named.
 struct Runner(&'static str);
@@ -70,6 +71,14 @@ fn switch(installs: Vec<(Entry, Vec<Action>)>, removals: Vec<Augmentation>) -> S
 }
 
 fn watched(switch: &Switch, runner: &dyn CommandRunner) -> (Each, Vec<ItemEvent>) {
+    watched_with(switch, runner, &Disk)
+}
+
+fn watched_with(
+    switch: &Switch,
+    runner: &dyn CommandRunner,
+    probe: &dyn Probe,
+) -> (Each, Vec<ItemEvent>) {
     let (home, project) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     let env = Env::new(home.path().into(), project.path().into());
     let adapters = registry();
@@ -77,6 +86,7 @@ fn watched(switch: &Switch, runner: &dyn CommandRunner) -> (Each, Vec<ItemEvent>
         adapters: &adapters,
         env: &env,
         scope: Scope::Project,
+        probe,
     };
     let mut events = Vec::new();
     let each = applier.run_each(
@@ -147,4 +157,37 @@ fn a_removal_starts_and_ends_with_the_items_id() {
     let target = Target::Remove("skill:old".into());
     assert_eq!(phases(&events), [(&target, true), (&target, false)]);
     assert_eq!(events[1].phase, Phase::Succeeded);
+}
+
+/// Records the programs it is asked to run.
+struct Recording(std::cell::RefCell<Vec<String>>);
+
+impl CommandRunner for Recording {
+    fn run(&self, program: &str, _args: &[String], _cwd: &Path) -> anyhow::Result<Output> {
+        self.0.borrow_mut().push(program.into());
+        Ok(Output {
+            success: true,
+            stderr: String::new(),
+        })
+    }
+}
+
+#[test]
+fn an_entry_whose_local_source_is_gone_fails_before_running_anything_and_the_rest_still_run() {
+    let gone = Entry::Skill {
+        source: "/old/skills".into(),
+        names: vec!["mine".into()],
+        agents: vec![],
+    };
+    let switch = switch(
+        vec![(gone, vec![step("npx")]), (entry("b"), vec![step("good")])],
+        vec![],
+    );
+    let runner = Recording(Default::default());
+
+    let (each, _) = watched_with(&switch, &runner, &crate::stale::tests::Existing::of(&[]));
+
+    // Assert the missing source never reached the runner, and only the other entry installed.
+    assert_eq!(*runner.0.borrow(), ["good"]);
+    assert_eq!((each.installed, each.failures.len()), (1, 1));
 }

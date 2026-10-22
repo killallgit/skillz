@@ -213,6 +213,20 @@ remove key (`x`) or removing it by hand in `store.json`. `SKILLZ_NO_SYNC=1` turn
 off. A hand-made skill or subagent is recorded by the directory that holds it (engine `local`,
 marked detected), so it is reinstalled with `npx skills add <that directory> --skill <name>`.
 Items needing secrets, and items with nothing to reinstall them from, are not recorded.
+
+**Moving a folder.** skillz keeps no registry of projects, so moving a project is fine, but a
+hand-made skill or subagent is recorded by its absolute directory. When that directory is gone the
+item is *stale*: the Library tab tags it `! missing source`, `library list` marks it and
+`--json` has `"stale": true`, and `profile status` lists profile entries in that state as
+`unavailable` (apart from `missing`). The next sync (startup scan or `skillz sync`) re-points a
+stale item at the new directory in place when exactly one live local source holds a skill or
+subagent of the same name (it keeps your label, refreshes the provenance, and follows the profile
+entries that named the old path); the toast says `moved: N` and `sync --json` has `repointed`. If
+several places match it stays stale (`ambiguous`), and if the library already has the live item the
+stale duplicate is dropped. Repository and URL sources are never touched. Installing or applying
+an entry whose directory is missing fails that entry, naming it and the path, before `npx` runs;
+the other entries still install. `skillz run` environments are keyed by profile only, so a moved
+project reuses its own.
 Installing a skill again fetches it from its recorded
 link when there is one.
 

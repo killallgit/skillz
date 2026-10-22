@@ -8,6 +8,7 @@ mod each_tests;
 mod plan;
 mod run;
 mod run_each;
+mod source_gone;
 mod standing;
 mod switch;
 #[cfg(test)]
@@ -22,12 +23,15 @@ pub use switch::Switch;
 use crate::agents::{self, AgentAdapter};
 use crate::env::Env;
 use crate::model::{Augmentation, Scope};
+use crate::stale::Probe;
 
 /// Everything a switch of one scope works with.
 pub struct Applier<'a> {
     pub adapters: &'a [Box<dyn AgentAdapter>],
     pub env: &'a Env,
     pub scope: Scope,
+    /// Tells whether a local source still exists before anything is installed from it.
+    pub probe: &'a dyn Probe,
 }
 
 impl Applier<'_> {

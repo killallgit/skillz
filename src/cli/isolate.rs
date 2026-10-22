@@ -99,6 +99,17 @@ mod tests {
     }
 
     #[test]
+    fn a_moved_project_gets_the_same_config_dirs_because_they_are_keyed_by_profile_only() {
+        let before = isolated_env(&Env::new("/h".into(), "/work/app".into()), "web");
+        let after = isolated_env(&Env::new("/h".into(), "/app".into()), "web");
+
+        assert_eq!(
+            (before.claude_dir(), before.codex_dir()),
+            (after.claude_dir(), after.codex_dir())
+        );
+    }
+
+    #[test]
     fn the_command_sees_both_redirects() {
         let env = isolated_env(&Env::new("/h".into(), "/p".into()), "web");
 

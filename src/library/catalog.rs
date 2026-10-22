@@ -76,6 +76,13 @@ impl Catalog {
         }
     }
 
+    /// Put `new` where `old` is, keeping its position.
+    pub(super) fn replace(&mut self, old: &LibraryItem, new: LibraryItem) {
+        if let Some(slot) = self.items.iter_mut().find(|i| i.is_same_thing_as(old)) {
+            *slot = new;
+        }
+    }
+
     /// Remove the item that is the same thing as `item`; whether there was one.
     pub fn remove(&mut self, item: &LibraryItem) -> bool {
         let before = self.items.len();

@@ -11,6 +11,7 @@ use super::removal::{Pick, choose};
 use super::scope::{Scene, installed};
 use crate::apply::{Applier, Switch, Watch};
 use crate::model::{Augmentation, Scope};
+use crate::stale::Disk;
 use crate::store::Store;
 use crate::{remove, update};
 
@@ -82,6 +83,7 @@ fn run(
         adapters: &deps.adapters,
         env,
         scope,
+        probe: &Disk,
     };
     let done = applier.run_each(
         switch,

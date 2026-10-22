@@ -3,9 +3,11 @@
 use super::deps::Deps;
 use super::scope::installed;
 use crate::env::Env;
-use crate::library::{now_secs, record_installed, sync_installed};
+use crate::library::{now_secs, record_installed};
 use crate::model::{Augmentation, Scope};
+use crate::stale::Disk;
 use crate::store::Store;
+use crate::sync::merge;
 
 /// Add to the library what is installed now but was not, or was different, in `before`, then
 /// sync it with everything else installed in both scopes.
@@ -21,7 +23,7 @@ pub(super) fn record_since(
         .concat();
     store.update(|document| {
         record_installed(&mut document.items, (before, &after), now_secs());
-        sync_installed(&mut document.items, &everything, now_secs());
+        merge(document, &everything, &Disk);
         Ok(())
     })
 }

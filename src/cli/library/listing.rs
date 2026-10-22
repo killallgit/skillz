@@ -10,6 +10,7 @@ use crate::apply::holds;
 use crate::env::Env;
 use crate::library::{Held, LibraryItem};
 use crate::model::Scope;
+use crate::stale::Disk;
 use crate::store::Store;
 
 /// What the project and the user have installed, as the library tells it apart.
@@ -32,7 +33,7 @@ pub(super) fn list(
         .iter()
         .filter(|item| kinds.is_empty() || kinds.contains(&item.kind()))
         .collect();
-    write_rows(rows(shown, &held_by(deps, env)), args.json, out)
+    write_rows(rows(shown, (&held_by(deps, env), &Disk)), args.json, out)
 }
 
 /// The library items the project, or with `Scope::Global` the user, does not have installed.
@@ -49,7 +50,7 @@ pub(in crate::cli) fn available(
         .iter()
         .filter(|item| !holds(&here, &item.entry))
         .collect();
-    write_rows(rows(offered, &held_by(deps, env)), json, out)
+    write_rows(rows(offered, (&held_by(deps, env), &Disk)), json, out)
 }
 
 fn write_rows(rows: Vec<Row>, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {

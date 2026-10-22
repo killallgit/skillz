@@ -6,6 +6,7 @@ use crate::cli::scope::{installed, project_env};
 use crate::library::LibraryItem;
 use crate::model::Scope;
 use crate::profile::Entry;
+use crate::stale::Disk;
 use crate::sync::sync_library;
 
 impl Session<'_, '_> {
@@ -26,9 +27,10 @@ impl Session<'_, '_> {
         let items = [Scope::Project, Scope::Global]
             .map(|scope| installed(self.deps, &env, scope))
             .concat();
-        let report = sync_library(&self.store, &items, false)?;
+        let report = sync_library(&self.store, &items, (false, &Disk))?;
         Ok(Some(Notice::Synced {
             added: report.synced.added.len(),
+            moved: report.synced.repointed.len(),
             secrets: report.synced.secrets_skipped(),
         }))
     }
@@ -105,6 +107,7 @@ mod tests {
             notice,
             Some(Notice::Synced {
                 added: 0,
+                moved: 0,
                 secrets: 0
             })
         ));

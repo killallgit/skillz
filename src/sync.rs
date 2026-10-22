@@ -6,9 +6,10 @@ use std::thread;
 
 use crate::agents::{inventory, registry};
 use crate::env::Env;
-use crate::library::{Catalog, Synced, now_secs, sync_installed};
+use crate::library::{Catalog, Synced, now_secs, repoint_profiles, sync_installed};
 use crate::model::{Augmentation, Scope};
-use crate::store::Store;
+use crate::stale::{Disk, Probe};
+use crate::store::{Document, Store};
 
 /// Finds everything installed for a project and at user level.
 pub trait Scanner: Send + Sync {
@@ -31,20 +32,33 @@ pub struct Report {
     pub library: Catalog,
 }
 
-/// Add what `items` hold that the stored library lacks. A dry run reports the same without
-/// writing. The store is locked only for the merge.
+/// Add what `items` hold that the document's library lacks, and follow moved folders in the
+/// library and the profiles (see `library::sync_installed`).
+pub fn merge(document: &mut Document, items: &[Augmentation], probe: &dyn Probe) -> Synced {
+    let mut synced = sync_installed(&mut document.items, items, (now_secs(), probe));
+    for moved in &mut synced.repointed {
+        moved.profiles = repoint_profiles(&mut document.profiles, moved);
+    }
+    synced
+}
+
+/// Merge `items` into the stored library. A dry run reports the same without writing. The
+/// store is locked only for the merge.
 pub fn sync_library(
     store: &Store,
     items: &[Augmentation],
-    dry_run: bool,
+    (dry_run, probe): (bool, &dyn Probe),
 ) -> anyhow::Result<Report> {
     if dry_run {
-        let mut library = store.read()?.items;
-        let synced = sync_installed(&mut library, items, now_secs());
-        return Ok(Report { synced, library });
+        let mut document = store.read()?;
+        let synced = merge(&mut document, items, probe);
+        return Ok(Report {
+            synced,
+            library: document.items,
+        });
     }
     store.update(|document| {
-        let synced = sync_installed(&mut document.items, items, now_secs());
+        let synced = merge(document, items, probe);
         Ok(Report {
             synced,
             library: document.items.clone(),
@@ -60,7 +74,7 @@ pub fn spawn(
 ) {
     thread::spawn(move || {
         let items = scanner.scan(&env);
-        done(sync_library(&Store::in_env(&env), &items, false));
+        done(sync_library(&Store::in_env(&env), &items, (false, &Disk)));
     });
 }
 
@@ -122,7 +136,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::new(dir.path().join("store.json"));
 
-        let report = sync_library(&store, &[installed_skill("tdd")], true).unwrap();
+        let report = sync_library(&store, &[installed_skill("tdd")], (true, &Disk)).unwrap();
 
         assert_eq!(report.synced.added.len(), 1);
         assert_eq!(store.read().unwrap().items, Catalog::default());
@@ -134,7 +148,7 @@ mod tests {
         let path = dir.path().join("store.json");
         std::fs::write(&path, "not json").unwrap();
 
-        let result = sync_library(&Store::new(path), &[installed_skill("tdd")], false);
+        let result = sync_library(&Store::new(path), &[installed_skill("tdd")], (false, &Disk));
 
         assert!(result.is_err());
     }
