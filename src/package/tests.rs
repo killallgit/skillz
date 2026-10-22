@@ -111,6 +111,17 @@ fn members_keep_their_order() {
 }
 
 #[test]
+fn a_library_skill_from_a_folder_on_disk_is_local_files() {
+    let from_folder = Entry::Skill {
+        source: "/work/skills".into(),
+        names: vec!["mine".into()],
+        agents: vec![],
+    };
+
+    assert_eq!(Package::of_entry(&from_folder), Package::Local);
+}
+
+#[test]
 fn a_library_entry_belongs_to_the_package_it_is_fetched_from() {
     let skill = Entry::Skill {
         source: "o/r".into(),

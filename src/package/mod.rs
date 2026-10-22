@@ -8,6 +8,7 @@ mod tests;
 use crate::hooks::UNOWNED_HOOKS;
 use crate::model::{Augmentation, Kind};
 use crate::profile::Entry;
+use crate::stale::local_source;
 
 const LOCAL_FILES: &str = "local files";
 const MCP_SERVERS: &str = "MCP servers";
@@ -35,6 +36,9 @@ impl Package {
 
     pub fn of_entry(entry: &Entry) -> Package {
         match entry {
+            Entry::Skill { .. } | Entry::Subagent { .. } if local_source(entry).is_some() => {
+                Package::Local
+            }
             Entry::Skill { source, .. } | Entry::Subagent { source, .. } => {
                 Package::Source(source.clone())
             }

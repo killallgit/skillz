@@ -27,6 +27,6 @@ mod tests {
 
         let flags = stale_rows(&rows, &Existing::of(&["/here"]));
 
-        assert_eq!(flags, [false, true, false, false]);
+        assert_eq!(flags, [false, true, false]);
     }
 }
