@@ -2,7 +2,6 @@
 
 use crate::library::{Cue, ItemKind, LibraryItem, Provenance};
 use crate::model::Agent;
-use crate::profile::Entry;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Detail {
@@ -17,16 +16,9 @@ pub(super) struct Detail {
 }
 
 pub(super) fn detail(item: &LibraryItem) -> Detail {
-    let source = match &item.entry {
-        Entry::Skill { source, .. }
-        | Entry::Subagent { source, .. }
-        | Entry::Plugin { source, .. } => source.clone(),
-        Entry::Hook { command, .. } => command.clone(),
-        Entry::Mcp { command, url, .. } => command.clone().or(url.clone()).unwrap_or_default(),
-    };
     Detail {
         kind: item.kind(),
-        source,
+        source: item.source(),
         agents: item.entry.agents().to_vec(),
         provenance: item.provenance.clone(),
         cue: Cue::of(item.provenance.as_ref()),

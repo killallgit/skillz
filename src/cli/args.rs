@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 
+use super::library_args::LibraryCommand;
 use crate::model::{Agent, Augmentation, Kind};
 
 #[derive(Debug, Parser)]
@@ -39,6 +40,15 @@ pub enum Command {
     Profile {
         #[command(subcommand)]
         action: ProfileCommand,
+        /// Project directory (default: cwd)
+        #[arg(short = 'p', long, global = true)]
+        project: Option<PathBuf>,
+    },
+    /// List, add to, remove from and install from the library of available items
+    #[command(visible_alias = "lib")]
+    Library {
+        #[command(subcommand)]
+        action: LibraryCommand,
         /// Project directory (default: cwd)
         #[arg(short = 'p', long, global = true)]
         project: Option<PathBuf>,
@@ -292,6 +302,14 @@ pub(super) fn wants_auto_yes(command: &Command) -> bool {
         Command::Update(a) => a.yes,
         Command::Use(a) => a.yes,
         Command::Run(a) => a.yes,
+        Command::Library {
+            action: LibraryCommand::Remove(a),
+            ..
+        } => a.yes,
+        Command::Library {
+            action: LibraryCommand::Install(a),
+            ..
+        } => a.yes,
         Command::Prune(a) => a.force,
         Command::Reset(a) => a.force,
         _ => false,

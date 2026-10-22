@@ -7,6 +7,7 @@ use super::args::{
 };
 use super::deps::Deps;
 use super::isolate::run_isolated;
+use super::library::library_command;
 use super::list::{ListView, list};
 use super::profile::profile_command;
 use super::prune::prune;
@@ -33,6 +34,9 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         Command::Use(args) => succeeded(run_use(deps, args, out)),
         Command::Sync(args) => succeeded(run_sync(deps, args, out)),
         Command::Install(args) => succeeded(run_install(deps, args)),
+        Command::Library { action, project } => {
+            succeeded(library_command(deps, action, project, out))
+        }
         Command::Profile { action, project } => {
             succeeded(profile_command(deps, action, project, out))
         }

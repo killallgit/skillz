@@ -26,7 +26,11 @@ impl Session<'_, '_> {
         })
     }
 
-    pub(in crate::cli) fn set_entries(&self, name: &str, entries: &[Entry]) -> anyhow::Result<Notice> {
+    pub(in crate::cli) fn set_entries(
+        &self,
+        name: &str,
+        entries: &[Entry],
+    ) -> anyhow::Result<Notice> {
         let mut profile = self.profiles.load(name)?;
         profile.entries = entries.to_vec();
         self.profiles.save(&profile)?;

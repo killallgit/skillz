@@ -112,6 +112,17 @@ impl LibraryItem {
         }
     }
 
+    /// Where it comes from or what it runs.
+    pub fn source(&self) -> String {
+        match &self.entry {
+            Entry::Skill { source, .. }
+            | Entry::Subagent { source, .. }
+            | Entry::Plugin { source, .. } => source.clone(),
+            Entry::Hook { command, .. } => command.clone(),
+            Entry::Mcp { command, url, .. } => command.clone().or(url.clone()).unwrap_or_default(),
+        }
+    }
+
     pub fn kind(&self) -> ItemKind {
         ItemKind::of_entry(&self.entry)
     }
@@ -146,6 +157,12 @@ pub(super) mod tests {
     fn an_installed_marketplace_is_no_library_kind() {
         assert_eq!(ItemKind::of(Kind::Mcp), Some(ItemKind::Mcp));
         assert_eq!(ItemKind::of(Kind::Marketplace), None);
+    }
+
+    #[test]
+    fn a_skill_comes_from_its_source_and_a_hook_runs_its_command() {
+        assert_eq!(skill("o/r", "a").source(), "o/r");
+        assert_eq!(hook("notify").source(), "notify");
     }
 
     #[test]

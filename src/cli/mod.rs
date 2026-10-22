@@ -3,7 +3,10 @@
 mod args;
 mod deps;
 mod isolate;
+mod library;
+mod library_args;
 mod list;
+mod pick;
 mod profile;
 mod prune;
 mod recording;
@@ -29,6 +32,9 @@ pub use args::{
     UninstallArgs, UpdateArgs, UseArgs,
 };
 pub use deps::Deps;
+pub use library_args::{
+    AddArgs, KindFlags, LibraryCommand, LibraryInstallArgs, LibraryListArgs, LibraryRemoveArgs,
+};
 pub use run::run;
 pub use workspace::workspace;
 

@@ -6,11 +6,11 @@ use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::apply::Drift;
 use super::header::{self, Comparison};
 use super::rows::{self, Item, Owned, Part, Row, State};
 use super::status::Status;
 use super::{InstalledTab, Popup};
+use crate::apply::Drift;
 use crate::model::Scope;
 use crate::tui::filter;
 use crate::tui::theme::Theme;

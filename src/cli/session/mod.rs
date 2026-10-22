@@ -2,6 +2,7 @@
 //! and the changes to the project, library and profiles, each with the plan reviewed first.
 
 mod change;
+mod console;
 mod library_change;
 mod notice;
 mod perform;
@@ -10,6 +11,7 @@ mod profiles;
 mod selection;
 mod updates;
 
+use std::io::Write;
 use std::path::PathBuf;
 
 use super::deps::Deps;
@@ -17,6 +19,7 @@ use crate::env::Env;
 use crate::{profile, store};
 
 pub(super) use change::{Change, change};
+pub(super) use console::Console;
 pub(super) use notice::Notice;
 pub(super) use selection::Selection;
 
@@ -53,4 +56,18 @@ impl<'a, 'd> Session<'a, 'd> {
     pub(super) fn library(&self) -> &store::Store {
         &self.store
     }
+}
+
+/// Run `act` on a session whose prompts are lines on `out`; with `dry_run` its plans are shown
+/// and never applied.
+pub(super) fn with_session<T>(
+    deps: &Deps,
+    env: &Env,
+    out: &mut dyn Write,
+    dry_run: bool,
+    act: impl FnOnce(&Session, &Console) -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
+    let console = Console::new(deps.prompter, out, dry_run);
+    let with_console = deps.with_prompter(&console);
+    act(&Session::open(&with_console, env), &console)
 }

@@ -2,9 +2,9 @@
 //! to be exact, remove what it holds that the profile does not want. Which profile a directory
 //! has loaded is never stored; it is read off the inventory (`standing`).
 
+mod drift;
 #[cfg(test)]
 mod each_tests;
-mod drift;
 mod plan;
 mod run;
 mod run_each;

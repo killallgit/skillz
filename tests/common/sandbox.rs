@@ -68,6 +68,28 @@ impl Sandbox {
             .unwrap()
     }
 
+    /// The library kept in the sandbox's store.
+    pub fn library(&self) -> skillz::library::Catalog {
+        skillz::store::Store::new(self.skillz_dir().join("store.json"))
+            .read()
+            .unwrap()
+            .items
+    }
+
+    /// The profile `name` as stored.
+    pub fn profile(&self, name: &str) -> skillz::profile::Profile {
+        skillz::profile::Store::new(self.skillz_dir().join("store.json"))
+            .load(name)
+            .unwrap()
+    }
+
+    /// What a command printed as JSON, after checking that it succeeded.
+    pub fn json(&self, args: &[&str]) -> serde_json::Value {
+        let out = self.skillz(args);
+        assert!(out.status.success(), "{args:?} failed");
+        serde_json::from_slice(&out.stdout).unwrap()
+    }
+
     /// What `npx` was called with, one line per call.
     pub fn npx_calls(&self) -> Vec<String> {
         fs::read_to_string(self.home.join("npx.log"))
