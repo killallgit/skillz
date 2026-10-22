@@ -51,15 +51,16 @@ pub(super) struct Pick<'a> {
     pub dry_run: bool,
 }
 
-/// The items to act on: the query's matches, all of them for a dry run, else the ones the user
-/// picks.
+/// The items to act on: the query's matches, all of them for a dry run or `--yes` (which
+/// accepts only unambiguous queries), else the ones the user picks. The picker is no way to
+/// take a lone marketplace: its tree row is a group of plugin names with no item to select.
 pub(super) fn choose<'a>(
     scene: &Scene,
     items: &'a [Augmentation],
     pick: &Pick,
 ) -> anyhow::Result<Vec<&'a Augmentation>> {
     let candidates = remove::candidates_each(items, pick.queries, pick.yes)?;
-    let picked = if pick.dry_run {
+    let picked = if pick.dry_run || pick.yes {
         (0..candidates.len()).collect()
     } else {
         let owned: Vec<Augmentation> = candidates.iter().map(|&c| c.clone()).collect();

@@ -365,3 +365,14 @@ fn q_and_esc_leave_a_browsing_tree_but_q_is_inert_in_the_info_modal() {
     assert_eq!(still_info, Overlay::Info(0));
     assert_eq!(s.handle(key(KeyCode::Char('q'))), Outcome::Quit);
 }
+
+#[test]
+fn picker_enter_on_a_group_that_covers_an_item_accepts_it() {
+    let nodes = vec![Node {
+        covers: vec![7],
+        ..n("mp (marketplace)", None, vec![n("plugin", None, vec![])])
+    }];
+    let mut picker = TreeState::picker(&nodes);
+
+    assert_eq!(accepted(&mut picker, &nodes, KeyCode::Enter), [7]);
+}
