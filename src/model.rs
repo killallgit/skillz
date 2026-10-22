@@ -104,6 +104,10 @@ pub struct Augmentation {
     /// hooks it declares here: they are the plugin's, never removable on their own.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hooks: Vec<HookEntry>,
+    /// The items seen through different agents that this one stands for; empty when it stands
+    /// for itself alone.
+    #[serde(skip)]
+    pub members: Vec<Augmentation>,
     /// Steps that remove this item completely. `execute` commits every `Edit` first (all or
     /// none), then runs each `RemovePath` in plan order.
     pub removal: Vec<Action>,
@@ -116,6 +120,14 @@ pub const SKILL_CHILD: &str = "skill: ";
 pub const HOOK_CHILD: &str = "hook: ";
 
 impl Augmentation {
+    /// The installed items behind this one: its members, or itself when nothing was merged.
+    pub fn parts(&self) -> &[Augmentation] {
+        match self.members.is_empty() {
+            true => std::slice::from_ref(self),
+            false => &self.members,
+        }
+    }
+
     /// The skill names among a plugin's children.
     pub fn plugin_skills(&self) -> impl Iterator<Item = &str> {
         self.children
@@ -198,6 +210,7 @@ mod tests {
     fn item(source: Option<&str>) -> Augmentation {
         Augmentation {
             hooks: Vec::new(),
+            members: Vec::new(),
             id: "skill:a".into(),
             name: "a".into(),
             kind: Kind::Skill,

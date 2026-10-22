@@ -65,12 +65,17 @@ impl<R: CommandRunner> ClaudeMarketplaces<R> {
     }
 }
 
+/// Whether any copy of `item` has a newer version.
+pub fn any_available(checker: &dyn UpdateCheck, item: &Augmentation) -> bool {
+    item.parts().iter().any(|part| checker.available(part))
+}
+
 /// Check `items` on a thread of their own, sending the id of each that has an update as it is
 /// found. Stops when the receiver is gone.
 pub fn spawn(checker: Arc<dyn UpdateCheck>, items: Vec<Augmentation>, found: Sender<String>) {
     thread::spawn(move || {
         for item in items {
-            if checker.available(&item) && found.send(item.id).is_err() {
+            if any_available(checker.as_ref(), &item) && found.send(item.id).is_err() {
                 return;
             }
         }
@@ -105,6 +110,7 @@ mod tests {
     fn marketplace(name: &str) -> Augmentation {
         Augmentation {
             hooks: vec![],
+            members: Vec::new(),
             id: format!("marketplace:{name}"),
             name: name.into(),
             kind: Kind::Marketplace,

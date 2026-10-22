@@ -102,6 +102,7 @@ mod tests {
     fn item() -> Augmentation {
         Augmentation {
             hooks: Vec::new(),
+            members: Vec::new(),
             id: "x".into(),
             name: "x".into(),
             kind: Kind::Plugin,

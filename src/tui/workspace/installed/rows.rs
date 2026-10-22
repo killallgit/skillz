@@ -4,7 +4,8 @@
 use super::presence::{has_counterpart, has_library_item};
 use crate::hooks::UNOWNED_HOOKS;
 use crate::library::{Catalog, ItemKind, LibraryItem};
-use crate::location::location;
+use crate::location::detail;
+use crate::merge::tag;
 use crate::model::{Augmentation, Kind};
 use crate::profile::Entry;
 use crate::tui::widgets::outline::Shape;
@@ -31,7 +32,9 @@ pub(super) enum State {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Item {
     pub label: String,
-    /// Where an installed item lives, shown beside its name.
+    /// The agents that have an installed item, shown beside its name.
+    pub agents: String,
+    /// Where an installed item lives, shown after its agents.
     pub detail: String,
     pub state: State,
     /// Installed globally as well, which matters to a project.
@@ -130,7 +133,8 @@ fn installed_items(kind: ItemKind, sources: &Sources) -> Vec<Item> {
         .filter(|a| ItemKind::of(a.kind) == Some(kind))
         .map(|item| Item {
             label: item.name.clone(),
-            detail: location(item),
+            agents: tag(&item.agents),
+            detail: detail(item),
             state: State::Installed(item.id.clone()),
             global: has_counterpart(sources.also_global, item),
             owned: owned_hooks(item),
@@ -164,6 +168,7 @@ fn available_items(kind: ItemKind, sources: &Sources) -> Vec<Item> {
 fn available_item(item: &LibraryItem, sources: &Sources) -> Item {
     Item {
         label: item.label.clone(),
+        agents: String::new(),
         detail: String::new(),
         state: State::Available(item.entry.clone()),
         global: has_library_item(sources.also_global, item),

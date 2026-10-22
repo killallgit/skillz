@@ -4,6 +4,7 @@ use crate::model::{Agent, Installer, Kind, Scope};
 pub fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
     Augmentation {
         hooks: vec![],
+        members: Vec::new(),
         id: format!("{kind}:{name}"),
         name: name.into(),
         kind,
@@ -186,4 +187,50 @@ fn unowned_hooks_are_titled_apart_from_available_ones() {
 
     assert_ne!(installed_title, available_title);
     assert_eq!(installed_title, crate::hooks::UNOWNED_HOOKS);
+}
+
+fn subagent_in(agent: Agent) -> Augmentation {
+    Augmentation {
+        id: format!("subagent:{agent}:reviewer"),
+        agents: vec![agent],
+        ..installed("reviewer", Kind::Subagent, None)
+    }
+}
+
+fn merged_subagent() -> Augmentation {
+    crate::merge::merge(vec![subagent_in(Agent::Claude), subagent_in(Agent::Codex)]).remove(0)
+}
+
+#[test]
+fn a_thing_seen_through_two_agents_is_one_row_counted_once() {
+    let here = [merged_subagent()];
+
+    let rows = rows_of(&here, &[], &Catalog::default());
+
+    assert_eq!(items(&rows).len(), 1);
+    assert!(matches!(rows[0], Row::Section { total: 1, .. }));
+}
+
+#[test]
+fn a_merged_row_names_its_agents_and_every_location() {
+    let here = [merged_subagent()];
+
+    let rows = rows_of(&here, &[], &Catalog::default());
+
+    let row = items(&rows)[0];
+    assert_eq!(row.agents, tag(&[Agent::Claude, Agent::Codex]));
+    assert_eq!(row.detail, detail(&here[0]));
+    assert_eq!(
+        row.state,
+        State::Installed("subagent:claude:reviewer".into())
+    );
+}
+
+#[test]
+fn an_available_row_has_no_agents_tag() {
+    let library = Catalog::from_items(vec![library_skill("o/r", "zoom")]);
+
+    let rows = rows_of(&[], &[], &library);
+
+    assert!(items(&rows)[0].agents.is_empty());
 }

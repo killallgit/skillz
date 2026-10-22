@@ -25,6 +25,7 @@ mod tests {
     fn installed_tdd(scope: Scope) -> Augmentation {
         Augmentation {
             hooks: vec![],
+            members: Vec::new(),
             id: "skill:tdd".into(),
             name: "tdd".into(),
             kind: Kind::Skill,

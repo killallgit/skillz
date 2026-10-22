@@ -148,6 +148,7 @@ mod tests {
     ) -> Augmentation {
         Augmentation {
             hooks: Vec::new(),
+            members: Vec::new(),
             id: format!("{kind}:{name}:{agents:?}"),
             name: name.into(),
             kind,

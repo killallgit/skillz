@@ -187,6 +187,7 @@ mod tests {
     fn skill(name: &str) -> Augmentation {
         Augmentation {
             hooks: Vec::new(),
+            members: Vec::new(),
             id: name.into(),
             name: name.into(),
             kind: Kind::Skill,

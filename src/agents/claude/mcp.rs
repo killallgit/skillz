@@ -86,6 +86,7 @@ fn server_augmentation(
             });
             Augmentation {
                 hooks: Vec::new(),
+                members: Vec::new(),
                 id: format!("mcp:claude:{scope}:{claude_scope}:{}", server.name),
                 name: server.name.clone(),
                 kind: Kind::Mcp,

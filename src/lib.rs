@@ -20,6 +20,7 @@ pub(crate) mod json_edit;
 pub mod library;
 pub(crate) mod location;
 pub(crate) mod matcher;
+pub mod merge;
 pub(crate) mod mcp;
 pub mod model;
 pub(crate) mod npx_skills;

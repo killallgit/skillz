@@ -9,7 +9,7 @@ use crate::{prune, usage};
 /// Report findings; duplicates are always in the removal, unused items only when picked.
 pub(super) fn prune(scene: &Scene, dry_run: bool, out: &mut dyn Write) -> anyhow::Result<()> {
     let (deps, env) = (scene.deps, scene.env);
-    let items = scene.gather();
+    let items = scene.gather_per_agent();
     let usage = usage::read(&deps.adapters, env)?;
     let now = now_ms();
     let found = prune::check(&items, &deps.adapters, &usage, now);

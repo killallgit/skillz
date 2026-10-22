@@ -9,6 +9,7 @@ use crate::tui::widgets::testing::{key, keys, render_to_buffer};
 fn installed(name: &str) -> Augmentation {
     Augmentation {
         hooks: vec![],
+        members: Vec::new(),
         id: format!("skill:{name}"),
         name: name.into(),
         kind: Kind::Skill,

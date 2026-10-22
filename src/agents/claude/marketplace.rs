@@ -22,6 +22,7 @@ pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> 
         .collect();
     Augmentation {
         hooks: Vec::new(),
+        members: Vec::new(),
         id: format!("marketplace:claude:{}", m.name),
         name: m.name.clone(),
         kind: Kind::Marketplace,

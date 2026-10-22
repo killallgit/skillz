@@ -186,6 +186,9 @@ impl InstalledTab {
         if outdated {
             spans.push(Span::styled("*", text_style));
         }
+        if !item.agents.is_empty() {
+            spans.push(Span::styled(format!("  ({})", item.agents), theme.muted));
+        }
         if item.global {
             spans.push(Span::styled(format!("  {GLOBAL_TAG}"), theme.accent));
         }

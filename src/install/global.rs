@@ -51,6 +51,7 @@ mod tests {
     fn skill(name: &str, scope: Scope) -> Augmentation {
         Augmentation {
             hooks: vec![],
+            members: Vec::new(),
             id: format!("skill:{name}"),
             name: name.into(),
             kind: Kind::Skill,

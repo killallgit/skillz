@@ -85,6 +85,7 @@ fn augmentation(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -> 
     plan.splice(0..0, native_uninstall(cx, locked.as_ref(), &agents));
     Augmentation {
         hooks: Vec::new(),
+        members: Vec::new(),
         id: skill_id(canonical, cx.scope, suffix),
         name: entries[0].name.clone(),
         kind: Kind::Skill,
