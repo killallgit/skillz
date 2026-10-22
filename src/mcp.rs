@@ -1,12 +1,10 @@
-//! MCP servers as agents configure them. Each adapter reads its own file; this module holds what
-//! they share: the launch description, how it is shown on an `Augmentation` and read back for a
-//! profile snapshot, and the arguments `<agent> mcp add` takes.
+//! MCP launch descriptions shared by adapters, snapshot planning and credential-safe display.
 
 use serde_json::Value;
 use toml_edit::{Item, TableLike};
 
 use crate::model::Augmentation;
-use crate::model::Kind;
+use crate::model::Details;
 use crate::redact::{credential_count, redact, redact_args};
 
 const COMMAND: &str = "command: ";
@@ -17,7 +15,7 @@ const TRANSPORT: &str = "transport: ";
 /// never read into skillz.
 const SECRET: &str = "needs: ";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Launch {
     Stdio {
         command: String,
@@ -30,7 +28,7 @@ pub enum Launch {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Server {
     pub name: String,
     pub launch: Launch,
@@ -121,7 +119,7 @@ impl Server {
         self.secrets.len() + embedded
     }
 
-    /// The `Augmentation::children` lines; `from_item` reads them back.
+    /// Display lines for this server.
     pub fn children(&self) -> Vec<String> {
         let mut out = vec![];
         match &self.launch {
@@ -152,40 +150,13 @@ impl Server {
         };
         Server { launch, ..self }
     }
-
-    /// The server an MCP item was discovered from.
-    pub fn from_item(item: &Augmentation) -> Option<Server> {
-        let lines = |prefix: &str| -> Vec<String> {
-            item.children
-                .iter()
-                .filter_map(|c| c.strip_prefix(prefix).map(String::from))
-                .collect()
-        };
-        let first = |prefix: &str| lines(prefix).into_iter().next();
-        let launch = match (first(COMMAND), first(URL)) {
-            (Some(command), _) => Launch::Stdio {
-                command,
-                args: lines(ARG),
-            },
-            (None, Some(url)) => Launch::Url {
-                url,
-                transport: first(TRANSPORT).unwrap_or_else(|| "http".into()),
-            },
-            _ => return None,
-        };
-        Some(Server {
-            name: item.name.clone(),
-            launch,
-            secrets: lines(SECRET),
-        })
-    }
 }
 
 /// The item's children as safe to show: an MCP server's args and url with credentials hidden.
 pub fn shown_children(item: &Augmentation) -> Vec<String> {
-    match Server::from_item(item).filter(|_| item.kind == Kind::Mcp) {
-        Some(server) => server.redacted().children(),
-        None => item.children.clone(),
+    match &item.details {
+        Details::Mcp { server, .. } => server.clone().redacted().children(),
+        _ => item.children.clone(),
     }
 }
 
@@ -197,6 +168,10 @@ mod tests {
 
     fn item(server: &Server) -> Augmentation {
         Augmentation {
+            details: Details::Mcp {
+                config: "config.json".into(),
+                server: server.clone(),
+            },
             hooks: Vec::new(),
             members: Vec::new(),
             id: "mcp:x".into(),
@@ -302,39 +277,5 @@ enabled = true
             assert!(!shown.contains("s3cret") && !shown.contains("p4ss"));
             assert!(item(&server).children.join("\n").contains("s3cret"));
         }
-    }
-
-    #[test]
-    fn children_round_trip_through_the_item() {
-        for server in [
-            Server {
-                name: "s".into(),
-                launch: Launch::Stdio {
-                    command: "npx".into(),
-                    args: vec!["-y".into(), "p".into()],
-                },
-                secrets: vec!["K".into()],
-            },
-            Server {
-                name: "h".into(),
-                launch: Launch::Url {
-                    url: "https://u".into(),
-                    transport: "http".into(),
-                },
-                secrets: vec![],
-            },
-        ] {
-            assert_eq!(Server::from_item(&item(&server)).unwrap(), server);
-        }
-        let mut empty = item(&Server {
-            name: "e".into(),
-            launch: Launch::Url {
-                url: "u".into(),
-                transport: "http".into(),
-            },
-            secrets: vec![],
-        });
-        empty.children.clear();
-        assert!(Server::from_item(&empty).is_none());
     }
 }

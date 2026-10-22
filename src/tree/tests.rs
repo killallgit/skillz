@@ -4,6 +4,7 @@ use crate::model::{Agent, Scope};
 
 fn aug(name: &str, kind: Kind, group: &str) -> Augmentation {
     Augmentation {
+        details: Default::default(),
         hooks: Vec::new(),
         members: Vec::new(),
         id: format!("{kind}:{name}"),

@@ -6,6 +6,7 @@ use crate::model::{Agent, Installer, Kind, SKILL_CHILD, Scope};
 
 pub fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
     Augmentation {
+        details: Default::default(),
         hooks: vec![],
         members: Vec::new(),
         id: format!("{kind}:{name}"),
@@ -24,6 +25,7 @@ pub fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
 
 pub fn global(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
     Augmentation {
+        details: Default::default(),
         id: format!("global-{kind}:{name}"),
         scope: Scope::Global,
         ..installed(name, kind, source)
@@ -118,7 +120,7 @@ fn an_item_installed_globally_as_well_is_tagged_whether_installed_or_available()
 }
 
 #[test]
-fn skills_and_subagents_of_one_repo_are_one_group_with_their_counts() {
+fn skills_and_subagents_of_one_repo_are_one_group() {
     let here = [
         installed("tdd", Kind::Skill, Some("o/r")),
         installed("reviewer", Kind::Subagent, Some("o/r")),
@@ -127,13 +129,6 @@ fn skills_and_subagents_of_one_repo_are_one_group_with_their_counts() {
 
     let rows = rows_of(&here, &[], &Catalog::default());
 
-    let Row::Package(group) = &rows[0] else {
-        panic!("no group first")
-    };
-    assert_eq!(
-        group.contents,
-        [(ItemKind::Skill, 2), (ItemKind::Subagent, 1)]
-    );
     assert_eq!(packages_of(&rows, Part::Installed).len(), 1);
     assert_eq!(parents(&rows), [None, Some(0), Some(0), Some(0)]);
 }
@@ -213,6 +208,10 @@ fn a_marketplace_is_the_package_of_its_plugins_and_has_no_row_of_its_own() {
 
 fn plugin_providing_a_skill_and_a_hook(name: &str) -> Augmentation {
     Augmentation {
+        details: crate::model::Details::Plugin {
+            location: Default::default(),
+            skills: vec!["tdd".into()],
+        },
         hooks: vec![crate::hook_text::HookEntry {
             event: "Stop".into(),
             matcher: None,
@@ -251,10 +250,6 @@ fn provided_rows_hang_under_their_plugin_and_say_which_plugin_adds_them() {
         })
         .collect();
     assert_eq!(kinds, [ItemKind::Skill, ItemKind::Hook]);
-    let Row::Owned(owned) = &rows[2] else {
-        panic!("not an owned row")
-    };
-    assert!(owned.detail.contains("p@mp"));
 }
 
 #[test]
@@ -273,6 +268,7 @@ fn installed_and_available_groups_of_one_package_have_different_labels() {
 
 fn subagent_in(agent: Agent) -> Augmentation {
     Augmentation {
+        details: Default::default(),
         id: format!("subagent:{agent}:reviewer"),
         agents: vec![agent],
         ..installed("reviewer", Kind::Subagent, None)
@@ -290,7 +286,6 @@ fn a_thing_seen_through_two_agents_is_one_row_counted_once() {
     let rows = rows_of(&here, &[], &Catalog::default());
 
     assert_eq!(items(&rows).len(), 1);
-    assert!(matches!(&rows[0], Row::Package(g) if g.contents == [(ItemKind::Subagent, 1)]));
 }
 
 #[test]

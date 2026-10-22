@@ -36,10 +36,8 @@ fn child_env(sb: &Sandbox, var: &str) -> String {
 
 #[test]
 fn the_command_sees_claude_config_dir_under_the_skillz_envs_dir() {
-    // Assemble
     let sb = sandbox_with_notify();
 
-    // Act
     let seen = child_env(&sb, "CLAUDE_CONFIG_DIR");
 
     // Assert: the profile's own claude dir, not the sandbox's
@@ -51,10 +49,8 @@ fn the_command_sees_claude_config_dir_under_the_skillz_envs_dir() {
 
 #[test]
 fn the_command_sees_codex_home_under_the_skillz_envs_dir() {
-    // Assemble
     let sb = sandbox_with_notify();
 
-    // Act
     let seen = child_env(&sb, "CODEX_HOME");
 
     // Assert: the profile's own codex dir
@@ -66,10 +62,8 @@ fn the_command_sees_codex_home_under_the_skillz_envs_dir() {
 
 #[test]
 fn the_profile_is_loaded_into_the_isolated_claude_dir() {
-    // Assemble
     let sb = sandbox_with_notify();
 
-    // Act
     sb.skillz(&["run", "-y", "notify", "--", "true"]);
 
     // Assert: the hook is in the isolated settings
@@ -79,10 +73,8 @@ fn the_profile_is_loaded_into_the_isolated_claude_dir() {
 
 #[test]
 fn running_leaves_the_real_config_dirs_untouched() {
-    // Assemble
     let sb = sandbox_with_notify();
 
-    // Act
     sb.skillz(&["run", "-y", "notify", "--", "true"]);
 
     // Assert: neither the redirected dirs nor ~/.claude, ~/.codex were created
@@ -97,10 +89,8 @@ fn running_leaves_the_real_config_dirs_untouched() {
 
 #[test]
 fn running_leaves_the_project_untouched() {
-    // Assemble
     let sb = sandbox_with_notify();
 
-    // Act
     sb.skillz(&["run", "-y", "notify", "--", "true"]);
 
     // Assert: no project config was written
@@ -109,12 +99,10 @@ fn running_leaves_the_project_untouched() {
 
 #[test]
 fn existing_real_config_is_left_as_it_was() {
-    // Assemble
     let sb = sandbox_with_notify();
     let mine = sb.claude.join("settings.json");
     write(&mine, "{\"model\":\"opus\"}");
 
-    // Act
     sb.skillz(&["run", "-y", "notify", "--", "true"]);
 
     // Assert: the file is byte for byte as written
@@ -126,10 +114,8 @@ fn existing_real_config_is_left_as_it_was() {
 
 #[test]
 fn a_successful_command_exits_zero() {
-    // Assemble
     let sb = sandbox_with_notify();
 
-    // Act
     let out = sb.skillz(&["run", "-y", "notify", "--", "true"]);
 
     // Assert: success
@@ -138,10 +124,8 @@ fn a_successful_command_exits_zero() {
 
 #[test]
 fn skillz_exits_with_the_exit_code_of_the_command() {
-    // Assemble
     let sb = sandbox_with_notify();
 
-    // Act
     let out = sb.skillz(&["run", "-y", "notify", "--", "sh", "-c", "exit 3"]);
 
     // Assert: the child's own code, not a generic failure
@@ -150,11 +134,9 @@ fn skillz_exits_with_the_exit_code_of_the_command() {
 
 #[test]
 fn a_missing_profile_runs_nothing() {
-    // Assemble
     let sb = Sandbox::new();
     let marker = sb.home.join("ran");
 
-    // Act
     let out = sb.skillz(&[
         "run",
         "-y",
@@ -170,11 +152,9 @@ fn a_missing_profile_runs_nothing() {
 
 #[test]
 fn two_profiles_get_separate_config_dirs() {
-    // Assemble
     let sb = sandbox_with_notify();
     sb.write_profile("other", &hook_profile("Stop", "say other", "\"claude\""));
 
-    // Act
     sb.skillz(&["run", "-y", "notify", "--", "true"]);
     sb.skillz(&["run", "-y", "other", "--", "true"]);
 

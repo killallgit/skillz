@@ -1,4 +1,4 @@
-//! What `run_each` tells its watcher while it runs item by item.
+//! What `run` tells its watcher while it runs item by item.
 
 use std::path::{Path, PathBuf};
 
@@ -43,6 +43,7 @@ fn step(program: &str) -> Action {
 
 fn installed_skill(name: &str) -> Augmentation {
     Augmentation {
+        details: Default::default(),
         hooks: vec![],
         members: Vec::new(),
         id: format!("skill:{name}"),
@@ -71,7 +72,7 @@ fn switch(installs: Vec<(Entry, Vec<Action>)>, removals: Vec<Augmentation>) -> S
     }
 }
 
-fn watched(switch: &Switch, runner: &dyn CommandRunner) -> (Each, Vec<ItemEvent>) {
+fn watched(switch: &Switch, runner: &dyn CommandRunner) -> (Report, Vec<ItemEvent>) {
     watched_with(switch, runner, &Disk)
 }
 
@@ -79,7 +80,7 @@ fn watched_with(
     switch: &Switch,
     runner: &dyn CommandRunner,
     probe: &dyn Probe,
-) -> (Each, Vec<ItemEvent>) {
+) -> (Report, Vec<ItemEvent>) {
     let (home, project) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     let env = Env::new(home.path().into(), project.path().into());
     let adapters = registry();
@@ -90,7 +91,7 @@ fn watched_with(
         probe,
     };
     let mut events = Vec::new();
-    let each = applier.run_each(
+    let each = applier.run(
         switch,
         runner,
         &mut Watch {
@@ -147,6 +148,28 @@ fn a_failing_install_ends_failed_and_the_next_one_still_runs() {
         .collect();
     assert_eq!(ended, [false, true]);
     assert_eq!((each.installed, each.failures.len()), (1, 1));
+}
+
+#[test]
+fn a_failed_shared_step_does_not_make_a_later_install_succeed() {
+    let switch = switch(
+        vec![
+            (entry("a"), vec![step("bad")]),
+            (entry("b"), vec![step("bad")]),
+        ],
+        vec![],
+    );
+
+    let (each, events) = watched(&switch, &Runner("bad"));
+
+    assert_eq!((each.installed, each.failures.len()), (0, 2));
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| matches!(e.phase, Phase::Failed(_)))
+            .count(),
+        2
+    );
 }
 
 #[test]

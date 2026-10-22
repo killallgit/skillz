@@ -24,7 +24,7 @@ impl AgentAdapter for Cursor {
     }
 
     fn discover(&self, _env: &Env, _scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
-        // shortcut: Cursor plugins/marketplaces are not discovered, add once Cursor's plugin storage format is mapped.
+        // Cursor discovery currently covers shared skills and hooks only.
         Ok(vec![])
     }
 }

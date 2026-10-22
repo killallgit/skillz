@@ -64,26 +64,38 @@ pub struct SystemRunner {
     pub envs: Vec<(&'static str, PathBuf)>,
 }
 
+impl SystemRunner {
+    fn command(&self, program: &str, args: &[String], cwd: &Path) -> Command {
+        let mut command = Command::new(program);
+        command
+            .args(args)
+            .envs(self.envs.iter().map(|(key, value)| (key, value)))
+            .current_dir(cwd);
+        command
+    }
+}
+
 impl CommandRunner for SystemRunner {
     fn launch(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<i32> {
-        let status = Command::new(program)
-            .args(args)
-            .envs(self.envs.iter().map(|(k, v)| (k, v)))
-            .current_dir(cwd)
+        let status = self
+            .command(program, args, cwd)
             .status()
             .with_context(|| format!("failed to run `{program}` in {}", cwd.display()))?;
         Ok(status.code().unwrap_or(1))
     }
 
     fn with_envs(&self, envs: Vec<(&'static str, PathBuf)>) -> Option<Box<dyn CommandRunner>> {
-        Some(Box::new(SystemRunner { envs }))
+        let mut merged = self.envs.clone();
+        for (key, value) in envs {
+            merged.retain(|(existing, _)| *existing != key);
+            merged.push((key, value));
+        }
+        Some(Box::new(SystemRunner { envs: merged }))
     }
 
     fn run(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output> {
-        let out = Command::new(program)
-            .args(args)
-            .envs(self.envs.iter().map(|(k, v)| (k, v)))
-            .current_dir(cwd)
+        let out = self
+            .command(program, args, cwd)
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .output()
@@ -95,10 +107,8 @@ impl CommandRunner for SystemRunner {
     }
 
     fn run_quiet(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output> {
-        let out = Command::new(program)
-            .args(args)
-            .envs(self.envs.iter().map(|(k, v)| (k, v)))
-            .current_dir(cwd)
+        let out = self
+            .command(program, args, cwd)
             .stdin(Stdio::null())
             .output()
             .with_context(|| format!("failed to run `{program}` in {}", cwd.display()))?;
@@ -115,17 +125,15 @@ impl CommandRunner for SystemRunner {
     }
 
     fn capture(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<String> {
-        let out = Command::new(program)
-            .args(args)
-            .envs(self.envs.iter().map(|(k, v)| (k, v)))
-            .current_dir(cwd)
+        let out = self
+            .command(program, args, cwd)
             .stdin(Stdio::null())
             .output()
             .with_context(|| format!("failed to run `{program}` in {}", cwd.display()))?;
         anyhow::ensure!(
             out.status.success(),
             "`{program}` failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
+            redact_text(String::from_utf8_lossy(&out.stderr).trim())
         );
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     }
@@ -219,7 +227,6 @@ mod tests {
 
         let code = SystemRunner::default().launch("sh", &args, dir.path());
 
-        // Assert the code is the child's, not a flattened failure.
         assert_eq!(code.unwrap(), 7);
     }
 
@@ -241,5 +248,26 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let res = SystemRunner::default().run("skillz-definitely-not-a-program", &[], dir.path());
         assert!(res.is_err());
+    }
+    #[test]
+    fn child_redirects_preserve_other_configured_environment_variables() {
+        let directory = tempfile::tempdir().unwrap();
+        let runner = SystemRunner {
+            envs: vec![
+                ("SKILLZ_KEEP", "/keep".into()),
+                ("SKILLZ_REPLACE", "/old".into()),
+            ],
+        };
+        let redirected = runner
+            .with_envs(vec![("SKILLZ_REPLACE", "/new".into())])
+            .unwrap();
+        let args = [
+            "-c".into(),
+            "test \"$SKILLZ_KEEP\" = /keep && test \"$SKILLZ_REPLACE\" = /new".into(),
+        ];
+
+        let result = redirected.run_quiet("sh", &args, directory.path()).unwrap();
+
+        assert!(result.success);
     }
 }

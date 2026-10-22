@@ -107,18 +107,26 @@ fn applying_additively_keeps_what_the_profile_does_not_have() {
     assert!(dir.path().join(".agents/skills/tdd").exists());
 }
 
-#[test]
-fn a_failed_run_is_a_failure_and_a_clean_one_is_not() {
-    let switch = Switch::updating(vec![]);
+#[derive(Default)]
+pub(super) struct Outcomes {
+    pub values: std::cell::RefCell<Vec<crate::review::Outcome>>,
+    pub retry_once: bool,
+}
 
-    let failed = outcome_of(&switch, Err(anyhow::anyhow!("boom")));
-    let clean = outcome_of(
-        &switch,
-        Ok(Done {
-            removed: None,
-            installed: Default::default(),
-        }),
-    );
-
-    assert_eq!((failed.is_clean(), clean.is_clean()), (false, true));
+impl crate::prompt::Prompter for Outcomes {
+    fn multi_select(&self, _: &str, options: &[String]) -> anyhow::Result<Vec<usize>> {
+        Ok((0..options.len()).collect())
+    }
+    fn confirm(&self, _: &str) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+    fn outcome(&self, _: &str, outcome: &crate::review::Outcome) -> anyhow::Result<Next> {
+        let mut values = self.values.borrow_mut();
+        values.push(outcome.clone());
+        Ok(if self.retry_once && values.len() == 1 {
+            Next::Retry
+        } else {
+            Next::Done
+        })
+    }
 }

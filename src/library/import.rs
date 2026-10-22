@@ -2,9 +2,9 @@ use super::catalog::Catalog;
 use super::item::LibraryItem;
 use super::provenance::Provenance;
 use crate::model::Augmentation;
-use crate::snapshot::{Skipped, snapshot};
+use crate::snapshot::{Skipped, collect};
 
-/// What the snapshot collectors keep of the installed `items`, each with the provenance its
+/// Reinstallable entries from the installed `items`, each with the provenance its
 /// installer left; what they leave out (needing secrets, or with nothing to reinstall from) is
 /// returned apart.
 pub(super) fn collect_installed(
@@ -14,9 +14,9 @@ pub(super) fn collect_installed(
     let mut kept = vec![];
     let mut skipped = vec![];
     for item in items {
-        let snap = snapshot("library", std::slice::from_ref(item));
-        skipped.extend(snap.skipped);
-        for entry in snap.profile.entries {
+        let (entries, left_out) = collect(std::slice::from_ref(item));
+        skipped.extend(left_out);
+        for entry in entries {
             for each in LibraryItem::each_of(entry) {
                 kept.push(each.with_provenance(Provenance::of(item, recorded_at)));
             }
@@ -25,7 +25,7 @@ pub(super) fn collect_installed(
     (kept, skipped)
 }
 
-/// Add everything the snapshot collectors keep from the installed `items`.
+/// Add every reinstallable entry from the installed `items`.
 pub fn import_installed(catalog: &mut Catalog, items: &[Augmentation], recorded_at: u64) {
     let (kept, _) = collect_installed(items, recorded_at);
     kept.into_iter().for_each(|item| catalog.add(item));
@@ -53,6 +53,7 @@ pub(super) mod tests {
 
     pub fn installed_skill(name: &str, source: Option<&str>) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: vec![],
             members: Vec::new(),
             id: format!("skill:{name}"),
@@ -82,7 +83,6 @@ pub(super) mod tests {
 
         import_installed(&mut catalog, &items, 7);
 
-        // Assert the sourceless skill stays out.
         assert_eq!(catalog.items().len(), 1);
     }
 
@@ -103,7 +103,6 @@ pub(super) mod tests {
 
         import_installed(&mut catalog, &[installed_skill("tdd", Some("o/r"))], 7);
 
-        // Assert the link, engine, version and time came from the installed item.
         assert_eq!(
             catalog.items()[0].provenance,
             Some(Provenance {
@@ -127,7 +126,6 @@ pub(super) mod tests {
 
         record_installed(&mut catalog, (&before, &after), 7);
 
-        // Assert the untouched skill stays out of the library.
         assert_eq!(catalog.items().len(), 1);
     }
 }

@@ -1,10 +1,11 @@
 use super::*;
 use crate::action::Action;
 use crate::hook_text::HookEntry;
-use crate::model::{Agent, Installer, Kind, Scope};
+use crate::model::{Agent, Details, Installer, Kind, Scope};
 
 fn item(kind: Kind, name: &str, agent: Agent) -> Augmentation {
     Augmentation {
+        details: Default::default(),
         id: format!("{kind}:{agent}:{name}"),
         name: name.into(),
         kind,
@@ -27,6 +28,7 @@ fn step(name: &str) -> Action {
 
 fn hook(agent: Agent, command: &str) -> Augmentation {
     Augmentation {
+        details: Default::default(),
         hooks: vec![HookEntry {
             event: "Stop".into(),
             matcher: None,
@@ -124,7 +126,17 @@ fn the_same_name_from_different_sources_is_not_merged() {
 #[test]
 fn mcp_servers_launched_differently_are_not_merged() {
     let server = |agent, launch: &str| Augmentation {
-        children: vec![launch.into()],
+        details: Details::Mcp {
+            config: "/config".into(),
+            server: crate::mcp::Server {
+                name: "github".into(),
+                launch: crate::mcp::Launch::Stdio {
+                    command: launch.into(),
+                    args: vec![],
+                },
+                secrets: vec![],
+            },
+        },
         ..item(Kind::Mcp, "github", agent)
     };
 
@@ -139,6 +151,7 @@ fn mcp_servers_launched_differently_are_not_merged() {
 #[test]
 fn plugins_merge_with_the_hooks_they_declare() {
     let plugin = |agent, command| Augmentation {
+        details: Default::default(),
         hooks: hook(agent, command).hooks,
         group: "mp".into(),
         ..item(Kind::Plugin, "p@mp", agent)

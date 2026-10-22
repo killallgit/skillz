@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Context;
 
 use super::identity::overlay;
-use super::{Entry, Profile, check_name};
+use super::{Profile, check_name};
 use crate::env::Env;
 
 /// A profile cannot be removed while others start from it.
@@ -55,49 +56,31 @@ impl Store {
 
     pub fn load(&self, name: &str) -> anyhow::Result<Profile> {
         check_name(name)?;
-        let profile = find(self.all()?, name).with_context(|| format!("no profile {name}"))?;
+        let profile = self
+            .all()?
+            .into_iter()
+            .find(|profile| profile.name == name)
+            .with_context(|| format!("no profile {name}"))?;
         profile.validate()?;
         Ok(profile)
     }
 
     /// Every profile that loads, flattened as by `load_flat`; the unreadable ones are left out.
     pub fn readable(&self) -> anyhow::Result<Vec<Profile>> {
-        let names = self.names()?;
+        let profiles = self.all()?;
+        let mut names: Vec<&str> = profiles.iter().map(|p| p.name.as_str()).collect();
+        names.sort();
+        let mut resolver = Resolver::new(&profiles);
         Ok(names
-            .iter()
-            .filter_map(|name| self.load_flat(name).ok())
+            .into_iter()
+            .filter_map(|name| resolver.resolve(name, &mut vec![]).ok())
             .collect())
     }
 
-    /// The profile with every profile it extends folded in: their entries first, in order, each
-    /// with its own profile's agents filled in. An entry replaces any inherited one with the same
-    /// identity (see `identity`). A base that is missing, or that leads back to itself, is an
-    /// error.
+    /// Resolve inheritance from one store snapshot. Later bases and the profile's own entries win.
     pub fn load_flat(&self, name: &str) -> anyhow::Result<Profile> {
-        let mut profile = self.load(name)?;
-        let inherited = self.base_entries(&profile, &mut vec![name.to_string()])?;
-        profile.entries = overlay(inherited, &profile.resolved());
-        profile.extends.clear();
-        Ok(profile)
-    }
-
-    /// The resolved entries of everything `profile` extends. `chain` is the profiles being
-    /// expanded, to catch cycles.
-    fn base_entries(
-        &self,
-        profile: &Profile,
-        chain: &mut Vec<String>,
-    ) -> anyhow::Result<Vec<Entry>> {
-        let mut entries = vec![];
-        for base in &profile.extends {
-            anyhow::ensure!(!chain.contains(base), "profile {base} extends itself");
-            let loaded = self.load(base)?;
-            chain.push(base.clone());
-            let inherited = self.base_entries(&loaded, chain)?;
-            chain.pop();
-            entries = overlay(entries, &overlay(inherited, &loaded.resolved()));
-        }
-        Ok(entries)
+        check_name(name)?;
+        Resolver::new(&self.all()?).resolve(name, &mut vec![])
     }
 
     /// Add the profile, or replace the one of the same name.
@@ -128,8 +111,48 @@ impl Store {
     }
 }
 
-fn find(profiles: Vec<Profile>, name: &str) -> Option<Profile> {
-    profiles.into_iter().find(|p| p.name == name)
+struct Resolver<'a> {
+    profiles: &'a [Profile],
+    resolved: HashMap<String, Profile>,
+}
+
+impl<'a> Resolver<'a> {
+    fn new(profiles: &'a [Profile]) -> Self {
+        Self {
+            profiles,
+            resolved: HashMap::new(),
+        }
+    }
+
+    fn resolve(&mut self, name: &str, chain: &mut Vec<String>) -> anyhow::Result<Profile> {
+        if let Some(profile) = self.resolved.get(name) {
+            return Ok(profile.clone());
+        }
+        anyhow::ensure!(
+            !chain.iter().any(|base| base == name),
+            "profile {name} extends itself"
+        );
+        let mut profile = self
+            .profiles
+            .iter()
+            .find(|p| p.name == name)
+            .cloned()
+            .with_context(|| format!("no profile {name}"))?;
+        profile.validate()?;
+        chain.push(name.to_string());
+        let inherited = (|| {
+            let mut entries = vec![];
+            for base in &profile.extends {
+                entries = overlay(entries, &self.resolve(base, chain)?.entries);
+            }
+            Ok::<_, anyhow::Error>(entries)
+        })();
+        chain.pop();
+        profile.entries = overlay(inherited?, &profile.resolved());
+        profile.extends.clear();
+        self.resolved.insert(name.into(), profile.clone());
+        Ok(profile)
+    }
 }
 
 /// The profiles that list `name` in `extends`.
@@ -146,6 +169,7 @@ fn extended_by(profiles: &[Profile], name: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::profile::Entry;
 
     fn store() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();
@@ -251,7 +275,6 @@ mod tests {
 
         let flat = store.load_flat("web").unwrap();
 
-        // Assert tdd appears once, after the surviving inherited skill.
         assert_eq!(skill_names(&flat), ["grill", "tdd"]);
     }
 
@@ -270,7 +293,6 @@ mod tests {
 
         let flat = store.load_flat("web").unwrap();
 
-        // Assert one entry is left, with the later base's agents.
         assert_eq!(flat.entries.len(), 1);
         assert_eq!(flat.entries[0].agents(), [crate::model::Agent::Codex]);
     }

@@ -63,22 +63,12 @@ impl Prompter for Console<'_> {
 fn render(view: &PlanView) -> String {
     let mut lines = vec![view.heading.clone()];
     for group in Group::ALL {
-        let verb = verb(group);
+        let verb = group.name();
         lines.extend(view.lines(group).iter().map(|l| format!("  {verb:<8}{l}")));
     }
     lines.push("Plan:".into());
     lines.extend(view.steps.iter().map(|step| format!("  {step}")));
     lines.join("\n")
-}
-
-fn verb(group: Group) -> &'static str {
-    match group {
-        Group::Keep => "keep",
-        Group::Remove => "remove",
-        Group::Install => "install",
-        Group::Update => "update",
-        Group::Skip => "skip",
-    }
 }
 
 #[cfg(test)]

@@ -18,6 +18,18 @@ impl Catalog {
         })
     }
 
+    /// A temporary catalog whose local entries refer to this project's physical sources.
+    pub fn in_env(mut self, env: &crate::env::Env) -> Self {
+        for item in &mut self.items {
+            let default_label = item.label == item.entry.to_string();
+            item.entry = item.entry.clone().in_env(env);
+            if default_label {
+                item.label = item.entry.to_string();
+            }
+        }
+        self
+    }
+
     pub fn items(&self) -> &[LibraryItem] {
         &self.items
     }
@@ -115,7 +127,6 @@ mod tests {
 
         catalog.add(renamed.clone());
 
-        // Assert one item per thing, the update keeping the original position.
         assert_eq!(catalog.items(), [renamed, hook("x")]);
     }
 
@@ -126,7 +137,6 @@ mod tests {
         let first = catalog.remove(&skill("o/r", "a"));
         let second = catalog.remove(&skill("o/r", "a"));
 
-        // Assert only the first removal found something.
         assert_eq!((first, second, catalog.items().len()), (true, false, 0));
     }
 }
@@ -160,7 +170,6 @@ mod split_tests {
 
         catalog.add_entry(skills(&["tdd"]));
 
-        // Assert nothing was lost: grill and tdd are still one item each.
         assert_eq!(catalog.items().len(), 2);
     }
 }

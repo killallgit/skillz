@@ -90,3 +90,55 @@ fn an_update_records_the_new_version_in_the_library() {
     let provenance = items.items()[0].provenance.clone().unwrap();
     assert_eq!(provenance.version.as_deref(), Some("abc123"));
 }
+
+#[test]
+fn retrying_an_update_only_retries_the_failed_items() {
+    use crate::runner::{CommandRunner, Output};
+    struct FailsOnce {
+        failed: std::cell::Cell<bool>,
+        names: std::cell::RefCell<Vec<String>>,
+    }
+    impl CommandRunner for FailsOnce {
+        fn run(&self, _: &str, args: &[String], _: &Path) -> anyhow::Result<Output> {
+            let name = args[3].clone();
+            self.names.borrow_mut().push(name.clone());
+            let success = name != "b" || self.failed.replace(true);
+            Ok(Output {
+                success,
+                stderr: String::new(),
+            })
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    project_with_skill(dir.path(), "a");
+    project_with_skill(dir.path(), "b");
+    fs::write(
+        dir.path().join("skills-lock.json"),
+        r#"{"skills":{"a":{"source":"o/r"},"b":{"source":"o/r"}}}"#,
+    )
+    .unwrap();
+    let runner = FailsOnce {
+        failed: Default::default(),
+        names: Default::default(),
+    };
+    let prompter = super::tests::Outcomes {
+        retry_once: true,
+        ..Default::default()
+    };
+    let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+    let ids: Vec<_> =
+        crate::cli::scope::installed(&deps, &project_env(&deps, dir.path()), Scope::Project)
+            .iter()
+            .map(|i| i.id.clone())
+            .collect();
+
+    let result = change(
+        &session(&deps, dir.path()),
+        Scope::Project,
+        &Change::Update(&ids),
+    )
+    .unwrap();
+
+    assert_eq!(*runner.names.borrow(), ["a", "b", "b"]);
+    assert!(matches!(result, Some(Notice::ItemsUpdated(1))));
+}

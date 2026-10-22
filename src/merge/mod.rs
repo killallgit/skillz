@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use self::key::Key;
 pub use self::tag::tag;
-use crate::model::Augmentation;
+use crate::model::{Augmentation, Details};
 
 /// `items` with every set of copies of one thing folded into its first copy's place.
 pub fn merge(items: Vec<Augmentation>) -> Vec<Augmentation> {
@@ -40,6 +40,13 @@ fn fold(mut copies: Vec<Augmentation>) -> Augmentation {
     merged.removal = copies.iter().flat_map(|c| c.removal.clone()).collect();
     merged.children = distinct(copies.iter().flat_map(|c| c.children.clone()));
     merged.hooks = distinct(copies.iter().flat_map(|c| c.hooks.clone()));
+    if let Details::Plugin { skills, .. } = &mut merged.details {
+        *skills = distinct(
+            copies
+                .iter()
+                .flat_map(|copy| copy.plugin_skills().map(str::to_owned)),
+        );
+    }
     merged
 }
 

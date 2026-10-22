@@ -3,7 +3,7 @@
 use ratatui::crossterm::event::KeyEvent;
 
 use super::Outline;
-use crate::tui::keymap::Action;
+use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::input::Outcome as Edit;
 
 impl Outline {
@@ -22,11 +22,6 @@ impl Outline {
         }
     }
 
-    /// Move the cursor without expanding or collapsing; for the keys a filter prompt allows.
-    pub fn step(&mut self, movement: Action) {
-        self.list.apply(movement);
-    }
-
     fn collapse_or_ascend(&mut self, id: usize) {
         if self.expanded.contains(&id) {
             self.toggle_open(id);
@@ -35,8 +30,17 @@ impl Outline {
         }
     }
 
+    /// Navigation stays in the list; all other keys go to the filter field.
+    pub fn filter_key(&mut self, key: KeyEvent) -> Edit {
+        if let Some(movement) = keymap::resolve(Scope::Filter, key) {
+            self.list.apply(movement);
+            return Edit::Editing;
+        }
+        self.edit_filter(key)
+    }
+
     /// Feed a key to the filter field. Typing re-filters from the top; cancelling clears it.
-    pub fn edit_filter(&mut self, key: KeyEvent) -> Edit {
+    fn edit_filter(&mut self, key: KeyEvent) -> Edit {
         let before = self.filter.value().to_string();
         let outcome = self.filter.handle(key);
         match outcome {

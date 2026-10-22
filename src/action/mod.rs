@@ -4,7 +4,7 @@ mod edit;
 mod execute;
 mod json;
 mod removal_target;
-mod stage;
+pub(crate) mod stage;
 #[cfg(test)]
 mod testutil;
 mod toml;

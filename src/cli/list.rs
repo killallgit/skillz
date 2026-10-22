@@ -104,15 +104,10 @@ pub(super) fn list(scene: &Scene, view: ListView, out: &mut dyn Write) -> anyhow
     if view.json {
         return print_json(scene, &items, view.check, out);
     }
-    if deps.interactive && (view.interactive || (view.query.is_some() && spans_groups(&items))) {
+    if deps.interactive && view.interactive {
         return browse(scene, &items, out);
     }
     render_listing(&listing(&items, &view), out)
-}
-
-/// A query spanning several groups opens the browser so the user can narrow it down.
-fn spans_groups(items: &[Augmentation]) -> bool {
-    items.iter().any(|i| i.group != items[0].group)
 }
 
 /// The items and their removal plans, with each one's context cost.
@@ -199,6 +194,7 @@ mod tests {
 
     fn skill(name: &str) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
             id: name.into(),

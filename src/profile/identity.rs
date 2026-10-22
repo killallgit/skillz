@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 
 use super::Entry;
-use crate::model::Agent;
+use crate::model::{Agent, Augmentation, Details, Installer, Kind, split_plugin_id};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Key {
@@ -47,6 +47,57 @@ pub fn claims(entry: &Entry) -> Vec<Claim> {
         .collect()
 }
 
+/// What is installed, independent of whether a profile can reproduce its credentials or source.
+pub(crate) fn installed_claims(item: &Augmentation) -> Vec<Claim> {
+    installed_keys(item)
+        .into_iter()
+        .flat_map(|key| item.agents.iter().map(move |agent| (key.clone(), *agent)))
+        .collect()
+}
+
+pub(crate) fn installed_keys(item: &Augmentation) -> Vec<Key> {
+    let source = || match item.installer {
+        Installer::Npx => item.source.as_ref(),
+        _ => item.source.as_ref().or(item.origin.link.as_ref()),
+    };
+    match item.kind {
+        Kind::Skill => source()
+            .map(|source| {
+                let name = match &item.details {
+                    Details::Skill { install_name, .. } => install_name,
+                    _ => &item.name,
+                };
+                vec![Key::Skill(source.clone(), name.clone())]
+            })
+            .unwrap_or_default(),
+        Kind::Subagent => match (source(), &item.details) {
+            (Some(source), Details::Subagent { file }) => file
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(|name| vec![Key::Subagent(source.clone(), name.into())])
+                .unwrap_or_default(),
+            _ => vec![],
+        },
+        Kind::Plugin => {
+            let (name, marketplace) = split_plugin_id(&item.name);
+            vec![Key::Plugin(marketplace.into(), name.into())]
+        }
+        Kind::Hook => item
+            .hooks
+            .iter()
+            .map(|hook| {
+                Key::Hook(
+                    hook.event.clone(),
+                    hook.matcher.clone(),
+                    hook.command.clone(),
+                )
+            })
+            .collect(),
+        Kind::Mcp => vec![Key::Mcp(item.name.clone())],
+        Kind::Marketplace => vec![],
+    }
+}
+
 /// The part of a resolved entry that `have` does not cover: the names with a missing claim for
 /// some agent, or the whole entry when it has one key. `None` when everything is there.
 pub fn lacking(entry: &Entry, have: &HashSet<Claim>) -> Option<Entry> {
@@ -62,7 +113,7 @@ pub fn lacking(entry: &Entry, have: &HashSet<Claim>) -> Option<Entry> {
     without(entry.clone(), &covered)
 }
 
-fn keys(entry: &Entry) -> Vec<Key> {
+pub(crate) fn keys(entry: &Entry) -> Vec<Key> {
     match entry {
         Entry::Skill { source, names, .. } => per_name(source, names, Key::Skill),
         Entry::Subagent { source, names, .. } => per_name(source, names, Key::Subagent),
@@ -145,7 +196,6 @@ mod tests {
 
         let lacking = lacking(&entry, &have);
 
-        // Assert b is still wanted for Codex and a is not.
         assert_eq!(
             lacking,
             Some(skills("o/r", &["b"]).with_agents(vec![Agent::Claude, Agent::Codex]))
@@ -167,7 +217,6 @@ mod tests {
 
         let merged = overlay(base, std::slice::from_ref(&child));
 
-        // Assert the parent's tdd is gone and the child's comes after the survivor.
         assert_eq!(merged, [skills("o/r", &["grill"]), child]);
     }
 
@@ -177,7 +226,6 @@ mod tests {
 
         let merged = overlay(base, &[skills("o/r", &["b"])]);
 
-        // Assert the others stay in the parent's entry.
         assert_eq!(merged, [skills("o/r", &["a", "c"]), skills("o/r", &["b"])]);
     }
 
@@ -187,7 +235,6 @@ mod tests {
 
         let merged = overlay(base, &[skills("o/two", &["tdd"])]);
 
-        // Assert both remain.
         assert_eq!(merged.len(), 2);
     }
 
@@ -195,7 +242,6 @@ mod tests {
     fn an_mcp_server_is_replaced_by_name_whatever_its_launch() {
         let merged = overlay(vec![mcp("db", "old")], &[mcp("db", "new")]);
 
-        // Assert only the child's definition remains.
         assert_eq!(merged, [mcp("db", "new")]);
     }
 
@@ -205,7 +251,6 @@ mod tests {
 
         let merged = overlay(base, &[hook(Some("Bash"), "x")]);
 
-        // Assert only the matching handler is replaced.
         assert_eq!(merged, [hook(None, "x"), hook(Some("Bash"), "x")]);
     }
 
@@ -229,7 +274,6 @@ mod tests {
 
         let merged = overlay(vec![plugin("o/old")], &[plugin("o/new")]);
 
-        // Assert the source can change without keeping the parent's.
         assert_eq!(merged, [plugin("o/new")]);
     }
 }

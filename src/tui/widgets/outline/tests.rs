@@ -26,7 +26,7 @@ fn expanded() -> Outline {
 
 fn type_query(outline: &mut Outline, query: &str) {
     keys(query).into_iter().for_each(|k| {
-        outline.edit_filter(k);
+        outline.filter_key(k);
     });
 }
 
@@ -97,9 +97,9 @@ fn submitting_keeps_the_filter_and_cancelling_restores_every_row() {
     let mut outline = expanded();
     type_query(&mut outline, "apr");
 
-    let submitted = outline.edit_filter(key(KeyCode::Enter));
+    let submitted = outline.filter_key(key(KeyCode::Enter));
     let kept = outline.visible().to_vec();
-    let cancelled = outline.edit_filter(key(KeyCode::Esc));
+    let cancelled = outline.filter_key(key(KeyCode::Esc));
 
     assert_eq!((submitted, cancelled), (Edit::Submit, Edit::Cancel));
     assert_eq!(kept, [0, 2]);

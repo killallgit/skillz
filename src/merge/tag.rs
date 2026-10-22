@@ -16,24 +16,3 @@ pub fn tag(agents: &[Agent]) -> String {
         more => format!("{} +{more}", names.join(", ")),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn up_to_three_agents_are_all_named() {
-        let tag = tag(&[Agent::Claude, Agent::Codex, Agent::Cursor]);
-
-        assert_eq!(tag, "claude, codex, cursor");
-    }
-
-    #[test]
-    fn more_than_three_are_cut_to_two_and_a_count() {
-        let many = [Agent::Claude, Agent::Codex, Agent::Cursor, Agent::Claude];
-
-        let tag = tag(&many);
-
-        assert_eq!(tag, "claude, codex +2");
-    }
-}

@@ -34,6 +34,7 @@ mod tests {
 
     fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: vec![],
             members: Vec::new(),
             id: format!("{kind}:{name}"),

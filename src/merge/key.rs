@@ -1,5 +1,5 @@
-use crate::hook_text::HookEntry;
-use crate::model::{Augmentation, Kind, Scope};
+use crate::mcp::Server;
+use crate::model::{Augmentation, Details, Kind, Scope};
 
 /// What makes two items the same thing seen through different agents. Hooks are the same when
 /// they hold the same handlers and MCP servers when they launch the same way; the rest by
@@ -11,7 +11,7 @@ pub(super) struct Key {
     name: String,
     group: String,
     source: Option<String>,
-    contents: Vec<String>,
+    contents: Contents,
 }
 
 impl Key {
@@ -27,13 +27,26 @@ impl Key {
     }
 }
 
-fn contents(item: &Augmentation) -> Vec<String> {
-    let mut contents: Vec<String> = match item.kind {
-        Kind::Hook => item.hooks.iter().map(HookEntry::label).collect(),
-        Kind::Mcp => item.children.clone(),
-        _ => return Vec::new(),
-    };
-    contents.sort();
-    contents.dedup();
-    contents
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Contents {
+    None,
+    Hooks(Vec<(String, Option<String>, String)>),
+    Mcp(Server),
+}
+
+fn contents(item: &Augmentation) -> Contents {
+    match (&item.kind, &item.details) {
+        (Kind::Hook, _) => {
+            let mut hooks: Vec<_> = item
+                .hooks
+                .iter()
+                .map(|h| (h.event.clone(), h.matcher.clone(), h.command.clone()))
+                .collect();
+            hooks.sort();
+            hooks.dedup();
+            Contents::Hooks(hooks)
+        }
+        (Kind::Mcp, Details::Mcp { server, .. }) => Contents::Mcp(server.clone()),
+        _ => Contents::None,
+    }
 }

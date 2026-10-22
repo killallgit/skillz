@@ -18,11 +18,9 @@ fn handler(command: &str) -> serde_json::Value {
 
 #[test]
 fn using_a_profile_adds_its_hook_to_the_project_local_settings() {
-    // Assemble
     let sb = Sandbox::new();
     sb.write_profile("notify", &stop_hook("say done"));
 
-    // Act
     let out = sb.skillz(&["use", "-y", "notify"]);
 
     // Assert: the command is registered under Stop
@@ -35,12 +33,10 @@ fn using_a_profile_adds_its_hook_to_the_project_local_settings() {
 
 #[test]
 fn a_matcher_puts_the_hook_in_a_group_with_that_matcher() {
-    // Assemble
     let sb = Sandbox::new();
     let entry = "[[entry]]\nkind = \"hook\"\nevent = \"PreToolUse\"\nmatcher = \"Bash\"\ncommand = \"guard\"\nagents = [\"claude\"]\n";
     sb.write_profile("guard", entry);
 
-    // Act
     sb.skillz(&["use", "-y", "guard"]);
 
     // Assert: the group's matcher is Bash
@@ -50,7 +46,6 @@ fn a_matcher_puts_the_hook_in_a_group_with_that_matcher() {
 
 #[test]
 fn a_hook_is_added_next_to_existing_hooks_of_the_event() {
-    // Assemble
     let sb = Sandbox::new();
     write(
         &sb.project_claude_hooks(),
@@ -58,7 +53,6 @@ fn a_hook_is_added_next_to_existing_hooks_of_the_event() {
     );
     sb.write_profile("notify", &stop_hook("say done"));
 
-    // Act
     sb.skillz(&["use", "-y", "notify"]);
 
     // Assert: both handlers are there
@@ -70,7 +64,6 @@ fn a_hook_is_added_next_to_existing_hooks_of_the_event() {
 
 #[test]
 fn exact_removes_the_hooks_the_profile_does_not_list_and_keeps_the_rest_of_the_settings() {
-    // Assemble
     let sb = Sandbox::new();
     write(
         &sb.project_claude_hooks(),
@@ -78,7 +71,6 @@ fn exact_removes_the_hooks_the_profile_does_not_list_and_keeps_the_rest_of_the_s
     );
     sb.write_profile("notify", &stop_hook("say done"));
 
-    // Act
     let out = sb.skillz(&["use", "-y", "--exact", "notify"]);
 
     // Assert: only the profile's hook is left, and the unrelated setting is untouched
@@ -92,13 +84,11 @@ fn exact_removes_the_hooks_the_profile_does_not_list_and_keeps_the_rest_of_the_s
 
 #[test]
 fn using_a_profile_without_exact_never_removes_hooks() {
-    // Assemble
     let sb = Sandbox::new();
     sb.write_profile("a", &stop_hook("say a"));
     sb.write_profile("b", &stop_hook("say b"));
     sb.skillz(&["use", "-y", "a"]);
 
-    // Act
     sb.skillz(&["use", "-y", "b"]);
 
     // Assert: both hooks are there
@@ -110,13 +100,11 @@ fn using_a_profile_without_exact_never_removes_hooks() {
 
 #[test]
 fn exact_switching_replaces_the_old_hook_with_the_new_one() {
-    // Assemble
     let sb = Sandbox::new();
     sb.write_profile("a", &stop_hook("say a"));
     sb.write_profile("b", &stop_hook("say b"));
     sb.skillz(&["use", "-y", "a"]);
 
-    // Act
     sb.skillz(&["use", "-y", "--exact", "b"]);
 
     // Assert: only b's hook remains
@@ -125,13 +113,11 @@ fn exact_switching_replaces_the_old_hook_with_the_new_one() {
 
 #[test]
 fn switching_to_a_profile_with_the_same_hook_keeps_it() {
-    // Assemble
     let sb = Sandbox::new();
     sb.write_profile("a", &stop_hook("say same"));
     sb.write_profile("b", &stop_hook("say same"));
     sb.skillz(&["use", "-y", "a"]);
 
-    // Act
     sb.skillz(&["use", "-y", "b"]);
 
     // Assert: still exactly one handler
@@ -143,12 +129,10 @@ fn switching_to_a_profile_with_the_same_hook_keeps_it() {
 
 #[test]
 fn applying_the_same_profile_twice_does_not_duplicate_the_hook() {
-    // Assemble
     let sb = Sandbox::new();
     sb.write_profile("notify", &stop_hook("say done"));
     sb.skillz(&["use", "-y", "notify"]);
 
-    // Act
     let out = sb.skillz(&["use", "-y", "notify"]);
 
     // Assert: one handler, and the second run succeeded
@@ -161,7 +145,6 @@ fn applying_the_same_profile_twice_does_not_duplicate_the_hook() {
 
 #[test]
 fn a_hook_already_in_the_settings_is_not_added_again() {
-    // Assemble
     let sb = Sandbox::new();
     write(
         &sb.project_claude_hooks(),
@@ -169,7 +152,6 @@ fn a_hook_already_in_the_settings_is_not_added_again() {
     );
     sb.write_profile("notify", &stop_hook("say done"));
 
-    // Act
     sb.skillz(&["use", "-y", "notify"]);
 
     // Assert: still one handler
@@ -181,11 +163,9 @@ fn a_hook_already_in_the_settings_is_not_added_again() {
 
 #[test]
 fn a_project_hook_does_not_touch_the_global_settings() {
-    // Assemble
     let sb = Sandbox::new();
     sb.write_profile("notify", &stop_hook("say done"));
 
-    // Act
     sb.skillz(&["use", "-y", "notify"]);
 
     // Assert: nothing in the redirected Claude dir
@@ -194,11 +174,9 @@ fn a_project_hook_does_not_touch_the_global_settings() {
 
 #[test]
 fn a_codex_hook_goes_to_the_project_hooks_json() {
-    // Assemble
     let sb = Sandbox::new();
     sb.write_profile("notify", &hook_profile("Stop", "say done", CODEX));
 
-    // Act
     sb.skillz(&["use", "-y", "notify"]);
 
     // Assert: registered in .codex/hooks.json, and Claude's settings are untouched
@@ -211,7 +189,6 @@ fn a_codex_hook_goes_to_the_project_hooks_json() {
 
 #[test]
 fn exact_removes_a_codex_hook_the_profile_lacks_and_keeps_the_listed_ones() {
-    // Assemble
     let sb = Sandbox::new();
     write(
         &sb.project_codex_hooks(),
@@ -221,7 +198,6 @@ fn exact_removes_a_codex_hook_the_profile_lacks_and_keeps_the_listed_ones() {
     sb.write_profile("keep", &hook_profile("Stop", "mine", CODEX));
     sb.skillz(&["use", "-y", "notify"]);
 
-    // Act
     sb.skillz(&["use", "-y", "--exact", "keep"]);
 
     // Assert: only the user's hook remains
@@ -230,14 +206,12 @@ fn exact_removes_a_codex_hook_the_profile_lacks_and_keeps_the_listed_ones() {
 
 #[test]
 fn a_profile_without_agents_puts_the_hook_in_both_agents() {
-    // Assemble
     let sb = Sandbox::new();
     sb.write_profile(
         "both",
         "[[entry]]\nkind = \"hook\"\nevent = \"Stop\"\ncommand = \"say done\"\n",
     );
 
-    // Act
     sb.skillz(&["use", "-y", "both"]);
 
     // Assert: Claude's and Codex's project files both have it
@@ -253,11 +227,9 @@ fn a_profile_without_agents_puts_the_hook_in_both_agents() {
 
 #[test]
 fn a_dry_run_writes_no_hook() {
-    // Assemble
     let sb = Sandbox::new();
     sb.write_profile("notify", &stop_hook("say done"));
 
-    // Act
     let out = sb.skillz(&["use", "--dry-run", "notify"]);
 
     // Assert: success, and no settings file
@@ -267,7 +239,6 @@ fn a_dry_run_writes_no_hook() {
 
 #[test]
 fn saving_a_profile_keeps_the_hooks_in_the_config() {
-    // Assemble
     let sb = Sandbox::new();
     write(
         &sb.project.join(".agents/skills/tdd/SKILL.md"),
@@ -288,7 +259,6 @@ fn saving_a_profile_keeps_the_hooks_in_the_config() {
         &json!({"hooks": {"Stop": [handler("say done")]}}).to_string(),
     );
 
-    // Act
     let out = sb.skillz(&["profile", "save", "mine"]);
 
     // Assert: the profile holds the skill and the hook

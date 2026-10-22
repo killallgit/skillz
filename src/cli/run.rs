@@ -13,10 +13,10 @@ use super::profile::profile_command;
 use super::prune::prune;
 use super::recording::record_since;
 use super::removal::{UninstallRequest, reset, uninstall};
-use super::scope::{Scene, installed, resolve, resolve_project, split_target};
+use super::scope::{Scene, complete_installed, resolve, resolve_project, split_target};
+use super::session::{Change, change, with_session};
 use super::sync::{SyncRequest, sync};
 use super::update::{UpdateRequest, check, update};
-use super::use_profile::{Switching, Target, use_profile};
 use crate::install::{self, InstallRequest, SkillSelection};
 use crate::model::Scope;
 use crate::store::Store;
@@ -114,16 +114,14 @@ fn run_reset(deps: &Deps, args: ResetArgs, out: &mut dyn Write) -> anyhow::Resul
 
 fn run_use(deps: &Deps, args: UseArgs, out: &mut dyn Write) -> anyhow::Result<()> {
     let env = resolve_project(deps, args.project.as_deref())?;
-    let target = Target {
-        env: &env,
-        scope: Scope::Project,
+    let what = if args.exact {
+        Change::ApplyExact(&args.profile)
+    } else {
+        Change::Apply(&args.profile)
     };
-    let switching = Switching {
-        profile: &args.profile,
-        exact: args.exact,
-        dry_run: args.dry_run,
-    };
-    use_profile(deps, &target, &switching, out)
+    with_session(deps, &env, out, args.dry_run, |session, console| {
+        console.conclude(change(session, Scope::Project, &what)?)
+    })
 }
 
 fn run_sync(deps: &Deps, args: SyncArgs, out: &mut dyn Write) -> anyhow::Result<()> {
@@ -158,7 +156,7 @@ fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
         prompter: deps.prompter,
     };
     let store = Store::in_env(&env);
-    let before = installed(deps, &env, scope);
+    let before = complete_installed(deps, &env, scope)?;
     let result = install::install(&ctx, &request);
     let recorded = record_since(deps, &store, (&env, scope), &before);
     result?;

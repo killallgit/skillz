@@ -1,7 +1,7 @@
 //! Remembering in the library what an install left behind, so it can be installed again later.
 
 use super::deps::Deps;
-use super::scope::installed;
+use super::scope::complete_installed;
 use crate::env::Env;
 use crate::library::{now_secs, record_installed};
 use crate::model::{Augmentation, Scope};
@@ -17,13 +17,17 @@ pub(super) fn record_since(
     (env, scope): (&Env, Scope),
     before: &[Augmentation],
 ) -> anyhow::Result<()> {
-    let after = installed(deps, env, scope);
-    let everything = [Scope::Project, Scope::Global]
-        .map(|s| installed(deps, env, s))
-        .concat();
+    let scopes = [
+        complete_installed(deps, env, Scope::Project)?,
+        complete_installed(deps, env, Scope::Global)?,
+    ];
+    let after = match scope {
+        Scope::Project => &scopes[0],
+        Scope::Global => &scopes[1],
+    };
     store.update(|document| {
-        record_installed(&mut document.items, (before, &after), now_secs());
-        merge(document, &everything, &Disk);
+        record_installed(&mut document.items, (before, after), now_secs());
+        merge(document, &scopes.concat(), &Disk);
         Ok(())
     })
 }

@@ -60,13 +60,10 @@ fn before_a_sync_the_moved_skill_is_listed_as_stale() {
 
 #[test]
 fn sync_re_points_the_item_and_the_profile_instead_of_adding_a_duplicate() {
-    // Assemble
     let sb = moved_sandbox();
 
-    // Act
     let report = sb.json(&["sync", "--json"]);
 
-    // Assert
     assert_eq!(report["added"].as_array().unwrap().len(), 0);
     let moved = &report["repointed"][0];
     assert_eq!(moved["to"], new_skills(&sb));
@@ -103,13 +100,10 @@ fn profile_status_marks_an_entry_whose_folder_is_gone_as_unavailable() {
 
 #[test]
 fn applying_an_entry_whose_folder_is_gone_fails_without_running_npx() {
-    // Assemble
     let sb = moved_sandbox();
 
-    // Act
     let out = sb.skillz(&["use", "-y", "mine"]);
 
-    // Assert
     assert!(!out.status.success());
     assert!(sb.npx_calls().is_empty());
 }

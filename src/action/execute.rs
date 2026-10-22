@@ -5,7 +5,7 @@ use anyhow::Context;
 use super::edit::{FilePlan, plan_edits};
 use super::json::json_has;
 use super::removal_target::remove_path;
-use super::stage::{commit, discard, stage};
+use super::stage::{commit, stage};
 use super::{Action, RemovalTarget, Report};
 use crate::redact::{redact_line, redact_text};
 use crate::runner::CommandRunner;
@@ -176,13 +176,10 @@ fn write_plans(plans: &[FilePlan]) -> anyhow::Result<Vec<PathBuf>> {
         let Some((before, planned)) = plan.change() else {
             continue;
         };
-        match stage(&plan.file, before.map(String::from), planned) {
-            Ok(s) => staged.push(s),
-            Err(e) => {
-                discard(&staged);
-                return Err(e.context(format!("write {}", plan.file.display())));
-            }
-        }
+        staged.push(
+            stage(&plan.file, before.map(String::from), planned)
+                .with_context(|| format!("write {}", plan.file.display()))?,
+        );
         edited.push(plan.file.clone());
     }
     commit(&staged)?;

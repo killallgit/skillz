@@ -24,7 +24,7 @@ pub(super) fn uninstall(
         yes,
         dry_run,
     } = *request;
-    let items = scene.gather();
+    let items = scene.complete()?;
     let pick = Pick {
         title: "Select items to remove",
         queries,
@@ -82,7 +82,7 @@ pub(super) fn reset(
     dry_run: bool,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let items = scene.gather();
+    let items = scene.complete()?;
     let chosen = reset_set(&items, scene.filter, keep);
     confirm_and_remove(
         scene,
@@ -216,6 +216,7 @@ mod tests {
 
     fn item(name: &str, kind: Kind, group: &str) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
             id: format!("{kind}:{name}"),

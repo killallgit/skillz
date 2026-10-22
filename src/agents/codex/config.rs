@@ -29,8 +29,7 @@ pub(super) fn str_field<'a>(item: &'a Item, key: &str) -> Option<&'a str> {
 /// Plugin ids the current project's config lists (enabled or not), so a global removal keeps
 /// the shared cache they load from; `None` (keep every cache) when it cannot be read. Empty
 /// when that config is `config` itself (project scope, or run from home).
-// shortcut: other projects' configs are not visible, so their use is not protected; upgrade
-// if Codex ever records which projects use a cached plugin.
+// Codex does not record cache references from other projects, so only this project is protected.
 pub(super) fn project_plugin_ids(env: &Env, config: &Path) -> Option<Vec<String>> {
     let project = env.project.join(".codex/config.toml");
     if std::fs::canonicalize(&project).ok() == std::fs::canonicalize(config).ok() {

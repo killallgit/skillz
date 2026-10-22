@@ -15,7 +15,7 @@ use skillz::agents::{self, AgentAdapter, PluginInstall, PluginOutcome};
 use skillz::cli::{Command, Deps, Filter, UninstallArgs, run};
 use skillz::env::Env;
 use skillz::install::{Ctx, InstallRequest, SkillSelection, install};
-use skillz::model::{Agent, Augmentation, Installer, Kind, SKILL_CHILD, Scope};
+use skillz::model::{Agent, Augmentation, Details, Installer, Kind, Scope};
 use skillz::prompt::Prompter;
 use skillz::prune;
 use skillz::runner::{CommandRunner, Output};
@@ -46,6 +46,10 @@ impl AgentAdapter for Fake {
             return Ok(vec![]);
         }
         Ok(vec![Augmentation {
+            details: Details::Plugin {
+                location: root.join(PLUGIN),
+                skills: vec!["dup".into()],
+            },
             hooks: Vec::new(),
             members: Vec::new(),
             id: format!("plugin:global:{PLUGIN}"),
@@ -57,7 +61,7 @@ impl AgentAdapter for Fake {
             source: None,
             installer: Installer::Local,
             origin: Default::default(),
-            children: vec![format!("{SKILL_CHILD}dup")],
+            children: vec![],
             removal: vec![Action::RemovePath(
                 RemovalTarget::new(&root, [PLUGIN]).unwrap(),
             )],
@@ -68,6 +72,16 @@ impl AgentAdapter for Fake {
     }
     fn tracks(&self, item: &Augmentation) -> bool {
         matches!(item.kind, Kind::Skill | Kind::Plugin)
+    }
+    fn update_steps(&self, item: &Augmentation, cwd: &Path) -> Vec<Action> {
+        if item.kind != Kind::Plugin {
+            return vec![];
+        }
+        vec![Action::required(
+            "fake-agent",
+            vec!["upgrade".into(), item.name.clone()],
+            cwd,
+        )]
     }
     fn install_plugins(&self, _req: &PluginInstall) -> anyhow::Result<PluginOutcome> {
         self.installs.set(self.installs.get() + 1);
@@ -219,4 +233,24 @@ fn install_asks_the_fake_to_install_plugins_and_runs_no_other_command() {
     };
     install(&ctx, &req).unwrap();
     assert_eq!(w.installs.get(), 1);
+}
+
+#[test]
+fn a_registered_adapter_owns_its_update_commands() {
+    let world = world();
+    let adapters = world.adapters();
+    let inventory = agents::inventory(&adapters, &world.env, &[Scope::Global])
+        .complete()
+        .unwrap();
+    let plugin = inventory
+        .iter()
+        .find(|item| item.kind == Kind::Plugin)
+        .unwrap();
+
+    let steps = skillz::update::steps(&adapters, plugin, &world.env.project);
+
+    assert!(
+        matches!(&steps[..], [Action::Run { program, args, cwd, .. }]
+        if program == "fake-agent" && args == &["upgrade", PLUGIN] && cwd == &world.env.project)
+    );
 }

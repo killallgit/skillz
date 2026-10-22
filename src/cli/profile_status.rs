@@ -15,7 +15,11 @@ use crate::stale::{Disk, Probe, missing_source};
 pub(super) fn list(deps: &Deps, env: &Env, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
     let store = Store::in_env(env);
     let here = installed(deps, env, Scope::Project);
-    let readable = store.readable()?;
+    let readable: Vec<Profile> = store
+        .readable()?
+        .into_iter()
+        .map(|profile| profile.in_env(env))
+        .collect();
     let rows: Vec<Value> = store
         .names()?
         .into_iter()
@@ -65,6 +69,10 @@ pub(super) fn status(
         None => store.readable()?,
     };
     let here = installed(deps, env, Scope::Project);
+    let profiles: Vec<Profile> = profiles
+        .into_iter()
+        .map(|profile| profile.in_env(env))
+        .collect();
     let rows: Vec<Value> = profiles
         .iter()
         .map(|p| standing_json(&p.name, &compare(&p.resolved(), &here), &Disk))

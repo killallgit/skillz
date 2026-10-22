@@ -25,18 +25,24 @@ fn u_on_an_installed_item_asks_to_update_it() {
 }
 
 #[test]
-fn u_on_a_package_asks_to_update_every_installed_item_in_it() {
-    let mut tab = loaded();
+fn u_on_a_package_updates_its_items_whether_expanded_or_collapsed() {
+    for expanded in [true, false] {
+        let mut tab = loaded();
+        if !expanded {
+            press(&mut tab, KeyCode::Enter);
+        }
 
-    let act = press(&mut tab, u());
+        let act = press(&mut tab, u());
 
-    assert_eq!(
-        act,
-        Some(Act::Update {
-            scope: Scope::Project,
-            ids: vec!["skill:tdd".into()]
-        })
-    );
+        // Assert package actions depend on its items, not its current presentation.
+        assert_eq!(
+            act,
+            Some(Act::Update {
+                scope: Scope::Project,
+                ids: vec!["skill:tdd".into()],
+            })
+        );
+    }
 }
 
 #[test]
@@ -87,4 +93,38 @@ fn an_outdated_item_is_marked_bold_with_a_star() {
         .iter()
         .any(|cell| cell.symbol() == "*" && cell.modifier.contains(ratatui::style::Modifier::BOLD));
     assert!(star);
+}
+
+#[test]
+fn updating_a_merged_package_selects_each_installed_copy() {
+    use super::rows::tests::installed;
+    use crate::model::{Agent, Kind};
+
+    let copies: Vec<_> = [Agent::Claude, Agent::Codex]
+        .into_iter()
+        .map(|agent| {
+            let mut item = installed("tdd", Kind::Skill, Some("o/r"));
+            item.id = format!("skill:{agent}:tdd");
+            item.agents = vec![agent];
+            item
+        })
+        .collect();
+    let expected = copies.iter().map(|item| item.id.clone()).collect();
+    let model = Model {
+        installed: crate::merge::merge(copies),
+        ..Model::default()
+    };
+    let mut tab = InstalledTab::project();
+    tab.load(&model);
+
+    let act = press(&mut tab, u());
+
+    // Assert a collapsed aggregate package asks to update both physical copies.
+    assert_eq!(
+        act,
+        Some(Act::Update {
+            scope: Scope::Project,
+            ids: expected
+        })
+    );
 }

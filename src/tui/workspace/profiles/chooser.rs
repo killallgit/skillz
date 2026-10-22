@@ -56,7 +56,7 @@ impl Chooser {
                 .filter(|e| !offered(e))
                 .cloned()
                 .collect(),
-            outline: rows::closed_outline(&rows),
+            outline: Outline::new(rows::shape(&rows)),
             rows,
             checked,
         }

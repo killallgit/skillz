@@ -1,7 +1,8 @@
 //! Which rows `u` updates, and which rows are known to have an update.
 
 use super::InstalledTab;
-use super::rows::{Row, State};
+use super::rows::State;
+use crate::model::Augmentation;
 use crate::update::can_update;
 
 impl InstalledTab {
@@ -11,32 +12,15 @@ impl InstalledTab {
 
     /// The installed, updatable items of the highlighted row: itself, or everything under it.
     pub(super) fn updatable_ids(&self) -> Vec<String> {
-        let Some(current) = self.outline.current() else {
-            return vec![];
-        };
-        let visible = self.outline.visible();
-        let depth = self.outline.depth(current);
-        let under = (current + 1..self.rows.len())
-            .take_while(|&at| self.outline.depth(at) > depth)
-            .filter(|at| visible.contains(at));
-        std::iter::once(current)
-            .chain(under)
-            .filter_map(|at| match &self.rows[at] {
-                Row::Item(item) => installed_id(&item.state),
-                _ => None,
+        self.acted_on()
+            .iter()
+            .filter_map(|state| match state {
+                State::Installed(id) => self.installed.iter().find(|item| &item.id == id),
+                State::Available(_) => None,
             })
-            .filter(|id| {
-                self.installed
-                    .iter()
-                    .any(|item| &item.id == id && can_update(item))
-            })
+            .flat_map(Augmentation::parts)
+            .filter(|item| can_update(item))
+            .map(|item| item.id.clone())
             .collect()
-    }
-}
-
-fn installed_id(state: &State) -> Option<String> {
-    match state {
-        State::Installed(id) => Some(id.clone()),
-        _ => None,
     }
 }

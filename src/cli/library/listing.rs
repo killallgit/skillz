@@ -26,7 +26,7 @@ pub(super) fn list(
     args: &LibraryListArgs,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let library = Store::in_env(env).read()?.items;
+    let library = Store::in_env(env).read()?.items.in_env(env);
     let kinds = args.kinds.kinds();
     let shown: Vec<&LibraryItem> = library
         .items()
@@ -43,7 +43,7 @@ pub(in crate::cli) fn available(
     (scope, json): (Scope, bool),
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let library = Store::in_env(env).read()?.items;
+    let library = Store::in_env(env).read()?.items.in_env(env);
     let here = installed(deps, env, scope);
     let offered: Vec<&LibraryItem> = library
         .items()

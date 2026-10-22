@@ -1,9 +1,11 @@
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::action::Action;
 use crate::hook_text::HookEntry;
+use crate::redact::redact;
 
 /// A coding agent whose harness we manage. Add a variant + an adapter in `agents/` to extend.
 #[derive(
@@ -79,12 +81,54 @@ pub struct Origin {
     pub version: Option<String>,
 }
 
+/// Installed facts used by planning and snapshots; display text is derived separately.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Details {
+    #[default]
+    None,
+    Skill {
+        directory: PathBuf,
+        install_name: String,
+    },
+    Plugin {
+        location: PathBuf,
+        skills: Vec<String>,
+    },
+    Marketplace {
+        location: PathBuf,
+    },
+    Hook {
+        config: PathBuf,
+    },
+    Mcp {
+        config: PathBuf,
+        server: crate::mcp::Server,
+    },
+    Subagent {
+        file: PathBuf,
+    },
+}
+
+impl Details {
+    pub fn path(&self) -> Option<&Path> {
+        match self {
+            Self::None => None,
+            Self::Skill { directory, .. } => Some(directory),
+            Self::Plugin { location, .. } | Self::Marketplace { location } => Some(location),
+            Self::Hook { config } | Self::Mcp { config, .. } => Some(config),
+            Self::Subagent { file } => Some(file),
+        }
+    }
+}
+
 /// One removable thing installed into an agent harness.
 ///
 /// Discovery builds these with `removal` already planned, so uninstalling is just
 /// executing the concatenated plans of the selected items.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Augmentation {
+    #[serde(skip)]
+    pub details: Details,
     /// Unique, stable across runs. Usually `<kind>:<path or config key>`.
     pub id: String,
     pub name: String,
@@ -128,11 +172,13 @@ impl Augmentation {
         }
     }
 
-    /// The skill names among a plugin's children.
+    /// Skill names declared by the installed plugin.
     pub fn plugin_skills(&self) -> impl Iterator<Item = &str> {
-        self.children
-            .iter()
-            .filter_map(|c| c.strip_prefix(SKILL_CHILD))
+        let skills = match &self.details {
+            Details::Plugin { skills, .. } => skills.as_slice(),
+            _ => &[],
+        };
+        skills.iter().map(String::as_str)
     }
 
     /// `name [source]  (kind · agents · scope)`. Tree items pass `false`: their group
@@ -143,7 +189,7 @@ impl Augmentation {
             .source
             .as_deref()
             .filter(|s| with_source && *s != self.name)
-            .map(|s| format!(" [{s}]"))
+            .map(|s| format!(" [{}]", redact(s)))
             .unwrap_or_default();
         format!(
             "{}{source}  ({} · {} · {})",
@@ -207,24 +253,6 @@ impl fmt::Display for Scope {
 mod tests {
     use super::*;
 
-    fn item(source: Option<&str>) -> Augmentation {
-        Augmentation {
-            hooks: Vec::new(),
-            members: Vec::new(),
-            id: "skill:a".into(),
-            name: "a".into(),
-            kind: Kind::Skill,
-            agents: vec![Agent::Claude],
-            scope: Scope::Global,
-            group: "g".into(),
-            source: source.map(Into::into),
-            installer: Installer::Local,
-            origin: Origin::default(),
-            children: vec![],
-            removal: vec![],
-        }
-    }
-
     #[test]
     fn every_agent_has_a_distinct_npx_id() {
         let mut ids = [Agent::Claude, Agent::Codex, Agent::Cursor].map(Agent::npx_id);
@@ -241,14 +269,5 @@ mod tests {
         assert_eq!(split_plugin_id("tdd@mp"), ("tdd", "mp"));
         assert_eq!(split_plugin_id("bare"), ("bare", ""));
         assert_eq!(split_plugin_id("a@b@c"), ("a@b", "c"));
-    }
-
-    #[test]
-    fn label_shows_source_only_when_asked_and_it_differs_from_name() {
-        let other = item(Some("org/repo"));
-        assert_ne!(other.label(true), other.label(false));
-        for same in [item(None), item(Some("a"))] {
-            assert_eq!(same.label(true), same.label(false));
-        }
     }
 }

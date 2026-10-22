@@ -95,7 +95,12 @@ fn copied_definitions_are_listed_with_where_they_came_from() {
     let items = listed_subagents(&d);
 
     assert_eq!(items.len(), 2);
-    assert!(items.iter().all(|i| i["source"] == "agents-src"));
+    let source = w.project.join("agents-src").canonicalize().unwrap();
+    assert!(
+        items
+            .iter()
+            .all(|i| i["source"] == source.to_string_lossy().as_ref())
+    );
 }
 
 #[test]

@@ -5,10 +5,12 @@ pub(crate) mod claude;
 pub(crate) mod codex;
 pub(crate) mod cursor;
 mod inventory;
+mod plugin;
 
 pub use inventory::{Inventory, inventory};
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::action::Action;
 use crate::env::Env;
@@ -64,6 +66,10 @@ pub trait AgentAdapter {
     fn provision(&self, _entry: &Entry, _scope: Scope, _env: &Env) -> Option<Vec<Action>> {
         None
     }
+    fn update_steps(&self, _item: &Augmentation, _cwd: &Path) -> Vec<Action> {
+        vec![]
+    }
+
     /// Last-use records `(key, ms since the epoch)`, keyed `skill:<name>` or
     /// `plugin:<name@mp>`. The default is no usage source.
     fn usage(&self, _env: &Env) -> anyhow::Result<Vec<(String, u64)>> {
@@ -102,4 +108,14 @@ pub fn adapter_for(adapters: &[Box<dyn AgentAdapter>], agent: Agent) -> Option<&
         .iter()
         .find(|a| a.agent() == agent)
         .map(|a| a.as_ref())
+}
+
+pub fn update_checker<R: CommandRunner + Send + Sync + 'static>(
+    env: &Env,
+    runner: R,
+) -> Arc<dyn crate::update::check::UpdateCheck> {
+    Arc::new(claude::update::ClaudeMarketplaces {
+        runner,
+        clones: env.claude_dir().join("plugins/marketplaces"),
+    })
 }

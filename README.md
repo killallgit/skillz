@@ -325,7 +325,7 @@ Installing into the project an item that is already installed globally (by `i`, 
 whether to also install it into this project, defaulting to No. With several picks it asks once,
 naming the global ones; No drops only those.
 
-The browser (`list -i`, multi-group queries) and every picker (`uninstall`, `prune`, `install`)
+The browser (`list -i`) and every picker (`uninstall`, `prune`, `install`)
 share one list:
 
 | Key | Does |

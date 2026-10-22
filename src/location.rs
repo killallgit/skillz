@@ -1,17 +1,14 @@
 //! Where an installed item lives on disk, so it is clear why it counts for its group.
 
-use crate::action::Action;
 use crate::merge::tag;
-use crate::model::{Augmentation, Kind};
+use crate::model::Augmentation;
 
-const SKILL_PREFIX: &str = "skill:";
-
-/// The skill's directory, else the first file or directory its removal touches.
+/// The location discovery recorded for this installed item.
 pub fn location(item: &Augmentation) -> String {
-    match item.kind {
-        Kind::Skill => skill_dir(&item.id),
-        _ => item.removal.iter().find_map(touched).unwrap_or_default(),
-    }
+    item.details
+        .path()
+        .map(|path| path.display().to_string())
+        .unwrap_or_default()
 }
 
 /// One `agents: location` per copy of an item seen through several agents; none for a lone item.
@@ -30,87 +27,33 @@ pub fn detail(item: &Augmentation) -> String {
     }
 }
 
-/// Skill ids are the directory, plus a scope suffix when a project links to a global skill.
-fn skill_dir(id: &str) -> String {
-    let path = id.strip_prefix(SKILL_PREFIX).unwrap_or(id);
-    let without_scope = [":project", ":global"]
-        .into_iter()
-        .find_map(|suffix| path.strip_suffix(suffix));
-    without_scope.unwrap_or(path).to_string()
-}
-
-fn touched(step: &Action) -> Option<String> {
-    match step {
-        Action::RemovePath(target) => Some(target.path().display().to_string()),
-        Action::Edit { file, .. } => Some(file.display().to_string()),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Agent, Installer, Scope};
+    use crate::model::{Agent, Augmentation, Details, Installer, Kind, Scope};
 
-    fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
-        Augmentation {
-            hooks: vec![],
-            members: Vec::new(),
-            id: format!("{kind}:{name}"),
-            name: name.into(),
-            kind,
+    #[test]
+    fn location_comes_from_installed_metadata_even_when_the_id_has_a_scope_suffix() {
+        let path = std::path::PathBuf::from("/app/skills/name:project");
+        let item = Augmentation {
+            details: Details::Skill {
+                directory: path.clone(),
+                install_name: "name".into(),
+            },
+            id: "opaque:project".into(),
+            name: "name".into(),
+            kind: Kind::Skill,
             agents: vec![Agent::Claude],
             scope: Scope::Project,
-            group: source.unwrap_or("local").into(),
-            source: source.map(Into::into),
-            installer: Installer::Npx,
+            group: "local".into(),
+            source: None,
+            installer: Installer::Local,
             origin: Default::default(),
             children: vec![],
+            hooks: vec![],
+            members: vec![],
             removal: vec![],
-        }
-    }
-
-    #[test]
-    fn a_skill_is_where_its_id_says_without_the_scope_suffix() {
-        let mut plain = installed("a", Kind::Skill, None);
-        plain.id = "skill:/app/.agents/skills/a".into();
-        let mut linked = plain.clone();
-        linked.id = "skill:/app/.agents/skills/a:project".into();
-
-        let locations = [location(&plain), location(&linked)];
-
-        assert_eq!(locations, ["/app/.agents/skills/a"; 2]);
-    }
-
-    #[test]
-    fn a_merged_item_shows_each_copys_agents_and_location() {
-        let copy = |agent, path: &str| Augmentation {
-            agents: vec![agent],
-            id: format!("skill:{path}"),
-            ..installed("a", Kind::Skill, None)
         };
-        let merged = Augmentation {
-            members: vec![copy(Agent::Claude, "/c/a"), copy(Agent::Codex, "/x/a")],
-            ..installed("a", Kind::Skill, None)
-        };
-
-        assert_eq!(places(&merged), ["claude: /c/a", "codex: /x/a"]);
-        assert_eq!(detail(&merged), "claude: /c/a; codex: /x/a");
-    }
-
-    #[test]
-    fn a_lone_item_shows_only_its_location() {
-        let mut lone = installed("a", Kind::Skill, None);
-        lone.id = "skill:/c/a".into();
-
-        assert_eq!(detail(&lone), "/c/a");
-        assert!(places(&lone).is_empty());
-    }
-
-    #[test]
-    fn an_item_that_removes_nothing_has_no_location() {
-        let hook = installed("h", Kind::Hook, None);
-
-        assert_eq!(location(&hook), "");
+        assert_eq!(std::path::Path::new(&location(&item)), path.as_path());
     }
 }

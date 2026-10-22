@@ -313,10 +313,8 @@ fn uninstall_each(queries: &[&str]) -> Command {
 
 #[test]
 fn several_queries_remove_all_their_items_in_one_run() {
-    // Assemble
     let w = world();
 
-    // Act
     uninstall_with(&w, uninstall_each(&["tdd", "rtk"]), &Scripted::yes()).unwrap();
 
     // Assert: the skill and the hook tool are both gone
@@ -330,17 +328,14 @@ fn several_queries_remove_all_their_items_in_one_run() {
 
 #[test]
 fn one_unmatched_query_among_several_removes_nothing() {
-    // Assemble
     let w = world();
 
-    // Act
     let result = uninstall_with(
         &w,
         uninstall_each(&["tdd", "zzz-nothing"]),
         &Scripted::yes(),
     );
 
-    // Assert
     assert!(result.is_err());
     assert!(w.tdd_store().exists());
 }

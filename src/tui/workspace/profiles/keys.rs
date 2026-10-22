@@ -73,12 +73,11 @@ impl ProfilesTab {
     }
 
     fn handle_filter(&mut self, key: KeyEvent) -> Option<Act> {
-        self.popup = Popup::Filter;
-        if let Some(movement) = keymap::resolve(Scope::Filter, key) {
-            self.list.step(movement);
-        } else if self.list.edit_filter(key) != Edit::Editing {
-            self.popup = Popup::None;
-        }
+        self.popup = if self.list.filter_key(key) == Edit::Editing {
+            Popup::Filter
+        } else {
+            Popup::None
+        };
         self.show_entries();
         None
     }

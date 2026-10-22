@@ -19,7 +19,6 @@ mod scope;
 mod session;
 mod sync;
 mod update;
-mod use_profile;
 mod workspace;
 
 use std::io::IsTerminal;
@@ -48,7 +47,7 @@ use crate::runner::SystemRunner;
 use crate::sync::{InstalledScanner, Scanner};
 use crate::tui::prompter::TuiPrompter;
 use crate::tui::theme::Theme;
-use crate::update::check::{ClaudeMarketplaces, NoCheck, UpdateCheck};
+use crate::update::check::{NoCheck, UpdateCheck};
 
 pub fn main() -> anyhow::Result<i32> {
     let cli = Cli::parse();
@@ -95,15 +94,16 @@ fn update_checker(home: &Path, claude_config: &Option<PathBuf>) -> Arc<dyn Updat
     if std::env::var_os("SKILLZ_NO_UPDATE_CHECK").is_some() {
         return Arc::new(NoCheck);
     }
-    let claude = claude_config
-        .clone()
-        .unwrap_or_else(|| home.join(".claude"));
-    Arc::new(ClaudeMarketplaces {
-        runner: SystemRunner {
+    let env = crate::env::Env {
+        claude_config: claude_config.clone(),
+        ..crate::env::Env::new(home.to_path_buf(), home.to_path_buf())
+    };
+    agents::update_checker(
+        &env,
+        SystemRunner {
             envs: vec![("GIT_TERMINAL_PROMPT", PathBuf::from("0"))],
         },
-        clones: claude.join("plugins/marketplaces"),
-    })
+    )
 }
 
 fn redirected_dir(variable: &str) -> Option<PathBuf> {

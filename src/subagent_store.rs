@@ -8,12 +8,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
-use crate::atomic::write_atomic;
-use crate::clone::{check_source, with_tmp_clone};
+use crate::action::stage;
+use crate::clone::with_source;
 use crate::fswalk;
 use crate::read_optional::read_optional;
-use crate::redact::redact_text;
-use crate::runner::{Cmd, CommandRunner};
+use crate::runner::CommandRunner;
 
 pub(crate) const MANIFEST: &str = ".skillz-sources.json";
 
@@ -25,13 +24,19 @@ impl Manifest {
     /// Empty when there is no manifest yet; a manifest that cannot be read or parsed is an
     /// error, not an empty one, so writing back never discards what it recorded.
     pub(crate) fn read(dir: &Path) -> anyhow::Result<Self> {
+        Self::load(dir).map(|(manifest, _)| manifest)
+    }
+
+    fn load(dir: &Path) -> anyhow::Result<(Self, Option<String>)> {
         let path = dir.join(MANIFEST);
-        match read_optional(&path)? {
-            Some(text) => serde_json::from_str(&text)
+        let original = read_optional(&path)?;
+        let manifest = match &original {
+            Some(text) => serde_json::from_str(text)
                 .map(Manifest)
                 .with_context(|| format!("invalid {}", path.display())),
             None => Ok(Manifest::default()),
-        }
+        }?;
+        Ok((manifest, original))
     }
 
     pub(crate) fn get(&self, file: &str) -> Option<&str> {
@@ -40,10 +45,6 @@ impl Manifest {
 
     fn insert(&mut self, file: &str, source: &str) {
         self.0.insert(file.to_string(), source.to_string());
-    }
-
-    fn write(&self, dir: &Path) -> anyhow::Result<()> {
-        write_atomic(&dir.join(MANIFEST), &serde_json::to_string_pretty(&self.0)?)
     }
 }
 
@@ -56,17 +57,9 @@ pub(crate) fn definition_name(text: &str, ext: &str) -> Option<String> {
             .get("name")?
             .as_str()
             .map(String::from),
-        _ => {
-            let mut lines = text.lines();
-            if lines.next()?.trim_end() != "---" {
-                return None;
-            }
-            lines
-                .take_while(|l| l.trim_end() != "---")
-                .find_map(|l| l.strip_prefix("name:"))
-                .map(|v| v.trim().trim_matches(['"', '\'']).to_string())
-                .filter(|n| !n.is_empty())
-        }
+        _ => crate::skills::frontmatter::parse(text)?
+            .name
+            .map(String::from),
     }
 }
 
@@ -83,7 +76,6 @@ fn slug(s: &str) -> String {
     out.trim_matches('-').to_string()
 }
 
-/// What `copy` needs.
 pub struct CopyRequest<'a> {
     pub source: &'a str,
     pub cwd: &'a Path,
@@ -96,42 +88,86 @@ pub struct CopyRequest<'a> {
 /// `names` into `to` and record their source. Refuses to overwrite a file skillz did not put
 /// there. Returns the files written.
 pub fn copy(runner: &dyn CommandRunner, req: &CopyRequest) -> anyhow::Result<Vec<PathBuf>> {
-    check_source(req.source)?;
-    let local = req.cwd.join(req.source);
-    if local.is_dir() {
-        return copy_from(&local, req);
-    }
-    with_tmp_clone(
-        req.source,
-        |cmd| clone_quietly(runner, req, cmd),
-        |tmp| copy_from(tmp, req),
-    )
+    with_source(req.source, req.cwd, runner, |root, source| {
+        copy_from(root, source, req)
+    })
 }
 
-fn clone_quietly(
-    runner: &dyn CommandRunner,
-    req: &CopyRequest,
-    (program, args): &Cmd,
-) -> anyhow::Result<()> {
-    let out = runner.run_quiet(program, args, req.cwd)?;
-    anyhow::ensure!(
-        out.success,
-        "cloning {} failed: {}",
-        req.source,
-        redact_text(out.stderr.trim())
-    );
-    Ok(())
-}
-
-fn copy_from(root: &Path, req: &CopyRequest) -> anyhow::Result<Vec<PathBuf>> {
+fn copy_from(root: &Path, source: &str, req: &CopyRequest) -> anyhow::Result<Vec<PathBuf>> {
     let chosen = pick_definitions(root, req)?;
-    fs::create_dir_all(req.to)?;
-    let mut manifest = Manifest::read(req.to)?;
-    let mut written = vec![];
-    for path in &chosen {
-        written.push(copy_definition(path, req, &mut manifest)?);
+    let manifest_path = req.to.join(MANIFEST);
+    match fs::symlink_metadata(&manifest_path) {
+        Ok(metadata) => anyhow::ensure!(
+            !metadata.is_symlink(),
+            "refusing to write symlink manifest {}",
+            manifest_path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).with_context(|| format!("reading {}", manifest_path.display()));
+        }
     }
-    manifest.write(req.to)?;
+    let (mut manifest, original_manifest) = Manifest::load(req.to)?;
+    let mut plans = Vec::new();
+    let mut destinations = BTreeMap::new();
+    for path in chosen {
+        let file = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .context("file name")?;
+        let dest = req.to.join(file);
+        if let Some(previous) = destinations.insert(dest.clone(), path.clone()) {
+            anyhow::ensure!(
+                previous == path,
+                "multiple subagents have destination {}",
+                dest.display()
+            );
+            continue;
+        }
+        match fs::symlink_metadata(&dest) {
+            Ok(metadata) => anyhow::ensure!(
+                metadata.is_file() && manifest.get(file).is_some(),
+                "{} exists and was not installed by skillz",
+                dest.display()
+            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e).with_context(|| format!("reading {}", dest.display())),
+        }
+        let original = read_optional(&dest)?;
+        let text =
+            fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        plans.push((
+            dest,
+            original,
+            text,
+            Some(fs::metadata(&path)?.permissions()),
+        ));
+        manifest.insert(file, source);
+    }
+    let written = plans.iter().map(|(path, _, _, _)| path.clone()).collect();
+    #[cfg(unix)]
+    let manifest_permissions = {
+        use std::os::unix::fs::PermissionsExt;
+        Some(fs::Permissions::from_mode(0o600))
+    };
+    #[cfg(not(unix))]
+    let manifest_permissions = None;
+    plans.push((
+        manifest_path,
+        original_manifest,
+        serde_json::to_string_pretty(&manifest.0)?,
+        manifest_permissions,
+    ));
+    let mut staged = Vec::new();
+    for (path, original, text, permissions) in plans {
+        staged.push(stage::stage_with_permissions(
+            &path,
+            original,
+            &text,
+            permissions,
+        )?);
+    }
+    stage::commit(&staged)?;
     Ok(written)
 }
 
@@ -142,11 +178,17 @@ fn pick_definitions(root: &Path, req: &CopyRequest) -> anyhow::Result<Vec<PathBu
         .iter()
         .map(|wanted| {
             let want = slug(wanted);
-            found
+            let matches: Vec<_> = found
                 .iter()
-                .find(|(path, name)| matches_name(path, name, &want))
-                .map(|(path, _)| path.clone())
-                .with_context(|| format!("no subagent called {wanted} in {}", req.source))
+                .filter(|(path, name)| matches_name(path, name, &want))
+                .collect();
+            anyhow::ensure!(
+                matches.len() == 1,
+                "expected one subagent called {wanted} in {}, found {}",
+                crate::redact::redact_text(req.source),
+                matches.len()
+            );
+            Ok(matches[0].0.clone())
         })
         .collect()
 }
@@ -156,39 +198,23 @@ fn matches_name(path: &Path, name: &str, want: &str) -> bool {
     slug(stem) == want || slug(name) == want
 }
 
-fn copy_definition(
-    path: &Path,
-    req: &CopyRequest,
-    manifest: &mut Manifest,
-) -> anyhow::Result<PathBuf> {
-    let file = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .context("file name")?;
-    let dest = req.to.join(file);
-    anyhow::ensure!(
-        !dest.exists() || manifest.get(file).is_some(),
-        "{} exists and was not installed by skillz",
-        dest.display()
-    );
-    fs::copy(path, &dest).with_context(|| format!("copying {}", path.display()))?;
-    manifest.insert(file, req.source);
-    Ok(dest)
-}
-
 /// Every `ext` file under `root` that declares a name, with that name, sorted by path. Files
 /// without a name are left out, which keeps READMEs and docs from counting as definitions.
 fn find_definitions(root: &Path, ext: &str) -> anyhow::Result<Vec<(PathBuf, String)>> {
-    let mut found = vec![];
+    let mut paths = vec![];
     fswalk::walk(root, &mut |path, is_dir| {
-        if is_dir || !path.extension().is_some_and(|e| e == ext) {
-            return;
-        }
-        let text = fs::read_to_string(path).unwrap_or_default();
-        if let Some(name) = definition_name(&text, ext) {
-            found.push((path.to_path_buf(), name));
+        if !is_dir && path.extension().is_some_and(|e| e == ext) {
+            paths.push(path.to_path_buf());
         }
     })?;
+    let mut found = vec![];
+    for path in paths {
+        let text =
+            fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        if let Some(name) = definition_name(&text, ext) {
+            found.push((path, name));
+        }
+    }
     found.sort();
     Ok(found)
 }
@@ -211,5 +237,123 @@ mod tests {
         );
         assert_eq!(definition_name("not toml [", "toml"), None);
         assert_eq!(slug("Frontend  Developer!"), "frontend-developer");
+    }
+    fn definition(root: &Path, relative: &str, name: &str) {
+        let file = root.join(relative);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(file, format!("---\nname: {name}\n---\nbody\n")).unwrap();
+    }
+
+    fn copy_names(root: &Path, to: &Path, names: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
+        let names = names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        copy(
+            &crate::runner::NoCommands,
+            &CopyRequest {
+                source: root.to_str().unwrap(),
+                cwd: root,
+                names: &names,
+                ext: "md",
+                to,
+            },
+        )
+    }
+
+    #[test]
+    fn a_later_foreign_destination_leaves_every_file_and_manifest_unchanged() {
+        let (source, target) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        definition(source.path(), "a.md", "a");
+        definition(source.path(), "b.md", "b");
+        fs::write(target.path().join("a.md"), "old managed definition").unwrap();
+        fs::write(target.path().join("b.md"), "foreign definition").unwrap();
+        fs::write(target.path().join(MANIFEST), r#"{"a.md":"old-source"}"#).unwrap();
+
+        let result = copy_names(source.path(), target.path(), &["a", "b"]);
+
+        assert!(result.is_err());
+        assert_eq!(
+            fs::read_to_string(target.path().join("a.md")).unwrap(),
+            "old managed definition"
+        );
+        assert_eq!(
+            Manifest::read(target.path()).unwrap().get("a.md"),
+            Some("old-source")
+        );
+        assert_eq!(fs::read_dir(target.path()).unwrap().count(), 3);
+    }
+
+    #[test]
+    fn distinct_definitions_cannot_overwrite_the_same_destination() {
+        let (source, target) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        definition(source.path(), "one/shared.md", "first");
+        definition(source.path(), "two/shared.md", "second");
+
+        let result = copy_names(source.path(), target.path(), &["first", "second"]);
+
+        assert!(result.is_err());
+        assert_eq!(fs::read_dir(target.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn aliases_for_one_definition_are_copied_once_and_ambiguous_names_are_refused() {
+        let (source, target) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        definition(source.path(), "helper.md", "Assistant");
+        let files = copy_names(source.path(), target.path(), &["helper", "Assistant"]).unwrap();
+        assert_eq!(files, [target.path().join("helper.md")]);
+        definition(source.path(), "other/helper.md", "Other");
+        assert!(copy_names(source.path(), target.path(), &["helper"]).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn even_a_recorded_destination_symlink_is_not_written_through() {
+        let (source, target) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        definition(source.path(), "helper.md", "helper");
+        let victim = target.path().join("victim");
+        fs::write(&victim, "keep").unwrap();
+        std::os::unix::fs::symlink(&victim, target.path().join("helper.md")).unwrap();
+        fs::write(target.path().join(MANIFEST), r#"{"helper.md":"o/r"}"#).unwrap();
+        assert!(copy_names(source.path(), target.path(), &["helper"]).is_err());
+        assert_eq!(fs::read_to_string(victim).unwrap(), "keep");
+    }
+    #[cfg(unix)]
+    #[test]
+    fn copying_preserves_private_source_permissions_and_existing_destination_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let (source, target) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        definition(source.path(), "helper.md", "helper");
+        let definition = source.path().join("helper.md");
+        fs::set_permissions(&definition, fs::Permissions::from_mode(0o600)).unwrap();
+
+        copy_names(source.path(), target.path(), &["helper"]).unwrap();
+
+        let mode = |file: &Path| fs::metadata(file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&target.path().join("helper.md")), 0o600);
+        assert_eq!(mode(&target.path().join(MANIFEST)), 0o600);
+        fs::set_permissions(definition, fs::Permissions::from_mode(0o644)).unwrap();
+        copy_names(source.path(), target.path(), &["helper"]).unwrap();
+        assert_eq!(mode(&target.path().join("helper.md")), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_manifests_are_never_written_through_even_when_dangling() {
+        let (source, target, outside) = (
+            tempfile::tempdir().unwrap(),
+            tempfile::tempdir().unwrap(),
+            tempfile::tempdir().unwrap(),
+        );
+        definition(source.path(), "helper.md", "helper");
+        let external = outside.path().join("manifest.json");
+        fs::write(&external, "{}").unwrap();
+        let manifest = target.path().join(MANIFEST);
+        std::os::unix::fs::symlink(&external, &manifest).unwrap();
+
+        assert!(copy_names(source.path(), target.path(), &["helper"]).is_err());
+        assert_eq!(fs::read_to_string(&external).unwrap(), "{}");
+        assert!(!target.path().join("helper.md").exists());
+        fs::remove_file(&external).unwrap();
+        assert!(copy_names(source.path(), target.path(), &["helper"]).is_err());
+        assert!(!external.exists());
+        assert!(fs::symlink_metadata(manifest).unwrap().is_symlink());
     }
 }

@@ -55,8 +55,6 @@ pub(super) enum Part {
 pub(super) struct Group {
     pub part: Part,
     pub package: Package,
-    /// How many items of each kind the package provides.
-    pub contents: Vec<(ItemKind, usize)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,11 +99,7 @@ fn groups(part: Part, items: Vec<(Package, Item)>) -> Vec<Row> {
         .flat_map(|(package, members)| {
             let mut items: Vec<Item> = members.into_iter().map(|(_, item)| item).collect();
             items.sort_by_key(|item| (item.kind, item.label.to_lowercase()));
-            let group = Group {
-                part,
-                package,
-                contents: ItemKind::tally(items.iter().map(|item| item.kind)),
-            };
+            let group = Group { part, package };
             std::iter::once(Row::Package(group)).chain(item_rows(items))
         })
         .collect()

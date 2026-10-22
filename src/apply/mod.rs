@@ -7,7 +7,6 @@ mod drift;
 mod each_tests;
 mod plan;
 mod run;
-mod run_each;
 mod source_gone;
 mod standing;
 mod switch;
@@ -15,8 +14,7 @@ mod switch;
 mod tests;
 
 pub use drift::{Drift, drift};
-pub use run::Done;
-pub use run_each::{Each, Watch};
+pub use run::{Report, Watch};
 pub use standing::{Standing, compare, holds, loaded};
 pub use switch::Switch;
 

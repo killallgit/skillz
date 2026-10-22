@@ -38,7 +38,7 @@ impl LibraryTab {
 
     fn current_entry(&self) -> Option<&Entry> {
         match &self.rows[self.outline.current()?] {
-            Row::Item(item) => Some(&item.entry),
+            Row::Item(item) => Some(&item.library.entry),
             Row::Package { .. } => None,
         }
     }
@@ -61,14 +61,11 @@ impl LibraryTab {
     }
 
     fn handle_filter(&mut self, key: KeyEvent) -> Option<Act> {
-        self.popup = Popup::Filter;
-        if let Some(movement) = keymap::resolve(Scope::Filter, key) {
-            self.outline.step(movement);
-            return None;
-        }
-        if self.outline.edit_filter(key) != Edit::Editing {
-            self.popup = Popup::None;
-        }
+        self.popup = if self.outline.filter_key(key) == Edit::Editing {
+            Popup::Filter
+        } else {
+            Popup::None
+        };
         None
     }
 

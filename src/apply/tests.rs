@@ -112,12 +112,23 @@ impl Fx {
         self.applier().plan(target, exact).unwrap()
     }
 
-    fn run(&self, switch: &Switch, runner: &dyn CommandRunner) -> anyhow::Result<Done> {
-        self.applier().run(switch, runner, &mut |_| {})
+    fn run(&self, switch: &Switch, runner: &dyn CommandRunner) -> Report {
+        self.applier().run(
+            switch,
+            runner,
+            &mut Watch {
+                step: &mut |_| {},
+                item: &mut |_| {},
+            },
+        )
     }
 
-    fn apply(&self, target: &Profile, exact: bool, runner: &dyn CommandRunner) -> Done {
-        self.run(&self.plan(target, exact), runner).unwrap()
+    fn apply(&self, target: &Profile, exact: bool, runner: &dyn CommandRunner) -> Report {
+        {
+            let report = self.run(&self.plan(target, exact), runner);
+            assert!(report.failures.is_empty());
+            report
+        }
     }
 
     fn has_skill(&self, name: &str) -> bool {
@@ -188,7 +199,7 @@ fn only_the_missing_skills_are_installed() {
     install_skill(&fx.env.project, "tdd");
 
     let switch = fx.plan(&profile("web", &["tdd", "new"]), false);
-    fx.run(&switch, &runner).unwrap();
+    fx.run(&switch, &runner);
 
     assert_eq!(switch.present.len(), 1);
     assert_eq!(switch.installs.len(), 1);
@@ -223,7 +234,7 @@ fn exact_removes_what_the_profile_does_not_want_and_keeps_what_it_does() {
     install_skill(&fx.env.project, "old");
 
     let switch = fx.plan(&profile("web", &["tdd"]), true);
-    let done = fx.run(&switch, &runner).unwrap();
+    let done = fx.run(&switch, &runner);
 
     assert_eq!(switch.removals.len(), 1);
     assert!(done.removed.unwrap().still_installed.is_empty());
@@ -272,7 +283,7 @@ fn a_failed_install_is_an_error() {
 
     let result = fx.run(&switch, &runner);
 
-    assert!(result.is_err());
+    assert_eq!(result.failures.len(), 1);
 }
 
 #[test]
@@ -307,4 +318,24 @@ fn an_unreadable_inventory_stops_planning_instead_of_guessing() {
     let planned = fx.applier().plan(&profile("web", &["tdd"]), false);
 
     assert!(planned.is_err());
+}
+
+#[test]
+fn a_relative_local_subagent_source_matches_its_canonical_install() {
+    let fx = Fx::new();
+    let source = fx.env.project.join("definitions");
+    fs::create_dir_all(&source).unwrap();
+    fs::write(source.join("reviewer.md"), "---\nname: reviewer\n---\nbody").unwrap();
+    let mut profile = Profile::new("review");
+    profile.entries.push(Entry::Subagent {
+        source: "./definitions".into(),
+        names: vec!["reviewer".into()],
+        agents: vec![Agent::Claude],
+    });
+    fx.apply(&profile, false, &fx.npx());
+
+    let again = fx.plan(&profile, true);
+
+    assert!(again.is_empty());
+    assert_eq!(again.present.len(), 1);
 }

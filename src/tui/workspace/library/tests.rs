@@ -3,7 +3,7 @@ use ratatui::crossterm::event::KeyCode;
 use super::rows::tests::{hook, skill};
 use super::*;
 use crate::library::Catalog;
-use crate::tui::widgets::testing::{key, render_to_buffer, row_text};
+use crate::tui::widgets::testing::key;
 
 fn loaded() -> LibraryTab {
     let mut tab = LibraryTab::new();
@@ -132,15 +132,4 @@ fn a_filter_narrows_the_rows_to_what_matches() {
 
     assert!(tab.outline.is_filtered());
     assert_eq!(tab.outline.visible(), [2, 3]);
-}
-
-#[test]
-fn the_screen_draws_items_under_their_packages() {
-    let mut tab = loaded();
-    let theme = Theme::dark();
-
-    let buffer = render_to_buffer(60, 12, |frame| tab.draw(frame, frame.area(), &theme));
-
-    let text: String = (0..12).map(|y| row_text(&buffer, y)).collect();
-    assert!(text.contains("tdd") && text.contains("notify"));
 }

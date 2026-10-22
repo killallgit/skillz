@@ -12,7 +12,7 @@ use anyhow::Context;
 use super::args::RunArgs;
 use super::deps::Deps;
 use super::scope::resolve_project;
-use super::use_profile::{Switching, Target, use_profile};
+use super::session::{Change, Notice, change, with_session};
 use crate::env::Env;
 use crate::model::Scope;
 use crate::profile;
@@ -30,16 +30,15 @@ pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> a
         isolated.codex_home.clone(),
         runner,
     );
-    let target = Target {
-        env: &isolated,
-        scope: Scope::Global,
-    };
-    let switching = Switching {
-        profile: &args.profile,
-        exact: false,
-        dry_run: false,
-    };
-    use_profile(&inside, &target, &switching, out)?;
+    let ready = with_session(&inside, &isolated, out, false, |session, console| {
+        let notice = change(session, Scope::Global, &Change::Apply(&args.profile))?;
+        let ready = matches!(notice, Some(Notice::Applied(_) | Notice::UpToDate));
+        console.conclude(notice)?;
+        Ok(ready)
+    })?;
+    if !ready {
+        return Ok(0);
+    }
     out.flush()?;
     launch(runner, &args.command, &env)
 }
@@ -80,6 +79,39 @@ fn launch(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn declining_profile_preparation_never_launches_the_command() {
+        use crate::agents::registry;
+        use crate::install::test_support::{FakeRunner, ScriptedPrompter};
+        use crate::model::Agent;
+        use crate::profile::{Entry, Profile};
+
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::new(dir.path().into(), dir.path().into());
+        let mut profile = Profile::new("web");
+        profile.entries.push(Entry::Hook {
+            event: "Stop".into(),
+            matcher: None,
+            command: "notify".into(),
+            agents: vec![Agent::Claude],
+        });
+        profile::Store::in_env(&env).save(&profile).unwrap();
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ScriptedPrompter::new(&[], false);
+        let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+        let args = RunArgs {
+            profile: "web".into(),
+            project: None,
+            yes: false,
+            command: vec!["child".into()],
+        };
+
+        let code = run_isolated(&deps, args, &mut Vec::new()).unwrap();
+
+        assert_eq!(code, 0);
+        assert!(runner.calls().is_empty());
+    }
 
     #[test]
     fn each_profile_gets_config_dirs_of_its_own_under_skillz() {

@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 use crate::model::{Augmentation, Kind};
-use crate::profile::{Claim, Entry, Profile, claims, lacking};
+use crate::profile::{Claim, Entry, Profile, claims, installed_claims, lacking};
 use crate::snapshot;
 
 /// How a profile's entries and the installed items overlap.
@@ -21,7 +21,7 @@ pub struct Standing {
 #[derive(Debug)]
 pub struct Extra {
     pub item: Augmentation,
-    /// Whether a profile could reinstall it; a hand-made skill cannot be.
+    /// Whether a profile could reinstall this item.
     pub sourced: bool,
 }
 
@@ -97,8 +97,7 @@ fn distinct(entries: &[Entry]) -> Vec<Entry> {
 
 /// What an installed item puts in place, as a profile would have to claim it.
 fn claims_of(item: &Augmentation) -> Vec<Claim> {
-    let snap = snapshot::snapshot("installed", std::slice::from_ref(item));
-    snap.profile.resolved().iter().flat_map(claims).collect()
+    item.parts().iter().flat_map(installed_claims).collect()
 }
 
 /// An item is wanted when any one of its claims is, so one shared with a wanted entry stays.
@@ -121,7 +120,10 @@ fn extra(
     }
     Some(Extra {
         item: item.clone(),
-        sourced: !held.is_empty(),
+        sourced: item
+            .parts()
+            .iter()
+            .all(|part| snapshot::entries(part).is_ok_and(|entries| !entries.is_empty())),
     })
 }
 
@@ -144,6 +146,7 @@ mod tests {
 
     fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: vec![],
             members: Vec::new(),
             id: format!("{kind}:{name}"),
@@ -256,5 +259,34 @@ mod tests {
         let standing = compare(&[skill_entry(&["a"]), skill_entry(&["a"])], &[]);
 
         assert_eq!(standing.missing.len(), 1);
+    }
+    #[test]
+    fn an_installed_server_needing_secrets_is_present_but_cannot_be_reinstalled() {
+        let server = Augmentation {
+            details: crate::model::Details::Mcp {
+                config: "/config".into(),
+                server: crate::mcp::Server {
+                    name: "db".into(),
+                    launch: crate::mcp::Launch::Stdio {
+                        command: "srv".into(),
+                        args: vec![],
+                    },
+                    secrets: vec!["TOKEN".into()],
+                },
+            },
+            ..installed("db", Kind::Mcp, None)
+        };
+        let wanted = Entry::Mcp {
+            name: "db".into(),
+            command: Some("srv".into()),
+            args: vec![],
+            url: None,
+            transport: None,
+            agents: vec![Agent::Claude],
+        };
+        let standing = compare(&[wanted], std::slice::from_ref(&server));
+        assert!(standing.missing.is_empty());
+        assert!(standing.extras.is_empty());
+        assert!(!compare(&[], &[server]).extras[0].sourced);
     }
 }

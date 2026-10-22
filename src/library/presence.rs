@@ -1,8 +1,9 @@
 //! Whether library items are installed right now, in the project and at user level.
 
+use std::collections::HashSet;
+
 use crate::model::Augmentation;
-use crate::profile::{Entry, same_thing};
-use crate::snapshot::snapshot;
+use crate::profile::{Entry, Key, installed_keys, keys};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Presence {
@@ -10,17 +11,17 @@ pub struct Presence {
     pub global: bool,
 }
 
-/// What the project and the user have installed, as the entries that would install it.
+/// What the project and the user have installed, as identities independent of reinstallability.
 pub struct Held {
-    project: Vec<Entry>,
-    global: Vec<Entry>,
+    project: HashSet<Key>,
+    global: HashSet<Key>,
 }
 
 impl Held {
     pub fn of(project: &[Augmentation], global: &[Augmentation]) -> Self {
         Held {
-            project: entries_of(project),
-            global: entries_of(global),
+            project: keys_of(project),
+            global: keys_of(global),
         }
     }
 
@@ -32,10 +33,14 @@ impl Held {
     }
 }
 
-fn entries_of(installed: &[Augmentation]) -> Vec<Entry> {
-    snapshot("installed", installed).profile.entries
+fn keys_of(installed: &[Augmentation]) -> HashSet<Key> {
+    installed
+        .iter()
+        .flat_map(Augmentation::parts)
+        .flat_map(installed_keys)
+        .collect()
 }
 
-fn holds(installed: &[Entry], entry: &Entry) -> bool {
-    installed.iter().any(|have| same_thing(have, entry))
+fn holds(installed: &HashSet<Key>, entry: &Entry) -> bool {
+    keys(entry).iter().any(|key| installed.contains(key))
 }

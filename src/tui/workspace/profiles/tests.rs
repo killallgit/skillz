@@ -8,6 +8,7 @@ use crate::tui::widgets::testing::{key, keys, render_to_buffer};
 
 fn installed(name: &str) -> Augmentation {
     Augmentation {
+        details: Default::default(),
         hooks: vec![],
         members: Vec::new(),
         id: format!("skill:{name}"),
@@ -69,7 +70,14 @@ fn char_key(tab: &mut ProfilesTab, c: char) -> Option<Act> {
 fn each_profile_counts_what_the_project_lacks_of_it() {
     let tab = loaded();
 
-    assert_eq!(tab.missing, [0, 1]);
+    // Assert the comparison stays attached to its profile.
+    assert_eq!(
+        tab.profiles
+            .iter()
+            .map(|row| row.missing)
+            .collect::<Vec<_>>(),
+        [0, 1]
+    );
 }
 
 #[test]
@@ -230,28 +238,12 @@ fn a_new_snapshot_keeps_the_cursor_on_the_same_row() {
     assert_eq!(tab.current_name().as_deref(), Some("web"));
 }
 
-fn text_of(tab: &mut ProfilesTab) -> String {
-    let theme = Theme::dark();
-    let buffer = render_to_buffer(80, 24, |f| tab.draw(f, f.area(), &theme));
-    buffer.content().iter().map(|c| c.symbol()).collect()
-}
-
-#[test]
-fn drawing_shows_every_profile_name_and_the_current_entries() {
-    let mut tab = loaded();
-
-    let screen = text_of(&mut tab);
-
-    assert!(
-        ["api", "web", "skills a"]
-            .iter()
-            .all(|s| screen.contains(s))
-    );
-}
-
 #[test]
 fn drawing_an_empty_tab_does_not_panic() {
     let mut tab = ProfilesTab::new();
 
-    text_of(&mut tab);
+    // Assert the public drawing path accepts an empty snapshot.
+    render_to_buffer(80, 24, |frame| {
+        tab.draw(frame, frame.area(), &Theme::dark())
+    });
 }

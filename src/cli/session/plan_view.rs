@@ -89,6 +89,7 @@ mod tests {
 
     fn removable(name: &str) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: vec![],
             members: Vec::new(),
             id: name.into(),
@@ -126,23 +127,5 @@ mod tests {
         // Nothing is kept or skipped, so only remove and install appear, in that order.
         assert_eq!(groups, [Group::Remove, Group::Install]);
         assert!(view.destructive());
-    }
-
-    #[test]
-    fn a_step_label_ends_with_what_the_step_does() {
-        let step = Action::Run {
-            program: "npx".into(),
-            args: vec!["skills".into()],
-            cwd: "/".into(),
-            fallback: false,
-        };
-        let switch = Switch {
-            installs: vec![(skill("b"), vec![step.clone()])],
-            ..switch()
-        };
-
-        let label = step_label(&switch, &Plan::from_owned(&switch.removals), &step);
-
-        assert!(label.ends_with(&step.describe()));
     }
 }

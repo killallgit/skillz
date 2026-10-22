@@ -1,6 +1,6 @@
 mod discover;
 mod entry;
-mod frontmatter;
+pub(crate) mod frontmatter;
 mod local;
 mod ownership;
 mod removal;

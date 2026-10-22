@@ -1,5 +1,5 @@
 //! Keeping the library, the master record of everything seen, in step with what is installed.
-//! Syncing only adds; leaving the library is the explicit remove and nothing else.
+//! Syncing adds discoveries and follows unambiguous moves of local sources.
 
 use std::sync::Arc;
 use std::thread;
@@ -13,15 +13,15 @@ use crate::store::{Document, Store};
 
 /// Finds everything installed for a project and at user level.
 pub trait Scanner: Send + Sync {
-    fn scan(&self, env: &Env) -> Vec<Augmentation>;
+    fn scan(&self, env: &Env) -> anyhow::Result<Vec<Augmentation>>;
 }
 
 /// Reads the agents' own config for every adapter.
 pub struct InstalledScanner;
 
 impl Scanner for InstalledScanner {
-    fn scan(&self, env: &Env) -> Vec<Augmentation> {
-        inventory(&registry(), env, &[Scope::Global, Scope::Project]).items
+    fn scan(&self, env: &Env) -> anyhow::Result<Vec<Augmentation>> {
+        inventory(&registry(), env, &[Scope::Global, Scope::Project]).complete()
     }
 }
 
@@ -73,8 +73,11 @@ pub fn spawn(
     done: impl FnOnce(anyhow::Result<Report>) + Send + 'static,
 ) {
     thread::spawn(move || {
-        let items = scanner.scan(&env);
-        done(sync_library(&Store::in_env(&env), &items, (false, &Disk)));
+        done(
+            scanner
+                .scan(&env)
+                .and_then(|items| sync_library(&Store::in_env(&env), &items, (false, &Disk))),
+        );
     });
 }
 
@@ -89,13 +92,14 @@ mod tests {
     struct Fixed(Vec<Augmentation>);
 
     impl Scanner for Fixed {
-        fn scan(&self, _env: &Env) -> Vec<Augmentation> {
-            self.0.clone()
+        fn scan(&self, _env: &Env) -> anyhow::Result<Vec<Augmentation>> {
+            Ok(self.0.clone())
         }
     }
 
     fn installed_skill(name: &str) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: vec![],
             members: Vec::new(),
             id: format!("skill:{name}"),
@@ -152,5 +156,22 @@ mod tests {
         let result = sync_library(&Store::new(path), &[installed_skill("tdd")], (false, &Disk));
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn a_failed_scan_never_creates_a_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = env_in(dir.path());
+        let settings = env.home.join(".claude/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(settings, "{invalid").unwrap();
+        let (tx, rx) = mpsc::channel();
+
+        spawn(Arc::new(InstalledScanner), env.clone(), move |report| {
+            tx.send(report).unwrap()
+        });
+
+        assert!(rx.recv().unwrap().is_err());
+        assert!(!env.store_path().exists());
     }
 }

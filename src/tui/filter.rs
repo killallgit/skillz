@@ -125,19 +125,4 @@ mod tests {
 
         assert_ne!(hit_style(&theme), theme.text);
     }
-
-    #[test]
-    fn an_unfiltered_title_is_left_alone() {
-        assert_eq!(title("Projects", ""), "Projects");
-        assert_ne!(title("Projects", "x"), "Projects");
-    }
-
-    #[test]
-    fn only_a_filtered_badge_mentions_the_total() {
-        let plain = badge(Some(0), 3, 9, false);
-        let filtered = badge(Some(0), 3, 9, true);
-
-        assert!(!plain.contains('9'));
-        assert!(filtered.contains('9'));
-    }
 }

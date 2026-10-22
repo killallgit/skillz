@@ -36,7 +36,8 @@ fn picked_entries(
     console: &Console,
     args: &LibraryInstallArgs,
 ) -> anyhow::Result<Vec<Entry>> {
-    let library = session.library().read()?.items;
+    let env = project_env(session.deps(), session.project());
+    let library = session.library().read()?.items.in_env(&env);
     let choosing = Choosing {
         prompter: console,
         title: "Select items to install",
