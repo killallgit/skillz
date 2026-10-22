@@ -150,7 +150,10 @@ fn profile_list_prints_one_line_per_profile() {
     let (w, _) = saved_profile();
     let (r, p) = (Recorder::default(), Scripted::yes());
 
-    let out = run_captured(profile_cmd(ProfileCommand::List), &deps(&w, &r, &p));
+    let out = run_captured(
+        profile_cmd(ProfileCommand::List { json: false }),
+        &deps(&w, &r, &p),
+    );
 
     assert_eq!(String::from_utf8(out).unwrap().lines().count(), 1);
 }

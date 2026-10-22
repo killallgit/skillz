@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 use super::library_args::LibraryCommand;
+use super::profile_args::ProfileCommand;
 use crate::model::{Agent, Augmentation, Kind};
 
 #[derive(Debug, Parser)]
@@ -228,28 +229,6 @@ pub struct InstallArgs {
     pub yes: bool,
 }
 
-#[derive(Debug, Subcommand)]
-pub enum ProfileCommand {
-    /// List profiles
-    #[command(visible_alias = "ls")]
-    List,
-    /// Print a profile as TOML, to read or copy (`export`)
-    #[command(visible_alias = "export")]
-    Show { name: String },
-    /// Store the profile in a TOML file printed by `show`, replacing one of the same name
-    Import { file: PathBuf },
-    /// Save what is installed in the project as a profile
-    Save {
-        name: String,
-        /// Replace a profile of that name
-        #[arg(long)]
-        force: bool,
-    },
-    /// Delete a profile (what it installed stays until you `use` another)
-    #[command(visible_alias = "rm")]
-    Delete { name: String },
-}
-
 #[derive(Debug, Args, Default, Clone)]
 pub struct Filter {
     /// Global scope only
@@ -308,6 +287,14 @@ pub(super) fn wants_auto_yes(command: &Command) -> bool {
         } => a.yes,
         Command::Library {
             action: LibraryCommand::Install(a),
+            ..
+        } => a.yes,
+        Command::Profile {
+            action: ProfileCommand::Add(a),
+            ..
+        } => a.yes,
+        Command::Profile {
+            action: ProfileCommand::Remove(a),
             ..
         } => a.yes,
         Command::Prune(a) => a.force,
