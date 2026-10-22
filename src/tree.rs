@@ -23,6 +23,9 @@ pub struct Node {
     pub item: Option<usize>,
     /// Scope of a group header; `None` below the top level.
     pub scope: Option<Scope>,
+    /// Items a group header stands for without showing them: a lone marketplace's rows are its
+    /// plugins, so picking the group has to pick the marketplace itself.
+    pub covers: Vec<usize>,
 }
 
 impl Node {
@@ -69,6 +72,11 @@ fn group_node(package: &Package, members: Vec<Member>) -> Node {
         .copied()
         .partition(|(_, a)| a.kind == Kind::Marketplace);
     rest.sort_by(|(_, a), (_, b)| (a.kind, &a.name).cmp(&(b.kind, &b.name)));
+    let covers = if rest.is_empty() {
+        marketplaces.iter().map(|&(i, _)| i).collect()
+    } else {
+        vec![]
+    };
     let (count, children) = if rest.is_empty() {
         marketplace_children(&marketplaces)
     } else {
@@ -89,6 +97,7 @@ fn group_node(package: &Package, members: Vec<Member>) -> Node {
         children,
         item: None,
         scope: Some(scope),
+        covers,
         ..Node::default()
     }
 }
@@ -145,11 +154,12 @@ pub fn flat(labels: &[String]) -> Vec<Node> {
         .collect()
 }
 
-/// Every item row under `nodes` (preorder) with its `Node::item` index and label.
+/// Every item under `nodes` (preorder) with its `Node::item` or `Node::covers` index and label.
 pub fn items(nodes: &[Node]) -> Vec<(usize, String)> {
     let mut out = Vec::new();
     for n in nodes {
         out.extend(n.item.map(|i| (i, n.label.clone())));
+        out.extend(n.covers.iter().map(|&i| (i, n.label.clone())));
         out.extend(items(&n.children));
     }
     out

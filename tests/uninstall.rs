@@ -104,6 +104,20 @@ fn removing_a_skill_drops_its_lock_entry() {
 }
 
 #[test]
+fn yes_removes_the_one_exact_match_without_asking_the_picker() {
+    let w = world();
+
+    uninstall_with(
+        &w,
+        uninstall("tdd", Filter::default(), true),
+        &Scripted::picking(vec![]),
+    )
+    .unwrap();
+
+    assert!(!w.tdd_store().join("SKILL.md").exists());
+}
+
+#[test]
 fn yes_refuses_a_query_matching_several_items() {
     let w = world();
 

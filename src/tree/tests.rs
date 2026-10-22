@@ -223,3 +223,31 @@ fn info_is_attached_to_items_and_summarises_groups() {
     // Detail leaves carry no info, so `i` opens no modal on them.
     assert!(nodes[0].children[0].children[0].info.is_empty());
 }
+
+#[test]
+fn picking_the_group_of_a_lone_marketplace_picks_the_marketplace() {
+    let nodes = build(&[
+        aug("local", Kind::Skill, "local"),
+        with_children(aug("mp", Kind::Marketplace, "mp"), &["a", "b"]),
+    ]);
+    let group = nodes
+        .iter()
+        .position(|g| g.label.starts_with("mp"))
+        .unwrap();
+    let picked = crate::prompt::Picked {
+        groups: vec![group],
+        items: vec![],
+    };
+
+    assert_eq!(picked.item_indices(&nodes), [1]);
+}
+
+#[test]
+fn a_group_with_item_rows_covers_nothing_extra() {
+    let nodes = build(&[
+        with_children(aug("p@mp", Kind::Plugin, "mp"), &["s1"]),
+        with_children(aug("mp", Kind::Marketplace, "mp"), &["p"]),
+    ]);
+
+    assert!(nodes.iter().all(|g| g.covers.is_empty()));
+}
