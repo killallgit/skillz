@@ -74,10 +74,11 @@ impl ResultScreen {
         let mut lines = vec![counts(&self.outcome, theme)];
         lines.extend(done_lines(&self.outcome, theme));
         lines.extend(problem_lines(&self.outcome, theme));
-        if !self.outcome.log.is_empty() {
+        let steps = collapse_repeats(&self.outcome.log);
+        if !self.outcome.is_clean() && !steps.is_empty() {
             lines.push(Line::default());
             lines.push(Line::styled("steps", theme.muted));
-            lines.extend(self.outcome.log.iter().map(|l| Line::raw(format!("  {l}"))));
+            lines.extend(steps.iter().map(|l| Line::raw(format!("  {l}"))));
         }
         lines
     }
@@ -96,6 +97,16 @@ impl ResultScreen {
         spans.push(Span::styled("↑↓ scroll", theme.muted));
         Line::from(spans)
     }
+}
+
+/// Consecutive identical steps as one line with a count: `removing orca ×8`.
+fn collapse_repeats(log: &[String]) -> Vec<String> {
+    log.chunk_by(|a, b| a == b)
+        .map(|run| match run.len() {
+            1 => run[0].clone(),
+            n => format!("{} ×{n}", run[0]),
+        })
+        .collect()
 }
 
 fn copy_to_terminal(text: &str) {
@@ -196,6 +207,29 @@ mod tests {
             log: vec!["step".into()],
             ..Outcome::default()
         }
+    }
+
+    #[test]
+    fn identical_steps_in_a_row_become_one_line_with_a_count() {
+        let log: Vec<String> = ["a", "a", "a", "b", "a"].map(String::from).to_vec();
+
+        let collapsed = collapse_repeats(&log);
+
+        // Assert the run of three folds, and the lone repeats stay apart.
+        assert_eq!(collapsed, ["a ×3", "b", "a"]);
+    }
+
+    #[test]
+    fn a_clean_run_lists_no_steps() {
+        let clean = Outcome {
+            log: vec!["removing orca".into(); 8],
+            ..Outcome::default()
+        };
+        let screen = ResultScreen::new("done", clean);
+
+        let lines = screen.lines(&Theme::mono());
+
+        assert!(lines.iter().all(|l| !l.to_string().contains("steps")));
     }
 
     fn answer(screen: &mut ResultScreen, code: KeyCode) -> Option<Next> {
