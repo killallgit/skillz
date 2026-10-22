@@ -58,11 +58,9 @@ pub(super) fn shape(rows: &[Row]) -> Vec<Shape> {
         .collect()
 }
 
-/// An outline over `rows` with every section open.
-pub(super) fn open_outline(rows: &[Row]) -> Outline {
-    let mut outline = Outline::new(vec![]);
-    outline.reshape(shape(rows));
-    outline
+/// An outline over `rows` with every section closed.
+pub(super) fn closed_outline(rows: &[Row]) -> Outline {
+    Outline::new(shape(rows))
 }
 
 /// Each kind's section followed by its items sorted by label.

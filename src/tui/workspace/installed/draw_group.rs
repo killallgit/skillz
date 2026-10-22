@@ -5,7 +5,6 @@ use ratatui::text::{Line, Span};
 use super::InstalledTab;
 use super::draw::INDENT;
 use super::rows::{Group, Owned, items_of};
-use crate::library::ItemKind;
 use crate::tui::theme::Theme;
 
 impl InstalledTab {
@@ -15,10 +14,7 @@ impl InstalledTab {
         let title = format!("{indent}{caret} {}", group.package.title());
         let mut spans = vec![
             Span::styled(title, theme.title),
-            Span::styled(
-                format!("  {}", ItemKind::summarize(&group.contents)),
-                theme.muted,
-            ),
+            Span::styled(format!(" ({})", self.outline.child_count(id)), theme.muted),
         ];
         spans.extend(self.pending_summary(id, theme));
         Line::from(spans)

@@ -12,6 +12,7 @@ fn loaded() -> LibraryTab {
         library,
         ..Model::default()
     });
+    tab.outline.open_all();
     tab
 }
 

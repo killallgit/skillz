@@ -57,19 +57,20 @@ impl Outline {
         outline
     }
 
-    /// The same outline over a new shape. A row with children that was closed stays closed when
-    /// a row with the same label is still there; every other such row is open. The filter and
-    /// the cursor stay where they were.
+    /// The same outline over a new shape. A row that was open stays open when a row with the same
+    /// label is still there; every other row with children starts closed. The filter and the
+    /// cursor stay where they were.
     pub fn reshape(&mut self, shape: Vec<Shape>) {
-        let closed: Vec<String> = (0..self.labels.len())
-            .filter(|&id| self.has_children[id] && !self.expanded.contains(&id))
-            .map(|id| self.labels[id].clone())
+        let open: Vec<String> = self
+            .expanded
+            .iter()
+            .map(|&id| self.labels[id].clone())
             .collect();
         let at = self.list.selected().unwrap_or(0);
         let filter = self.filter.clone();
         *self = Outline::new(shape);
         self.expanded = (0..self.labels.len())
-            .filter(|&id| self.has_children[id] && !closed.contains(&self.labels[id]))
+            .filter(|&id| self.has_children[id] && open.contains(&self.labels[id]))
             .collect();
         self.filter = filter;
         self.refresh();
@@ -141,6 +142,19 @@ impl Outline {
     /// Where the filter matched in row `id`'s label, for highlighting.
     pub fn matched(&self, id: usize) -> Vec<usize> {
         match_positions(self.query(), &self.labels[id])
+    }
+
+    #[cfg(test)]
+    pub fn open_all(&mut self) {
+        self.expanded = (0..self.labels.len())
+            .filter(|&id| self.has_children[id])
+            .collect();
+        self.refresh();
+    }
+
+    /// How many rows sit directly under row `id`.
+    pub fn child_count(&self, id: usize) -> usize {
+        self.parents.iter().filter(|&&p| p == Some(id)).count()
     }
 
     /// `▾` for an open row with children, `▸` for a closed one, a space for a leaf.

@@ -27,6 +27,7 @@ pub(super) fn model() -> Model {
 pub(super) fn loaded() -> InstalledTab {
     let mut tab = InstalledTab::project();
     tab.load(&model());
+    tab.outline.open_all();
     tab
 }
 
@@ -122,7 +123,7 @@ fn keys_on_a_hook_a_plugin_owns_do_nothing_and_pick_nothing() {
         command: "say done".into(),
     }];
     let mut tab = InstalledTab::project();
-    tab.load(&Model {
+    tab.load_open(&Model {
         installed: vec![plugin],
         ..model()
     });
@@ -150,7 +151,7 @@ fn enter_on_a_plugin_folds_the_skills_it_provides() {
     let mut plugin = installed("p@mp", Kind::Plugin, Some("mp"));
     plugin.children = vec![format!("{}tdd", crate::model::SKILL_CHILD)];
     let mut tab = InstalledTab::project();
-    tab.load(&Model {
+    tab.load_open(&Model {
         installed: vec![plugin],
         ..Model::default()
     });

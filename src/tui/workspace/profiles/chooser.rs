@@ -56,7 +56,7 @@ impl Chooser {
                 .filter(|e| !offered(e))
                 .cloned()
                 .collect(),
-            outline: rows::open_outline(&rows),
+            outline: rows::closed_outline(&rows),
             rows,
             checked,
         }
@@ -174,6 +174,7 @@ mod tests {
     #[test]
     fn items_the_profile_has_start_checked_and_saving_keeps_them() {
         let mut chooser = Chooser::new(&profile_with(vec![skill("a")]), &library());
+        chooser.outline.open_all();
 
         let choice = press(&mut chooser, &[KeyCode::Enter]);
 
@@ -183,6 +184,7 @@ mod tests {
     #[test]
     fn space_checks_and_unchecks_the_item_under_the_cursor() {
         let mut chooser = Chooser::new(&profile_with(vec![skill("a")]), &library());
+        chooser.outline.open_all();
 
         // Section, a, b: check b, then uncheck a.
         press(&mut chooser, &[KeyCode::Down, KeyCode::Down, SPACE]);
@@ -196,6 +198,7 @@ mod tests {
     fn entries_the_library_does_not_offer_are_kept() {
         let mine = skill("mine");
         let mut chooser = Chooser::new(&profile_with(vec![mine.clone()]), &library());
+        chooser.outline.open_all();
 
         press(&mut chooser, &[KeyCode::Down, SPACE]);
         let choice = press(&mut chooser, &[KeyCode::Enter]);
@@ -206,6 +209,7 @@ mod tests {
     #[test]
     fn space_on_a_section_collapses_it_without_checking_anything() {
         let mut chooser = Chooser::new(&profile_with(vec![]), &library());
+        chooser.outline.open_all();
 
         press(&mut chooser, &[SPACE]);
 
@@ -216,6 +220,7 @@ mod tests {
     #[test]
     fn escape_closes_without_a_result() {
         let mut chooser = Chooser::new(&profile_with(vec![]), &library());
+        chooser.outline.open_all();
 
         assert_eq!(press(&mut chooser, &[KeyCode::Esc]), Choice::Closed);
     }

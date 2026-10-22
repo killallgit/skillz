@@ -47,6 +47,7 @@ fn model() -> Model {
 fn loaded() -> ProfilesTab {
     let mut tab = ProfilesTab::new();
     tab.load(&model());
+    tab.entries.open_all();
     tab
 }
 
@@ -158,12 +159,17 @@ fn building_writes_the_checked_library_items_into_the_profile() {
     let mut tab = loaded();
 
     char_key(&mut tab, 'b');
-    // Section, a (checked), b: check b.
-    [KeyCode::Down, KeyCode::Down, KeyCode::Char(' ')]
-        .into_iter()
-        .for_each(|code| {
-            press(&mut tab, code);
-        });
+    // Open the section, then a (checked), b: check b.
+    [
+        KeyCode::Right,
+        KeyCode::Down,
+        KeyCode::Down,
+        KeyCode::Char(' '),
+    ]
+    .into_iter()
+    .for_each(|code| {
+        press(&mut tab, code);
+    });
     let act = press(&mut tab, KeyCode::Enter);
 
     assert_eq!(

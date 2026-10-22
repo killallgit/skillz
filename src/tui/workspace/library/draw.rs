@@ -8,7 +8,7 @@ use ratatui::widgets::Paragraph;
 use super::detail::{Detail, detail};
 use super::rows::Row;
 use super::{LibraryTab, Popup};
-use crate::library::{Cue, ItemKind, Presence, Provenance};
+use crate::library::{Cue, Presence, Provenance};
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;
@@ -59,11 +59,11 @@ impl LibraryTab {
 
     fn row_line(&self, id: usize, theme: &Theme) -> Line<'static> {
         match &self.rows[id] {
-            Row::Package { package, contents } => {
+            Row::Package { package, .. } => {
                 let caret = self.outline.caret(id, &theme.glyphs);
                 Line::from(vec![
                     Span::styled(format!("{caret} {}", package.title()), theme.title),
-                    Span::styled(format!("  {}", ItemKind::summarize(contents)), theme.muted),
+                    Span::styled(format!(" ({})", self.outline.child_count(id)), theme.muted),
                 ])
             }
             Row::Item(item) => {

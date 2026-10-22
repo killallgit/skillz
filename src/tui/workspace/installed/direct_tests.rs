@@ -14,7 +14,7 @@ const ZOOM: usize = 5;
 
 fn with_global_grill() -> InstalledTab {
     let mut tab = InstalledTab::project();
-    tab.load(&Model {
+    tab.load_open(&Model {
         installed: vec![installed("tdd", Kind::Skill, Some("o/r"))],
         global: vec![global("grill", Kind::Skill, Some("o/r"))],
         library: Catalog::from_items(vec![
@@ -67,7 +67,7 @@ fn r_removes_the_highlighted_project_item_at_once() {
 #[test]
 fn r_on_a_package_removes_everything_installed_from_it() {
     let mut tab = InstalledTab::project();
-    tab.load(&Model {
+    tab.load_open(&Model {
         installed: vec![
             installed("tdd", Kind::Skill, Some("o/r")),
             installed("grill", Kind::Skill, Some("o/r")),
@@ -85,7 +85,7 @@ fn r_on_a_package_removes_everything_installed_from_it() {
 #[test]
 fn i_on_an_available_package_installs_everything_it_offers() {
     let mut tab = InstalledTab::project();
-    tab.load(&Model {
+    tab.load_open(&Model {
         library: Catalog::from_items(vec![
             library_skill("o/r", "grill"),
             library_skill("o/r", "zoom"),

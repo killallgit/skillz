@@ -82,7 +82,7 @@ fn a_pick_survives_a_new_snapshot_while_the_item_is_unchanged() {
     on_item(&mut tab, GRILL);
     press(&mut tab, space());
 
-    tab.load(&model());
+    tab.load_open(&model());
 
     assert!(!tab.pending.is_empty());
 }
@@ -97,7 +97,7 @@ fn a_pick_is_dropped_when_its_item_is_gone_or_has_changed() {
         .installed
         .push(installed("grill", Kind::Skill, Some("o/r")));
 
-    tab.load(&installed_now);
+    tab.load_open(&installed_now);
 
     assert!(tab.pending.is_empty());
 }
@@ -127,7 +127,7 @@ fn a_section_counts_what_is_picked_in_it() {
 
 fn picked_glyphs(glyphs: crate::tui::glyphs::Glyphs) -> (usize, usize) {
     let mut tab = InstalledTab::project();
-    tab.load(&Model {
+    tab.load_open(&Model {
         dir: "app".into(),
         ..model()
     });

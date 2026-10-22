@@ -29,6 +29,7 @@ fn model() -> Model {
 fn loaded(scope: Scope) -> InstalledTab {
     let mut tab = InstalledTab::new(scope);
     tab.load(&model());
+    tab.outline.open_all();
     tab
 }
 

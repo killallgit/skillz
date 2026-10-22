@@ -77,6 +77,13 @@ pub struct InstalledTab {
 }
 
 impl InstalledTab {
+    /// Load a snapshot and open every group, so a test can walk the rows.
+    #[cfg(test)]
+    pub(super) fn load_open(&mut self, model: &Model) {
+        self.load(model);
+        self.outline.open_all();
+    }
+
     pub fn project() -> Self {
         Self::new(Scope::Project)
     }

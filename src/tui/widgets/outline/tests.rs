@@ -19,8 +19,8 @@ fn shape() -> Vec<Shape> {
 }
 
 fn expanded() -> Outline {
-    let mut outline = Outline::new(vec![]);
-    outline.reshape(shape());
+    let mut outline = Outline::new(shape());
+    outline.open_all();
     outline
 }
 
@@ -46,7 +46,7 @@ fn a_new_outline_shows_only_its_top_rows() {
 }
 
 #[test]
-fn reshaping_an_empty_outline_opens_every_row_in_preorder() {
+fn opening_every_row_shows_them_in_preorder() {
     assert_eq!(expanded().visible(), [0, 1, 2, 3, 4]);
 }
 
@@ -107,14 +107,18 @@ fn submitting_keeps_the_filter_and_cancelling_restores_every_row() {
 }
 
 #[test]
-fn reshaping_keeps_closed_rows_closed_by_label_and_opens_new_ones() {
+fn reshaping_keeps_open_rows_open_by_label_and_starts_new_ones_closed() {
     let mut outline = Outline::new(shape());
+    outline.navigate(Action::Right);
     let mut grown = vec![(None, "bread".to_string()), (Some(0), "rye".to_string())];
     grown.extend(shape().into_iter().map(|(p, l)| (p.map(|p| p + 2), l)));
 
     outline.reshape(grown);
 
-    assert_eq!(visible_labels(&outline), ["bread", "rye", "fruit", "veg"]);
+    assert_eq!(
+        visible_labels(&outline),
+        ["bread", "fruit", "apple", "apricot", "veg"]
+    );
 }
 
 #[test]

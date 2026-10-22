@@ -86,7 +86,7 @@ impl ProfilesTab {
                 let caret = self.entries.caret(id, &theme.glyphs);
                 Line::from(vec![
                     Span::styled(format!("{caret} {}", section_title(*kind)), theme.title),
-                    Span::styled(format!("  {count}"), theme.muted),
+                    Span::styled(format!(" ({count})"), theme.muted),
                 ])
             }
             Row::Item(item) => Line::styled(format!("    {}", item.label), theme.text),
