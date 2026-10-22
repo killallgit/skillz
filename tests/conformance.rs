@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use skillz::action::{Action, RemovalTarget};
-use skillz::agents::{self, AgentAdapter, PluginInstall, PluginOutcome};
+use skillz::agents::{self, AgentAdapter, PluginOffer};
 use skillz::cli::{Command, Deps, Filter, UninstallArgs, run};
 use skillz::env::Env;
 use skillz::install::{Ctx, InstallRequest, SkillSelection, install};
@@ -83,9 +83,26 @@ impl AgentAdapter for Fake {
             cwd,
         )]
     }
-    fn install_plugins(&self, _req: &PluginInstall) -> anyhow::Result<PluginOutcome> {
+    fn plugin_offer(&self, _src: &Path, _scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
+        Ok(Some(PluginOffer {
+            marketplace: "mp".into(),
+            plugins: vec![PLUGIN.into()],
+        }))
+    }
+    fn plugin_steps(
+        &self,
+        _offer: &PluginOffer,
+        picked: &[String],
+        _source: &str,
+        _scope: Scope,
+        env: &Env,
+    ) -> Vec<Action> {
         self.installs.set(self.installs.get() + 1);
-        Ok(PluginOutcome::Installed)
+        vec![Action::required(
+            "fake-agent",
+            picked.to_vec(),
+            &env.project,
+        )]
     }
 }
 
@@ -105,6 +122,19 @@ struct NoRun;
 impl CommandRunner for NoRun {
     fn run(&self, program: &str, _args: &[String], _cwd: &Path) -> anyhow::Result<Output> {
         panic!("unexpected command: {program}");
+    }
+}
+
+/// Allows the fake agent's own installer and nothing else.
+struct OnlyFake;
+
+impl CommandRunner for OnlyFake {
+    fn run(&self, program: &str, _args: &[String], _cwd: &Path) -> anyhow::Result<Output> {
+        assert_eq!(program, "fake-agent", "unexpected command");
+        Ok(Output {
+            success: true,
+            stderr: String::new(),
+        })
     }
 }
 
@@ -217,7 +247,7 @@ fn install_asks_the_fake_to_install_plugins_and_runs_no_other_command() {
         scope: Scope::Global,
         selection: SkillSelection::Interactive,
     };
-    // `NoRun` panics on any command: the clone of `o/r` would be one, so use a local source.
+    // The clone of `o/r` would be a command `OnlyFake` refuses, so use a local source.
     let src = w.env.project.join("repo");
     fs::create_dir_all(&src).unwrap();
     let req = InstallRequest {
@@ -228,7 +258,7 @@ fn install_asks_the_fake_to_install_plugins_and_runs_no_other_command() {
     let ctx = Ctx {
         adapters: &adapters,
         env: &w.env,
-        runner: &NoRun,
+        runner: &OnlyFake,
         prompter: &Yes,
     };
     install(&ctx, &req).unwrap();

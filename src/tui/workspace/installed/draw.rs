@@ -15,6 +15,7 @@ use crate::model::Scope;
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;
+use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
 use crate::tui::workspace::Tab;
 
@@ -23,6 +24,7 @@ pub(super) const INDENT: &str = "  ";
 /// Cells of rule before and after the `Available` header's title.
 const RULE_LEAD: usize = 2;
 const RULE_TAIL: usize = 12;
+const SOURCE_WIDTH: u16 = 56;
 const GLOBAL_TAG: &str = "global";
 
 impl InstalledTab {
@@ -35,6 +37,14 @@ impl InstalledTab {
         self.draw_outline(frame, body, theme);
         match &mut self.popup {
             Popup::Profiles(picker) => picker.render(frame, theme),
+            Popup::Source(field) => {
+                let size = ModalSize {
+                    width: SOURCE_WIDTH.min(frame.area().width),
+                    height: 3,
+                };
+                let inner = modal::open(frame, size, Panel::new("Add from repo"), theme);
+                field.render(frame, inner, theme);
+            }
             Popup::AlsoGlobal(dialog, _) => dialog.render(frame, theme),
             Popup::None | Popup::Filter => {}
         }

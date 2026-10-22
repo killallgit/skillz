@@ -23,6 +23,11 @@ pub enum Act {
     Apply {
         profile: String,
     },
+    /// Install what `source` (`owner/repo`, a git URL or a path) offers each agent in `scope`.
+    InstallSource {
+        scope: Scope,
+        source: String,
+    },
     /// Add the item a one-line entry describes to the library.
     LibraryAdd {
         spec: String,

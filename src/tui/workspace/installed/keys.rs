@@ -6,9 +6,11 @@ use super::picker::{Pick, Picker};
 use super::rows::{Row, State, items_of};
 use super::{InstalledTab, Popup};
 use crate::tui::keymap::{self, Action};
-use crate::tui::widgets::input::Outcome as Edit;
+use crate::tui::widgets::input::{InputField, Outcome as Edit};
 use crate::tui::workspace::Tab;
 use crate::tui::workspace::act::Act;
+
+const SOURCE_PLACEHOLDER: &str = "owner/repo, git URL or path";
 
 impl InstalledTab {
     pub(super) fn handle_key(&mut self, key: KeyEvent) -> Option<Act> {
@@ -16,6 +18,7 @@ impl InstalledTab {
             Popup::None => self.handle_idle(key),
             Popup::Filter => self.handle_filter(key),
             Popup::Profiles(picker) => self.handle_picker(picker, key),
+            Popup::Source(field) => self.handle_source(field, key),
             Popup::AlsoGlobal(dialog, proposal) => self.handle_also_global(dialog, proposal, key),
         }
     }
@@ -31,6 +34,7 @@ impl InstalledTab {
             }
             Action::Update => return self.update(),
             Action::Install => return self.install_current(),
+            Action::AddSource => self.popup = Popup::Source(InputField::new(SOURCE_PLACEHOLDER)),
             Action::Remove => return self.remove_current(),
             Action::Toggle => self.toggle(),
             Action::Select => return self.select(),
@@ -94,6 +98,19 @@ impl InstalledTab {
         } else {
             Popup::None
         };
+        None
+    }
+
+    fn handle_source(&mut self, mut field: InputField, key: KeyEvent) -> Option<Act> {
+        match field.handle(key) {
+            Edit::Editing => self.popup = Popup::Source(field),
+            Edit::Submit => {
+                let source = field.value().trim().to_string();
+                let scope = self.scope;
+                return (!source.is_empty()).then_some(Act::InstallSource { scope, source });
+            }
+            Edit::Cancel => {}
+        }
         None
     }
 

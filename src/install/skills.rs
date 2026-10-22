@@ -1,32 +1,48 @@
 use std::path::Path;
 
+use crate::action::Action;
 use crate::fswalk;
 use crate::matcher::pattern_matches;
 use crate::model::Agent;
 use crate::npx_skills;
 use crate::prompt::Prompter;
-use crate::runner::run_checked;
 use crate::skills::skill_name;
 
 use super::global::confirm_duplicates;
 use super::{Ctx, InstallRequest, SkillSelection, Tree};
 
-/// Pick skills found under the tree and install them with `npx skills add <source>`.
-pub(super) fn install(
+/// The `npx skills add` step for the skills the user picks from the tree.
+pub(super) struct SkillsPlan {
+    pub line: String,
+    pub step: Action,
+}
+
+/// Pick skills found under the tree to install with `npx skills add <source>`. `None` when the
+/// user backed out.
+pub(super) fn plan(
     ctx: &Ctx,
     req: &InstallRequest,
     tree: &Tree,
     agents: &[Agent],
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Option<SkillsPlan>> {
     let names = scan_available(tree.src)?;
+    anyhow::ensure!(
+        !names.is_empty(),
+        "found no marketplace, plugin or skills in {}",
+        tree.source
+    );
     let Some(chosen) = choose(ctx.prompter, &req.selection, &names, tree.source)? else {
-        return Ok(());
+        return Ok(None);
     };
     if !confirm_duplicates(ctx, req, (tree.source, &chosen))? {
-        return Ok(());
+        return Ok(None);
     }
     let (program, args) = npx_skills::add_command(tree.source, &chosen, agents, req.scope);
-    run_checked(ctx.runner, &program, &args, &ctx.env.project)
+    let names: Vec<String> = agents.iter().map(ToString::to_string).collect();
+    Ok(Some(SkillsPlan {
+        line: format!("{}: skills {}", names.join(", "), chosen.join(", ")),
+        step: Action::required(&program, args, &ctx.env.project),
+    }))
 }
 
 /// The skills to install, or `None` when the user backed out.
@@ -107,7 +123,10 @@ mod tests {
             src: &src,
             source: "o/r",
         };
-        install(&ctx, req, &tree, &req.agents)
+        match plan(&ctx, req, &tree, &req.agents)? {
+            Some(skills) => crate::install::run(&ctx, &[skills.step]),
+            None => Ok(()),
+        }
     }
 
     fn request(fx: &Fixture, selection: SkillSelection, agent: Agent) -> InstallRequest {

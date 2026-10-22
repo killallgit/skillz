@@ -9,9 +9,9 @@ mod usage;
 #[cfg(test)]
 mod testutil;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use super::AgentAdapter;
+use super::{AgentAdapter, PluginOffer};
 use crate::action::Action;
 use crate::env::Env;
 use crate::hooks;
@@ -98,6 +98,25 @@ impl AgentAdapter for Codex {
             Entry::Plugin { .. } => plugins::provision(entry, scope, env),
             Entry::Skill { .. } => None,
         }
+    }
+
+    /// Plugins go through `codex plugin …`, which only acts on the user config.
+    fn plugin_offer(&self, src: &Path, scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
+        if scope != Scope::Global {
+            return Ok(None);
+        }
+        plugins::plugin_offer(src)
+    }
+
+    fn plugin_steps(
+        &self,
+        offer: &PluginOffer,
+        picked: &[String],
+        source: &str,
+        _scope: Scope,
+        env: &Env,
+    ) -> Vec<Action> {
+        plugins::install_steps(source, &offer.marketplace, picked, env)
     }
 
     /// Codex keeps no counters: a tool call in a session log under

@@ -22,7 +22,7 @@ is also a command.
 | `reset` | remove every skill, plugin and marketplace in scope |
 | `prune` | find duplicate and unused skills and plugins, remove the ones picked |
 | `sync` | add everything installed, in the project and at user level, to the library (`-p PATH`, `-g` for user level only, `--dry-run`, `--json`); never removes anything from it |
-| `install` (`add`) | install skills with `npx skills`, or Claude plugins from a marketplace; `-g` installs for the user instead of the project |
+| `install` (`add`) | `install OWNER/REPO` (or a git URL or path): offers each agent the plugins the repo has a marketplace for (Claude `.claude-plugin/`, Codex `.agents/plugins/`), installs skills for the rest with `npx skills`, and shows the plan before running it; `-g` installs for the user instead of the project |
 | `library` (`lib`) | `list` (`ls`, `--json`, kind filters), `add "LINE"`, `remove` (`rm`) a label query or LINE, `install QUERY...` into the project or with `-g` for the user (each with `--dry-run`, `-y` where it asks) |
 | `use` | add what a project lacks of a profile (`--exact` also removes the rest) |
 | `run` | run a command against one profile in config dirs of its own |
@@ -59,7 +59,7 @@ skillz install mattpocock/skills --skill 'tdd,*commit'   # glob match, confirm, 
 skillz install mattpocock/skills --all
 skillz install mattpocock/skills --all -g                 # for the user, not the project
 skillz update tdd -g                                     # update a user-level skill
-skillz install killallgit/killall-skills                 # has a marketplace: pick Claude plugins
+skillz install killallgit/killall-skills                 # has a marketplace: pick plugins, review the plan
 ```
 
 If a skill you ask for is already installed globally and not in the project, `install` says so
@@ -83,6 +83,7 @@ then the same install and removal steps):
 | Update markers | `list --json --check`, `update --check [--json]` |
 | `space` picks, `enter` installs and removes the picks as one plan | `library install QUERY... [-g]`, `uninstall QUERY...` (`-y`, `--dry-run`) |
 | `i` install / `r` remove / `u` update the highlighted item | `library install`, `uninstall`, `update` |
+| `A` add from a repo: type `owner/repo`, a git URL or a path | `install SOURCE` |
 | `p` compare with a profile, the header's matches / N missing / N extra | `profile status [NAME] [--json]`, `profile list [--json]` |
 | `a` apply a profile, `e` apply exactly | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`) |
 | Library: `a` add a typed line, `x` remove, `i` sync installed | `library add "skill o/r tdd"`, `library remove QUERY`, `sync` |
@@ -140,7 +141,7 @@ can (see below); anything an agent cannot take is shown as skipped in the plan, 
 | Kind | Claude | Codex |
 | --- | --- | --- |
 | skill | `npx skills add`, all agents at once | same |
-| plugin | `claude plugin marketplace add` + `plugin install`; project scope uses Claude's `local` scope, never the file the team shares | global only |
+| plugin | `claude plugin marketplace add` + `plugin install`; project scope uses Claude's `local` scope, never the file the team shares | `codex plugin marketplace add` + `plugin add`, global only |
 | subagent | `.md` files into `.claude/agents` (`~/.claude/agents` global) | `.toml` files into `.codex/agents` (`~/.codex/agents` global) |
 | hook | `settings.json` (global) or `.claude/settings.local.json` (project) | `hooks.json` in the same scope |
 | mcp | `claude mcp add`, scope `user` (global) or `local` (project) | `codex mcp add`, global only, no SSE |

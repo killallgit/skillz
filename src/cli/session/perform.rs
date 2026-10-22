@@ -4,6 +4,7 @@ use super::Session;
 use super::change::{Change, change};
 use super::notice::Notice;
 use super::selection::Selection;
+use crate::install::{InstallRequest, SkillSelection};
 use crate::model::Scope;
 use crate::tui::workspace::Act;
 
@@ -22,6 +23,15 @@ impl Session<'_, '_> {
             }
             Act::Update { scope, ids } => return change(self, *scope, &Change::Update(ids)),
             Act::Apply { profile } => Change::Apply(profile),
+            Act::InstallSource { scope, source } => {
+                return self.install_source(&InstallRequest {
+                    source: source.clone(),
+                    cwd: self.deps.cwd.clone(),
+                    agents: self.deps.adapters.iter().map(|a| a.agent()).collect(),
+                    scope: *scope,
+                    selection: SkillSelection::Interactive,
+                });
+            }
             Act::LibraryAdd { spec } => return self.library_add(spec),
             Act::LibraryImport => return self.library_import(),
             Act::LibraryRemove(entry) => return self.library_remove(entry),

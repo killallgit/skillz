@@ -57,6 +57,8 @@ enum Popup {
     None,
     Filter,
     Profiles(Picker),
+    /// Typing the repo or path to install from.
+    Source(InputField),
     AlsoGlobal(ConfirmDialog, Proposal),
 }
 

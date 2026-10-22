@@ -11,16 +11,13 @@ use super::library::{available, library_command};
 use super::list::{ListView, list};
 use super::profile::profile_command;
 use super::prune::prune;
-use super::recording::record_since;
 use super::removal::{UninstallRequest, reset, uninstall};
-use super::scope::{Scene, complete_installed, resolve, resolve_project, split_target};
-use super::session::{Change, change, with_session};
+use super::scope::{Scene, resolve, resolve_project, split_target};
+use super::session::{Change, Session, change, with_session};
 use super::sync::{SyncRequest, sync};
 use super::update::{UpdateRequest, check, update};
-use crate::install::{self, InstallRequest, SkillSelection};
+use crate::install::{InstallRequest, SkillSelection};
 use crate::model::Scope;
-use crate::store::Store;
-use anyhow::Context;
 
 /// Runs the command and returns the process exit code: the child's for `run`, else 0.
 pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result<i32> {
@@ -149,18 +146,9 @@ fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
         scope,
         selection: skill_selection(args.all, args.skill),
     };
-    let ctx = install::Ctx {
-        adapters: &deps.adapters,
-        env: &env,
-        runner: deps.runner,
-        prompter: deps.prompter,
-    };
-    let store = Store::in_env(&env);
-    let before = complete_installed(deps, &env, scope)?;
-    let result = install::install(&ctx, &request);
-    let recorded = record_since(deps, &store, (&env, scope), &before);
-    result?;
-    recorded.context("installed, but the library was not updated")
+    Session::open(deps, &env)
+        .install_source(&request)
+        .map(|_| ())
 }
 
 fn scope_of(global: bool) -> Scope {
