@@ -71,9 +71,15 @@ fn space_on_a_package_picks_everything_in_it_and_again_unpicks_it() {
     let picked = tab.pending.picks();
     press(&mut tab, space());
 
-    assert_eq!(picked, (vec![], vec!["skill:tdd".to_string()]));
+    assert_eq!(
+        picked,
+        (
+            vec![library_skill("o/r", "grill").entry],
+            vec!["skill:tdd".to_string()]
+        )
+    );
     assert!(tab.pending.is_empty());
-    assert_eq!(tab.outline.visible().len(), 5);
+    assert_eq!(tab.outline.visible().len(), 3);
 }
 
 #[test]

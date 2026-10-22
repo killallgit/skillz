@@ -1,6 +1,6 @@
-//! The rows of an installed tab's outline: a group per source package for what the scope has,
-//! then one `Available` header with a group per package for what only the library offers. Each
-//! group holds the skills, plugins and subagents the package provides.
+//! The rows of an installed tab's outline: a group per source package, holding the skills,
+//! plugins and subagents it provides, both those the scope has and those only the library offers.
+//! An item's state says which.
 
 mod available;
 mod installed;
@@ -10,8 +10,6 @@ use crate::model::Augmentation;
 use crate::package::{Package, group_by};
 use crate::profile::Entry;
 use crate::tui::widgets::outline::Shape;
-
-const AVAILABLE: &str = "Available";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum State {
@@ -44,25 +42,13 @@ pub(super) struct Owned {
     pub detail: String,
 }
 
-/// Whether a group lists what the scope has or what the library could add.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Part {
-    Installed,
-    Available,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Group {
-    pub part: Part,
     pub package: Package,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Row {
-    /// Heads the groups of what is not installed.
-    Available {
-        total: usize,
-    },
     Package(Group),
     Item(Item),
     Owned(Owned),
@@ -76,30 +62,22 @@ pub(super) struct Sources<'a> {
     pub library: &'a Catalog,
 }
 
-/// The installed groups, then the available ones under their header; a part with nothing in it
-/// is left out.
 pub(super) fn build(sources: &Sources) -> Vec<Row> {
-    let installed = groups(Part::Installed, installed::items(sources));
-    let available = groups(Part::Available, available::items(sources));
-    let offered = available
-        .iter()
-        .filter(|row| matches!(row, Row::Item(_)))
-        .count();
-    let header = (offered > 0).then_some(Row::Available { total: offered });
-    installed
-        .into_iter()
-        .chain(header)
-        .chain(available)
-        .collect()
+    let mut items = installed::items(sources);
+    items.extend(available::items(sources));
+    groups(items)
 }
 
-fn groups(part: Part, items: Vec<(Package, Item)>) -> Vec<Row> {
+fn groups(items: Vec<(Package, Item)>) -> Vec<Row> {
     group_by(items, |(package, _)| package.clone())
         .into_iter()
         .flat_map(|(package, members)| {
             let mut items: Vec<Item> = members.into_iter().map(|(_, item)| item).collect();
-            items.sort_by_key(|item| (item.kind, item.label.to_lowercase()));
-            let group = Group { part, package };
+            items.sort_by_key(|item| {
+                let available = matches!(item.state, State::Available(_));
+                (item.kind, available, item.label.to_lowercase())
+            });
+            let group = Group { package };
             std::iter::once(Row::Package(group)).chain(item_rows(items))
         })
         .collect()
@@ -115,25 +93,13 @@ fn item_rows(items: Vec<Item>) -> impl Iterator<Item = Row> {
 /// The outline's shape: available groups hang under their header, items under their group and
 /// what a plugin provides under the plugin.
 pub(super) fn shape(rows: &[Row]) -> Vec<Shape> {
-    let (mut header, mut group, mut plugin) = (None, None, None);
+    let (mut group, mut plugin) = (None, None);
     rows.iter()
         .enumerate()
         .map(|(id, row)| match row {
-            Row::Available { .. } => {
-                header = Some(id);
-                (None, AVAILABLE.to_string())
-            }
-            Row::Package(Group {
-                part: Part::Installed,
-                package,
-                ..
-            }) => {
+            Row::Package(Group { package }) => {
                 group = Some(id);
                 (None, package.title())
-            }
-            Row::Package(Group { package, .. }) => {
-                group = Some(id);
-                (header, format!("{AVAILABLE} {}", package.title()))
             }
             Row::Item(item) => {
                 plugin = Some(id);

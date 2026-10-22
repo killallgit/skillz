@@ -266,11 +266,11 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   `owner/repo`, a plugin marketplace (its plugins, each expanding into the skills and hooks it
   provides), or `local files` for hand-made items. Each group row shows the package and what it
   provides (`2 skills, 1 subagent`); a small tag after each name says its kind. MCP servers and
-  `(unknown) hooks` (hooks no plugin declares) keep a group of their own. Below an `Available`
-  rule, the library items not installed in that scope are grouped the same way. In Project, an item
+  `(unknown) hooks` (hooks no plugin declares) keep a group of their own. Library items not installed in
+  that scope sit in the same groups, dim, while installed ones are bold. In Project, an item
   that is also installed globally is tagged `global`. Every installed row shows where it lives on
-  disk (the skill's directory, or the config file). The header shows the directory, or `Global
-  (user-level)`; on Project it also shows how the directory compares with a profile you chose:
+  disk (the skill's directory, or the config file). The header shows the directory, or `User-level,
+  all projects`; on Project it also shows how the directory compares with a profile you chose:
   matching, or `N missing` / `N extra`. Picked rows get their own marker and a `to install` /
   `to remove` note, and each group shows its count of picks. `space`, `i`, `r` and `u` on a group
   row act on everything in it (the plan shows what, and nothing happens until you confirm it); on
@@ -299,8 +299,8 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 | --- | --- |
 | `space` | pick the item under the cursor: a library item to install, an installed item to remove; again to unpick (on a section header: open or close it) |
 | `enter` | apply all picks as one change, with one plan to review; with nothing picked, open or close the section |
-| `i` | install the item under the cursor into the tab's scope at once (after the plan); does nothing on an installed row or a header |
-| `r` | remove the item under the cursor from the tab's scope at once (after the plan); does nothing on an available row or a header |
+| `i` | install the item under the cursor into the tab's scope at once (after the plan); on a package row, installs its available items; does nothing on an installed row |
+| `r` | remove the item under the cursor from the tab's scope at once (after the plan); on a package row, removes its installed items; does nothing on an available row |
 | `esc` | clear the picks (with none, clear the filter) |
 | `u` | update the installed item under the cursor, or every installed item of the section, after a plan to review; library items that are not installed and kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
 | `p` | choose the profile the header compares with (Project only) |

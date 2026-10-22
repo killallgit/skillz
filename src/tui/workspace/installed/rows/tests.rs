@@ -57,10 +57,10 @@ fn items(rows: &[Row]) -> Vec<&Item> {
         .collect()
 }
 
-fn packages_of(rows: &[Row], wanted: Part) -> Vec<Package> {
+fn packages_of(rows: &[Row]) -> Vec<Package> {
     rows.iter()
         .filter_map(|row| match row {
-            Row::Package(group) if group.part == wanted => Some(group.package.clone()),
+            Row::Package(group) => Some(group.package.clone()),
             _ => None,
         })
         .collect()
@@ -71,23 +71,19 @@ fn parents(rows: &[Row]) -> Vec<Option<usize>> {
 }
 
 #[test]
-fn installed_groups_come_first_then_one_available_header_with_its_own_groups() {
+fn installed_and_available_items_of_one_repo_share_a_group() {
     let here = [installed("tdd", Kind::Skill, Some("o/r"))];
     let library = Catalog::from_items(vec![library_skill("o/r", "zoom")]);
 
     let rows = rows_of(&here, &[], &library);
 
-    let header = rows.iter().position(|r| matches!(r, Row::Available { .. }));
-    assert_eq!(header, Some(2));
-    assert_eq!(rows.len(), 5);
-    assert_eq!(
-        packages_of(&rows, Part::Installed),
-        [Package::Source("o/r".into())]
-    );
-    assert_eq!(
-        packages_of(&rows, Part::Available),
-        [Package::Source("o/r".into())]
-    );
+    assert_eq!(packages_of(&rows), [Package::Source("o/r".into())]);
+    let states: Vec<bool> = items(&rows)
+        .iter()
+        .map(|i| matches!(i.state, State::Installed(_)))
+        .collect();
+    assert_eq!(states.len(), 2);
+    assert!(states.contains(&true) && states.contains(&false));
 }
 
 #[test]
@@ -97,7 +93,6 @@ fn library_items_already_installed_here_are_not_available() {
 
     let rows = rows_of(&here, &[], &library);
 
-    assert!(!rows.iter().any(|r| matches!(r, Row::Available { .. })));
     assert_eq!(items(&rows).len(), 1);
 }
 
@@ -129,7 +124,7 @@ fn skills_and_subagents_of_one_repo_are_one_group() {
 
     let rows = rows_of(&here, &[], &Catalog::default());
 
-    assert_eq!(packages_of(&rows, Part::Installed).len(), 1);
+    assert_eq!(packages_of(&rows).len(), 1);
     assert_eq!(parents(&rows), [None, Some(0), Some(0), Some(0)]);
 }
 
@@ -161,7 +156,7 @@ fn the_same_skill_from_two_sources_is_in_two_groups() {
 
     let rows = rows_of(&here, &[], &Catalog::default());
 
-    assert_eq!(packages_of(&rows, Part::Installed).len(), 2);
+    assert_eq!(packages_of(&rows).len(), 2);
 }
 
 #[test]
@@ -176,7 +171,7 @@ fn local_files_mcp_servers_and_unowned_hooks_follow_the_named_packages() {
     let rows = rows_of(&here, &[], &Catalog::default());
 
     assert_eq!(
-        packages_of(&rows, Part::Installed),
+        packages_of(&rows),
         [
             Package::Source("o/r".into()),
             Package::Local,
@@ -199,10 +194,7 @@ fn a_marketplace_is_the_package_of_its_plugins_and_has_no_row_of_its_own() {
 
     let rows = rows_of(&here, &[], &Catalog::default());
 
-    assert_eq!(
-        packages_of(&rows, Part::Installed),
-        [Package::Marketplace("mp".into())]
-    );
+    assert_eq!(packages_of(&rows), [Package::Marketplace("mp".into())]);
     assert_eq!(items(&rows).len(), 1);
 }
 
@@ -232,7 +224,7 @@ fn a_plugin_is_followed_by_the_skills_and_hooks_it_provides_not_the_hooks_group(
         rows.as_slice(),
         [Row::Package(_), Row::Item(_), Row::Owned(_), Row::Owned(_)]
     ));
-    assert_eq!(packages_of(&rows, Part::Installed).len(), 1);
+    assert_eq!(packages_of(&rows).len(), 1);
 }
 
 #[test]
@@ -253,17 +245,15 @@ fn provided_rows_hang_under_their_plugin_and_say_which_plugin_adds_them() {
 }
 
 #[test]
-fn installed_and_available_groups_of_one_package_have_different_labels() {
+fn installed_items_come_before_available_ones_in_a_group() {
     let here = [installed("a", Kind::Skill, Some("o/r"))];
     let library = Catalog::from_items(vec![library_skill("o/r", "zoom")]);
 
-    let shape = shape(&rows_of(&here, &[], &library));
+    let rows = rows_of(&here, &[], &library);
 
-    assert_ne!(shape[0].1, shape[3].1);
-    assert_eq!(
-        parents(&rows_of(&here, &[], &library)),
-        [None, Some(0), None, Some(2), Some(3)]
-    );
+    assert_eq!(parents(&rows), [None, Some(0), Some(0)]);
+    assert!(matches!(items(&rows)[0].state, State::Installed(_)));
+    assert!(matches!(items(&rows)[1].state, State::Available(_)));
 }
 
 fn subagent_in(agent: Agent) -> Augmentation {

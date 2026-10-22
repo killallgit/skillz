@@ -4,7 +4,7 @@ use ratatui::text::{Line, Span};
 
 use super::InstalledTab;
 use super::draw::INDENT;
-use super::rows::{Group, Owned, items_of};
+use super::rows::{Group, Owned, State, items_of};
 use crate::tui::theme::Theme;
 
 impl InstalledTab {
@@ -12,8 +12,15 @@ impl InstalledTab {
         let caret = self.outline.caret(id, &theme.glyphs);
         let indent = INDENT.repeat(self.outline.depth(id));
         let title = format!("{indent}{caret} {}", group.package.title());
+        let any_installed =
+            items_of(&self.rows, id).any(|i| matches!(i.state, State::Installed(_)));
+        let style = if any_installed {
+            theme.title
+        } else {
+            theme.muted
+        };
         let mut spans = vec![
-            Span::styled(title, theme.title),
+            Span::styled(title, style),
             Span::styled(format!(" ({})", self.outline.child_count(id)), theme.muted),
         ];
         spans.extend(self.pending_summary(id, theme));
@@ -23,8 +30,11 @@ impl InstalledTab {
     pub(super) fn owned_line(&self, id: usize, owned: &Owned, theme: &Theme) -> Line<'static> {
         Line::from(vec![
             Span::raw(INDENT.repeat(self.outline.depth(id))),
-            Span::styled(format!("  {}", owned.label), theme.text),
-            Span::styled(format!("  {}", owned.kind.noun()), theme.muted),
+            Span::styled(
+                format!("  {} ", owned.kind.tag()),
+                theme.kind_style(owned.kind),
+            ),
+            Span::styled(owned.label.clone(), theme.text),
             Span::styled(format!("  {}", owned.detail), theme.muted),
         ])
     }
