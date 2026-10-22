@@ -8,7 +8,7 @@ use ratatui::widgets::Paragraph;
 use super::detail::{Detail, detail};
 use super::rows::Row;
 use super::{LibraryTab, Popup};
-use crate::library::{Cue, Presence, Provenance};
+use crate::library::{Cue, ItemKind, Presence, Provenance};
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;
@@ -59,21 +59,25 @@ impl LibraryTab {
 
     fn row_line(&self, id: usize, theme: &Theme) -> Line<'static> {
         match &self.rows[id] {
-            Row::Section { kind, count } => {
+            Row::Package { package, contents } => {
                 let caret = self.outline.caret(id, &theme.glyphs);
                 Line::from(vec![
-                    Span::styled(format!("{caret} {}", kind.title()), theme.title),
-                    Span::styled(format!("  {count}"), theme.muted),
+                    Span::styled(format!("{caret} {}", package.title()), theme.title),
+                    Span::styled(format!("  {}", ItemKind::summarize(contents)), theme.muted),
                 ])
             }
             Row::Item(item) => {
                 let mut spans = vec![Span::styled(ITEM_INDENT, theme.text)];
                 spans.extend(filter::highlight(
-                    &item.label,
+                    &item.short_label(),
                     &self.outline.matched(id),
                     0,
                     theme.text,
                     theme,
+                ));
+                spans.push(Span::styled(
+                    format!("  {}", item.kind().noun()),
+                    theme.muted,
                 ));
                 spans.push(Span::styled(presence_tags(self.presence[id]), theme.muted));
                 if self.stale[id] {
@@ -90,7 +94,7 @@ impl LibraryTab {
         };
         match &self.rows[id] {
             Row::Item(item) => detail_text(&detail(item, self.stale[id]), theme),
-            Row::Section { .. } => Line::default(),
+            Row::Package { .. } => Line::default(),
         }
     }
 

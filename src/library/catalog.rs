@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::item::{ItemKind, LibraryItem};
+use super::item::LibraryItem;
 use crate::profile::{Entry, same_thing};
 
 /// The items of a library, in the order they were first added.
@@ -89,20 +89,6 @@ impl Catalog {
         self.items.retain(|i| !i.is_same_thing_as(item));
         self.items.len() != before
     }
-
-    /// Items grouped by kind in kind order, each group sorted by label.
-    pub fn grouped(&self) -> Vec<(ItemKind, Vec<&LibraryItem>)> {
-        let mut sorted: Vec<&LibraryItem> = self.items.iter().collect();
-        sorted.sort_by(|a, b| (a.kind(), &a.label).cmp(&(b.kind(), &b.label)));
-        let mut groups: Vec<(ItemKind, Vec<&LibraryItem>)> = vec![];
-        for item in sorted {
-            match groups.last_mut() {
-                Some((kind, members)) if *kind == item.kind() => members.push(item),
-                _ => groups.push((item.kind(), vec![item])),
-            }
-        }
-        groups
-    }
 }
 
 impl From<Vec<LibraryItem>> for Catalog {
@@ -142,20 +128,6 @@ mod tests {
 
         // Assert only the first removal found something.
         assert_eq!((first, second, catalog.items().len()), (true, false, 0));
-    }
-
-    #[test]
-    fn grouping_orders_kinds_then_labels_whatever_the_insertion_order() {
-        let (a, b, h) = (skill("o/r", "a"), skill("o/r", "b"), hook("x"));
-        let catalog = Catalog::from_items(vec![h.clone(), b.clone(), a.clone()]);
-
-        let groups = catalog.grouped();
-
-        // Assert skills come before hooks and each group is label sorted.
-        assert_eq!(
-            groups,
-            [(ItemKind::Skill, vec![&a, &b]), (ItemKind::Hook, vec![&h])]
-        );
     }
 }
 

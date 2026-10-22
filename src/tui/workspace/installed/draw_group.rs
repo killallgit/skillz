@@ -5,24 +5,18 @@ use ratatui::text::{Line, Span};
 use super::InstalledTab;
 use super::draw::INDENT;
 use super::rows::{Group, Owned, items_of};
+use crate::library::ItemKind;
 use crate::tui::theme::Theme;
-
-const CONTENTS_SEPARATOR: &str = ", ";
 
 impl InstalledTab {
     pub(super) fn group_line(&self, id: usize, group: &Group, theme: &Theme) -> Line<'static> {
         let caret = self.outline.caret(id, &theme.glyphs);
         let indent = INDENT.repeat(self.outline.depth(id));
         let title = format!("{indent}{caret} {}", group.package.title());
-        let contents: Vec<String> = group
-            .contents
-            .iter()
-            .map(|(kind, count)| kind.counted(*count))
-            .collect();
         let mut spans = vec![
             Span::styled(title, theme.title),
             Span::styled(
-                format!("  {}", contents.join(CONTENTS_SEPARATOR)),
+                format!("  {}", ItemKind::summarize(&group.contents)),
                 theme.muted,
             ),
         ];

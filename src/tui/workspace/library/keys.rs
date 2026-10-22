@@ -30,7 +30,7 @@ impl LibraryTab {
             Action::Add => self.popup = Popup::Add(InputField::new(ADD_PLACEHOLDER)),
             Action::Import => return Some(Act::LibraryImport),
             Action::Delete => self.ask_to_remove(),
-            Action::Toggle | Action::Select => self.toggle_section(),
+            Action::Toggle | Action::Select => self.toggle_package(),
             movement => self.outline.navigate(movement),
         }
         None
@@ -39,7 +39,7 @@ impl LibraryTab {
     fn current_entry(&self) -> Option<&Entry> {
         match &self.rows[self.outline.current()?] {
             Row::Item(item) => Some(&item.entry),
-            Row::Section { .. } => None,
+            Row::Package { .. } => None,
         }
     }
 
@@ -50,12 +50,12 @@ impl LibraryTab {
         }
     }
 
-    fn toggle_section(&mut self) {
-        let section = self
+    fn toggle_package(&mut self) {
+        let package = self
             .outline
             .current()
-            .filter(|&id| matches!(self.rows[id], Row::Section { .. }));
-        if let Some(id) = section {
+            .filter(|&id| matches!(self.rows[id], Row::Package { .. }));
+        if let Some(id) = package {
             self.outline.toggle_open(id);
         }
     }

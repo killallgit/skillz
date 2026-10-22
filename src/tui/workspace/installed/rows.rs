@@ -104,22 +104,11 @@ fn groups(part: Part, items: Vec<(Package, Item)>) -> Vec<Row> {
             let group = Group {
                 part,
                 package,
-                contents: contents(&items),
+                contents: ItemKind::tally(items.iter().map(|item| item.kind)),
             };
             std::iter::once(Row::Package(group)).chain(item_rows(items))
         })
         .collect()
-}
-
-fn contents(items: &[Item]) -> Vec<(ItemKind, usize)> {
-    let mut counts: Vec<(ItemKind, usize)> = Vec::new();
-    for item in items {
-        match counts.iter_mut().find(|(kind, _)| *kind == item.kind) {
-            Some((_, count)) => *count += 1,
-            None => counts.push((item.kind, 1)),
-        }
-    }
-    counts
 }
 
 fn item_rows(items: Vec<Item>) -> impl Iterator<Item = Row> {

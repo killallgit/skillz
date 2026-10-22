@@ -4,13 +4,13 @@ use super::rows::Row;
 use crate::library::{Held, Presence};
 use crate::tui::workspace::Model;
 
-/// One presence per row, in row order; sections are never installed.
+/// One presence per row, in row order; packages are never installed.
 pub(super) fn presences(rows: &[Row], model: &Model) -> Vec<Presence> {
     let held = Held::of(&model.installed, &model.global);
     rows.iter()
         .map(|row| match row {
             Row::Item(item) => held.presence(&item.entry),
-            Row::Section { .. } => Presence::default(),
+            Row::Package { .. } => Presence::default(),
         })
         .collect()
 }
@@ -41,7 +41,7 @@ mod tests {
     }
 
     #[test]
-    fn an_item_is_present_where_it_is_installed_and_sections_nowhere() {
+    fn an_item_is_present_where_it_is_installed_and_packages_nowhere() {
         let rows = build(&Catalog::from_items(vec![skill("o/r", "tdd")]));
         let model = Model {
             global: vec![installed_tdd(Scope::Global)],

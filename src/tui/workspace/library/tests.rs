@@ -25,7 +25,7 @@ fn type_text(tab: &mut LibraryTab, text: &str) {
     });
 }
 
-/// Sections are Skills(0), tdd(1), Hooks(2), notify(3).
+/// Rows are the package o/r (0), tdd (1), the unowned hooks (2) and notify (3).
 fn on_row(tab: &mut LibraryTab, row: usize) {
     (0..row).for_each(|_| {
         press(tab, KeyCode::Down);
@@ -97,22 +97,22 @@ fn removing_an_item_needs_a_yes() {
 }
 
 #[test]
-fn declining_or_removing_a_section_removes_nothing() {
+fn declining_or_removing_a_package_removes_nothing() {
     let mut tab = loaded();
 
     press(&mut tab, KeyCode::Char('x'));
-    let on_section = tab.captures_keys();
+    let on_package = tab.captures_keys();
     on_row(&mut tab, 1);
     press(&mut tab, KeyCode::Char('x'));
     let declined = press(&mut tab, KeyCode::Char('n'));
 
-    assert!(!on_section);
+    assert!(!on_package);
     assert_eq!(declined, None);
     assert!(!tab.captures_keys());
 }
 
 #[test]
-fn space_on_a_section_folds_it_and_hides_its_items() {
+fn space_on_a_package_folds_it_and_hides_its_items() {
     let mut tab = loaded();
     let before = tab.outline.visible().len();
 
@@ -134,7 +134,7 @@ fn a_filter_narrows_the_rows_to_what_matches() {
 }
 
 #[test]
-fn the_screen_draws_items_under_their_sections() {
+fn the_screen_draws_items_under_their_packages() {
     let mut tab = loaded();
     let theme = Theme::dark();
 
