@@ -121,51 +121,27 @@ fn group_style(group: Group, theme: &Theme) -> Style {
     }
 }
 
-fn group_marker(group: Group) -> &'static str {
-    match group {
-        Group::Keep => "=",
-        Group::Remove => "-",
-        Group::Install => "+",
-        Group::Update => "^",
-        Group::Skip => "~",
-    }
-}
-
-/// The counts, then each non-empty group's entries marked and coloured by what happens to them.
+/// Each non-empty group under a heading with its count, its entries coloured by what happens
+/// to them.
 fn group_lines(view: &PlanView, theme: &Theme) -> Vec<Line<'static>> {
-    let mut lines = vec![count_line(view, theme)];
+    let mut lines = Vec::new();
     for group in Group::ALL {
         let entries = view.lines(group);
         if entries.is_empty() {
             continue;
         }
         let style = group_style(group, theme);
-        lines.push(Line::default());
+        if !lines.is_empty() {
+            lines.push(Line::default());
+        }
         let head = format!("{} ({})", group.name(), entries.len());
         lines.push(Line::styled(
             head,
             style.add_modifier(theme.title.add_modifier),
         ));
-        for entry in entries {
-            let marker = format!("  {} ", group_marker(group));
-            lines.push(Line::from(vec![
-                Span::styled(marker, style),
-                Span::raw(entry.clone()),
-            ]));
-        }
+        lines.extend(entries.iter().cloned().map(|e| Line::styled(e, style)));
     }
     lines
-}
-
-fn count_line(view: &PlanView, theme: &Theme) -> Line<'static> {
-    let spans = Group::ALL
-        .into_iter()
-        .filter(|g| !view.lines(*g).is_empty())
-        .map(|g| {
-            let text = format!("{}{} ", group_marker(g), view.lines(g).len());
-            Span::styled(text, group_style(g, theme))
-        });
-    Line::from(spans.collect::<Vec<_>>())
 }
 
 fn step_lines(view: &PlanView, theme: &Theme) -> Vec<Line<'static>> {
@@ -234,8 +210,8 @@ mod tests {
         answer(&mut screen, KeyCode::Char('s'));
         let raw = screen.text(&theme).len();
 
-        // Grouped: counts, then keep and remove blocks; raw: a heading and the one step.
-        assert_eq!((grouped, raw), (1 + 3 + 4, 2));
+        // Grouped: the keep and remove blocks; raw: a heading and the one step.
+        assert_eq!((grouped, raw), (2 + 4, 2));
     }
 
     #[test]
@@ -244,9 +220,9 @@ mod tests {
 
         let lines = group_lines(&view(), &theme);
 
-        // The remove marker carries the danger style; keep does not.
-        assert_eq!(lines[6].spans[0].style, theme.danger);
-        assert_eq!(lines[3].spans[0].style, theme.muted);
+        // A removed entry carries the danger style; a kept one does not.
+        assert_eq!(lines[4].style, theme.danger);
+        assert_eq!(lines[1].style, theme.muted);
     }
 
     #[test]
@@ -286,11 +262,12 @@ mod tests {
 
         screen.handle(&Event::Key(key(KeyCode::End)));
         let bottom = render_to_buffer(24, 8, |frame| screen.draw(frame, &theme));
-        let occupied = (1..23)
-            .filter(|&x| bottom[(x, 5)].symbol().chars().any(|c| !c.is_whitespace()))
+        // The body is 18 cells wide, inside the border and the padding, and ends on row 3.
+        let occupied = (3..21)
+            .filter(|&x| bottom[(x, 3)].symbol().chars().any(|c| !c.is_whitespace()))
             .count();
 
         // Assert the last partial visual row is reachable, rather than an earlier full row.
-        assert_eq!(occupied, 225 % 22);
+        assert_eq!(occupied, 225 % 18);
     }
 }

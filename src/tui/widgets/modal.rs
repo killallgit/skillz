@@ -1,13 +1,17 @@
 //! A centred, cleared, bordered dialog area. The caller draws its content in the returned rect.
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Margin, Rect};
 use ratatui::widgets::Clear;
 
 use super::panel::Panel;
 use crate::tui::theme::Theme;
 
-/// Desired dialog size; clamped to the screen when placed.
+/// Room between a dialog's border and what it holds, in columns and rows.
+pub const PAD_X: u16 = 2;
+pub const PAD_Y: u16 = 1;
+
+/// Desired dialog size, border included and padding not; clamped to the screen when placed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModalSize {
     pub width: u16,
@@ -26,11 +30,19 @@ pub fn centered(screen: Rect, size: ModalSize) -> Rect {
     }
 }
 
-/// Clear a centred area, draw the focused panel on it and return the interior.
+/// Clear a centred area with room for the padding, draw the focused panel on it and return the
+/// interior inside the padding.
 pub fn open(frame: &mut Frame, size: ModalSize, panel: Panel, theme: &Theme) -> Rect {
-    let area = centered(frame.area(), size);
+    let padded = ModalSize {
+        width: size.width.saturating_add(2 * PAD_X),
+        height: size.height.saturating_add(2 * PAD_Y),
+    };
+    let area = centered(frame.area(), padded);
     frame.render_widget(Clear, area);
-    panel.focused(true).render(frame, area, theme)
+    panel
+        .focused(true)
+        .render(frame, area, theme)
+        .inner(Margin::new(PAD_X, PAD_Y))
 }
 
 #[cfg(test)]

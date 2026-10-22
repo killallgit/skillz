@@ -6,7 +6,7 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Wrap};
 
-use super::modal::{self, ModalSize};
+use super::modal::{self, ModalSize, PAD_X};
 use super::panel::Panel;
 use crate::tui::keymap::Action;
 use crate::tui::theme::Theme;
@@ -60,15 +60,19 @@ impl TextModal {
 
     pub fn render(&mut self, frame: &mut Frame, theme: &Theme, page: Page) {
         let paragraph = Paragraph::new(page.lines).wrap(Wrap { trim: false });
-        let width = WIDTH.min(frame.area().width);
+        let width = WIDTH.min(frame.area().width.saturating_sub(2 * PAD_X));
         let lines = paragraph.line_count(width.saturating_sub(2));
         let size = ModalSize {
             width,
-            height: u16::try_from(lines.saturating_add(3)).unwrap_or(u16::MAX),
+            height: u16::try_from(lines.saturating_add(4)).unwrap_or(u16::MAX),
         };
         let inner = modal::open(frame, size, page.panel, theme);
-        let [body, foot] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+        let [body, _, foot] = Layout::vertical([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .areas(inner);
         self.lines = paragraph.line_count(body.width);
         self.page = usize::from(body.height);
         self.clamp();
