@@ -55,12 +55,7 @@ pub trait Prompter {
     }
     /// Like `progress`, but shown on the workspace when there is one: a list of the `planned`
     /// items, each marked as it works.
-    fn live(
-        &self,
-        title: &str,
-        total: usize,
-        _planned: &[ItemEvent],
-    ) -> Box<dyn Progress + '_> {
+    fn live(&self, title: &str, total: usize, _planned: &[ItemEvent]) -> Box<dyn Progress + '_> {
         self.progress(title, total)
     }
     /// Show how a switch ended. Without a screen: nothing, and no retry.

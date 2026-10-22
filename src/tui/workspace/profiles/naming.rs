@@ -32,7 +32,12 @@ impl Naming {
     }
 
     pub fn render(&self, frame: &mut Frame, theme: &Theme) {
-        let inner = modal::open(frame, SIZE, Panel::new("Save the project as a profile"), theme);
+        let inner = modal::open(
+            frame,
+            SIZE,
+            Panel::new("Save the project as a profile"),
+            theme,
+        );
         self.field.render(frame, inner, theme);
     }
 }

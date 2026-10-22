@@ -48,12 +48,14 @@ pub(super) fn selection_plan(
     Ok(switch)
 }
 
-/// The copies of `item` seen through `agents`, folded back into one item; `None` when no copy is.
+/// The copies of `item` that belong wholly to `agents`, folded back into one item; `None` when
+/// no copy does.
 fn only_for(item: Augmentation, agents: &[Agent]) -> Option<Augmentation> {
     let kept: Vec<Augmentation> = item
         .parts()
         .iter()
-        .filter(|part| part.agents.iter().any(|agent| agents.contains(agent)))
+        // A copy shared by several agents is one set of files, so it goes only when all of them do.
+        .filter(|part| part.agents.iter().all(|agent| agents.contains(agent)))
         .cloned()
         .collect();
     match kept.len() == item.parts().len() {
@@ -116,6 +118,17 @@ mod tests {
 
         assert_eq!(narrowed.agents, [Agent::Codex]);
         assert_eq!(narrowed.id, "subagent:codex:reviewer");
+    }
+
+    #[test]
+    fn a_copy_shared_by_two_agents_stays_unless_both_are_chosen() {
+        let shared = Augmentation {
+            agents: vec![Agent::Claude, Agent::Codex],
+            ..subagent(Agent::Claude)
+        };
+
+        assert!(only_for(shared.clone(), &[Agent::Claude]).is_none());
+        assert!(only_for(shared, &[Agent::Claude, Agent::Codex]).is_some());
     }
 
     #[test]

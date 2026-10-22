@@ -84,12 +84,7 @@ impl Prompter for TuiPrompter {
         Box::new(TuiProgress::start(self.ui(), title, total))
     }
 
-    fn live(
-        &self,
-        title: &str,
-        total: usize,
-        planned: &[ItemEvent],
-    ) -> Box<dyn Progress + '_> {
+    fn live(&self, title: &str, total: usize, planned: &[ItemEvent]) -> Box<dyn Progress + '_> {
         match self.shown.borrow().clone() {
             Some(screen) => Box::new(LiveProgress::start(
                 &self.shell,

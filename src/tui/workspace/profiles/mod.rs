@@ -74,7 +74,6 @@ impl ProfilesTab {
     fn current_name(&self) -> Option<String> {
         self.current().map(|p| p.name.clone())
     }
-
 }
 
 impl Tab for ProfilesTab {
@@ -97,7 +96,11 @@ impl Tab for ProfilesTab {
             .collect();
         self.library = model.library.clone();
         self.list_rows = rows::of_profiles(self.profiles.iter().map(|row| &row.profile));
-        let names: Vec<String> = self.profiles.iter().map(|r| r.profile.name.clone()).collect();
+        let names: Vec<String> = self
+            .profiles
+            .iter()
+            .map(|r| r.profile.name.clone())
+            .collect();
         self.list.reshape(rows::list_shape(&self.list_rows, &names));
     }
 

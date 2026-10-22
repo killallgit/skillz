@@ -50,6 +50,8 @@ pub(super) struct Editor {
     name: Option<InputField>,
     profile: String,
     focus: Focus,
+    /// Why the last save was refused, until the next key.
+    refusal: Option<&'static str>,
     /// What the profile has that the library does not offer; kept as it is.
     kept: Vec<Entry>,
     rows: Vec<Row>,
@@ -80,6 +82,7 @@ impl Editor {
             name: None,
             profile: profile.name.clone(),
             focus: Focus::Items,
+            refusal: None,
             kept: profile
                 .entries
                 .iter()
@@ -92,7 +95,14 @@ impl Editor {
         }
     }
 
+    /// Keep the editor open and say why the save did not happen.
+    pub fn refuse(&mut self, reason: &'static str) {
+        self.refusal = Some(reason);
+        self.focus = Focus::Name;
+    }
+
     pub fn handle(&mut self, key: KeyEvent) -> Choice {
+        self.refusal = None;
         match self.focus {
             Focus::Name => self.handle_name(key),
             Focus::Items => self.handle_items(key),
@@ -143,12 +153,13 @@ impl Editor {
         }
     }
 
-    fn save(&self) -> Choice {
+    fn save(&mut self) -> Choice {
         let name = match &self.name {
             Some(field) => field.value().trim().to_string(),
             None => self.profile.clone(),
         };
         if name.is_empty() {
+            self.focus = Focus::Name;
             return Choice::Open;
         }
         Choice::Save {
@@ -220,6 +231,9 @@ impl Editor {
     }
 
     fn hints(&self, theme: &Theme) -> Line<'static> {
+        if let Some(reason) = self.refusal {
+            return Line::styled(reason, theme.warn);
+        }
         let mut hints = vec!["space check", "s save", "esc cancel"];
         if self.name.is_some() {
             hints.insert(0, "tab name/list");

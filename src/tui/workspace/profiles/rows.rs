@@ -150,5 +150,4 @@ pub(super) mod tests {
         assert!(matches!(&rows[1], Row::Item(item) if item.label == "mine"));
         assert_eq!(shape(&rows)[1].0, Some(0));
     }
-
 }

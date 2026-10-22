@@ -89,6 +89,12 @@ impl ProfilesTab {
         match editor.handle(key) {
             Choice::Open => self.popup = Popup::Edit(editor),
             Choice::Save {
+                name, new: true, ..
+            } if self.profiles.iter().any(|row| row.profile.name == name) => {
+                editor.refuse("a profile with that name exists");
+                self.popup = Popup::Edit(editor);
+            }
+            Choice::Save {
                 name,
                 entries,
                 new: true,

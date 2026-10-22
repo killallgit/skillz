@@ -140,9 +140,11 @@ fn n_opens_one_modal_that_names_and_fills_the_new_profile() {
     type_in(&mut tab, "docs");
     // Move to the list, open past the section, check the first library skill, save.
     press(&mut tab, KeyCode::Tab);
-    [KeyCode::Down, KeyCode::Char(' ')].into_iter().for_each(|code| {
-        press(&mut tab, code);
-    });
+    [KeyCode::Down, KeyCode::Char(' ')]
+        .into_iter()
+        .for_each(|code| {
+            press(&mut tab, code);
+        });
     let act = char_key(&mut tab, 's');
 
     assert!(capturing && !tab.captures_keys());
@@ -276,4 +278,30 @@ fn drawing_an_empty_tab_does_not_panic() {
     render_to_buffer(80, 24, |frame| {
         tab.draw(frame, frame.area(), &Theme::dark())
     });
+}
+
+#[test]
+fn a_new_profile_cannot_take_an_existing_name_and_keeps_its_picks() {
+    let mut tab = loaded();
+    char_key(&mut tab, 'n');
+    type_in(&mut tab, "api");
+
+    let act = press(&mut tab, KeyCode::Enter);
+
+    assert_eq!(act, None);
+    assert!(tab.captures_keys());
+}
+
+#[test]
+fn saving_with_a_blank_name_from_the_items_returns_to_the_name() {
+    let mut tab = loaded();
+    char_key(&mut tab, 'n');
+    press(&mut tab, KeyCode::Tab);
+
+    let act = char_key(&mut tab, 's');
+    type_in(&mut tab, "docs");
+    let named = press(&mut tab, KeyCode::Enter);
+
+    assert_eq!(act, None);
+    assert!(matches!(named, Some(Act::CreateProfile { .. })));
 }

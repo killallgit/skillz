@@ -188,6 +188,8 @@ pub const BINDINGS: &[Binding] = &[
     bind(Profiles, A::Delete, &[ch('x')], "x", "delete", 6),
     bind(Profiles, A::Filter, &[ch('/')], "/", "filter", 7),
     bind(Profiles, A::Toggle, &[ch(' ')], "space", "expand", 0),
+    bind(Profiles, A::Left, &[plain(KeyCode::Left), ch('h')], "", "", 0),
+    bind(Profiles, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
     bind(Picker, A::Toggle, &[ch(' ')], "space", "check", 0),
     bind(Picker, A::Select, &[plain(KeyCode::Enter)], "enter", "save selection", 0),
     bind(Picker, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),

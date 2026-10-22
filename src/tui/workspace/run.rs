@@ -31,7 +31,10 @@ impl RunModal {
     pub fn new(title: &str, planned: &[ItemEvent]) -> Self {
         RunModal {
             title: title.to_string(),
-            items: planned.iter().map(|e| (e.clone(), State::Waiting)).collect(),
+            items: planned
+                .iter()
+                .map(|e| (e.clone(), State::Waiting))
+                .collect(),
             ticks: 0,
         }
     }
@@ -46,7 +49,11 @@ impl RunModal {
             Phase::Succeeded => State::Done,
             Phase::Failed(_) => State::Failed,
         };
-        match self.items.iter_mut().find(|(e, _)| e.target == event.target) {
+        match self
+            .items
+            .iter_mut()
+            .find(|(e, _)| e.target == event.target)
+        {
             Some(known) => known.1 = state,
             None => self.items.push((event.clone(), state)),
         }

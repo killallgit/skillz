@@ -181,9 +181,10 @@ impl Job<'_> {
     }
 
     fn apply(&self, applier: &apply::Applier, switch: &Switch, what: &Change) -> Outcome {
-        let progress = self.deps
-            .prompter
-            .live(what.title(), switch.steps().len(), &switch.planned());
+        let progress =
+            self.deps
+                .prompter
+                .live(what.title(), switch.steps().len(), &switch.planned());
         let removal = remove::Plan::from_owned(&switch.removals);
         let mut log = Vec::new();
         let mut items = Vec::new();

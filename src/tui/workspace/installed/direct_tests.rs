@@ -25,7 +25,10 @@ fn r_on_a_plugin_removes_the_whole_plugin() {
     let mut tab = loaded();
     on_item(&mut tab, PLUGIN);
 
-    assert_eq!(press(&mut tab, KeyCode::Char('r')), remove(&["plugin:p@mp"]));
+    assert_eq!(
+        press(&mut tab, KeyCode::Char('r')),
+        remove(&["plugin:p@mp"])
+    );
 }
 
 #[test]

@@ -273,7 +273,7 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   `N missing` / `N extra`. Picked rows get their own marker and a `to remove` note, and each
   section or package shows its count of picks. `space`, `r` and `u` on a package row act on
   everything in it (the plan shows what, and nothing happens until you confirm it); on an item
-  row they act on that item; on a section they do nothing but fold it. A thing installed for
+  row they act on that item; on a section `space` folds it, `r` marks every item in it for removal and `u` does nothing. A thing installed for
   several agents (a subagent for Claude and Codex, say) is one row naming its agents, `claude,
   codex`, or `claude, codex +2` when there are many; removing it removes every copy. A filter
   keeps the section structure and hides rows with no match. Removals and updates on Global act on
@@ -303,7 +303,7 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 | `enter` | remove all picks as one change, with one plan to review; with nothing picked, open or close the section |
 | `r` | remove the item under the cursor from the tab's scope at once (after the plan); on a package row, removes everything in it; on a section, marks every item in it for removal. When the items are installed for more than one agent, the plan shows an Agents list above what will be removed; every agent starts checked and `space` unchecks one (`↑↓` moves) before `enter` applies |
 | `esc` | clear the picks (with none, clear the filter) |
-| `u` | update the installed item under the cursor, or every installed item of the section, after a plan to review; kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
+| `u` | update the installed item under the cursor, or every installed item of the package, after a plan to review; kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
 | `p` | choose the profile the header compares with (Project only) |
 | `a` | install what the chosen profile has that the project lacks (Project only) |
 | `←` `→`, `h` `l` | close / open a section (`←` on an item jumps to its section) |

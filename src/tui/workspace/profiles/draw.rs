@@ -69,10 +69,9 @@ impl ProfilesTab {
             theme.text,
             theme,
         ));
-        spans.push(Span::styled(
-            format!("  {} entries", row.profile.entries.len()),
-            theme.muted,
-        ));
+        let count = row.profile.entries.len();
+        let noun = if count == 1 { "entry" } else { "entries" };
+        spans.push(Span::styled(format!("  {count} {noun}"), theme.muted));
         spans.push(match row.missing {
             0 => Span::styled("  matches the project", theme.ok),
             n => Span::styled(format!("  {n} missing from the project"), theme.warn),
