@@ -1,8 +1,7 @@
 use super::*;
-use crate::library::LibraryItem;
 use crate::location::detail;
 use crate::merge::tag;
-use crate::model::{Agent, Installer, Kind, SKILL_CHILD, Scope};
+use crate::model::{Agent, Installer, Kind, Scope};
 
 pub fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
     Augmentation {
@@ -32,20 +31,20 @@ pub fn global(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
     }
 }
 
-pub fn library_skill(source: &str, name: &str) -> LibraryItem {
-    LibraryItem::from_entry(Entry::Skill {
-        source: source.into(),
-        names: vec![name.into()],
-        agents: vec![],
-    })
-}
-
-fn rows_of(here: &[Augmentation], also_global: &[Augmentation], library: &Catalog) -> Vec<Row> {
-    build(&Sources {
-        here,
-        also_global,
-        library,
-    })
+pub fn plugin_providing_a_skill_and_a_hook(name: &str) -> Augmentation {
+    Augmentation {
+        details: crate::model::Details::Plugin {
+            location: Default::default(),
+            skills: vec!["tdd".into()],
+        },
+        hooks: vec![crate::hook_text::HookEntry {
+            event: "Stop".into(),
+            matcher: None,
+            command: "say done".into(),
+        }],
+        children: vec![format!("{}tdd", crate::model::SKILL_CHILD)],
+        ..installed(name, Kind::Plugin, Some("mp"))
+    }
 }
 
 fn items(rows: &[Row]) -> Vec<&Item> {
@@ -57,7 +56,16 @@ fn items(rows: &[Row]) -> Vec<&Item> {
         .collect()
 }
 
-fn packages_of(rows: &[Row]) -> Vec<Package> {
+fn sections(rows: &[Row]) -> Vec<ItemKind> {
+    rows.iter()
+        .filter_map(|row| match row {
+            Row::Section(kind) => Some(*kind),
+            _ => None,
+        })
+        .collect()
+}
+
+fn packages(rows: &[Row]) -> Vec<Package> {
     rows.iter()
         .filter_map(|row| match row {
             Row::Package(group) => Some(group.package.clone()),
@@ -71,118 +79,110 @@ fn parents(rows: &[Row]) -> Vec<Option<usize>> {
 }
 
 #[test]
-fn installed_and_available_items_of_one_repo_share_a_group() {
-    let here = [installed("tdd", Kind::Skill, Some("o/r"))];
-    let library = Catalog::from_items(vec![library_skill("o/r", "zoom")]);
-
-    let rows = rows_of(&here, &[], &library);
-
-    assert_eq!(packages_of(&rows), [Package::Source("o/r".into())]);
-    let states: Vec<bool> = items(&rows)
-        .iter()
-        .map(|i| matches!(i.state, State::Installed(_)))
-        .collect();
-    assert_eq!(states.len(), 2);
-    assert!(states.contains(&true) && states.contains(&false));
-}
-
-#[test]
-fn library_items_already_installed_here_are_not_available() {
-    let here = [installed("tdd", Kind::Skill, Some("o/r"))];
-    let library = Catalog::from_items(vec![library_skill("o/r", "tdd")]);
-
-    let rows = rows_of(&here, &[], &library);
-
-    assert_eq!(items(&rows).len(), 1);
-}
-
-#[test]
-fn an_item_installed_globally_as_well_is_tagged_whether_installed_or_available() {
-    let here = [installed("tdd", Kind::Skill, Some("o/r"))];
-    let elsewhere = [
-        global("tdd", Kind::Skill, Some("o/r")),
-        global("grill", Kind::Skill, Some("o/r")),
-    ];
-    let library = Catalog::from_items(vec![
-        library_skill("o/r", "grill"),
-        library_skill("o/r", "zoom"),
-    ]);
-
-    let rows = rows_of(&here, &elsewhere, &library);
-
-    let tagged: Vec<bool> = items(&rows).iter().map(|item| item.global).collect();
-    assert_eq!(tagged, [true, true, false]);
-}
-
-#[test]
-fn skills_and_subagents_of_one_repo_are_one_group() {
-    let here = [
-        installed("tdd", Kind::Skill, Some("o/r")),
-        installed("reviewer", Kind::Subagent, Some("o/r")),
-        installed("grill", Kind::Skill, Some("o/r")),
-    ];
-
-    let rows = rows_of(&here, &[], &Catalog::default());
-
-    assert_eq!(packages_of(&rows).len(), 1);
-    assert_eq!(parents(&rows), [None, Some(0), Some(0), Some(0)]);
-}
-
-#[test]
-fn items_in_a_group_are_ordered_by_kind_then_name() {
-    let here = [
-        installed("reviewer", Kind::Subagent, Some("o/r")),
-        installed("zoom", Kind::Skill, Some("o/r")),
-        installed("Alpha", Kind::Skill, Some("o/r")),
-    ];
-
-    let rows = rows_of(&here, &[], &Catalog::default());
-
-    let kinds: Vec<ItemKind> = items(&rows).iter().map(|i| i.kind).collect();
-    let first_skill = &items(&rows)[0].state;
-    assert_eq!(
-        kinds,
-        [ItemKind::Skill, ItemKind::Skill, ItemKind::Subagent]
-    );
-    assert_eq!(*first_skill, State::Installed("skill:Alpha".into()));
-}
-
-#[test]
-fn the_same_skill_from_two_sources_is_in_two_groups() {
-    let here = [
-        installed("tdd", Kind::Skill, Some("a/r")),
-        installed("tdd", Kind::Skill, Some("b/r")),
-    ];
-
-    let rows = rows_of(&here, &[], &Catalog::default());
-
-    assert_eq!(packages_of(&rows).len(), 2);
-}
-
-#[test]
-fn local_files_mcp_servers_and_unowned_hooks_follow_the_named_packages() {
+fn a_section_is_shown_for_each_kind_the_scope_has_in_a_fixed_order() {
     let here = [
         installed("h", Kind::Hook, None),
         installed("m", Kind::Mcp, None),
-        installed("mine", Kind::Skill, None),
+        installed("reviewer", Kind::Subagent, None),
         installed("tdd", Kind::Skill, Some("o/r")),
+        plugin_providing_a_skill_and_a_hook("p@mp"),
     ];
 
-    let rows = rows_of(&here, &[], &Catalog::default());
+    let rows = build(&here);
 
     assert_eq!(
-        packages_of(&rows),
+        sections(&rows),
         [
-            Package::Source("o/r".into()),
-            Package::Local,
-            Package::Mcp,
-            Package::Hooks
+            ItemKind::Plugin,
+            ItemKind::Skill,
+            ItemKind::Subagent,
+            ItemKind::Mcp,
+            ItemKind::Hook
         ]
     );
 }
 
 #[test]
-fn a_marketplace_is_the_package_of_its_plugins_and_has_no_row_of_its_own() {
+fn a_kind_with_nothing_installed_has_no_section() {
+    let here = [installed("tdd", Kind::Skill, Some("o/r"))];
+
+    let rows = build(&here);
+
+    assert_eq!(sections(&rows), [ItemKind::Skill]);
+    assert!(build(&[]).is_empty());
+}
+
+#[test]
+fn skills_of_one_repo_are_one_package_under_the_skills_section() {
+    let here = [
+        installed("tdd", Kind::Skill, Some("o/r")),
+        installed("grill", Kind::Skill, Some("o/r")),
+        installed("mine", Kind::Skill, None),
+    ];
+
+    let rows = build(&here);
+
+    assert_eq!(
+        packages(&rows),
+        [Package::Source("o/r".into()), Package::Local]
+    );
+    assert_eq!(
+        parents(&rows),
+        [None, Some(0), Some(1), Some(1), Some(0), Some(4)]
+    );
+}
+
+#[test]
+fn items_in_a_package_are_ordered_by_name() {
+    let here = [
+        installed("zoom", Kind::Skill, Some("o/r")),
+        installed("Alpha", Kind::Skill, Some("o/r")),
+    ];
+
+    let rows = build(&here);
+
+    let labels: Vec<&str> = items(&rows).iter().map(|i| i.label.as_str()).collect();
+    assert_eq!(labels, ["Alpha", "zoom"]);
+}
+
+#[test]
+fn the_same_skill_from_two_sources_is_in_two_packages() {
+    let here = [
+        installed("tdd", Kind::Skill, Some("a/r")),
+        installed("tdd", Kind::Skill, Some("b/r")),
+    ];
+
+    assert_eq!(packages(&build(&here)).len(), 2);
+}
+
+#[test]
+fn agents_mcp_servers_and_hooks_hang_straight_under_their_section() {
+    let here = [
+        installed("reviewer", Kind::Subagent, Some("o/r")),
+        installed("m", Kind::Mcp, None),
+    ];
+
+    let rows = build(&here);
+
+    assert!(packages(&rows).is_empty());
+    assert_eq!(parents(&rows), [None, Some(0), None, Some(2)]);
+}
+
+#[test]
+fn a_plugin_is_one_row_that_says_what_it_provides_and_lists_none_of_it() {
+    let here = [plugin_providing_a_skill_and_a_hook("p@mp")];
+
+    let rows = build(&here);
+
+    assert!(matches!(
+        rows.as_slice(),
+        [Row::Section(ItemKind::Plugin), Row::Item(_)]
+    ));
+    assert_eq!(items(&rows)[0].detail, "1 skill, 1 hook");
+}
+
+#[test]
+fn a_marketplace_has_no_row_of_its_own() {
     let on_marketplace = |kind, name| Augmentation {
         group: "mp".into(),
         ..installed(name, kind, Some("o/mp"))
@@ -192,68 +192,7 @@ fn a_marketplace_is_the_package_of_its_plugins_and_has_no_row_of_its_own() {
         on_marketplace(Kind::Plugin, "p@mp"),
     ];
 
-    let rows = rows_of(&here, &[], &Catalog::default());
-
-    assert_eq!(packages_of(&rows), [Package::Marketplace("mp".into())]);
-    assert_eq!(items(&rows).len(), 1);
-}
-
-fn plugin_providing_a_skill_and_a_hook(name: &str) -> Augmentation {
-    Augmentation {
-        details: crate::model::Details::Plugin {
-            location: Default::default(),
-            skills: vec!["tdd".into()],
-        },
-        hooks: vec![crate::hook_text::HookEntry {
-            event: "Stop".into(),
-            matcher: None,
-            command: "say done".into(),
-        }],
-        children: vec![format!("{SKILL_CHILD}tdd")],
-        ..installed(name, Kind::Plugin, Some("mp"))
-    }
-}
-
-#[test]
-fn a_plugin_is_followed_by_the_skills_and_hooks_it_provides_not_the_hooks_group() {
-    let here = [plugin_providing_a_skill_and_a_hook("p@mp")];
-
-    let rows = rows_of(&here, &[], &Catalog::default());
-
-    assert!(matches!(
-        rows.as_slice(),
-        [Row::Package(_), Row::Item(_), Row::Owned(_), Row::Owned(_)]
-    ));
-    assert_eq!(packages_of(&rows).len(), 1);
-}
-
-#[test]
-fn provided_rows_hang_under_their_plugin_and_say_which_plugin_adds_them() {
-    let here = [plugin_providing_a_skill_and_a_hook("p@mp")];
-
-    let rows = rows_of(&here, &[], &Catalog::default());
-
-    assert_eq!(parents(&rows), [None, Some(0), Some(1), Some(1)]);
-    let kinds: Vec<ItemKind> = rows
-        .iter()
-        .filter_map(|row| match row {
-            Row::Owned(owned) => Some(owned.kind),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(kinds, [ItemKind::Skill, ItemKind::Hook]);
-}
-
-#[test]
-fn installed_items_come_before_available_ones_in_a_group() {
-    let here = [installed("a", Kind::Skill, Some("o/r"))];
-    let library = Catalog::from_items(vec![library_skill("o/r", "zoom")]);
-
-    let rows = rows_of(&here, &[], &library);
-
-    assert_eq!(parents(&rows), [None, Some(0), Some(0)]);
-    assert!(matches!(items(&rows)[0].state, State::Installed(_)));
-    assert!(matches!(items(&rows)[1].state, State::Available(_)));
+    assert_eq!(items(&build(&here)).len(), 1);
 }
 
 fn subagent_in(agent: Agent) -> Augmentation {
@@ -270,34 +209,31 @@ fn merged_subagent() -> Augmentation {
 }
 
 #[test]
-fn a_thing_seen_through_two_agents_is_one_row_counted_once() {
+fn a_thing_seen_through_two_agents_is_one_row_naming_its_agents_and_locations() {
     let here = [merged_subagent()];
 
-    let rows = rows_of(&here, &[], &Catalog::default());
-
-    assert_eq!(items(&rows).len(), 1);
-}
-
-#[test]
-fn a_merged_row_names_its_agents_and_every_location() {
-    let here = [merged_subagent()];
-
-    let rows = rows_of(&here, &[], &Catalog::default());
+    let rows = build(&here);
 
     let row = items(&rows)[0];
+    assert_eq!(items(&rows).len(), 1);
     assert_eq!(row.agents, tag(&[Agent::Claude, Agent::Codex]));
     assert_eq!(row.detail, detail(&here[0]));
-    assert_eq!(
-        row.state,
-        State::Installed("subagent:claude:reviewer".into())
-    );
+    assert_eq!(row.id, "subagent:claude:reviewer");
 }
 
 #[test]
-fn an_available_row_has_no_agents_tag() {
-    let library = Catalog::from_items(vec![library_skill("o/r", "zoom")]);
+fn a_section_and_a_package_count_the_items_beneath_them() {
+    let here = [
+        installed("tdd", Kind::Skill, Some("o/r")),
+        installed("grill", Kind::Skill, Some("o/r")),
+        installed("mine", Kind::Skill, None),
+    ];
+    let rows = build(&here);
 
-    let rows = rows_of(&[], &[], &library);
+    let counts: Vec<usize> = [0, 1, 4]
+        .into_iter()
+        .map(|at| items_of(&rows, at).count())
+        .collect();
 
-    assert!(items(&rows)[0].agents.is_empty());
+    assert_eq!(counts, [3, 2, 1]);
 }

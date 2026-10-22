@@ -1,45 +1,34 @@
-//! The rows of an installed tab's outline: a group per source package, holding the skills,
-//! plugins and subagents it provides, both those the scope has and those only the library offers.
-//! An item's state says which.
+//! The rows of an installed tab's outline: a section per kind of item the scope has, and in it
+//! the units that can be installed or removed whole. Skills hang under the package they came
+//! from; a plugin is one row that says what it provides, and what it provides is never listed a
+//! second time among the skills and hooks.
 
-mod available;
 mod installed;
 
-use crate::library::{Catalog, ItemKind};
+use crate::library::ItemKind;
 use crate::model::Augmentation;
 use crate::package::{Package, group_by};
-use crate::profile::Entry;
 use crate::tui::widgets::outline::Shape;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum State {
-    /// Installed in the scope; the id of the item to remove.
-    Installed(String),
-    /// Not in the scope; the entry that installs it.
-    Available(Entry),
-}
+/// The sections in the order they are shown.
+const SECTIONS: [ItemKind; 5] = [
+    ItemKind::Plugin,
+    ItemKind::Skill,
+    ItemKind::Subagent,
+    ItemKind::Mcp,
+    ItemKind::Hook,
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Item {
     pub label: String,
     pub kind: ItemKind,
-    /// The agents that have an installed item, shown beside its name.
+    /// The agents that have the item, shown beside its name.
     pub agents: String,
-    /// Where an installed item lives, shown after its agents.
+    /// Where the item lives, or what a plugin provides; shown after its agents.
     pub detail: String,
-    pub state: State,
-    /// Installed globally as well, which matters to a project.
-    pub global: bool,
-    /// What a plugin brings along, shown beneath it.
-    pub owned: Vec<Owned>,
-}
-
-/// A skill or hook a plugin provides: shown under the plugin, never acted on by itself.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Owned {
-    pub label: String,
-    pub kind: ItemKind,
-    pub detail: String,
+    /// The id to remove or update it by.
+    pub id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,72 +38,83 @@ pub(super) struct Group {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Row {
+    /// Heads the items of one kind.
+    Section(ItemKind),
+    /// The skills of one source, under the skills section.
     Package(Group),
     Item(Item),
-    Owned(Owned),
 }
 
-/// What the rows are built from: what the scope has installed, what the user has installed
-/// globally when that is worth pointing out, and the library.
-pub(super) struct Sources<'a> {
-    pub here: &'a [Augmentation],
-    pub also_global: &'a [Augmentation],
-    pub library: &'a Catalog,
+pub(super) fn build(here: &[Augmentation]) -> Vec<Row> {
+    let items = installed::items(here);
+    SECTIONS
+        .into_iter()
+        .flat_map(|kind| {
+            let of_kind: Vec<(Package, Item)> = items
+                .iter()
+                .filter(|(_, item)| item.kind == kind)
+                .cloned()
+                .collect();
+            let rows = match kind {
+                ItemKind::Skill => grouped(of_kind),
+                _ => listed(of_kind),
+            };
+            (!rows.is_empty())
+                .then_some(Row::Section(kind))
+                .into_iter()
+                .chain(rows)
+        })
+        .collect()
 }
 
-pub(super) fn build(sources: &Sources) -> Vec<Row> {
-    let mut items = installed::items(sources);
-    items.extend(available::items(sources));
-    groups(items)
+fn listed(items: Vec<(Package, Item)>) -> Vec<Row> {
+    let mut items: Vec<Item> = items.into_iter().map(|(_, item)| item).collect();
+    items.sort_by_key(|item| item.label.to_lowercase());
+    items.into_iter().map(Row::Item).collect()
 }
 
-fn groups(items: Vec<(Package, Item)>) -> Vec<Row> {
+fn grouped(items: Vec<(Package, Item)>) -> Vec<Row> {
     group_by(items, |(package, _)| package.clone())
         .into_iter()
         .flat_map(|(package, members)| {
             let mut items: Vec<Item> = members.into_iter().map(|(_, item)| item).collect();
-            items.sort_by_key(|item| {
-                let available = matches!(item.state, State::Available(_));
-                (item.kind, available, item.label.to_lowercase())
-            });
-            let group = Group { package };
-            std::iter::once(Row::Package(group)).chain(item_rows(items))
+            items.sort_by_key(|item| item.label.to_lowercase());
+            std::iter::once(Row::Package(Group { package })).chain(items.into_iter().map(Row::Item))
         })
         .collect()
 }
 
-fn item_rows(items: Vec<Item>) -> impl Iterator<Item = Row> {
-    items.into_iter().flat_map(|mut item| {
-        let owned = std::mem::take(&mut item.owned);
-        std::iter::once(Row::Item(item)).chain(owned.into_iter().map(Row::Owned))
-    })
-}
-
-/// The outline's shape: available groups hang under their header, items under their group and
-/// what a plugin provides under the plugin.
+/// The outline's shape: packages hang under the skills section, items under their package or,
+/// where there is none, their section.
 pub(super) fn shape(rows: &[Row]) -> Vec<Shape> {
-    let (mut group, mut plugin) = (None, None);
+    let (mut section, mut group) = (None, None);
     rows.iter()
         .enumerate()
         .map(|(id, row)| match row {
+            Row::Section(kind) => {
+                section = Some(id);
+                group = None;
+                (None, kind.plural().to_string())
+            }
             Row::Package(Group { package }) => {
                 group = Some(id);
-                (None, package.title())
+                (section, package.title())
             }
-            Row::Item(item) => {
-                plugin = Some(id);
-                (group, item.label.clone())
-            }
-            Row::Owned(owned) => (plugin, owned.label.clone()),
+            Row::Item(item) => (group.or(section), item.label.clone()),
         })
         .collect()
 }
 
-/// The items that follow the group at `at`, up to the next group or header.
+/// The items under the section or package at `at`; an item stands for itself alone.
 pub(super) fn items_of(rows: &[Row], at: usize) -> impl Iterator<Item = &Item> {
+    let ends_at_a_package = matches!(rows[at], Row::Package(_));
     rows[at + 1..]
         .iter()
-        .take_while(|row| matches!(row, Row::Item(_) | Row::Owned(_)))
+        .take_while(move |row| match row {
+            Row::Section(_) => false,
+            Row::Package(_) => !ends_at_a_package,
+            Row::Item(_) => true,
+        })
         .filter_map(|row| match row {
             Row::Item(item) => Some(item),
             _ => None,

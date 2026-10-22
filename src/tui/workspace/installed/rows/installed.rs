@@ -1,60 +1,47 @@
 //! The items a scope has installed, each with the package it belongs to.
 
-use super::{Item, Owned, Sources, State};
+use super::Item;
 use crate::library::ItemKind;
 use crate::location::detail;
 use crate::merge::tag;
-use crate::model::{Augmentation, Kind, split_plugin_id};
+use crate::model::{Augmentation, Kind};
 use crate::package::Package;
-use crate::tui::workspace::installed::presence::has_counterpart;
 
-pub(super) fn items(sources: &Sources) -> Vec<(Package, Item)> {
-    sources
-        .here
-        .iter()
+pub(super) fn items(here: &[Augmentation]) -> Vec<(Package, Item)> {
+    here.iter()
         .filter_map(|installed| {
             let kind = ItemKind::of(installed.kind)?;
-            Some((Package::of(installed), item(installed, kind, sources)))
+            Some((Package::of(installed), item(installed, kind)))
         })
         .collect()
 }
 
-fn item(installed: &Augmentation, kind: ItemKind, sources: &Sources) -> Item {
+fn item(installed: &Augmentation, kind: ItemKind) -> Item {
     Item {
-        label: label(installed),
+        label: installed.name.clone(),
         kind,
         agents: tag(&installed.agents),
-        detail: detail(installed),
-        state: State::Installed(installed.id.clone()),
-        global: has_counterpart(sources.also_global, installed),
-        owned: owned(installed),
+        detail: match installed.kind {
+            Kind::Plugin => provides(installed),
+            _ => detail(installed),
+        },
+        id: installed.id.clone(),
     }
 }
 
-/// A plugin is named by its marketplace's group already, so only its own name is shown.
-fn label(installed: &Augmentation) -> String {
-    match installed.kind {
-        Kind::Plugin => split_plugin_id(&installed.name).0.to_string(),
-        _ => installed.name.clone(),
-    }
-}
-
-/// The skills then the hooks a plugin provides.
-fn owned(plugin: &Augmentation) -> Vec<Owned> {
-    if plugin.kind != Kind::Plugin {
-        return vec![];
-    }
-    let provided = |label: String, kind| Owned {
-        label,
-        kind,
-        detail: format!("added by {}", plugin.name),
-    };
-    let skills = plugin
-        .plugin_skills()
-        .map(|skill| provided(skill.to_string(), ItemKind::Skill));
-    let hooks = plugin
-        .hooks
-        .iter()
-        .map(|hook| provided(hook.label(), ItemKind::Hook));
-    skills.chain(hooks).collect()
+/// What a plugin brings along: `3 skills, 2 hooks`.
+fn provides(plugin: &Augmentation) -> String {
+    let counts = [
+        (plugin.plugin_skills().count(), ItemKind::Skill),
+        (plugin.hooks.len(), ItemKind::Hook),
+    ];
+    let shown: Vec<String> = counts
+        .into_iter()
+        .filter(|(count, _)| *count > 0)
+        .map(|(count, kind)| match count {
+            1 => format!("1 {}", kind.noun()),
+            n => format!("{n} {}", kind.plural()),
+        })
+        .collect();
+    shown.join(", ")
 }

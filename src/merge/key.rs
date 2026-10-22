@@ -3,7 +3,9 @@ use crate::model::{Augmentation, Details, Kind, Scope};
 
 /// What makes two items the same thing seen through different agents. Hooks are the same when
 /// they hold the same handlers and MCP servers when they launch the same way; the rest by
-/// kind, name, scope, group and source.
+/// kind, name, scope, group and source. A plugin's name already says its marketplace, and each
+/// agent records the marketplace's source its own way (a URL, a path, nothing), so the source
+/// is no part of its identity.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) struct Key {
     kind: Kind,
@@ -21,7 +23,9 @@ impl Key {
             scope: item.scope,
             name: item.name.clone(),
             group: item.group.clone(),
-            source: item.source.clone(),
+            source: (item.kind != Kind::Plugin)
+                .then(|| item.source.clone())
+                .flatten(),
             contents: contents(item),
         }
     }

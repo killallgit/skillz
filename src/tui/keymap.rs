@@ -78,7 +78,6 @@ pub enum Action {
     SaveCurrent,
     Build,
     Update,
-    Install,
     /// Install what a repo or path offers.
     AddSource,
     Remove,
@@ -165,7 +164,6 @@ pub const BINDINGS: &[Binding] = &[
     bind(Workspace, A::GoTab(3), &[ch('4')], "", "", 0),
     bind(Installed, A::Toggle, &[ch(' ')], "space", "pick", 1),
     bind(Installed, A::Select, &[plain(KeyCode::Enter)], "enter", "apply picks / fold", 2),
-    bind(Installed, A::Install, &[ch('i')], "i", "install", 3),
     bind(Installed, A::AddSource, &[ch('A')], "A", "add from repo", 9),
     bind(Installed, A::Remove, &[ch('r')], "r", "remove", 4),
     bind(Project, A::PickProfile, &[ch('p')], "p", "compare", 5),
@@ -373,7 +371,7 @@ mod tests {
     #[test]
     fn a_tab_binds_the_keys_of_all_its_scopes_and_the_global_tab_has_no_profile_keys() {
         let project = [Installed, Project];
-        let keys = ['i', 'p', 'a'];
+        let keys = ['r', 'p', 'a'];
 
         let on_project = keys.map(|c| resolve_in(&project, key(KeyCode::Char(c))));
         let on_global = keys.map(|c| resolve_in(&[Installed], key(KeyCode::Char(c))));
@@ -381,12 +379,12 @@ mod tests {
         assert_eq!(
             on_project,
             [
-                Some(Action::Install),
+                Some(Action::Remove),
                 Some(Action::PickProfile),
                 Some(Action::ApplyProfile)
             ]
         );
-        assert_eq!(on_global, [Some(Action::Install), None, None]);
+        assert_eq!(on_global, [Some(Action::Remove), None, None]);
     }
 
     #[test]
