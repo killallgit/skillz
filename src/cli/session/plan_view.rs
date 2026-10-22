@@ -49,8 +49,13 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
     }
 }
 
-/// What `step` is for: installing an entry or removing an installed item.
+/// What `step` is for and what it does: `removing orca: rm ~/.claude/skills/orca`.
 pub(super) fn step_label(switch: &Switch, removal: &Plan, step: &Action) -> String {
+    format!("{}: {}", purpose(switch, removal, step), step.describe())
+}
+
+/// Installing an entry, updating or removing an installed item.
+fn purpose(switch: &Switch, removal: &Plan, step: &Action) -> String {
     let updating = switch
         .updates
         .iter()
@@ -121,5 +126,23 @@ mod tests {
         // Nothing is kept or skipped, so only remove and install appear, in that order.
         assert_eq!(groups, [Group::Remove, Group::Install]);
         assert!(view.destructive());
+    }
+
+    #[test]
+    fn a_step_label_ends_with_what_the_step_does() {
+        let step = Action::Run {
+            program: "npx".into(),
+            args: vec!["skills".into()],
+            cwd: "/".into(),
+            fallback: false,
+        };
+        let switch = Switch {
+            installs: vec![(skill("b"), vec![step.clone()])],
+            ..switch()
+        };
+
+        let label = step_label(&switch, &Plan::from_owned(&switch.removals), &step);
+
+        assert!(label.ends_with(&step.describe()));
     }
 }
