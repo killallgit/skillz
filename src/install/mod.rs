@@ -68,10 +68,11 @@ pub fn install(ctx: &Ctx, req: &InstallRequest) -> anyhow::Result<bool> {
             heading: format!("Install from {source}"),
             groups: vec![(Group::Install, plan.lines)],
             steps: plan.steps.iter().map(Action::describe).collect(),
+            targets: None,
         };
         match ctx.prompter.plan(&view)? {
             Verdict::Apply => run(ctx, &plan.steps).map(|()| true),
-            Verdict::DryRun | Verdict::Cancel => Ok(false),
+            Verdict::DryRun | Verdict::Cancel | Verdict::Retarget(_) => Ok(false),
         }
     })
 }

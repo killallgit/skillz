@@ -9,6 +9,7 @@ mod installed;
 mod library;
 mod model;
 mod profiles;
+mod run;
 mod shell;
 mod syncs;
 mod tab;

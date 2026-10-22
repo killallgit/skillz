@@ -1,4 +1,4 @@
-//! The popup that asks for a profile name, for a new profile or for one saved from the project.
+//! The popup that asks for the name of a profile saved from what the project has.
 
 use ratatui::Frame;
 
@@ -13,22 +13,14 @@ const SIZE: ModalSize = ModalSize {
     height: 3,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Purpose {
-    New,
-    SaveCurrent,
-}
-
 #[derive(Debug, Clone)]
 pub(super) struct Naming {
-    purpose: Purpose,
     pub field: InputField,
 }
 
 impl Naming {
-    pub fn new(purpose: Purpose) -> Self {
+    pub fn new() -> Self {
         Naming {
-            purpose,
             field: InputField::new("name"),
         }
     }
@@ -36,19 +28,16 @@ impl Naming {
     /// What the typed name asks for; nothing while it is blank.
     pub fn act(&self) -> Option<Act> {
         let name = self.field.value().trim().to_string();
-        match (name.is_empty(), self.purpose) {
-            (true, _) => None,
-            (false, Purpose::New) => Some(Act::NewProfile { name }),
-            (false, Purpose::SaveCurrent) => Some(Act::SaveCurrent { name }),
-        }
+        (!name.is_empty()).then_some(Act::SaveCurrent { name })
     }
 
     pub fn render(&self, frame: &mut Frame, theme: &Theme) {
-        let title = match self.purpose {
-            Purpose::New => "New profile",
-            Purpose::SaveCurrent => "Save the project as a profile",
-        };
-        let inner = modal::open(frame, SIZE, Panel::new(title), theme);
+        let inner = modal::open(
+            frame,
+            SIZE,
+            Panel::new("Save the project as a profile"),
+            theme,
+        );
         self.field.render(frame, inner, theme);
     }
 }
@@ -60,8 +49,8 @@ mod tests {
     use super::*;
     use crate::tui::widgets::testing::{key, keys};
 
-    fn typed(purpose: Purpose, text: &str) -> Naming {
-        let mut naming = Naming::new(purpose);
+    fn typed(text: &str) -> Naming {
+        let mut naming = Naming::new();
         keys(text).into_iter().for_each(|k| {
             naming.field.handle(k);
         });
@@ -69,13 +58,9 @@ mod tests {
     }
 
     #[test]
-    fn the_purpose_decides_which_act_the_name_asks_for() {
-        let new = typed(Purpose::New, " web ").act();
-        let save = typed(Purpose::SaveCurrent, "snap").act();
-
-        assert_eq!(new, Some(Act::NewProfile { name: "web".into() }));
+    fn the_typed_name_is_trimmed_into_the_save_act() {
         assert_eq!(
-            save,
+            typed(" snap ").act(),
             Some(Act::SaveCurrent {
                 name: "snap".into()
             })
@@ -84,7 +69,7 @@ mod tests {
 
     #[test]
     fn a_blank_name_asks_for_nothing() {
-        let mut naming = typed(Purpose::New, "  ");
+        let mut naming = typed("  ");
         naming.field.handle(key(KeyCode::Enter));
 
         assert_eq!(naming.act(), None);

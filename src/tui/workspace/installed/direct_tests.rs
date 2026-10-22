@@ -55,11 +55,14 @@ fn r_on_a_package_removes_everything_installed_from_it() {
 }
 
 #[test]
-fn r_on_a_section_does_nothing() {
+fn r_on_a_section_marks_every_item_in_it_for_removal() {
     let mut tab = loaded();
     on_item(&mut tab, PLUGINS);
 
-    assert_eq!(press(&mut tab, KeyCode::Char('r')), None);
+    let act = press(&mut tab, KeyCode::Char('r'));
+
+    assert_eq!(act, None);
+    assert_eq!(tab.pending.picks(), ["plugin:p@mp"]);
 }
 
 #[test]

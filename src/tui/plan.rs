@@ -11,7 +11,7 @@ use super::keymap::{self, Action, Scope};
 use super::theme::Theme;
 use super::widgets::panel::Panel;
 use super::widgets::text_modal::{Page, TextModal};
-use crate::review::{Group, PlanView, Verdict};
+use crate::review::{Group, PlanView, Targets, Verdict};
 
 pub struct PlanScreen {
     view: PlanView,
@@ -32,10 +32,16 @@ impl PlanScreen {
 
     fn text(&self, theme: &Theme) -> Vec<Line<'static>> {
         if self.raw {
-            step_lines(&self.view, theme)
-        } else {
-            group_lines(&self.view, theme)
+            return step_lines(&self.view, theme);
         }
+        let mut lines = self
+            .view
+            .targets
+            .as_ref()
+            .map(|targets| target_lines(targets, theme))
+            .unwrap_or_default();
+        lines.extend(group_lines(&self.view, theme));
+        lines
     }
 
     fn on_key(&mut self, key: KeyEvent) -> Step<Verdict> {
@@ -43,6 +49,16 @@ impl PlanScreen {
             Some(Action::Select) => Step::Act(self.accepted()),
             Some(Action::Back | Action::Quit) => Step::Act(Verdict::Cancel),
             Some(Action::Interrupt) => Step::Quit,
+            Some(Action::Toggle) => match &self.view.targets {
+                Some(targets) => Step::Act(Verdict::Retarget(targets.clone().toggled())),
+                None => Step::Stay,
+            },
+            Some(movement @ (Action::Up | Action::Down)) if self.view.targets.is_some() => {
+                if let Some(targets) = self.view.targets.take() {
+                    self.view.targets = Some(targets.moved(movement == Action::Down));
+                }
+                Step::Stay
+            }
             Some(Action::ToggleDryRun) => self.toggle(|s| &mut s.dry_run),
             Some(Action::ToggleSteps) => self.toggle(|s| &mut s.raw),
             Some(movement) => {
@@ -94,7 +110,10 @@ impl PlanScreen {
     fn hints(&self, theme: &Theme) -> Line<'static> {
         let spans = keymap::hint_bindings(&[Scope::Plan])
             .into_iter()
-            .map(|binding| {
+            .filter_map(|binding| {
+                if binding.action == Action::Toggle && self.view.targets.is_none() {
+                    return None;
+                }
                 let active = match binding.action {
                     Action::ToggleDryRun => self.dry_run,
                     Action::ToggleSteps => self.raw,
@@ -106,10 +125,32 @@ impl PlanScreen {
                     binding.label
                 };
                 let style = if active { theme.warn } else { theme.muted };
-                Span::styled(format!("{} {label}  ", binding.keys), style)
+                Some(Span::styled(format!("{} {label}  ", binding.keys), style))
             });
         Line::from(spans.collect::<Vec<_>>())
     }
+}
+
+/// The agents the plan may reach, each checked or not, the cursor on one.
+fn target_lines(targets: &Targets, theme: &Theme) -> Vec<Line<'static>> {
+    let glyphs = &theme.glyphs;
+    let mut lines = vec![Line::styled(
+        "Agents",
+        theme.accent.add_modifier(theme.title.add_modifier),
+    )];
+    lines.extend(targets.agents.iter().enumerate().map(|(at, (agent, on))| {
+        let (glyph, style) = match on {
+            true => (glyphs.checked, theme.ok),
+            false => (glyphs.unchecked, theme.muted),
+        };
+        let cursor = if at == targets.cursor { "▌ " } else { "  " };
+        Line::from(vec![
+            Span::styled(cursor, theme.accent),
+            Span::styled(format!("{glyph} {agent}"), style),
+        ])
+    }));
+    lines.push(Line::default());
+    lines
 }
 
 fn group_style(group: Group, theme: &Theme) -> Style {
@@ -161,6 +202,7 @@ fn step_lines(view: &PlanView, theme: &Theme) -> Vec<Line<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Agent;
     use crate::tui::widgets::testing::{key, render_to_buffer};
     use ratatui::crossterm::event::KeyCode;
 
@@ -172,7 +214,47 @@ mod tests {
                 (Group::Remove, vec!["b".into(), "c".into()]),
             ],
             steps: vec!["run x".into()],
+            targets: None,
         }
+    }
+
+    fn with_agents() -> PlanScreen {
+        PlanScreen::new(PlanView {
+            targets: Some(Targets::all(vec![Agent::Claude, Agent::Codex])),
+            ..view()
+        })
+    }
+
+    #[test]
+    fn space_unchecks_the_agent_under_the_cursor_and_asks_for_a_new_plan() {
+        let mut screen = with_agents();
+
+        answer(&mut screen, KeyCode::Down);
+        let verdict = answer(&mut screen, KeyCode::Char(' '));
+
+        let Some(Verdict::Retarget(targets)) = verdict else {
+            panic!("expected a new plan, got {verdict:?}");
+        };
+        assert_eq!(targets.checked(), [Agent::Claude]);
+        assert_eq!(targets.cursor, 1);
+    }
+
+    #[test]
+    fn without_agents_space_does_nothing() {
+        let mut screen = PlanScreen::new(view());
+
+        assert_eq!(answer(&mut screen, KeyCode::Char(' ')), None);
+    }
+
+    #[test]
+    fn the_agents_are_listed_above_the_plan() {
+        let theme = Theme::dark();
+        let plain = PlanScreen::new(view()).text(&theme).len();
+
+        let listed = with_agents().text(&theme).len();
+
+        // A heading, one line per agent and a blank line.
+        assert_eq!(listed, plain + 4);
     }
 
     fn answer(screen: &mut PlanScreen, code: KeyCode) -> Option<Verdict> {
@@ -256,6 +338,7 @@ mod tests {
             heading: String::new(),
             groups: vec![(Group::Keep, vec!["x".repeat(225)])],
             steps: vec![],
+            targets: None,
         });
         let theme = Theme::dark();
         render_to_buffer(24, 8, |frame| screen.draw(frame, &theme));

@@ -33,7 +33,11 @@ impl CommandRunner for FailsOn {
 }
 
 fn selection<'a>(install: &'a [Entry], remove: &'a [String]) -> Selection<'a> {
-    Selection { install, remove }
+    Selection {
+        install,
+        remove,
+        only: None,
+    }
 }
 
 #[test]

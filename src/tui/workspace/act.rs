@@ -37,8 +37,10 @@ pub enum Act {
     ApplyExact {
         profile: String,
     },
-    NewProfile {
+    /// Make a profile of this name holding these entries.
+    CreateProfile {
         name: String,
+        entries: Vec<Entry>,
     },
     /// Store what the project has installed as a new profile.
     SaveCurrent {

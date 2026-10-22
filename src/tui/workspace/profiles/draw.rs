@@ -1,25 +1,24 @@
-//! Drawing the Profiles tab: the profile list beside the highlighted profile's entries.
+//! Drawing the Profiles tab: one list of profiles, each with its entries beneath it.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Margin, Rect};
 use ratatui::text::{Line, Span};
 
-use super::rows::{Row, section_title};
-use super::{Focus, Popup, ProfilesTab};
+use super::rows::ListRow;
+use super::{Popup, ProfilesTab};
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;
 use crate::tui::widgets::panel::Panel;
 
+const INDENT: &str = "  ";
+
 impl ProfilesTab {
     pub(super) fn draw_body(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let [left, right] =
-            Layout::horizontal([Constraint::Percentage(40), Constraint::Min(1)]).areas(area);
-        self.draw_list(frame, left, theme);
-        self.draw_entries(frame, right, theme);
+        self.draw_list(frame, area, theme);
         match &mut self.popup {
             Popup::Name(naming) => naming.render(frame, theme),
-            Popup::Build(chooser) => chooser.render(frame, theme),
+            Popup::Edit(editor) => editor.render(frame, theme),
             Popup::Delete(_, dialog) => dialog.render(frame, theme),
             Popup::None | Popup::Filter => {}
         }
@@ -27,14 +26,14 @@ impl ProfilesTab {
 
     fn draw_list(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let panel = Panel::new(filter::title("Profiles", self.list.query()))
-            .focused(self.focus == Focus::List)
+            .focused(true)
             .badge(self.list.badge());
-        let inner = panel.render(frame, area, theme);
+        let inner = panel.render(frame, area, theme).inner(Margin::new(1, 1));
         if self.list.visible().is_empty() {
             return empty::render(frame, inner, self.empty_list(theme));
         }
         let lines: Vec<Line<'static>> = (self.list.visible().iter())
-            .map(|&id| self.profile_line(id, theme))
+            .map(|&id| self.row_line(id, theme))
             .collect();
         self.list.render(frame, inner, &lines, theme);
     }
@@ -45,51 +44,38 @@ impl ProfilesTab {
         }
         vec![
             Line::styled("No profiles yet", theme.text),
-            Line::styled("n creates one, s saves what the project has", theme.muted),
+            Line::styled("n makes one, s saves what the project has", theme.muted),
         ]
     }
 
-    fn profile_line(&self, id: usize, theme: &Theme) -> Line<'static> {
-        let mut spans = filter::highlight(
-            &self.profiles[id].profile.name,
+    fn row_line(&self, id: usize, theme: &Theme) -> Line<'static> {
+        match &self.list_rows[id] {
+            ListRow::Profile(at) => self.profile_line(id, *at, theme),
+            ListRow::Entry { label, .. } => Line::styled(
+                format!("{}{label}", INDENT.repeat(self.list.depth(id) + 1)),
+                theme.muted,
+            ),
+        }
+    }
+
+    fn profile_line(&self, id: usize, at: usize, theme: &Theme) -> Line<'static> {
+        let row = &self.profiles[at];
+        let caret = self.list.caret(id, &theme.glyphs);
+        let mut spans = vec![Span::raw(format!("{caret} "))];
+        spans.extend(filter::highlight(
+            &row.profile.name,
             &self.list.matched(id),
             0,
             theme.text,
             theme,
-        );
-        spans.push(match self.profiles[id].missing {
-            0 => Span::styled("  matches", theme.ok),
-            n => Span::styled(format!("  {n} missing"), theme.warn),
+        ));
+        let count = row.profile.entries.len();
+        let noun = if count == 1 { "entry" } else { "entries" };
+        spans.push(Span::styled(format!("  {count} {noun}"), theme.muted));
+        spans.push(match row.missing {
+            0 => Span::styled("  matches the project", theme.ok),
+            n => Span::styled(format!("  {n} missing from the project"), theme.warn),
         });
         Line::from(spans)
-    }
-
-    fn draw_entries(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let title = self.current().map_or("Entries", |p| p.name.as_str());
-        let panel = Panel::new(title.to_string())
-            .focused(self.focus == Focus::Entries)
-            .badge(self.entries.badge());
-        let inner = panel.render(frame, area, theme);
-        if self.rows.is_empty() {
-            let hint = "b builds it from the library";
-            return empty::render(frame, inner, vec![Line::styled(hint, theme.muted)]);
-        }
-        let lines: Vec<Line<'static>> = (self.entries.visible().iter())
-            .map(|&id| self.entry_line(id, theme))
-            .collect();
-        self.entries.render(frame, inner, &lines, theme);
-    }
-
-    fn entry_line(&self, id: usize, theme: &Theme) -> Line<'static> {
-        match &self.rows[id] {
-            Row::Section { kind, count } => {
-                let caret = self.entries.caret(id, &theme.glyphs);
-                Line::from(vec![
-                    Span::styled(format!("{caret} {}", section_title(*kind)), theme.title),
-                    Span::styled(format!(" ({count})"), theme.muted),
-                ])
-            }
-            Row::Item(item) => Line::styled(format!("    {}", item.label), theme.text),
-        }
     }
 }

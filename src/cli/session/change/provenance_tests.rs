@@ -24,6 +24,7 @@ fn install_picked(dir: &Path, library: &[LibraryItem]) -> (FakeNpx, Store) {
     let picked = Selection {
         install: &entries,
         remove: &[],
+        only: None,
     };
     change(
         &session(&deps, dir),

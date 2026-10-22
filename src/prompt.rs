@@ -1,4 +1,4 @@
-use crate::review::{Next, NoProgress, Outcome, PlanView, Progress, Verdict};
+use crate::review::{ItemEvent, Next, NoProgress, Outcome, PlanView, Progress, Verdict};
 use crate::tree::Node;
 use crate::tui::workspace::{Act, Shared};
 
@@ -53,9 +53,9 @@ pub trait Prompter {
     fn progress(&self, _title: &str, _total: usize) -> Box<dyn Progress + '_> {
         Box::new(NoProgress)
     }
-    /// Like `progress`, but shown on the workspace when there is one: its rows show each item
-    /// in flight.
-    fn live(&self, title: &str, total: usize) -> Box<dyn Progress + '_> {
+    /// Like `progress`, but shown on the workspace when there is one: a list of the `planned`
+    /// items, each marked as it works.
+    fn live(&self, title: &str, total: usize, _planned: &[ItemEvent]) -> Box<dyn Progress + '_> {
         self.progress(title, total)
     }
     /// Show how a switch ended. Without a screen: nothing, and no retry.

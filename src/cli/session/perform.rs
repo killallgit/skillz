@@ -17,6 +17,7 @@ impl Session<'_, '_> {
                 let picked = Selection {
                     install: &[],
                     remove: ids,
+                    only: None,
                 };
                 return change(self, *scope, &Change::Selection(&picked));
             }
@@ -35,7 +36,9 @@ impl Session<'_, '_> {
             Act::LibraryImport => return self.library_import(),
             Act::LibraryRemove(entry) => return self.library_remove(entry),
             Act::ApplyExact { profile } => Change::ApplyExact(profile),
-            Act::NewProfile { name } => return self.create_profile(name).map(Some),
+            Act::CreateProfile { name, entries } => {
+                return self.create_profile(name, entries).map(Some);
+            }
             Act::SaveCurrent { name } => return self.save_current(name).map(Some),
             Act::SetEntries { profile, entries } => {
                 return self.set_entries(profile, entries).map(Some);

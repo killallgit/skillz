@@ -8,10 +8,16 @@ use crate::model::Scope;
 use crate::profile::{Entry, Profile};
 
 impl Session<'_, '_> {
-    pub(in crate::cli) fn create_profile(&self, name: &str) -> anyhow::Result<Notice> {
+    pub(in crate::cli) fn create_profile(
+        &self,
+        name: &str,
+        entries: &[Entry],
+    ) -> anyhow::Result<Notice> {
         let exists = self.profiles.names()?.iter().any(|n| n == name);
         anyhow::ensure!(!exists, "profile {name} exists");
-        self.profiles.save(&Profile::new(name))?;
+        let mut profile = Profile::new(name);
+        profile.entries = entries.to_vec();
+        self.profiles.save(&profile)?;
         Ok(Notice::Created(name.into()))
     }
 

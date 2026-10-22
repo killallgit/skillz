@@ -6,6 +6,7 @@ use crate::model::Augmentation;
 use crate::profile::Entry;
 use crate::provision::Unsupported;
 use crate::remove::Plan;
+use crate::review::{ItemEvent, Target};
 
 /// Build it with `Applier::plan`, show it, then `Applier::run` it.
 #[derive(Debug)]
@@ -25,6 +26,25 @@ pub struct Switch {
 }
 
 impl Switch {
+    /// Every item the run will work on, in the order it starts them.
+    pub fn planned(&self) -> Vec<ItemEvent> {
+        let removing = self
+            .removals
+            .iter()
+            .map(|item| ItemEvent::started(Target::Remove(item.id.clone()), item.name.clone()));
+        let installing = self
+            .installs
+            .iter()
+            .filter(|(_, steps)| !steps.is_empty())
+            .map(|(entry, _)| {
+                ItemEvent::started(Target::Install(entry.clone()), entry.to_string())
+            });
+        let updating = self.updates.iter().map(|(item, _)| {
+            ItemEvent::started(Target::Update(item.id.clone()), item.name.clone())
+        });
+        removing.chain(installing).chain(updating).collect()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.removals.is_empty()
             && self.installs.is_empty()
