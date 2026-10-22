@@ -79,10 +79,9 @@ then the same install and removal steps):
 | In the workspace | On the command line |
 | --- | --- |
 | Project / Global tabs: what is installed, the split, where each item lives | `list`, `list -g`, `list --json` (`location`) |
-| Available rows (library items the scope lacks) | `list --available [-g] [--json]` |
 | Update markers | `list --json --check`, `update --check [--json]` |
-| `space` picks, `enter` installs and removes the picks as one plan | `library install QUERY... [-g]`, `uninstall QUERY...` (`-y`, `--dry-run`) |
-| `i` install / `r` remove / `u` update the highlighted item | `library install`, `uninstall`, `update` |
+| `space` picks, `enter` removes the picks as one plan | `uninstall QUERY...` (`-y`, `--dry-run`) |
+| `r` remove / `u` update the highlighted item | `uninstall`, `update` |
 | `A` add from a repo: type `owner/repo`, a git URL or a path | `install SOURCE` |
 | `p` compare with a profile, the header's matches / N missing / N extra | `profile status [NAME] [--json]`, `profile list [--json]` |
 | `a` apply a profile, `e` apply exactly | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`) |
@@ -261,26 +260,26 @@ per project: what is installed is read from the agents' own config each time. It
 at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 
 - **Project** and **Global**: the same tab over two scopes. Project is what this directory has
-  installed; Global is what you have installed at user level, outside any project. Each lists its
-  installed items grouped by the package they come from, as `npx skills list` does: an
-  `owner/repo`, a plugin marketplace (its plugins, each expanding into the skills and hooks it
-  provides), or `local files` for hand-made items. Each group row shows the package and what it
-  provides (`2 skills, 1 subagent`); a small tag after each name says its kind. MCP servers and
-  `(unknown) hooks` (hooks no plugin declares) keep a group of their own. Library items not installed in
-  that scope sit in the same groups, dim, while installed ones are bold. In Project, an item
-  that is also installed globally is tagged `global`. Every installed row shows where it lives on
-  disk (the skill's directory, or the config file). The header shows the directory, or `User-level,
-  all projects`; on Project it also shows how the directory compares with a profile you chose:
-  matching, or `N missing` / `N extra`. Picked rows get their own marker and a `to install` /
-  `to remove` note, and each group shows its count of picks. `space`, `i`, `r` and `u` on a group
-  row act on everything in it (the plan shows what, and nothing happens until you confirm it); on
-  an item row they act on that item. `enter` folds a group or a plugin. A plugin lists the skills
-  and hooks it provides beneath it (read-only, marked `added by <plugin>`; removing the plugin
-  removes them). A thing installed for several agents (a subagent for Claude and Codex, say) is
-  one row naming its agents, `claude, codex`, or `claude, codex +2` when there are many; removing
-  it removes every copy. A filter keeps the group structure and hides groups with no match. Installs, removals and updates on Global act on
+  installed; Global is what you have installed at user level, outside any project. Each lists
+  only what is installed there, in sections by kind: `plugins`, `skills`, `agents`,
+  `MCP servers` and `hooks` (a section with nothing in it is left out). Every row is a whole
+  unit you can remove or update: a plugin is one row that says what it provides
+  (`3 skills, 2 hooks`), and what it provides is not listed again among the skills and hooks;
+  removing the plugin removes them. Skills hang under the package they came from, as
+  `npx skills list` does: an `owner/repo` or `local files`. `hooks` are only the hooks no plugin
+  declares. Every row shows its agents and where it lives on disk (the skill's directory, or the
+  config file). The panel title is the directory, or `User-level, all projects`; on Project a
+  line above it shows how the directory compares with a profile you chose: matching, or
+  `N missing` / `N extra`. Picked rows get their own marker and a `to remove` note, and each
+  section or package shows its count of picks. `space`, `r` and `u` on a package row act on
+  everything in it (the plan shows what, and nothing happens until you confirm it); on an item
+  row they act on that item; on a section they do nothing but fold it. A thing installed for
+  several agents (a subagent for Claude and Codex, say) is one row naming its agents, `claude,
+  codex`, or `claude, codex +2` when there are many; removing it removes every copy. A filter
+  keeps the section structure and hides rows with no match. Removals and updates on Global act on
   the user's installs (`npx skills -g`, `claude ... --scope user`, the Codex user config).
-  Profiles apply to a project only, so Global has no `p` or `a`.
+  Profiles apply to a project only, so Global has no `p` or `a`. Adding is `A`, or the
+  Library tab and profiles.
   In the background the tabs check whether installed Claude marketplaces have a newer version
   (a read-only `ls-remote`) and shows those in bold with a `*` after the name. Other kinds have
   no reliable check and are never marked. `SKILLZ_NO_UPDATE_CHECK=1` turns the check off;
@@ -297,12 +296,11 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 
 | Key | Does |
 | --- | --- |
-| `space` | pick the item under the cursor: a library item to install, an installed item to remove; again to unpick (on a section header: open or close it) |
-| `enter` | apply all picks as one change, with one plan to review; with nothing picked, open or close the section |
-| `i` | install the item under the cursor into the tab's scope at once (after the plan); on a package row, installs its available items; does nothing on an installed row |
-| `r` | remove the item under the cursor from the tab's scope at once (after the plan); on a package row, removes its installed items; does nothing on an available row |
+| `space` | pick the item under the cursor for removal; again to unpick (on a package: everything in it; on a section: open or close it) |
+| `enter` | remove all picks as one change, with one plan to review; with nothing picked, open or close the section |
+| `r` | remove the item under the cursor from the tab's scope at once (after the plan); on a package row, removes everything in it |
 | `esc` | clear the picks (with none, clear the filter) |
-| `u` | update the installed item under the cursor, or every installed item of the section, after a plan to review; library items that are not installed and kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
+| `u` | update the installed item under the cursor, or every installed item of the section, after a plan to review; kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
 | `p` | choose the profile the header compares with (Project only) |
 | `a` | install what the chosen profile has that the project lacks (Project only) |
 | `←` `→`, `h` `l` | close / open a section (`←` on an item jumps to its section) |
@@ -321,10 +319,6 @@ While a change runs, the Project and Global tabs stay on screen and each affecte
 its left (`⠋`, or `|/-\` in ASCII mode), then a tick or a cross when that item finishes, until the
 next key. The result screen lists what was done (`Installed X`, `Removed Y`, `Updated Z`) and
 every failure with its reason.
-
-Installing into the project an item that is already installed globally (by `i`, or by `enter` on picks) first asks
-whether to also install it into this project, defaulting to No. With several picks it asks once,
-naming the global ones; No drops only those.
 
 The browser (`list -i`) and every picker (`uninstall`, `prune`, `install`)
 share one list:

@@ -1,19 +1,11 @@
-//! The changes picked but not yet applied. An item is identified by its state, so a pick
-//! survives a reload for as long as the item is still there in that state.
+//! The removals picked but not yet applied. An item is identified by its id, so a pick survives
+//! a reload for as long as the item is still there.
 
-use super::rows::{Item, Row, State};
-use crate::profile::Entry;
+use super::rows::{Item, Row};
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct Pending {
-    picked: Vec<State>,
-}
-
-/// How many items of a section are picked to install and to remove.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(super) struct Counts {
-    pub install: usize,
-    pub remove: usize,
+    picked: Vec<String>,
 }
 
 impl Pending {
@@ -21,18 +13,18 @@ impl Pending {
         self.picked.is_empty()
     }
 
-    pub fn contains(&self, state: &State) -> bool {
-        self.picked.contains(state)
+    pub fn contains(&self, id: &str) -> bool {
+        self.picked.iter().any(|picked| picked == id)
     }
 
-    /// Pick all of `states`, or unpick them when all are picked already.
-    pub fn toggle_all(&mut self, states: &[State]) {
-        match states.iter().all(|state| self.contains(state)) {
-            true => self.picked.retain(|picked| !states.contains(picked)),
+    /// Pick all of `ids`, or unpick them when all are picked already.
+    pub fn toggle_all(&mut self, ids: &[String]) {
+        match ids.iter().all(|id| self.contains(id)) {
+            true => self.picked.retain(|picked| !ids.contains(picked)),
             false => {
-                let missing: Vec<State> = states
+                let missing: Vec<String> = ids
                     .iter()
-                    .filter(|state| !self.contains(state))
+                    .filter(|id| !self.contains(id))
                     .cloned()
                     .collect();
                 self.picked.extend(missing);
@@ -44,44 +36,21 @@ impl Pending {
         self.picked.clear();
     }
 
-    /// Forget picks whose item is gone or has changed state.
+    /// Forget picks whose item is gone.
     pub fn keep_existing(&mut self, rows: &[Row]) {
-        self.picked.retain(|state| {
+        self.picked.retain(|id| {
             rows.iter()
-                .any(|row| matches!(row, Row::Item(item) if item.state == *state))
+                .any(|row| matches!(row, Row::Item(item) if item.id == *id))
         });
     }
 
-    pub fn counts<'a>(&self, items: impl Iterator<Item = &'a Item>) -> Counts {
-        items
-            .filter(|item| self.contains(&item.state))
-            .fold(Counts::default(), |counts, item| match item.state {
-                State::Available(_) => Counts {
-                    install: counts.install + 1,
-                    ..counts
-                },
-                State::Installed(_) => Counts {
-                    remove: counts.remove + 1,
-                    ..counts
-                },
-            })
+    /// How many of `items` are picked.
+    pub fn count<'a>(&self, items: impl Iterator<Item = &'a Item>) -> usize {
+        items.filter(|item| self.contains(&item.id)).count()
     }
 
-    /// The entries to install and the ids to remove.
-    pub fn picks(&self) -> (Vec<Entry>, Vec<String>) {
-        split(&self.picked)
+    /// The ids to remove.
+    pub fn picks(&self) -> Vec<String> {
+        self.picked.clone()
     }
-}
-
-/// The entries among `states` to install and the ids to remove.
-pub fn split(states: &[State]) -> (Vec<Entry>, Vec<String>) {
-    states
-        .iter()
-        .fold((vec![], vec![]), |(mut install, mut remove), state| {
-            match state {
-                State::Available(entry) => install.push(entry.clone()),
-                State::Installed(id) => remove.push(id.clone()),
-            }
-            (install, remove)
-        })
 }

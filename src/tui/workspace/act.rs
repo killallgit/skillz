@@ -7,12 +7,10 @@ use crate::profile::Entry;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Act {
     Quit,
-    /// Install these entries and remove the installed items with these ids in `scope`, as one
-    /// plan.
-    Change {
+    /// Remove the installed items with these ids in `scope`, as one plan.
+    Remove {
         scope: Scope,
-        install: Vec<Entry>,
-        remove: Vec<String>,
+        ids: Vec<String>,
     },
     /// Bring the installed items with these ids in `scope` to their latest version, as one plan.
     Update {

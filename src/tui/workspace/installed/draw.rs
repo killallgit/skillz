@@ -1,13 +1,13 @@
 //! Drawing the Project and Global tabs: the header line, then the outline in a panel.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, Layout, Margin, Rect};
 use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::header::{self, Comparison};
-use super::rows::{Item, Row, State};
+use super::rows::{Item, Row};
 use super::status::Status;
 use super::{InstalledTab, Popup};
 use crate::apply::Drift;
@@ -21,14 +21,15 @@ use crate::tui::widgets::panel::Panel;
 /// Room per level of depth before a row's caret or status mark.
 pub(super) const INDENT: &str = "  ";
 const SOURCE_WIDTH: u16 = 56;
-const GLOBAL_TAG: &str = "global";
 
 impl InstalledTab {
     pub(super) fn draw_body(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let [head, body] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
         let drift = self.drift();
-        let line = header::line(self.heading(), self.comparison(&drift), head.width, theme);
+        let comparison = self.comparison(&drift);
+        let head_height = u16::from(!matches!(comparison, Comparison::Off));
+        let [head, body] =
+            Layout::vertical([Constraint::Length(head_height), Constraint::Min(1)]).areas(area);
+        let line = header::line(comparison, head.width, theme);
         frame.render_widget(Paragraph::new(line), head);
         self.draw_outline(frame, body, theme);
         match &mut self.popup {
@@ -41,12 +42,11 @@ impl InstalledTab {
                 let inner = modal::open(frame, size, Panel::new("Add from repo"), theme);
                 field.render(frame, inner, theme);
             }
-            Popup::AlsoGlobal(dialog, _) => dialog.render(frame, theme),
             Popup::None | Popup::Filter => {}
         }
     }
 
-    fn heading(&self) -> &str {
+    fn panel_title(&self) -> &str {
         match self.scope {
             Scope::Project => &self.dir,
             Scope::Global => "User-level, all projects",
@@ -62,10 +62,10 @@ impl InstalledTab {
     }
 
     fn draw_outline(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let panel = Panel::new(filter::title("Items", self.outline.query()))
+        let panel = Panel::new(filter::title(self.panel_title(), self.outline.query()))
             .focused(true)
             .badge(self.outline.badge());
-        let inner = panel.render(frame, area, theme);
+        let inner = panel.render(frame, area, theme).inner(Margin::new(1, 1));
         if self.outline.visible().is_empty() {
             return empty::render(frame, inner, self.empty_message(theme));
         }
@@ -84,22 +84,22 @@ impl InstalledTab {
         }
         vec![
             Line::styled("Nothing installed here", theme.text),
-            Line::styled("Add skills to the Library tab to install them", theme.muted),
+            Line::styled("A adds a plugin or skills from a repo", theme.muted),
         ]
     }
 
     fn row_line(&self, id: usize, theme: &Theme) -> Line<'static> {
         match &self.rows[id] {
+            Row::Section(kind) => self.section_line(id, *kind, theme),
             Row::Package(group) => self.group_line(id, group, theme),
             Row::Item(item) => self.item_line(id, item, theme),
-            Row::Owned(owned) => self.owned_line(id, owned, theme),
         }
     }
 
     /// The spinner, tick or cross of a change under way on the row; a space otherwise.
-    fn status_mark(&self, state: &State, theme: &Theme) -> Span<'static> {
+    fn status_mark(&self, id: &str, theme: &Theme) -> Span<'static> {
         let glyphs = &theme.glyphs;
-        match self.statuses.of(state) {
+        match self.statuses.of(id) {
             Some(Status::Working) => {
                 Span::styled(glyphs.frame(self.statuses.ticks()), theme.accent)
             }
@@ -109,45 +109,30 @@ impl InstalledTab {
         }
     }
 
-    fn item_line(&self, id: usize, item: &Item, theme: &Theme) -> Line<'static> {
+    fn item_line(&self, row: usize, item: &Item, theme: &Theme) -> Line<'static> {
         let glyphs = &theme.glyphs;
-        let picked = self.pending.contains(&item.state);
-        let (box_glyph, box_style, text_style, note) = match (&item.state, picked) {
-            (State::Installed(_), false) => (
+        let picked = self.pending.contains(&item.id);
+        let (box_glyph, box_style, text_style) = match picked {
+            false => (
                 glyphs.checked,
                 theme.ok,
                 theme.text.add_modifier(Modifier::BOLD),
-                "",
             ),
-            (State::Available(_), false) => (
-                glyphs.unchecked,
-                theme.muted,
-                theme.muted.add_modifier(Modifier::DIM),
-                "",
-            ),
-            (State::Installed(_), true) => (glyphs.to_remove, theme.warn, theme.warn, "to remove"),
-            (State::Available(_), true) => {
-                (glyphs.to_install, theme.accent, theme.accent, "to install")
-            }
-        };
-        let kind_style = match item.state {
-            State::Installed(_) => theme.kind_style(item.kind).add_modifier(Modifier::BOLD),
-            State::Available(_) => theme.kind_style(item.kind).add_modifier(Modifier::DIM),
+            true => (glyphs.to_remove, theme.warn, theme.warn),
         };
         let mut spans = vec![
-            Span::raw(INDENT.repeat(self.outline.depth(id))),
-            self.status_mark(&item.state, theme),
+            Span::raw(INDENT.repeat(self.outline.depth(row))),
+            self.status_mark(&item.id, theme),
             Span::styled(format!(" {box_glyph} "), box_style),
-            Span::styled(format!("{} ", item.kind.tag()), kind_style),
         ];
-        let outdated = self.is_outdated(&item.state);
+        let outdated = self.is_outdated(&item.id);
         let text_style = match outdated {
             true => text_style.add_modifier(Modifier::BOLD),
             false => text_style,
         };
         spans.extend(filter::highlight(
             &item.label,
-            &self.outline.matched(id),
+            &self.outline.matched(row),
             0,
             text_style,
             theme,
@@ -158,14 +143,11 @@ impl InstalledTab {
         if !item.agents.is_empty() {
             spans.push(Span::styled(format!("  ({})", item.agents), theme.muted));
         }
-        if item.global {
-            spans.push(Span::styled(format!("  {GLOBAL_TAG}"), theme.accent));
-        }
         if !item.detail.is_empty() {
             spans.push(Span::styled(format!("  {}", item.detail), theme.muted));
         }
         if picked {
-            spans.push(Span::styled(format!("  {note}"), text_style));
+            spans.push(Span::styled("  to remove", text_style));
         }
         Line::from(spans)
     }

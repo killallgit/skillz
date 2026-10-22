@@ -25,14 +25,14 @@ impl ItemKind {
         }
     }
 
-    /// The kind padded to one width, so a column of rows lines up: `skill `, `agent `.
-    pub fn tag(self) -> &'static str {
+    /// What several of this kind are called: `skills`, `MCP servers`.
+    pub fn plural(self) -> &'static str {
         match self {
-            ItemKind::Skill => "skill ",
-            ItemKind::Plugin => "plugin",
-            ItemKind::Mcp => "mcp   ",
-            ItemKind::Hook => "hook  ",
-            ItemKind::Subagent => "agent ",
+            ItemKind::Skill => "skills",
+            ItemKind::Plugin => "plugins",
+            ItemKind::Mcp => "MCP servers",
+            ItemKind::Hook => "hooks",
+            ItemKind::Subagent => "agents",
         }
     }
 

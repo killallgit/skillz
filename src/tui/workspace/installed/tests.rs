@@ -1,8 +1,8 @@
 use ratatui::crossterm::event::KeyCode;
 
-use super::rows::tests::{installed, library_skill};
+use super::rows::tests::{installed, plugin_providing_a_skill_and_a_hook};
 use super::*;
-use crate::library::Catalog;
+use crate::library::ItemKind;
 use crate::model::Kind;
 use crate::profile::Entry;
 use crate::tui::widgets::testing::{key, keys, render_to_buffer};
@@ -16,9 +16,12 @@ pub(super) fn model() -> Model {
     }];
     Model {
         dir: "~/app".into(),
-        installed: vec![installed("tdd", Kind::Skill, Some("o/r"))],
+        installed: vec![
+            plugin_providing_a_skill_and_a_hook("p@mp"),
+            installed("tdd", Kind::Skill, Some("o/r")),
+        ],
         global: vec![],
-        library: Catalog::from_items(vec![library_skill("o/r", "grill")]),
+        library: Default::default(),
         profiles: vec![web],
         notice: None,
     }
@@ -39,10 +42,12 @@ pub(super) fn space() -> KeyCode {
     KeyCode::Char(' ')
 }
 
-/// The row of the installed skill in `model()`, first under its package.
-pub(super) const TDD: usize = 1;
-/// The row of the library skill in `model()`, after the installed one in the same package.
-pub(super) const GRILL: usize = 2;
+/// The rows of `model()`: the plugins section, the plugin, the skills section, the `o/r`
+/// package and its skill.
+pub(super) const PLUGINS: usize = 0;
+pub(super) const PLUGIN: usize = 1;
+pub(super) const PACKAGE: usize = 3;
+pub(super) const TDD: usize = 4;
 
 pub(super) fn on_item(tab: &mut InstalledTab, row: usize) {
     tab.outline.select_row(row);
@@ -51,11 +56,12 @@ pub(super) fn on_item(tab: &mut InstalledTab, row: usize) {
 #[test]
 fn enter_on_a_section_closes_and_reopens_it_without_asking_for_anything() {
     let mut tab = loaded();
+    on_item(&mut tab, PLUGINS);
 
     let closed = (press(&mut tab, KeyCode::Enter), tab.outline.visible().len());
     let opened = (press(&mut tab, KeyCode::Enter), tab.outline.visible().len());
 
-    assert_eq!((closed, opened), ((None, 1), (None, 3)));
+    assert_eq!((closed, opened), ((None, 4), (None, 5)));
 }
 
 #[test]
@@ -94,82 +100,62 @@ fn the_filter_prompt_is_offered_while_typing_and_narrows_the_rows() {
     let mut tab = loaded();
 
     press(&mut tab, KeyCode::Char('/'));
-    keys("grill").into_iter().for_each(|k| {
+    keys("tdd").into_iter().for_each(|k| {
         tab.handle(k);
     });
     let typing = tab.prompt().is_some();
     press(&mut tab, KeyCode::Enter);
 
     assert!(typing && tab.prompt().is_none());
-    assert_eq!(tab.outline.visible(), [0, GRILL]);
+    assert_eq!(tab.outline.visible(), [2, PACKAGE, TDD]);
 }
 
 #[test]
-fn a_new_snapshot_keeps_the_cursor_and_the_closed_sections() {
+fn a_new_snapshot_keeps_the_closed_sections() {
     let mut tab = loaded();
+    on_item(&mut tab, PLUGINS);
     press(&mut tab, KeyCode::Enter);
 
     tab.load(&model());
 
-    assert_eq!(tab.outline.visible().len(), 1);
+    assert_eq!(tab.outline.visible().len(), 4);
 }
 
 #[test]
-fn keys_on_a_hook_a_plugin_owns_do_nothing_and_pick_nothing() {
-    let mut plugin = installed("p@mp", Kind::Plugin, Some("mp"));
-    plugin.hooks = vec![crate::hook_text::HookEntry {
-        event: "Stop".into(),
-        matcher: None,
-        command: "say done".into(),
-    }];
-    let mut tab = InstalledTab::project();
-    tab.load_open(&Model {
-        installed: vec![plugin],
-        ..model()
-    });
-    let owned = tab
+fn what_a_plugin_provides_is_not_listed_among_the_skills_or_hooks() {
+    let tab = loaded();
+
+    let skills: Vec<&str> = tab
         .rows
         .iter()
-        .position(|row| matches!(row, Row::Owned(_)))
-        .unwrap();
-    on_item(&mut tab, owned);
-    let visible = tab.outline.visible().len();
+        .filter_map(|row| match row {
+            Row::Item(item) if item.kind == ItemKind::Skill => Some(item.label.as_str()),
+            _ => None,
+        })
+        .collect();
 
-    let acts: Vec<Option<Act>> = [space(), KeyCode::Enter]
-        .into_iter()
-        .chain("iru".chars().map(KeyCode::Char))
+    assert_eq!(skills, ["tdd"]);
+}
+
+#[test]
+fn keys_on_a_section_pick_and_remove_nothing() {
+    let mut tab = loaded();
+    on_item(&mut tab, PLUGINS);
+
+    let acts: Vec<Option<Act>> = "ru"
+        .chars()
+        .map(KeyCode::Char)
         .map(|code| press(&mut tab, code))
         .collect();
+    press(&mut tab, space());
 
     assert!(acts.iter().all(Option::is_none));
     assert!(tab.pending.is_empty());
-    assert_eq!(tab.outline.visible().len(), visible);
 }
 
-#[test]
-fn enter_on_a_plugin_folds_the_skills_it_provides() {
-    let mut plugin = installed("p@mp", Kind::Plugin, Some("mp"));
-    plugin.details = crate::model::Details::Plugin {
-        location: Default::default(),
-        skills: vec!["tdd".into()],
-    };
-    let mut tab = InstalledTab::project();
-    tab.load_open(&Model {
-        installed: vec![plugin],
-        ..Model::default()
-    });
-    let open = tab.outline.visible().len();
-    on_item(&mut tab, 1);
-
-    press(&mut tab, KeyCode::Enter);
-
-    assert_eq!((open, tab.outline.visible().len()), (3, 2));
-}
-
-fn checkboxes(tab: &mut InstalledTab, width: u16, height: u16) -> (usize, usize) {
+fn glyph_counts(tab: &mut InstalledTab, width: u16, height: u16) -> (usize, usize) {
     let theme = Theme::dark();
     let buffer = render_to_buffer(width, height, |f| tab.draw(f, f.area(), &theme));
-    let glyphs = theme.glyphs;
     let count = |glyph: &str| {
         buffer
             .content()
@@ -177,21 +163,16 @@ fn checkboxes(tab: &mut InstalledTab, width: u16, height: u16) -> (usize, usize)
             .filter(|cell| cell.symbol() == glyph)
             .count()
     };
-    (count(glyphs.checked), count(glyphs.unchecked))
+    (count(theme.glyphs.checked), count(theme.glyphs.to_remove))
 }
 
 #[test]
-fn installed_items_draw_checked_and_library_items_unchecked() {
-    let mut tab = loaded();
+fn every_installed_row_draws_checked_at_small_and_large_sizes() {
+    for (width, height) in [(80, 24), (50, 12)] {
+        let mut tab = loaded();
 
-    assert_eq!(checkboxes(&mut tab, 80, 24), (1, 1));
-}
-
-#[test]
-fn a_small_terminal_still_draws_the_rows() {
-    let mut tab = loaded();
-
-    assert_eq!(checkboxes(&mut tab, 50, 12), (1, 1));
+        assert_eq!(glyph_counts(&mut tab, width, height), (2, 0));
+    }
 }
 
 fn type_text(tab: &mut InstalledTab, text: &str) {

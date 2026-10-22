@@ -1,6 +1,6 @@
 use ratatui::crossterm::event::KeyCode;
 
-use super::tests::{GRILL, TDD, loaded, on_item, press};
+use super::tests::{PACKAGE, TDD, loaded, on_item, press};
 use super::*;
 use crate::model::Scope;
 
@@ -28,6 +28,7 @@ fn u_on_an_installed_item_asks_to_update_it() {
 fn u_on_a_package_updates_its_items_whether_expanded_or_collapsed() {
     for expanded in [true, false] {
         let mut tab = loaded();
+        on_item(&mut tab, PACKAGE);
         if !expanded {
             press(&mut tab, KeyCode::Enter);
         }
@@ -46,19 +47,9 @@ fn u_on_a_package_updates_its_items_whether_expanded_or_collapsed() {
 }
 
 #[test]
-fn u_on_a_library_item_that_is_not_installed_does_nothing() {
-    let mut tab = loaded();
-    on_item(&mut tab, GRILL);
-
-    let act = press(&mut tab, u());
-
-    assert_eq!(act, None);
-}
-
-#[test]
 fn u_on_an_item_without_an_update_does_nothing() {
     let mut model = super::tests::model();
-    model.installed[0].installer = crate::model::Installer::Local;
+    model.installed[1].installer = crate::model::Installer::Local;
     let mut tab = InstalledTab::project();
     tab.load(&model);
     on_item(&mut tab, TDD);
@@ -69,9 +60,9 @@ fn u_on_an_item_without_an_update_does_nothing() {
 }
 
 #[test]
-fn u_keeps_the_picks_for_installing_and_removing_separate() {
+fn u_keeps_the_picks() {
     let mut tab = loaded();
-    on_item(&mut tab, GRILL);
+    on_item(&mut tab, TDD);
     press(&mut tab, KeyCode::Char(' '));
 
     press(&mut tab, u());
@@ -115,7 +106,8 @@ fn updating_a_merged_package_selects_each_installed_copy() {
         ..Model::default()
     };
     let mut tab = InstalledTab::project();
-    tab.load(&model);
+    tab.load_open(&model);
+    on_item(&mut tab, 1);
 
     let act = press(&mut tab, u());
 

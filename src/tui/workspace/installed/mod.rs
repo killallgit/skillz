@@ -1,6 +1,6 @@
 //! The Project and Global tabs, one implementation over a scope: what the scope has installed,
-//! by kind, and the library items it could have. Nothing is stored here: the rows are derived
-//! from the agents' own config and the library each time the workspace loads a new snapshot.
+//! by kind, as whole units. Nothing is stored here: the rows are derived from the agents' own
+//! config each time the workspace loads a new snapshot.
 
 mod direct;
 #[cfg(test)]
@@ -15,7 +15,6 @@ mod pending;
 mod picker;
 #[cfg(test)]
 mod picking_tests;
-mod presence;
 mod rows;
 mod status;
 #[cfg(test)]
@@ -32,10 +31,9 @@ use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
-use self::direct::Proposal;
 use self::pending::Pending;
 use self::picker::Picker;
-use self::rows::{Row, Sources, build, shape};
+use self::rows::{Row, build, shape};
 use self::status::Statuses;
 use super::act::Act;
 use super::model::Model;
@@ -46,7 +44,6 @@ use crate::profile::Profile;
 use crate::review::ItemEvent;
 use crate::tui::keymap;
 use crate::tui::theme::Theme;
-use crate::tui::widgets::confirm::ConfirmDialog;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
 
@@ -59,7 +56,6 @@ enum Popup {
     Profiles(Picker),
     /// Typing the repo or path to install from.
     Source(InputField),
-    AlsoGlobal(ConfirmDialog, Proposal),
 }
 
 pub struct InstalledTab {
@@ -134,17 +130,13 @@ impl Tab for InstalledTab {
 
     fn load(&mut self, model: &Model) {
         self.dir = model.dir.clone();
-        let (here, also_global) = match self.scope {
-            Scope::Project => (&model.installed, &model.global[..]),
-            Scope::Global => (&model.global, &[][..]),
+        let here = match self.scope {
+            Scope::Project => &model.installed,
+            Scope::Global => &model.global,
         };
         self.installed = here.clone();
         self.profiles = model.profiles.clone();
-        self.rows = build(&Sources {
-            here,
-            also_global,
-            library: &model.library,
-        });
+        self.rows = build(here);
         self.pending.keep_existing(&self.rows);
         self.statuses.clear();
         self.outline.reshape(shape(&self.rows));

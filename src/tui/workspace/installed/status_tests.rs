@@ -1,6 +1,5 @@
 use ratatui::crossterm::event::KeyCode;
 
-use super::rows::State;
 use super::tests::{loaded, press};
 use super::*;
 use crate::review::{Phase, Target};
@@ -9,14 +8,12 @@ use crate::tui::widgets::testing::render_to_buffer;
 
 const WIDTH: u16 = 80;
 
-fn grill() -> crate::profile::Entry {
-    super::rows::tests::library_skill("o/r", "grill").entry
-}
+const TDD_ID: &str = "skill:tdd";
 
 fn event(phase: Phase) -> ItemEvent {
     ItemEvent {
-        target: Target::Install(grill()),
-        label: "grill".into(),
+        target: Target::Remove(TDD_ID.into()),
+        label: "tdd".into(),
         phase,
     }
 }
@@ -37,7 +34,7 @@ fn row_of(tab: &mut InstalledTab, glyphs: Glyphs, label: &str) -> String {
 }
 
 fn mark_before_label(row: &str, mark: &str) -> bool {
-    matches!((row.find(mark), row.find("grill")), (Some(m), Some(l)) if m < l)
+    matches!((row.find(mark), row.find("tdd")), (Some(m), Some(l)) if m < l)
 }
 
 #[test]
@@ -47,7 +44,7 @@ fn a_row_in_flight_shows_the_spinner_left_of_its_name_in_both_glyph_sets() {
         tab.note(&event(Phase::Started));
         let frame = glyphs.frame(tab.statuses.ticks());
 
-        let row = row_of(&mut tab, glyphs, "grill");
+        let row = row_of(&mut tab, glyphs, "tdd");
 
         assert!(mark_before_label(&row, frame));
     }
@@ -62,7 +59,7 @@ fn a_finished_row_shows_a_tick_or_a_cross_instead() {
         let mut tab = loaded();
         tab.note(&event(phase));
 
-        let row = row_of(&mut tab, Glyphs::ASCII, "grill");
+        let row = row_of(&mut tab, Glyphs::ASCII, "tdd");
 
         assert!(mark_before_label(&row, mark));
     }
@@ -75,7 +72,7 @@ fn the_marks_go_away_on_the_next_key() {
 
     press(&mut tab, KeyCode::Down);
 
-    assert_eq!(tab.statuses.of(&State::Available(grill())), None);
+    assert_eq!(tab.statuses.of(TDD_ID), None);
 }
 
 #[test]
@@ -85,5 +82,5 @@ fn the_marks_go_away_with_the_next_snapshot() {
 
     tab.load(&super::tests::model());
 
-    assert_eq!(tab.statuses.of(&State::Available(grill())), None);
+    assert_eq!(tab.statuses.of(TDD_ID), None);
 }

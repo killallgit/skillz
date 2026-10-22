@@ -13,12 +13,11 @@ impl Session<'_, '_> {
     pub(in crate::cli) fn perform(&self, act: Act) -> anyhow::Result<Option<Notice>> {
         let what = match &act {
             Act::Quit => return Ok(None),
-            Act::Change {
-                scope,
-                install,
-                remove,
-            } => {
-                let picked = Selection { install, remove };
+            Act::Remove { scope, ids } => {
+                let picked = Selection {
+                    install: &[],
+                    remove: ids,
+                };
                 return change(self, *scope, &Change::Selection(&picked));
             }
             Act::Update { scope, ids } => return change(self, *scope, &Change::Update(ids)),

@@ -3,7 +3,7 @@
 use ratatui::crossterm::event::KeyEvent;
 
 use super::picker::{Pick, Picker};
-use super::rows::{Row, State, items_of};
+use super::rows::{Row, items_of};
 use super::{InstalledTab, Popup};
 use crate::tui::keymap::{self, Action};
 use crate::tui::widgets::input::{InputField, Outcome as Edit};
@@ -19,7 +19,6 @@ impl InstalledTab {
             Popup::Filter => self.handle_filter(key),
             Popup::Profiles(picker) => self.handle_picker(picker, key),
             Popup::Source(field) => self.handle_source(field, key),
-            Popup::AlsoGlobal(dialog, proposal) => self.handle_also_global(dialog, proposal, key),
         }
     }
 
@@ -33,7 +32,6 @@ impl InstalledTab {
                 return self.compare.clone().map(|profile| Act::Apply { profile });
             }
             Action::Update => return self.update(),
-            Action::Install => return self.install_current(),
             Action::AddSource => self.popup = Popup::Source(InputField::new(SOURCE_PLACEHOLDER)),
             Action::Remove => return self.remove_current(),
             Action::Toggle => self.toggle(),
@@ -59,7 +57,7 @@ impl InstalledTab {
     fn toggle(&mut self) {
         match self.acted_on().as_slice() {
             [] => self.fold(),
-            states => self.pending.toggle_all(states),
+            ids => self.pending.toggle_all(ids),
         }
     }
 
@@ -69,20 +67,25 @@ impl InstalledTab {
             self.fold();
             return None;
         }
-        let (install, remove) = self.pending.picks();
-        self.propose(install, remove)
+        let scope = self.scope;
+        Some(Act::Remove {
+            scope,
+            ids: self.pending.picks(),
+        })
     }
 
-    pub(super) fn acted_on(&self) -> Vec<State> {
+    /// The ids of the highlighted item, or of the items in the highlighted package. A section
+    /// is no unit to act on.
+    pub(super) fn acted_on(&self) -> Vec<String> {
         let Some(at) = self.outline.current() else {
             return vec![];
         };
         match &self.rows[at] {
-            Row::Item(item) => vec![item.state.clone()],
+            Row::Item(item) => vec![item.id.clone()],
             Row::Package(_) => items_of(&self.rows, at)
-                .map(|item| item.state.clone())
+                .map(|item| item.id.clone())
                 .collect(),
-            Row::Owned(_) => vec![],
+            Row::Section(_) => vec![],
         }
     }
 
