@@ -68,13 +68,15 @@ pub enum Action {
     NextTab,
     PrevTab,
     GoTab(u8),
-    PickProfile,
     ApplyProfile,
+    /// Choose which entries of the applied profile the project keeps.
+    PickSubset,
+    /// Remove everything the project has.
+    Clear,
     Add,
     Import,
     Delete,
     NewProfile,
-    ApplyExact,
     SaveCurrent,
     Build,
     Update,
@@ -166,8 +168,9 @@ pub const BINDINGS: &[Binding] = &[
     bind(Installed, A::Select, &[plain(KeyCode::Enter)], "enter", "apply picks / fold", 2),
     bind(Installed, A::AddSource, &[ch('A')], "A", "add from repo", 9),
     bind(Installed, A::Remove, &[ch('r')], "r", "remove", 4),
-    bind(Project, A::PickProfile, &[ch('p')], "p", "compare", 5),
-    bind(Project, A::ApplyProfile, &[ch('a')], "a", "replace with profile", 6),
+    bind(Project, A::ApplyProfile, &[ch('a')], "a", "apply profile", 3),
+    bind(Project, A::PickSubset, &[ch('p')], "p", "keep from profile", 5),
+    bind(Project, A::Clear, &[ch('c')], "c", "clear", 6),
     bind(Project, A::SaveCurrent, &[ch('s')], "s", "save as profile", 10),
     bind(Installed, A::Update, &[ch('u')], "u", "update", 7),
     bind(Installed, A::Filter, &[ch('/')], "/", "filter", 8),
@@ -181,13 +184,10 @@ pub const BINDINGS: &[Binding] = &[
     bind(Library, A::Select, &[plain(KeyCode::Enter)], "enter", "expand", 0),
     bind(Library, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
     bind(Library, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
-    bind(Profiles, A::ApplyProfile, &[plain(KeyCode::Enter), ch('a')], "enter a", "apply", 1),
+    bind(Profiles, A::Build, &[plain(KeyCode::Enter), ch('e')], "enter e", "edit", 1),
     bind(Profiles, A::NewProfile, &[ch('n')], "n", "new", 2),
-    bind(Profiles, A::Build, &[ch('b')], "b", "edit", 3),
-    bind(Profiles, A::ApplyExact, &[ch('e')], "e", "apply exactly", 4),
-    bind(Profiles, A::SaveCurrent, &[ch('s')], "s", "save project", 5),
-    bind(Profiles, A::Delete, &[ch('x')], "x", "delete", 6),
-    bind(Profiles, A::Filter, &[ch('/')], "/", "filter", 7),
+    bind(Profiles, A::Delete, &[ch('x')], "x", "delete", 3),
+    bind(Profiles, A::Filter, &[ch('/')], "/", "filter", 4),
     bind(Profiles, A::Toggle, &[ch(' ')], "space", "expand", 0),
     bind(Profiles, A::Left, &[plain(KeyCode::Left), ch('h')], "", "", 0),
     bind(Profiles, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
@@ -321,7 +321,7 @@ mod tests {
         let project = press(Project, 'p');
         let tree = press(Tree, 'p');
 
-        assert_eq!((project, tree), (Some(Action::PickProfile), None));
+        assert_eq!((project, tree), (Some(Action::PickSubset), None));
     }
 
     #[test]
@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn a_tab_binds_the_keys_of_all_its_scopes_and_the_global_tab_has_no_profile_keys() {
         let project = [Installed, Project];
-        let keys = ['r', 'p', 'a'];
+        let keys = ['r', 'p', 'a', 'c'];
 
         let on_project = keys.map(|c| resolve_in(&project, key(KeyCode::Char(c))));
         let on_global = keys.map(|c| resolve_in(&[Installed], key(KeyCode::Char(c))));
@@ -382,11 +382,12 @@ mod tests {
             on_project,
             [
                 Some(Action::Remove),
-                Some(Action::PickProfile),
-                Some(Action::ApplyProfile)
+                Some(Action::PickSubset),
+                Some(Action::ApplyProfile),
+                Some(Action::Clear)
             ]
         );
-        assert_eq!(on_global, [Some(Action::Remove), None, None]);
+        assert_eq!(on_global, [Some(Action::Remove), None, None, None]);
     }
 
     #[test]
@@ -434,17 +435,16 @@ mod tests {
 
     #[test]
     fn each_profile_key_means_its_own_action() {
-        let keys = ['n', 'b', 'e', 's', 'x', 'a'].map(|c| press(Profiles, c));
+        let keys = ['n', 'e', 'x', 'a', 's'].map(|c| press(Profiles, c));
 
         assert_eq!(
             keys,
             [
                 Some(Action::NewProfile),
                 Some(Action::Build),
-                Some(Action::ApplyExact),
-                Some(Action::SaveCurrent),
                 Some(Action::Delete),
-                Some(Action::ApplyProfile)
+                None,
+                None
             ]
         );
     }
@@ -480,6 +480,6 @@ mod tests {
 
         // Assert overlapping bindings follow the scope order supplied by the caller.
         assert_eq!(picker_first, Some(Action::Select));
-        assert_eq!(profiles_first, Some(Action::ApplyProfile));
+        assert_eq!(profiles_first, Some(Action::Build));
     }
 }

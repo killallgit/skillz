@@ -33,7 +33,8 @@ impl InstalledTab {
         frame.render_widget(Paragraph::new(line), head);
         self.draw_outline(frame, body, theme);
         match &mut self.popup {
-            Popup::Profiles(picker) | Popup::Apply(picker) => picker.render(frame, theme),
+            Popup::Apply(picker) => picker.render(frame, theme),
+            Popup::Subset(subset) => subset.render(frame, theme),
             Popup::Save(field) => {
                 let size = ModalSize {
                     width: SOURCE_WIDTH.min(frame.area().width),

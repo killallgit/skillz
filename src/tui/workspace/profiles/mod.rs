@@ -5,7 +5,6 @@
 mod draw;
 mod editor;
 mod keys;
-mod naming;
 mod rows;
 #[cfg(test)]
 mod tests;
@@ -15,7 +14,6 @@ use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
 use self::editor::Editor;
-use self::naming::Naming;
 use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
@@ -34,7 +32,6 @@ enum Popup {
     #[default]
     None,
     Filter,
-    Name(Naming),
     Edit(Box<Editor>),
     /// Deleting the named profile, once confirmed.
     Delete(String, ConfirmDialog),

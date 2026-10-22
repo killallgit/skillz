@@ -3,7 +3,6 @@
 use ratatui::crossterm::event::KeyEvent;
 
 use super::editor::{Choice, Editor};
-use super::naming::Naming;
 use super::{Popup, ProfilesTab};
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::confirm::{ConfirmDialog, Outcome as Answer};
@@ -15,7 +14,6 @@ impl ProfilesTab {
         match std::mem::take(&mut self.popup) {
             Popup::None => self.handle_idle(key),
             Popup::Filter => self.handle_filter(key),
-            Popup::Name(naming) => self.handle_name(naming, key),
             Popup::Edit(editor) => self.handle_editor(editor, key),
             Popup::Delete(name, dialog) => self.handle_delete(name, dialog, key),
         }
@@ -25,18 +23,9 @@ impl ProfilesTab {
         match keymap::resolve(Scope::Profiles, key)? {
             Action::Filter => self.popup = Popup::Filter,
             Action::Back if self.list.is_filtered() => self.clear_filter(),
-            Action::ApplyProfile => {
-                return self.current_name().map(|profile| Act::Apply { profile });
-            }
-            Action::ApplyExact => {
-                return self
-                    .current_name()
-                    .map(|profile| Act::ApplyExact { profile });
-            }
             Action::NewProfile => {
                 self.popup = Popup::Edit(Box::new(Editor::creating(&self.library)));
             }
-            Action::SaveCurrent => self.popup = Popup::Name(Naming::new()),
             Action::Build => self.open_editor(),
             Action::Delete => self.ask_delete(),
             movement => self.move_cursor(movement),
@@ -72,17 +61,6 @@ impl ProfilesTab {
             Popup::None
         };
         None
-    }
-
-    fn handle_name(&mut self, mut naming: Naming, key: KeyEvent) -> Option<Act> {
-        match naming.field.handle(key) {
-            Edit::Editing => {
-                self.popup = Popup::Name(naming);
-                None
-            }
-            Edit::Submit => naming.act(),
-            Edit::Cancel => None,
-        }
     }
 
     fn handle_editor(&mut self, mut editor: Box<Editor>, key: KeyEvent) -> Option<Act> {

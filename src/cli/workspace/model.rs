@@ -29,6 +29,7 @@ pub(super) fn snapshot(session: &Session, notice: Option<Notice>) -> anyhow::Res
             .into_iter()
             .map(|profile| profile.in_env(&env))
             .collect(),
+        applied: session.applied(),
         notice: notice.or(problem).map(|n| n.to_string()),
     })
 }

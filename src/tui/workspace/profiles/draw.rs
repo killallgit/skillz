@@ -17,7 +17,6 @@ impl ProfilesTab {
     pub(super) fn draw_body(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         self.draw_list(frame, area, theme);
         match &mut self.popup {
-            Popup::Name(naming) => naming.render(frame, theme),
             Popup::Edit(editor) => editor.render(frame, theme),
             Popup::Delete(_, dialog) => dialog.render(frame, theme),
             Popup::None | Popup::Filter => {}

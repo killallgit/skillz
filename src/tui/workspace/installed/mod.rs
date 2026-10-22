@@ -19,6 +19,7 @@ mod rows;
 mod status;
 #[cfg(test)]
 mod status_tests;
+mod subset;
 #[cfg(test)]
 mod tests;
 mod update;
@@ -35,6 +36,7 @@ use self::pending::Pending;
 use self::picker::Picker;
 use self::rows::{Row, build, shape};
 use self::status::Statuses;
+use self::subset::Subset;
 use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
@@ -53,9 +55,10 @@ enum Popup {
     #[default]
     None,
     Filter,
-    Profiles(Picker),
-    /// Choosing the profile that replaces everything in the scope.
+    /// Choosing the profile to apply, and how.
     Apply(Picker),
+    /// Choosing which entries of the applied profile the project keeps.
+    Subset(Subset),
     /// Typing the name to save what is installed as a profile.
     Save(InputField),
     /// Typing the repo or path to install from.
@@ -70,8 +73,8 @@ pub struct InstalledTab {
     rows: Vec<Row>,
     outline: Outline,
     pending: Pending,
-    /// The profile the header compares the project with.
-    compare: Option<String>,
+    /// The profile last applied to the project, which the header compares it with.
+    applied: Option<String>,
     popup: Popup,
     /// Ids of installed items the background check found newer versions of.
     outdated: BTreeSet<String>,
@@ -103,17 +106,20 @@ impl InstalledTab {
             rows: vec![],
             outline: Outline::new(vec![]),
             pending: Pending::default(),
-            compare: None,
+            applied: None,
             popup: Popup::None,
             outdated: BTreeSet::new(),
             statuses: Statuses::default(),
         }
     }
 
+    fn applied_profile(&self) -> Option<&Profile> {
+        let name = self.applied.as_deref()?;
+        self.profiles.iter().find(|p| p.name == name)
+    }
+
     fn drift(&self) -> Option<Drift> {
-        let name = self.compare.as_deref()?;
-        let profile = self.profiles.iter().find(|p| p.name == name)?;
-        Some(drift(profile, &self.installed))
+        Some(drift(self.applied_profile()?, &self.installed))
     }
 }
 
@@ -140,6 +146,7 @@ impl Tab for InstalledTab {
         };
         self.installed = here.clone();
         self.profiles = model.profiles.clone();
+        self.applied.clone_from(&model.applied);
         self.rows = build(here);
         self.pending.keep_existing(&self.rows);
         self.statuses.clear();

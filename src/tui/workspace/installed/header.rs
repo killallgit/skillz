@@ -35,7 +35,7 @@ pub(super) fn segments(comparison: Comparison, theme: &Theme) -> Vec<Segment> {
     let mut shown = vec![];
     match comparison {
         Comparison::Off => {}
-        Comparison::Unchosen => shown.push(seg("no profile compared", theme.muted)),
+        Comparison::Unchosen => shown.push(seg("no profile applied", theme.muted)),
         Comparison::With(d) if d.matches() => shown.push(seg(
             format!("{} matches {}", theme.glyphs.loaded, d.profile),
             theme.ok,

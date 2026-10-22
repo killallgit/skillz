@@ -13,7 +13,7 @@ use super::profile::profile_command;
 use super::prune::prune;
 use super::removal::{UninstallRequest, reset, uninstall};
 use super::scope::{Scene, resolve, resolve_project, split_target};
-use super::session::{Change, Session, change, with_session};
+use super::session::{Change, Session, with_session};
 use super::sync::{SyncRequest, sync};
 use super::update::{UpdateRequest, check, update};
 use crate::install::{InstallRequest, SkillSelection};
@@ -117,7 +117,7 @@ fn run_use(deps: &Deps, args: UseArgs, out: &mut dyn Write) -> anyhow::Result<()
         Change::Apply(&args.profile)
     };
     with_session(deps, &env, out, args.dry_run, |session, console| {
-        console.conclude(change(session, Scope::Project, &what)?)
+        console.conclude(session.apply(&args.profile, &what)?)
     })
 }
 

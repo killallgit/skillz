@@ -23,6 +23,7 @@ pub(super) fn model() -> Model {
         global: vec![],
         library: Default::default(),
         profiles: vec![web],
+        applied: None,
         notice: None,
     }
 }
@@ -112,7 +113,7 @@ fn s_names_a_profile_saved_from_what_the_project_has() {
 fn the_picker_takes_every_key_until_it_closes() {
     let mut tab = loaded();
 
-    press(&mut tab, KeyCode::Char('p'));
+    press(&mut tab, KeyCode::Char('a'));
     let open = tab.captures_keys();
     press(&mut tab, KeyCode::Esc);
 
@@ -282,4 +283,86 @@ fn the_save_prompt_trims_the_name_stays_open_while_blank_and_escape_closes_it() 
         })
     );
     assert_eq!((escaped, tab.captures_keys()), (None, false));
+}
+
+fn applied_tab() -> InstalledTab {
+    let mut tab = InstalledTab::project();
+    tab.load_open(&Model {
+        applied: Some("web".into()),
+        ..model()
+    });
+    tab
+}
+
+#[test]
+fn the_header_compares_with_the_applied_profile() {
+    let tab = applied_tab();
+
+    let drift = tab.drift();
+
+    assert_eq!(
+        drift.map(|d| (d.profile, d.missing)),
+        Some(("web".into(), 1))
+    );
+}
+
+#[test]
+fn m_in_the_apply_list_adds_what_is_missing_instead_of_replacing() {
+    let mut tab = applied_tab();
+
+    press(&mut tab, KeyCode::Char('a'));
+    press(&mut tab, KeyCode::Char('m'));
+    let chosen = press(&mut tab, KeyCode::Enter);
+
+    assert_eq!(
+        chosen,
+        Some(Act::Apply {
+            profile: "web".into()
+        })
+    );
+}
+
+#[test]
+fn c_removes_every_item_the_project_has() {
+    let mut tab = loaded();
+
+    let act = press(&mut tab, KeyCode::Char('c'));
+
+    assert_eq!(
+        act,
+        Some(Act::Remove {
+            scope: Scope::Project,
+            ids: vec!["plugin:p@mp".into(), "skill:tdd".into()]
+        })
+    );
+}
+
+#[test]
+fn c_on_an_empty_project_does_nothing() {
+    let mut tab = InstalledTab::project();
+    tab.load(&Model::default());
+
+    assert_eq!(press(&mut tab, KeyCode::Char('c')), None);
+}
+
+#[test]
+fn p_keeps_the_checked_entries_of_the_applied_profile() {
+    let mut tab = applied_tab();
+
+    press(&mut tab, KeyCode::Char('p'));
+    let open = tab.captures_keys();
+    press(&mut tab, space());
+    let act = press(&mut tab, KeyCode::Enter);
+
+    assert!(open && !tab.captures_keys());
+    assert!(matches!(act, Some(Act::Subset { .. })));
+}
+
+#[test]
+fn p_without_an_applied_profile_opens_nothing() {
+    let mut tab = loaded();
+
+    press(&mut tab, KeyCode::Char('p'));
+
+    assert!(!tab.captures_keys());
 }

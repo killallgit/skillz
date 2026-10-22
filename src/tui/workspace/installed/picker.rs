@@ -1,9 +1,11 @@
-//! The popup that chooses a profile: the one the project is compared with, or the one to
-//! replace the project with.
+//! The popup that chooses the profile to apply to the project, and whether it replaces what is
+//! there or only adds what is missing.
 
 use ratatui::Frame;
-use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::layout::{Constraint, Layout};
 use ratatui::text::Line;
+use ratatui::widgets::Paragraph;
 
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
@@ -11,15 +13,17 @@ use crate::tui::widgets::list::ListView;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
 
-const WIDTH: u16 = 36;
-const NO_PROFILE: &str = "(no profile)";
+const WIDTH: u16 = 44;
 
 /// What a key did to the picker.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Pick {
     Open,
-    /// A profile, or `None` for no comparison.
-    Chosen(Option<String>),
+    /// Apply `profile`; with `exact`, remove what it does not hold.
+    Chosen {
+        profile: String,
+        exact: bool,
+    },
     Closed,
 }
 
@@ -27,38 +31,36 @@ pub(super) enum Pick {
 pub(super) struct Picker {
     names: Vec<String>,
     list: ListView,
-    title: &'static str,
-    /// Whether the first row is "(no profile)".
-    none_row: bool,
+    exact: bool,
 }
 
 impl Picker {
-    /// The cursor starts on `current`, when it is one of `names`.
+    /// The cursor starts on `current`, when it is one of `names`. Applying replaces by default.
     pub fn new(names: Vec<String>, current: Option<&str>) -> Self {
-        let mut list = ListView::new(names.len() + 1);
-        let at = names.iter().position(|n| Some(n.as_str()) == current);
-        list.select(at.map_or(0, |at| at + 1));
+        let mut list = ListView::new(names.len());
+        list.select(
+            names
+                .iter()
+                .position(|n| Some(n.as_str()) == current)
+                .unwrap_or(0),
+        );
         Picker {
             names,
             list,
-            title: "Compare with",
-            none_row: true,
-        }
-    }
-
-    /// A list of just the profiles, to pick the one to apply.
-    pub fn applying(names: Vec<String>) -> Self {
-        Picker {
-            list: ListView::new(names.len()),
-            names,
-            title: "Replace the project with",
-            none_row: false,
+            exact: true,
         }
     }
 
     pub fn handle(&mut self, key: KeyEvent) -> Pick {
+        if key.code == KeyCode::Char('m') {
+            self.exact = !self.exact;
+            return Pick::Open;
+        }
         match keymap::resolve(Scope::Common, key) {
-            Some(Action::Select) => Pick::Chosen(self.chosen()),
+            Some(Action::Select) => self.chosen().map_or(Pick::Open, |profile| Pick::Chosen {
+                profile,
+                exact: self.exact,
+            }),
             Some(Action::Back) => Pick::Closed,
             Some(movement) => {
                 self.list.apply(movement);
@@ -69,35 +71,34 @@ impl Picker {
     }
 
     fn chosen(&self) -> Option<String> {
-        let at = self
-            .list
-            .selected()?
-            .checked_sub(usize::from(self.none_row))?;
-        self.names.get(at).cloned()
+        self.names.get(self.list.selected()?).cloned()
     }
 
     pub fn render(&mut self, frame: &mut Frame, theme: &Theme) {
         let size = ModalSize {
-            width: WIDTH,
-            height: (self.names.len() as u16 + u16::from(self.none_row) + 2)
-                .min(frame.area().height),
+            width: WIDTH.min(frame.area().width),
+            height: (self.names.len() as u16 + 4).min(frame.area().height),
         };
-        let inner = modal::open(frame, size, Panel::new(self.title), theme);
-        let rows: Vec<Line<'static>> = self
-            .none_row
-            .then_some(NO_PROFILE)
-            .into_iter()
-            .chain(self.names.iter().map(String::as_str))
-            .map(|name| Line::from(name.to_string()))
-            .collect();
-        self.list.render(frame, inner, &rows, theme);
+        let inner = modal::open(frame, size, Panel::new("Apply profile"), theme);
+        let [rows, _, mode] = Layout::vertical([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .areas(inner);
+        let lines: Vec<Line<'static>> = self.names.iter().map(|n| Line::from(n.clone())).collect();
+        self.list.render(frame, rows, &lines, theme);
+        let what = match self.exact {
+            true => "replace everything",
+            false => "add what is missing",
+        };
+        let line = Line::styled(format!("m  {what}"), theme.muted);
+        frame.render_widget(Paragraph::new(line), mode);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ratatui::crossterm::event::KeyCode;
-
     use super::*;
     use crate::tui::widgets::testing::key;
 
@@ -105,35 +106,46 @@ mod tests {
         Picker::new(vec!["api".into(), "web".into()], current)
     }
 
+    fn chosen(profile: &str, exact: bool) -> Pick {
+        Pick::Chosen {
+            profile: profile.into(),
+            exact,
+        }
+    }
+
     #[test]
-    fn enter_chooses_the_profile_under_the_cursor() {
+    fn enter_replaces_with_the_profile_under_the_cursor() {
         let mut picker = picker(None);
 
         picker.handle(key(KeyCode::Down));
-        picker.handle(key(KeyCode::Down));
         let pick = picker.handle(key(KeyCode::Enter));
 
-        assert_eq!(pick, Pick::Chosen(Some("web".into())));
+        assert_eq!(pick, chosen("web", true));
     }
 
     #[test]
-    fn the_first_row_chooses_no_profile() {
+    fn m_switches_between_replacing_and_adding() {
+        let mut picker = picker(None);
+
+        picker.handle(key(KeyCode::Char('m')));
+        let adding = picker.handle(key(KeyCode::Enter));
+        picker.handle(key(KeyCode::Char('m')));
+        let replacing = picker.handle(key(KeyCode::Enter));
+
+        assert_eq!(
+            (adding, replacing),
+            (chosen("api", false), chosen("api", true))
+        );
+    }
+
+    #[test]
+    fn the_cursor_starts_on_the_applied_profile_and_escape_closes() {
         let mut picker = picker(Some("web"));
-
-        picker.handle(key(KeyCode::Home));
-        let pick = picker.handle(key(KeyCode::Enter));
-
-        assert_eq!(pick, Pick::Chosen(None));
-    }
-
-    #[test]
-    fn the_cursor_starts_on_the_current_profile_and_escape_closes() {
-        let mut picker = picker(Some("api"));
 
         let pick = picker.handle(key(KeyCode::Enter));
         let closed = picker.handle(key(KeyCode::Esc));
 
-        assert_eq!(pick, Pick::Chosen(Some("api".into())));
+        assert_eq!(pick, chosen("web", true));
         assert_eq!(closed, Pick::Closed);
     }
 }

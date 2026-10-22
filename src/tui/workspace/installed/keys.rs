@@ -4,6 +4,7 @@ use ratatui::crossterm::event::KeyEvent;
 
 use super::picker::{Pick, Picker};
 use super::rows::{Row, items_of};
+use super::subset::{Choice, Subset};
 use super::{InstalledTab, Popup};
 use crate::tui::keymap::{self, Action};
 use crate::tui::widgets::input::{InputField, Outcome as Edit};
@@ -18,8 +19,8 @@ impl InstalledTab {
         match std::mem::take(&mut self.popup) {
             Popup::None => self.handle_idle(key),
             Popup::Filter => self.handle_filter(key),
-            Popup::Profiles(picker) => self.handle_picker(picker, key),
             Popup::Apply(picker) => self.handle_apply(picker, key),
+            Popup::Subset(subset) => self.handle_subset(subset, key),
             Popup::Save(field) => self.handle_save(field, key),
             Popup::Source(field) => self.handle_source(field, key),
         }
@@ -30,8 +31,9 @@ impl InstalledTab {
             Action::Filter => self.popup = Popup::Filter,
             Action::Back if !self.pending.is_empty() => self.pending.clear(),
             Action::Back if self.outline.is_filtered() => self.outline.clear_filter(),
-            Action::PickProfile => self.open_picker(),
             Action::ApplyProfile => self.open_apply(),
+            Action::PickSubset => self.open_subset(),
+            Action::Clear => return self.clear(),
             Action::SaveCurrent => self.popup = Popup::Save(InputField::new(NAME_PLACEHOLDER)),
             Action::Update => return self.update(),
             Action::AddSource => self.popup = Popup::Source(InputField::new(SOURCE_PLACEHOLDER)),
@@ -51,16 +53,33 @@ impl InstalledTab {
         (!ids.is_empty()).then_some(Act::Update { scope, ids })
     }
 
-    fn open_picker(&mut self) {
-        let names = self.profiles.iter().map(|p| p.name.clone()).collect();
-        self.popup = Popup::Profiles(Picker::new(names, self.compare.as_deref()));
-    }
-
     fn open_apply(&mut self) {
         if !self.profiles.is_empty() {
             let names = self.profiles.iter().map(|p| p.name.clone()).collect();
-            self.popup = Popup::Apply(Picker::applying(names));
+            self.popup = Popup::Apply(Picker::new(names, self.applied.as_deref()));
         }
+    }
+
+    fn open_subset(&mut self) {
+        if let Some(profile) = self.applied_profile() {
+            self.popup = Popup::Subset(Subset::of(profile, &self.installed));
+        }
+    }
+
+    /// Remove everything the project has, as one plan.
+    fn clear(&self) -> Option<Act> {
+        let ids: Vec<String> = self
+            .rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Item(item) => Some(item.id.clone()),
+                _ => None,
+            })
+            .collect();
+        (!ids.is_empty()).then_some(Act::Remove {
+            scope: self.scope,
+            ids,
+        })
     }
 
     fn toggle(&mut self) {
@@ -136,12 +155,28 @@ impl InstalledTab {
         None
     }
 
-    /// The chosen profile replaces everything in the scope, after a plan to review.
+    /// The chosen profile is applied, after a plan to review.
     fn handle_apply(&mut self, mut picker: Picker, key: KeyEvent) -> Option<Act> {
         match picker.handle(key) {
             Pick::Open => self.popup = Popup::Apply(picker),
-            Pick::Chosen(profile) => return profile.map(|profile| Act::ApplyExact { profile }),
+            Pick::Chosen {
+                profile,
+                exact: true,
+            } => return Some(Act::ApplyExact { profile }),
+            Pick::Chosen {
+                profile,
+                exact: false,
+            } => return Some(Act::Apply { profile }),
             Pick::Closed => {}
+        }
+        None
+    }
+
+    fn handle_subset(&mut self, mut subset: Subset, key: KeyEvent) -> Option<Act> {
+        match subset.handle(key, &self.installed) {
+            Choice::Open => self.popup = Popup::Subset(subset),
+            Choice::Done(act) => return Some(act),
+            Choice::Closed => {}
         }
         None
     }
@@ -158,15 +193,6 @@ impl InstalledTab {
                 return Some(Act::SaveCurrent { name });
             }
             Edit::Cancel => {}
-        }
-        None
-    }
-
-    fn handle_picker(&mut self, mut picker: Picker, key: KeyEvent) -> Option<Act> {
-        match picker.handle(key) {
-            Pick::Open => self.popup = Popup::Profiles(picker),
-            Pick::Chosen(profile) => self.compare = profile,
-            Pick::Closed => {}
         }
         None
     }

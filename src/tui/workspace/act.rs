@@ -37,6 +37,12 @@ pub enum Act {
     ApplyExact {
         profile: String,
     },
+    /// Make the project hold these entries of its profile and not the rest of it: install the
+    /// entries, remove the installed items with these ids.
+    Subset {
+        install: Vec<Entry>,
+        remove: Vec<String>,
+    },
     /// Make a profile of this name holding these entries.
     CreateProfile {
         name: String,

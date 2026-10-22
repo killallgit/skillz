@@ -1,6 +1,7 @@
 //! Bring a scope to a profile: install what the inventory lacks of its entries and, when asked
-//! to be exact, remove what it holds that the profile does not want. Which profile a directory
-//! has loaded is never stored; it is read off the inventory (`standing`).
+//! to be exact, remove what it holds that the profile does not want. What a directory holds is
+//! always read off the inventory (`standing`); the profile last applied is only remembered, by
+//! name, so the workspace can say what the directory drifted from.
 
 mod drift;
 #[cfg(test)]
@@ -15,7 +16,7 @@ mod tests;
 
 pub use drift::{Drift, drift};
 pub use run::{Report, Watch};
-pub use standing::{Standing, compare, holds, loaded};
+pub use standing::{Standing, compare, holds, loaded, only_wanted_by};
 pub use switch::Switch;
 
 use crate::agents::{self, AgentAdapter};
