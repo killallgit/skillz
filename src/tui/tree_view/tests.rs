@@ -226,7 +226,7 @@ fn the_menu_is_drawn_over_the_list() {
     let buffer = render_to_buffer(40, 12, |f| s.draw("t", f, &theme));
 
     // The modal's top-left corner is a rounded border cell, centred on the screen.
-    assert_eq!(buffer[(8, 3)].symbol(), "╭");
+    assert_eq!(buffer[(6, 2)].symbol(), "╭");
 }
 
 #[test]
