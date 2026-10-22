@@ -273,7 +273,8 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   with it: matching, or `N missing` / `N extra` (`no profile applied` before the first apply). Picked rows get their own marker and a `to remove` note, and each
   section or package shows its count of picks. `space`, `r` and `u` on a package row act on
   everything in it (the plan shows what, and nothing happens until you confirm it); on an item
-  row they act on that item; on a section `space` folds it, `r` marks every item in it for removal and `u` does nothing. A thing installed for
+  row they act on that item; on a section `space` folds it, `r` marks every item in it for removal
+  and `u` does nothing. A thing installed for
   several agents (a subagent for Claude and Codex, say) is one row naming its agents, `claude,
   codex`, or `claude, codex +2` when there are many; removing it removes every copy. A filter
   keeps the section structure and hides rows with no match. Removals and updates on Global act on

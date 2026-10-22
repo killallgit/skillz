@@ -43,7 +43,7 @@ impl Session<'_, '_> {
         Ok(Notice::Updated(name.into()))
     }
 
-    /// The profile last applied to this project, if it is still stored.
+    /// The profile last applied to this project; deleting a profile forgets it here.
     pub(in crate::cli) fn applied(&self) -> Option<String> {
         self.store.read().ok()?.applied.remove(&self.project_key())
     }
@@ -62,6 +62,10 @@ impl Session<'_, '_> {
 
     pub(in crate::cli) fn delete_profile(&self, name: &str) -> anyhow::Result<Notice> {
         self.profiles.delete(name)?;
+        self.store.update(|document| {
+            document.applied.retain(|_, applied| applied != name);
+            Ok(())
+        })?;
         Ok(Notice::Deleted(name.into()))
     }
 }

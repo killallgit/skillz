@@ -155,3 +155,16 @@ fn the_applied_profile_is_remembered_per_project_and_replaced_by_the_next() {
         assert_eq!(elsewhere.applied(), None);
     });
 }
+
+#[test]
+fn deleting_a_profile_forgets_it_as_the_applied_one() {
+    with_session(|here, _| {
+        here.create_profile("web", &[]).unwrap();
+        here.remember_applied("web").unwrap();
+
+        here.delete_profile("web").unwrap();
+        here.create_profile("web", &[]).unwrap();
+
+        assert_eq!(here.applied(), None);
+    });
+}
