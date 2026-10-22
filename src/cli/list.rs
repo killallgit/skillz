@@ -9,6 +9,7 @@ use crate::env::Env;
 use crate::location::location;
 use crate::mcp;
 use crate::model::{Augmentation, Kind};
+use crate::package::Package;
 use crate::prompt::Choice;
 use crate::prune;
 use crate::tree;
@@ -130,6 +131,9 @@ fn print_json(
             row["children"] = serde_json::json!(mcp::shown_children(i));
             row["tokens"] = serde_json::json!(costs.tokens(i));
             row["location"] = serde_json::json!(location(i));
+            row["package"] = serde_json::json!(Package::of(i).title());
+            row["merged"] = serde_json::json!(!i.members.is_empty());
+            row["members"] = members_json(i);
             if check {
                 row["update_available"] = serde_json::json!(scene.deps.checker.available(i));
             }
@@ -139,6 +143,15 @@ fn print_json(
     serde_json::to_writer_pretty(&mut *out, &rows)?;
     writeln!(out)?;
     Ok(())
+}
+
+/// The per-agent copies a merged item stands for, each with its own id, agents and location.
+fn members_json(item: &Augmentation) -> serde_json::Value {
+    let copies = item
+        .members
+        .iter()
+        .map(|m| serde_json::json!({ "id": m.id, "agents": m.agents, "location": location(m) }));
+    copies.collect()
 }
 
 /// What `list` prints for a plain (non-json, non-interactive) run.

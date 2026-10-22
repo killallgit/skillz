@@ -239,7 +239,7 @@ fn a_dry_run_changes_nothing() {
     assert!(w.tdd_store().join("SKILL.md").exists());
 }
 
-/// Browser that removes the given group indices (sorted group order, as `tree::build`).
+/// Browser that removes the given group indices (display order, as `tree::build`).
 struct RemoveGroups(Vec<usize>);
 
 impl Prompter for RemoveGroups {
@@ -259,11 +259,11 @@ impl Prompter for RemoveGroups {
 }
 
 /// Removes the skills group in the interactive browser. Its group is found by index; the
-/// world also has "(unknown) hooks" groups.
+/// world also has hooks groups, the project one first.
 fn after_browser_removes_the_skills_group() -> World {
     let w = world();
     let runner = Recorder::default();
-    let prompter = RemoveGroups(vec![2]);
+    let prompter = RemoveGroups(vec![1]);
     let d = Deps {
         interactive: true,
         checker: std::sync::Arc::new(skillz::update::check::NoCheck),
