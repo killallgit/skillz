@@ -9,6 +9,7 @@ use crate::agents::registry;
 use crate::model::Agent;
 use crate::profile::{Entry, Profile};
 use crate::runner::{CommandRunner, Output};
+use crate::stale::Disk;
 
 /// Installs the skills named by `--skill` into the project like `npx skills add` would: the
 /// files, the link for Claude and the lock entry that records the source.
@@ -99,6 +100,7 @@ impl Fx {
             adapters: &self.adapters,
             env: &self.env,
             scope: Scope::Project,
+            probe: &Disk,
         }
     }
 

@@ -17,6 +17,7 @@ use crate::model::Scope;
 use crate::profile;
 use crate::remove;
 use crate::review::{ItemEvent, Next, Outcome, Phase, Verdict};
+use crate::stale::Disk;
 use crate::store::Store;
 
 /// What the user asked to change.
@@ -100,6 +101,7 @@ impl Job<'_> {
             adapters: &self.deps.adapters,
             env: &self.env,
             scope: self.scope,
+            probe: &Disk,
         }
     }
 

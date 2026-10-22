@@ -76,15 +76,21 @@ impl LibraryTab {
                     theme,
                 ));
                 spans.push(Span::styled(presence_tags(self.presence[id]), theme.muted));
+                if self.stale[id] {
+                    spans.push(Span::styled(stale_tag(theme), theme.warn));
+                }
                 Line::from(spans)
             }
         }
     }
 
     fn detail_line(&self, theme: &Theme) -> Line<'static> {
-        match self.outline.current().map(|id| &self.rows[id]) {
-            Some(Row::Item(item)) => detail_text(&detail(item), theme),
-            _ => Line::default(),
+        let Some(id) = self.outline.current() else {
+            return Line::default();
+        };
+        match &self.rows[id] {
+            Row::Item(item) => detail_text(&detail(item, self.stale[id]), theme),
+            Row::Section { .. } => Line::default(),
         }
     }
 
@@ -120,6 +126,9 @@ fn detail_text(detail: &Detail, theme: &Theme) -> Line<'static> {
         Some(detail.source.clone()),
         Some(agents),
         provenance,
+        detail
+            .stale
+            .then(|| format!("{} source missing", theme.glyphs.broken)),
     ];
     let line: Vec<String> = parts.into_iter().flatten().collect();
     Line::styled(format!(" {}", line.join(" · ")), theme.muted)
@@ -145,6 +154,11 @@ fn cue_text(cue: Cue) -> &'static str {
         Cue::Detected => "detected",
         Cue::Skillz => "added by skillz",
     }
+}
+
+/// `  ! missing source`, the tag of an item whose local folder is gone.
+fn stale_tag(theme: &Theme) -> String {
+    format!("  {} missing source", theme.glyphs.broken)
 }
 
 /// `  project  global` for where the item is installed now; nothing when it is nowhere.

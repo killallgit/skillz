@@ -23,10 +23,18 @@ fn synced_of(result: anyhow::Result<Report>) -> Synced {
     match result {
         Ok(Report { synced, library }) => {
             let (added, secrets) = (synced.added.len(), synced.secrets_skipped());
-            let news = added > 0 || secrets > 0;
+            let moved = synced.repointed.len();
+            let news = added > 0 || secrets > 0 || moved > 0;
             Synced {
                 library: Some(library),
-                notice: news.then(|| Notice::Synced { added, secrets }.to_string()),
+                notice: news.then(|| {
+                    Notice::Synced {
+                        added,
+                        moved,
+                        secrets,
+                    }
+                    .to_string()
+                }),
             }
         }
         Err(e) => Synced {
@@ -39,7 +47,7 @@ fn synced_of(result: anyhow::Result<Report>) -> Synced {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::{Catalog, LibraryItem, Synced as Found};
+    use crate::library::{Catalog, ItemKind, LibraryItem, Moved, Synced as Found};
     use crate::profile::Entry;
 
     fn report_adding(count: usize) -> Report {
@@ -52,7 +60,7 @@ mod tests {
         Report {
             synced: Found {
                 added: vec![item; count],
-                skipped: vec![],
+                ..Found::default()
             },
             library: Catalog::default(),
         }
@@ -63,6 +71,22 @@ mod tests {
         let synced = synced_of(Ok(report_adding(2)));
 
         assert!(synced.library.is_some() && synced.notice.is_some());
+    }
+
+    #[test]
+    fn a_followed_move_is_news_even_when_nothing_was_added() {
+        let mut report = report_adding(0);
+        report.synced.repointed = vec![Moved {
+            kind: ItemKind::Skill,
+            name: "mine".into(),
+            from: "/old".into(),
+            to: "/new".into(),
+            profiles: vec![],
+        }];
+
+        let synced = synced_of(Ok(report));
+
+        assert!(synced.notice.is_some());
     }
 
     #[test]

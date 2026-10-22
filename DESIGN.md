@@ -87,7 +87,8 @@ Directories:
 | `install` | `skillz install`: `install()` dispatch, `InstallRequest`, `SkillSelection`; `source` (local path or clone, rejects empty/option-like sources), `skills` (scan, selection, npx `add`) |
 | `profile` | `Profile` (toml), `Entry` (skill, plugin, subagent, hook, mcp), `Store`, a facade over the `store` document, with `load_flat` for `extends`; `validate` (every value non-empty, not option-like), `spec` (the one-line typed form), `identity` (which entries are the same thing; `overlay`) |
 | `library` | `Held`/`Presence` (which items are installed where) and `Cue` (manual, detected or recorded by skillz), shared by the Library tab and `library list`; `Catalog` of `LibraryItem`s (label, `Entry`, optional `Provenance`: link, engine = `Installer`, version, `recorded_at`); `import_installed` / `record_installed` turn installed `Augmentation`s into items with their `Origin`; `sync_installed` adds only what the catalog lacks (`Catalog::add_if_new`), with `Provenance::detected` set, and reports the rest as `Synced`; `Catalog::installable` swaps a skill's source for its recorded link |
-| `sync` | `Scanner` (what is installed in both scopes; `InstalledScanner` reads every adapter), `sync_library` (scan result into the store under its lock, or a dry run), `spawn` (scan and sync on a thread, then call back) |
+| `stale` | `Probe` (injected existence check, `Disk` the real one); `missing_source`: a skill or subagent entry whose absolute local source is gone (repository and URL sources never are) |
+| `sync` | `merge` (library and profiles), `Scanner` (what is installed in both scopes; `InstalledScanner` reads every adapter), `sync_library` (scan result into the store under its lock, or a dry run), `spawn` (scan and sync on a thread, then call back) |
 | `snapshot` | installed items -> a `Profile` through one collector per kind (`skills`, `plugins`, `subagents`, `hooks`, `mcp`); what cannot be reinstalled comes back as `Skipped` with a `Reason` |
 | `apply` | `drift` (how many entries a profile lacks and how many installed items it does not want: the Project header, the Profiles badge and `profile list`), `standing` (pure: `compare` a profile's entries with the inventory into present / missing / extras; `loaded` picks the matching profile), `Applier::plan` (`Switch`: present, installs, and with `exact` the removals), `Applier::run` (remove via `remove`, then run the install steps) |
 | `cli` | `args` (clap), `deps` (`Deps`), `scope` (scope and target rules), `run` (dispatch), one module per command group (`list`, `removal` for uninstall and reset, `prune`, `use_profile`, `isolate` for `run`, `profile`); the workspace side, a directory `library` and `profile_*` (the library and profile commands), `pick` (choose among a query's matches); `session` (what the workspace and the commands share: `Session`, `perform`, `change` (plan, progress, result of one change), `plan_view`, `notice`, and `Console`, the `Prompter` that writes a plan as lines and answers it with a yes/no or a dry run); `workspace` (`mod` the loop, `model` the snapshot the tabs show, `sync`); `cli::main` wires real dependencies |
@@ -275,6 +276,17 @@ directory, so sync, `profile save` and the library agree; reinstalling is
 `npx skills add <dir> --skill <name>` (verified against npx: a directory source is searched
 recursively and `--skill` matches the frontmatter name). Only what has no directory or needs
 secrets is still `Skipped`.
+
+Moved folders: `library::sync_installed` first calls `repoint` (rules in its module doc: single name,
+absolute missing path, exactly one live local candidate of the same kind and name, stale duplicate
+of a live item dropped, nothing else removed), then adds what is still unknown; `sync::merge` then
+follows each `Moved` in the profiles (`repoint_profiles`). `Synced::repointed` and `ambiguous` reach
+`sync --json` and the `moved: N` toast. `Applier` holds a `Probe`; `run` and `run_each` refuse an
+entry whose source is gone (`SourceGone`) before any command runs and still run the rest. Nothing
+else skillz keeps is keyed by a project path: `store.json` is global and `envs/<profile>` is keyed
+by profile (test in `cli::isolate`); there is no update-check cache or ledger. The agents' own
+records (Claude's `projectPath`s) are theirs, and a subagent manifest's recorded source dir stays as
+recorded.
 
 Scanning never holds the store: `sync::Scanner` reads the inventory first, then `sync_library`
 takes the store lock for the merge alone. The workspace starts `sync::spawn` on a thread (the

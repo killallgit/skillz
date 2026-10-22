@@ -35,6 +35,7 @@ pub mod runner;
 pub(crate) mod skills;
 pub(crate) mod snapshot;
 pub(crate) mod spinner;
+pub mod stale;
 pub mod store;
 pub(crate) mod subagent_store;
 pub(crate) mod subagents;

@@ -7,6 +7,7 @@ mod draw;
 mod keys;
 mod presence;
 mod rows;
+mod stale;
 #[cfg(test)]
 mod tests;
 
@@ -16,11 +17,13 @@ use ratatui::layout::Rect;
 
 use self::presence::presences;
 use self::rows::{Row, build, shape};
+use self::stale::stale_rows;
 use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
 use crate::library::Presence;
 use crate::profile::Entry;
+use crate::stale::Disk;
 use crate::tui::keymap::Scope;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::confirm::ConfirmDialog;
@@ -41,6 +44,7 @@ enum Popup {
 pub struct LibraryTab {
     rows: Vec<Row>,
     presence: Vec<Presence>,
+    stale: Vec<bool>,
     outline: Outline,
     popup: Popup,
 }
@@ -50,6 +54,7 @@ impl LibraryTab {
         LibraryTab {
             rows: vec![],
             presence: vec![],
+            stale: vec![],
             outline: Outline::new(vec![]),
             popup: Popup::None,
         }
@@ -68,6 +73,7 @@ impl Tab for LibraryTab {
     fn load(&mut self, model: &Model) {
         self.rows = build(&model.library);
         self.presence = presences(&self.rows, model);
+        self.stale = stale_rows(&self.rows, &Disk);
         self.outline.reshape(shape(&self.rows));
     }
 

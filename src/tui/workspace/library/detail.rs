@@ -13,15 +13,18 @@ pub(super) struct Detail {
     /// How it was installed; `None` for an item typed in by hand.
     pub provenance: Option<Provenance>,
     pub cue: Cue,
+    /// Its local source is gone.
+    pub stale: bool,
 }
 
-pub(super) fn detail(item: &LibraryItem) -> Detail {
+pub(super) fn detail(item: &LibraryItem, stale: bool) -> Detail {
     Detail {
         kind: item.kind(),
         source: item.source(),
         agents: item.entry.agents().to_vec(),
         provenance: item.provenance.clone(),
         cue: Cue::of(item.provenance.as_ref()),
+        stale,
     }
 }
 
@@ -32,8 +35,8 @@ mod tests {
 
     #[test]
     fn a_skill_is_described_by_its_source_and_a_hook_by_its_command() {
-        let skill = detail(&skill("o/r", "tdd"));
-        let hook = detail(&hook("notify"));
+        let skill = detail(&skill("o/r", "tdd"), false);
+        let hook = detail(&hook("notify"), false);
 
         assert_eq!(
             (skill.kind, skill.source.as_str()),
@@ -56,8 +59,8 @@ mod tests {
         };
         let item = skill("o/r", "tdd").with_provenance(provenance.clone());
 
-        assert_eq!(detail(&item).provenance, Some(provenance));
-        assert_eq!(detail(&skill("o/r", "tdd")).provenance, None);
+        assert_eq!(detail(&item, false).provenance, Some(provenance));
+        assert_eq!(detail(&skill("o/r", "tdd"), false).provenance, None);
     }
 
     #[test]
@@ -73,9 +76,9 @@ mod tests {
         };
 
         let cues = [
-            detail(&skill("o/r", "tdd")).cue,
-            detail(&recorded(true)).cue,
-            detail(&recorded(false)).cue,
+            detail(&skill("o/r", "tdd"), false).cue,
+            detail(&recorded(true), false).cue,
+            detail(&recorded(false), false).cue,
         ];
 
         assert_eq!(cues, [Cue::Manual, Cue::Detected, Cue::Skillz]);
@@ -86,6 +89,6 @@ mod tests {
         let item =
             LibraryItem::from_entry(skill("o/r", "tdd").entry.with_agents(vec![Agent::Codex]));
 
-        assert_eq!(detail(&item).agents, [Agent::Codex]);
+        assert_eq!(detail(&item, false).agents, [Agent::Codex]);
     }
 }

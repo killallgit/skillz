@@ -5,6 +5,7 @@ use crate::review::{ItemEvent, Target};
 use crate::runner::CommandRunner;
 
 use super::Applier;
+use super::source_gone::SourceGone;
 use super::switch::Switch;
 
 /// What a switch run item by item did.
@@ -36,8 +37,14 @@ impl Applier<'_> {
         for (entry, steps) in &switch.installs {
             let started = ItemEvent::started(Target::Install(entry.clone()), entry.to_string());
             (watch.item)(started.clone());
-            let fresh: Vec<Action> = steps.iter().filter(|s| !ran.contains(s)).cloned().collect();
-            let result = action::execute_with(&fresh, runner, &mut *watch.step);
+            let result = match SourceGone::of(entry, self.probe) {
+                Some(gone) => Err(anyhow::Error::new(gone)),
+                None => {
+                    let fresh: Vec<Action> =
+                        steps.iter().filter(|s| !ran.contains(s)).cloned().collect();
+                    action::execute_with(&fresh, runner, &mut *watch.step)
+                }
+            };
             ran.extend(steps);
             installed += usize::from(result.is_ok());
             (watch.item)(ended(&started, result.map(drop), &mut failures));

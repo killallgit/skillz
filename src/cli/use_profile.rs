@@ -7,6 +7,7 @@ use super::recording::record_since;
 use super::scope::installed;
 use crate::env::Env;
 use crate::model::Scope;
+use crate::stale::Disk;
 use crate::store::Store;
 use crate::{apply, profile, remove, spinner};
 
@@ -96,6 +97,7 @@ fn make_applier<'a>(deps: &'a Deps, target: &'a Target) -> apply::Applier<'a> {
         adapters: &deps.adapters,
         env: target.env,
         scope: target.scope,
+        probe: &Disk,
     }
 }
 
