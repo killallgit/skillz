@@ -8,6 +8,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::model::Agent;
+use crate::redact::{redact, redact_text};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -64,6 +65,17 @@ pub enum Entry {
 }
 
 impl Entry {
+    /// A temporary entry with local sources resolved for the current project.
+    pub fn in_env(mut self, env: &crate::env::Env) -> Self {
+        match &mut self {
+            Entry::Skill { source, .. } | Entry::Subagent { source, .. } => {
+                *source = env.resolve_source(source)
+            }
+            _ => {}
+        }
+        self
+    }
+
     /// The entry's own agents; empty means "the profile's".
     pub fn agents(&self) -> &[Agent] {
         match self {
@@ -102,12 +114,14 @@ impl fmt::Display for Entry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Entry::Skill { source, names, .. } => {
-                write!(f, "skills {} [{source}]", names.join(","))
+                write!(f, "skills {} [{}]", names.join(","), redact(source))
             }
             Entry::Subagent { source, names, .. } => {
-                write!(f, "subagents {} [{source}]", names.join(","))
+                write!(f, "subagents {} [{}]", names.join(","), redact(source))
             }
-            Entry::Hook { event, command, .. } => write!(f, "hook {event} [{command}]"),
+            Entry::Hook { event, command, .. } => {
+                write!(f, "hook {event} [{}]", redact_text(command))
+            }
             Entry::Plugin {
                 marketplace, name, ..
             } => write!(f, "plugin {name}@{marketplace}"),
@@ -115,7 +129,7 @@ impl fmt::Display for Entry {
                 name, command, url, ..
             } => {
                 let target = command.as_deref().or(url.as_deref()).unwrap_or("");
-                write!(f, "mcp {name} [{target}]")
+                write!(f, "mcp {name} [{}]", redact_text(target))
             }
         }
     }

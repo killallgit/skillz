@@ -5,18 +5,18 @@
 use super::Session;
 use super::notice::Notice;
 use super::plan_view::{plan_view, step_label};
-use super::selection::{Selection, outcome_of_each, selection_plan};
+use super::selection::{Selection, outcome_of, selection_plan};
 use super::updates::update_plan;
 use crate::action::Action;
-use crate::apply::{self, Done, Switch, Watch};
+use crate::apply::{self, Switch, Watch};
 use crate::cli::deps::Deps;
 use crate::cli::recording::record_since;
-use crate::cli::scope::{installed, project_env};
+use crate::cli::scope::{complete_installed, project_env};
 use crate::env::Env;
 use crate::model::Scope;
 use crate::profile;
 use crate::remove;
-use crate::review::{ItemEvent, Next, Outcome, Phase, Verdict};
+use crate::review::{ItemEvent, Next, Outcome, Phase, Target, Verdict};
 use crate::stale::Disk;
 use crate::store::Store;
 
@@ -41,14 +41,14 @@ impl Change<'_> {
         }
     }
 
-    fn done(&self, switch: &Switch) -> Notice {
+    fn done(&self, switch: &Switch, outcome: &Outcome) -> Notice {
         match self {
             Change::Apply(_) | Change::ApplyExact(_) => Notice::Applied(switch.to.clone()),
             Change::Selection(_) => Notice::Changed {
-                installed: switch.installs.len(),
-                removed: switch.removals.len(),
+                installed: outcome.installed,
+                removed: outcome.removed,
             },
-            Change::Update(_) => Notice::ItemsUpdated(switch.updates.len()),
+            Change::Update(_) => Notice::ItemsUpdated(outcome.updated),
         }
     }
 }
@@ -75,9 +75,13 @@ pub(in crate::cli) fn change(
         env: project_env(deps, &session.project),
         scope,
     };
+    let mut completed_updates = std::collections::HashSet::new();
     loop {
         let applier = job.applier();
-        let switch = job.plan(&applier, what)?;
+        let mut switch = job.plan(&applier, what)?;
+        switch
+            .updates
+            .retain(|(item, _)| !completed_updates.contains(&item.id));
         if switch.is_empty() {
             return Ok(Some(Notice::UpToDate));
         }
@@ -86,8 +90,13 @@ pub(in crate::cli) fn change(
             Verdict::DryRun => return Ok(Some(Notice::DryRun(switch.steps().len()))),
             Verdict::Apply => {}
         }
-        let before = installed(deps, &job.env, job.scope);
+        let before = complete_installed(deps, &job.env, job.scope)?;
         let outcome = job.apply(&applier, &switch, what);
+        for event in &outcome.items {
+            if let (Target::Update(id), Phase::Succeeded) = (&event.target, &event.phase) {
+                completed_updates.insert(id.clone());
+            }
+        }
         let recorded = record_since(deps, store, (&job.env, job.scope), &before);
         if deps.prompter.outcome(what.title(), &outcome)? != Next::Retry {
             return Ok(Some(job.notice(what, &switch, &outcome, recorded)));
@@ -110,10 +119,10 @@ impl Job<'_> {
             Change::Apply(name) => self.apply_plan(applier, name, false),
             Change::ApplyExact(name) => self.apply_plan(applier, name, true),
             Change::Selection(picked) => {
-                let library = self.store.read()?.items;
+                let library = self.store.read()?.items.in_env(&self.env);
                 selection_plan(self.deps, &self.env, applier, (picked, &library))
             }
-            Change::Update(ids) => Ok(update_plan(self.deps, &self.env, self.scope, ids)),
+            Change::Update(ids) => update_plan(self.deps, &self.env, self.scope, ids),
         }
     }
 
@@ -143,19 +152,11 @@ impl Job<'_> {
                 items.push(event);
             }
         };
-        let outcome = match what {
-            Change::Selection(_) | Change::Update(_) => {
-                let mut watch = Watch {
-                    step: &mut on_step,
-                    item: &mut on_item,
-                };
-                outcome_of_each(
-                    switch,
-                    applier.run_each(switch, self.deps.runner, &mut watch),
-                )
-            }
-            _ => outcome_of(switch, applier.run(switch, self.deps.runner, &mut on_step)),
+        let mut watch = Watch {
+            step: &mut on_step,
+            item: &mut on_item,
         };
+        let outcome = outcome_of(switch, applier.run(switch, self.deps.runner, &mut watch));
         drop(progress);
         Outcome {
             log,
@@ -171,32 +172,13 @@ impl Job<'_> {
         outcome: &Outcome,
         recorded: anyhow::Result<()>,
     ) -> Notice {
-        match (outcome.problems().lines().next(), recorded) {
-            (Some(problem), _) => Notice::Failed(problem.to_string()),
-            (None, Err(e)) => Notice::Failed(format!("installed, but not recorded: {e:#}")),
-            (None, Ok(())) => what.done(switch),
+        if !outcome.is_clean() {
+            return Notice::Failed(outcome.problems());
         }
-    }
-}
-
-fn outcome_of(switch: &Switch, result: anyhow::Result<Done>) -> Outcome {
-    let skipped = switch.unsupported.len();
-    match result {
-        Ok(done) => Outcome {
-            removed: switch.removals.len(),
-            installed: switch.installs.len(),
-            skipped,
-            still_installed: done
-                .removed
-                .map(|o| o.still_installed.into_iter().map(|a| a.name).collect())
-                .unwrap_or_default(),
-            ..Outcome::default()
-        },
-        Err(e) => Outcome {
-            skipped,
-            failures: vec![format!("{e:#}")],
-            ..Outcome::default()
-        },
+        match recorded {
+            Err(e) => Notice::Failed(format!("installed, but not recorded: {e:#}")),
+            Ok(()) => what.done(switch, outcome),
+        }
     }
 }
 

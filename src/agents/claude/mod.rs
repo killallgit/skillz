@@ -7,6 +7,7 @@ mod records;
 mod removal;
 #[cfg(test)]
 mod testutil;
+pub(crate) mod update;
 mod usage;
 
 use std::path::PathBuf;
@@ -32,6 +33,10 @@ impl AgentAdapter for Claude {
         Agent::Claude
     }
 
+    fn update_steps(&self, item: &Augmentation, cwd: &std::path::Path) -> Vec<Action> {
+        update::steps(item, cwd)
+    }
+
     fn home_dir_names(&self) -> &'static [&'static str] {
         &["claude"]
     }
@@ -54,7 +59,7 @@ impl AgentAdapter for Claude {
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
         let installs = installs_from(&read_json(&installed_file(&env.claude_dir()))?);
         let markets = marketplaces_from(&read_json(&marketplaces_file(&env.claude_dir()))?);
-        let mut out = plugins::plugins(env, scope, &installs, &markets);
+        let mut out = plugins::plugins(env, scope, &installs, &markets)?;
         out.extend(mcp::discover(env, scope)?);
         let agents = agents_dir(env, scope);
         out.extend(subagents::discover(

@@ -1,5 +1,5 @@
 //! The terminal list: one collapsible, markable tree with `/` filter, used for browsing and
-//! for every picker. `model` holds the data, `input` the keys, `draw` the screen.
+//! for item selection. `model` holds the data, `input` the keys, `draw` the screen.
 
 mod draw;
 mod input;

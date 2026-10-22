@@ -155,7 +155,7 @@ mod tests {
             state(3, 0).ratio(),
         ];
 
-        // Half way, clamped at full, and an empty plan reads as zero.
+        // Assert one of four steps is finished, excess steps clamp, and an empty plan is zero.
         assert_eq!(ratios, [0.25, 1.0, 0.0]);
     }
 

@@ -4,6 +4,7 @@ use std::path::Path;
 use super::tests::{session, skill_entry};
 use super::*;
 use crate::agents::registry;
+use crate::cli::scope::installed;
 use crate::install::test_support::{FakeRunner, ScriptedPrompter};
 
 /// A skill in the user's own directories, the way `npx skills -g` leaves it.

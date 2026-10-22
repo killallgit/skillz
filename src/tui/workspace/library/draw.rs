@@ -5,8 +5,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::detail::{Detail, detail};
-use super::rows::Row;
+use super::rows::{Item, Row};
 use super::{LibraryTab, Popup};
 use crate::library::{Cue, Presence, Provenance};
 use crate::tui::filter;
@@ -59,7 +58,7 @@ impl LibraryTab {
 
     fn row_line(&self, id: usize, theme: &Theme) -> Line<'static> {
         match &self.rows[id] {
-            Row::Package { package, .. } => {
+            Row::Package { package } => {
                 let caret = self.outline.caret(id, &theme.glyphs);
                 Line::from(vec![
                     Span::styled(format!("{caret} {}", package.title()), theme.title),
@@ -69,18 +68,18 @@ impl LibraryTab {
             Row::Item(item) => {
                 let mut spans = vec![Span::styled(ITEM_INDENT, theme.text)];
                 spans.extend(filter::highlight(
-                    &item.short_label(),
+                    &item.library.short_label(),
                     &self.outline.matched(id),
                     0,
                     theme.text,
                     theme,
                 ));
                 spans.push(Span::styled(
-                    format!("  {}", item.kind().noun()),
+                    format!("  {}", item.library.kind().noun()),
                     theme.muted,
                 ));
-                spans.push(Span::styled(presence_tags(self.presence[id]), theme.muted));
-                if self.stale[id] {
+                spans.push(Span::styled(presence_tags(item.presence), theme.muted));
+                if item.stale {
                     spans.push(Span::styled(stale_tag(theme), theme.warn));
                 }
                 Line::from(spans)
@@ -93,7 +92,7 @@ impl LibraryTab {
             return Line::default();
         };
         match &self.rows[id] {
-            Row::Item(item) => detail_text(&detail(item, self.stale[id]), theme),
+            Row::Item(item) => detail_text(item, theme),
             Row::Package { .. } => Line::default(),
         }
     }
@@ -114,8 +113,8 @@ impl LibraryTab {
     }
 }
 
-fn detail_text(detail: &Detail, theme: &Theme) -> Line<'static> {
-    let agents = match detail.agents.as_slice() {
+fn detail_text(item: &Item, theme: &Theme) -> Line<'static> {
+    let agents = match item.library.entry.agents() {
         [] => "profile's agents".to_string(),
         some => some
             .iter()
@@ -123,15 +122,14 @@ fn detail_text(detail: &Detail, theme: &Theme) -> Line<'static> {
             .collect::<Vec<_>>()
             .join(", "),
     };
-    let provenance = detail.provenance.as_ref().map(provenance_text);
+    let provenance = item.library.provenance.as_ref().map(provenance_text);
     let parts = [
-        Some(cue_text(detail.cue).to_string()),
-        Some(format!("{:?}", detail.kind)),
-        Some(detail.source.clone()),
+        Some(cue_text(Cue::of(item.library.provenance.as_ref())).to_string()),
+        Some(item.library.kind().noun().to_string()),
+        Some(item.library.source()),
         Some(agents),
         provenance,
-        detail
-            .stale
+        item.stale
             .then(|| format!("{} source missing", theme.glyphs.broken)),
     ];
     let line: Vec<String> = parts.into_iter().flatten().collect();
@@ -160,12 +158,10 @@ fn cue_text(cue: Cue) -> &'static str {
     }
 }
 
-/// `  ! missing source`, the tag of an item whose local folder is gone.
 fn stale_tag(theme: &Theme) -> String {
     format!("  {} missing source", theme.glyphs.broken)
 }
 
-/// `  project  global` for where the item is installed now; nothing when it is nowhere.
 fn presence_tags(presence: Presence) -> String {
     let tags = [(presence.project, "project"), (presence.global, "global")];
     tags.iter()

@@ -51,13 +51,13 @@ impl ProfilesTab {
 
     fn profile_line(&self, id: usize, theme: &Theme) -> Line<'static> {
         let mut spans = filter::highlight(
-            &self.profiles[id].name,
+            &self.profiles[id].profile.name,
             &self.list.matched(id),
             0,
             theme.text,
             theme,
         );
-        spans.push(match self.missing[id] {
+        spans.push(match self.profiles[id].missing {
             0 => Span::styled("  matches", theme.ok),
             n => Span::styled(format!("  {n} missing"), theme.warn),
         });

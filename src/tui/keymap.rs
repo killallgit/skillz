@@ -20,6 +20,9 @@ pub enum Scope {
     Tree,
     /// While a filter is being typed, so letters stay text.
     Filter,
+    Plan,
+    Result,
+    Confirm,
 }
 
 impl Scope {
@@ -34,6 +37,9 @@ impl Scope {
             Scope::Picker => "Choose items",
             Scope::Tree => "List",
             Scope::Filter => "Filter",
+            Scope::Plan => "Plan",
+            Scope::Result => "Result",
+            Scope::Confirm => "Confirm",
         }
     }
 }
@@ -74,6 +80,12 @@ pub enum Action {
     Update,
     Install,
     Remove,
+    ToggleDryRun,
+    ToggleSteps,
+    Copy,
+    Retry,
+    Yes,
+    No,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -123,7 +135,10 @@ const fn bind(
 }
 
 use Action as A;
-use Scope::{Common, Filter, Installed, Library, Picker, Profiles, Project, Tree, Workspace};
+use Scope::{
+    Common, Confirm, Filter, Installed, Library, Picker, Plan, Profiles, Project, Result, Tree,
+    Workspace,
+};
 
 #[rustfmt::skip]
 pub const BINDINGS: &[Binding] = &[
@@ -185,6 +200,17 @@ pub const BINDINGS: &[Binding] = &[
     bind(Tree, A::Toggle, &[ch(' ')], "space", "expand", 5),
     bind(Tree, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
     bind(Tree, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
+    bind(Plan, A::Select, &[plain(KeyCode::Enter), ch('y'), ch('Y')], "enter y", "apply", 1),
+    bind(Plan, A::Back, &[plain(KeyCode::Esc), ch('n'), ch('N')], "esc n", "cancel", 4),
+    bind(Plan, A::ToggleDryRun, &[ch('d')], "d", "dry run", 2),
+    bind(Plan, A::ToggleSteps, &[ch('s')], "s", "steps", 3),
+    bind(Result, A::Select, &[plain(KeyCode::Enter), ch(' ')], "enter", "close", 1),
+    bind(Result, A::Back, &[plain(KeyCode::Esc)], "esc", "close", 0),
+    bind(Result, A::Copy, &[ch('c')], "c", "copy", 2),
+    bind(Result, A::Retry, &[ch('r')], "r", "retry", 3),
+    bind(Confirm, A::Yes, &[ch('y'), ch('Y')], "y", "yes", 1),
+    bind(Confirm, A::No, &[ch('n'), ch('N')], "n", "no", 2),
+    bind(Confirm, A::Toggle, &[plain(KeyCode::Tab), plain(KeyCode::BackTab), plain(KeyCode::Left), plain(KeyCode::Right)], "tab", "change answer", 0),
     bind(Filter, A::Up, &[plain(KeyCode::Up)], "", "", 0),
     bind(Filter, A::Down, &[plain(KeyCode::Down)], "", "", 0),
     bind(Filter, A::PageUp, &[plain(KeyCode::PageUp)], "", "", 0),
@@ -212,23 +238,40 @@ pub fn resolve(scope: Scope, key: KeyEvent) -> Option<Action> {
 /// What `key` means in the first of `scopes` that binds it, else in the common bindings.
 /// `Scope::Filter` is exclusive: typed characters are never navigation there.
 pub fn resolve_in(scopes: &[Scope], key: KeyEvent) -> Option<Action> {
-    let own = |b: &&Binding| scopes.contains(&b.scope) && b.matches(key);
-    let common = |b: &&Binding| !scopes.contains(&Filter) && b.scope == Common && b.matches(key);
-    BINDINGS
+    scopes
         .iter()
-        .find(own)
-        .or_else(|| BINDINGS.iter().find(common))
-        .map(|b| b.action)
+        .find_map(|scope| {
+            BINDINGS
+                .iter()
+                .find(|b| b.scope == *scope && b.matches(key))
+        })
+        .or_else(|| {
+            (!scopes.contains(&Filter))
+                .then(|| {
+                    BINDINGS
+                        .iter()
+                        .find(|b| b.scope == Common && b.matches(key))
+                })
+                .flatten()
+        })
+        .map(|binding| binding.action)
 }
 
 /// The key bar's hints for `scopes`, most important first.
 pub fn hints(scopes: &[Scope]) -> Vec<(&'static str, &'static str)> {
+    hint_bindings(scopes)
+        .into_iter()
+        .map(|b| (b.keys, b.label))
+        .collect()
+}
+
+pub fn hint_bindings(scopes: &[Scope]) -> Vec<&'static Binding> {
     let mut ranked: Vec<&Binding> = BINDINGS
         .iter()
         .filter(|b| b.rank > 0 && (b.scope == Common || scopes.contains(&b.scope)))
         .collect();
     ranked.sort_by_key(|b| b.rank);
-    ranked.iter().map(|b| (b.keys, b.label)).collect()
+    ranked
 }
 
 fn overridden(binding: &Binding, scopes: &[Scope]) -> bool {
@@ -423,5 +466,17 @@ mod tests {
                 .iter()
                 .all(|(s, b)| b.iter().all(|b| b.scope == *s))
         );
+    }
+
+    #[test]
+    fn caller_scope_order_wins_over_table_order() {
+        let key = key(KeyCode::Enter);
+
+        let picker_first = resolve_in(&[Picker, Profiles], key);
+        let profiles_first = resolve_in(&[Profiles, Picker], key);
+
+        // Assert overlapping bindings follow the scope order supplied by the caller.
+        assert_eq!(picker_first, Some(Action::Select));
+        assert_eq!(profiles_first, Some(Action::ApplyProfile));
     }
 }

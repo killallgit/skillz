@@ -6,19 +6,23 @@ pub mod check;
 use std::path::Path;
 
 use crate::action::Action;
-use crate::model::{Augmentation, Installer, Kind, Scope, split_plugin_id};
+use crate::agents::{AgentAdapter, adapter_for};
+use crate::model::{Augmentation, Details, Installer, Kind, Scope};
 
 /// The steps that bring `item` to the latest version, run from `cwd`; none when it cannot be
 /// updated. An item seen through several agents is updated through each of them.
-pub fn steps(item: &Augmentation, cwd: &Path) -> Vec<Action> {
+pub fn steps(adapters: &[Box<dyn AgentAdapter>], item: &Augmentation, cwd: &Path) -> Vec<Action> {
     item.parts()
         .iter()
-        .flat_map(|part| part_steps(part, cwd))
+        .flat_map(|part| part_steps(adapters, part, cwd))
         .collect()
 }
 
-fn part_steps(item: &Augmentation, cwd: &Path) -> Vec<Action> {
-    let name = item.name.as_str();
+fn part_steps(adapters: &[Box<dyn AgentAdapter>], item: &Augmentation, cwd: &Path) -> Vec<Action> {
+    let name = match &item.details {
+        Details::Skill { install_name, .. } => install_name.as_str(),
+        _ => item.name.as_str(),
+    };
     if name.is_empty() || name.starts_with('-') {
         return vec![];
     }
@@ -28,27 +32,18 @@ fn part_steps(item: &Augmentation, cwd: &Path) -> Vec<Action> {
     };
     match (item.installer, item.kind) {
         (Installer::Npx, Kind::Skill) => vec![run("npx", &npx_args(name, item.scope))],
-        (Installer::ClaudeCli, Kind::Plugin) => vec![run("claude", &["plugin", "update", name])],
-        (Installer::ClaudeCli, Kind::Marketplace) => {
-            vec![run("claude", &["plugin", "marketplace", "update", name])]
-        }
-        (Installer::CodexCli, Kind::Marketplace) => {
-            vec![run("codex", &["plugin", "marketplace", "upgrade", name])]
-        }
-        (Installer::CodexCli, Kind::Plugin) => {
-            let marketplace = split_plugin_id(name).1;
-            vec![
-                run("codex", &["plugin", "marketplace", "upgrade", marketplace]),
-                run("codex", &["plugin", "add", name]),
-            ]
-        }
         (Installer::Local, Kind::Subagent) => recopy(item, cwd),
-        _ => vec![],
+        _ => item
+            .agents
+            .iter()
+            .filter_map(|&agent| adapter_for(adapters, agent))
+            .flat_map(|adapter| adapter.update_steps(item, cwd))
+            .collect(),
     }
 }
 
 pub fn can_update(item: &Augmentation) -> bool {
-    !steps(item, Path::new("")).is_empty()
+    !steps(&crate::agents::registry(), item, Path::new("")).is_empty()
 }
 
 fn npx_args(name: &str, scope: Scope) -> [&str; 6] {
@@ -64,12 +59,11 @@ fn recopy(item: &Augmentation, cwd: &Path) -> Vec<Action> {
     let Some(source) = item.source.clone() else {
         return vec![];
     };
-    let file = item.removal.iter().find_map(|step| match step {
-        Action::RemovePath(target) => Some(target.path()),
-        _ => None,
-    });
-    let parts = file.and_then(|f| Some((f.parent()?, f.file_stem()?, f.extension()?)));
-    let Some((to, stem, ext)) = parts else {
+    let Details::Subagent { file } = &item.details else {
+        return vec![];
+    };
+    let (Some(to), Some(stem), Some(ext)) = (file.parent(), file.file_stem(), file.extension())
+    else {
         return vec![];
     };
     vec![Action::CopyAgents {
@@ -84,18 +78,26 @@ fn recopy(item: &Augmentation, cwd: &Path) -> Vec<Action> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::RemovalTarget;
     use crate::model::Agent;
 
     fn item(name: &str, kind: Kind, installer: Installer) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: vec![],
             members: Vec::new(),
             id: format!("{kind}:{name}"),
             name: name.into(),
             kind,
-            agents: vec![Agent::Claude],
-            scope: Scope::Project,
+            agents: vec![if installer == Installer::CodexCli {
+                Agent::Codex
+            } else {
+                Agent::Claude
+            }],
+            scope: if installer == Installer::CodexCli {
+                Scope::Global
+            } else {
+                Scope::Project
+            },
             group: "g".into(),
             source: None,
             installer,
@@ -106,7 +108,7 @@ mod tests {
     }
 
     fn programs(item: &Augmentation) -> Vec<String> {
-        steps(item, Path::new("/p"))
+        steps(&crate::agents::registry(), item, Path::new("/p"))
             .iter()
             .map(|step| match step {
                 Action::Run { program, .. } => program.clone(),
@@ -143,6 +145,9 @@ mod tests {
     #[test]
     fn a_name_that_looks_like_an_option_is_never_passed_on() {
         assert!(!can_update(&item("-x", Kind::Skill, Installer::Npx)));
+        for name in ["plugin@--help", "plugin@"] {
+            assert!(!can_update(&item(name, Kind::Plugin, Installer::CodexCli)));
+        }
     }
 
     #[test]
@@ -151,7 +156,12 @@ mod tests {
         global.scope = Scope::Global;
         let project = item("tdd", Kind::Skill, Installer::Npx);
 
-        let flag = |item: &Augmentation| match &steps(item, Path::new("/p"))[0] {
+        let flag = |item: &Augmentation| match &steps(
+            &crate::agents::registry(),
+            item,
+            Path::new("/p"),
+        )[0]
+        {
             Action::Run { args, .. } => args[4].clone(),
             other => panic!("{other:?}"),
         };
@@ -166,7 +176,7 @@ mod tests {
     fn a_codex_plugin_refreshes_its_marketplace_before_it_is_added_again() {
         let plugin = item("p@mp", Kind::Plugin, Installer::CodexCli);
 
-        let args: Vec<Vec<String>> = steps(&plugin, Path::new("/p"))
+        let args: Vec<Vec<String>> = steps(&crate::agents::registry(), &plugin, Path::new("/p"))
             .into_iter()
             .map(|step| match step {
                 Action::Run { args, .. } => args,
@@ -184,11 +194,11 @@ mod tests {
         let mut agent = item("reviewer", Kind::Subagent, Installer::Local);
         agent.source = Some("o/r".into());
         let dir = Path::new("/p/.claude/agents");
-        agent.removal = vec![Action::RemovePath(
-            RemovalTarget::new(dir, ["reviewer.md"]).unwrap(),
-        )];
+        agent.details = Details::Subagent {
+            file: dir.join("reviewer.md"),
+        };
 
-        let planned = steps(&agent, Path::new("/p"));
+        let planned = steps(&crate::agents::registry(), &agent, Path::new("/p"));
 
         assert!(matches!(
             &planned[..],
@@ -197,5 +207,27 @@ mod tests {
         ));
         agent.source = None;
         assert!(!can_update(&agent));
+    }
+    #[test]
+    fn a_renamed_skill_is_updated_by_its_installer_name() {
+        let mut skill = item("my-link", Kind::Skill, Installer::Npx);
+        skill.details = Details::Skill {
+            directory: "/skills/real".into(),
+            install_name: "real".into(),
+        };
+
+        let plan = steps(&crate::agents::registry(), &skill, Path::new("/project"));
+
+        assert!(matches!(&plan[..], [Action::Run { args, .. }] if args[3] == "real"));
+    }
+    #[test]
+    fn codex_project_plugins_have_no_native_update_command() {
+        for kind in [Kind::Plugin, Kind::Marketplace] {
+            let mut installed = item("plugin@marketplace", kind, Installer::CodexCli);
+            installed.scope = Scope::Project;
+            assert!(!can_update(&installed));
+            installed.scope = Scope::Global;
+            assert!(can_update(&installed));
+        }
     }
 }

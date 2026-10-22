@@ -62,6 +62,7 @@ mod tests {
 
     fn item(kind: Kind, name: &str, agents: &[Agent]) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
             id: name.into(),

@@ -1,29 +1,22 @@
-//! Turn what is installed into a profile. Only what a profile can install again is kept: skills
-//! `npx skills` fetched from a source or hand-made ones by their directory, plugins whose
-//! marketplace has one, subagents with a source or directory, hooks, and MCP servers that need no
-//! secrets. Everything else is reported as skipped.
-//!
-//! Each kind of entry has its own `Collector`; `snapshot` only routes items to them.
+//! Reinstallable entries from installed facts, grouped into a profile.
 
-mod hooks;
-mod mcp;
-mod plugins;
-mod skills;
-mod subagents;
+mod extract;
 
+use std::collections::BTreeMap;
 use std::fmt;
 
+use crate::mcp::Launch;
 use crate::model::{Agent, Augmentation};
 use crate::profile::{Entry, Profile};
+
+pub use extract::entries;
 
 #[derive(Debug)]
 pub struct Snapshot {
     pub profile: Profile,
-    /// Installed items the profile cannot reproduce.
     pub skipped: Vec<Skipped>,
 }
 
-/// An installed item left out of a snapshot, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skipped {
     pub label: String,
@@ -32,14 +25,9 @@ pub struct Skipped {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
-    /// Nothing to reinstall it from: a plugin without a marketplace, a skill outside the home and
-    /// project or one `npx skills` cannot see.
     NoSource,
-    /// An MCP server with this many env vars or headers, which a profile does not carry.
     Secrets(usize),
-    /// The item's definition could not be read back into an entry.
     Unreadable,
-    /// The entry built from it is not a valid profile entry.
     Invalid,
 }
 
@@ -55,90 +43,200 @@ impl fmt::Display for Reason {
 }
 
 impl Skipped {
-    fn new(item: &Augmentation, reason: Reason) -> Self {
-        Skipped {
+    pub(crate) fn new(item: &Augmentation, reason: Reason) -> Self {
+        Self {
             label: item.label(true),
             reason,
         }
     }
 }
 
-/// What a collector made of one item.
-enum Accept {
-    Taken,
-    Skipped(Skipped),
-    /// Not this collector's kind of item.
-    Pass,
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct ServerKey {
+    name: String,
+    launch: Launch,
 }
 
-trait Collector {
-    fn accept(&mut self, item: &Augmentation, agents: Vec<Agent>) -> Accept;
-    /// The entries gathered so far; an entry for exactly the profile's agents names none.
-    fn finish(&mut self, default: &[Agent]) -> Vec<Entry>;
+#[derive(Default)]
+struct Gathered {
+    skills: BTreeMap<(String, String), Vec<Agent>>,
+    plugins: BTreeMap<(String, String, String), Vec<Agent>>,
+    subagents: BTreeMap<(String, String), Vec<Agent>>,
+    servers: BTreeMap<ServerKey, Vec<Agent>>,
+    hooks: BTreeMap<(String, Option<String>, String), Vec<Agent>>,
 }
 
-fn collectors() -> Vec<Box<dyn Collector>> {
-    vec![
-        Box::<skills::Skills>::default(),
-        Box::<plugins::Plugins>::default(),
-        Box::<subagents::Subagents>::default(),
-        Box::<mcp::McpServers>::default(),
-        Box::<hooks::Hooks>::default(),
-    ]
-}
-
-pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
-    let mut collectors = collectors();
-    let mut skipped = vec![];
-    for item in items {
-        if let Some(left_out) = route(&mut collectors, item) {
-            skipped.push(left_out);
-        }
-    }
-    let mut profile = Profile::new(name);
-    let default = profile.agents.clone();
-    for collector in &mut collectors {
-        for entry in collector.finish(&default) {
-            match entry.validate() {
-                Ok(()) => profile.entries.push(entry),
-                Err(_) => skipped.push(Skipped {
-                    label: entry.to_string(),
-                    reason: Reason::Invalid,
-                }),
+impl Gathered {
+    fn add(&mut self, entry: Entry) {
+        match entry {
+            Entry::Skill {
+                source,
+                names,
+                agents,
+            } => add_named(&mut self.skills, source, names, agents),
+            Entry::Subagent {
+                source,
+                names,
+                agents,
+            } => add_named(&mut self.subagents, source, names, agents),
+            Entry::Plugin {
+                source,
+                marketplace,
+                name,
+                agents,
+            } => self
+                .plugins
+                .entry((source, marketplace, name))
+                .or_default()
+                .extend(agents),
+            Entry::Hook {
+                event,
+                matcher,
+                command,
+                agents,
+            } => self
+                .hooks
+                .entry((event, matcher, command))
+                .or_default()
+                .extend(agents),
+            Entry::Mcp {
+                name,
+                command,
+                args,
+                url,
+                transport,
+                agents,
+            } => {
+                let launch = match (command, url) {
+                    (Some(command), _) => Launch::Stdio { command, args },
+                    (_, Some(url)) => Launch::Url {
+                        url,
+                        transport: transport.unwrap_or_else(|| "http".into()),
+                    },
+                    _ => unreachable!("entries validates MCP launches"),
+                };
+                self.servers
+                    .entry(ServerKey { name, launch })
+                    .or_default()
+                    .extend(agents);
             }
         }
     }
-    Snapshot { profile, skipped }
+
+    fn finish(self) -> Vec<Entry> {
+        let mut entries = Vec::new();
+        entries.extend(
+            group_named(self.skills).map(|((source, agents), names)| Entry::Skill {
+                source,
+                names,
+                agents,
+            }),
+        );
+        entries.extend(
+            self.plugins
+                .into_iter()
+                .map(|((source, marketplace, name), agents)| Entry::Plugin {
+                    source,
+                    marketplace,
+                    name,
+                    agents,
+                }),
+        );
+        entries.extend(
+            group_named(self.subagents).map(|((source, agents), names)| Entry::Subagent {
+                source,
+                names,
+                agents,
+            }),
+        );
+        entries.extend(
+            self.servers
+                .into_iter()
+                .map(|(key, agents)| extract::server_entry(key.name, key.launch, agents)),
+        );
+        entries.extend(
+            self.hooks
+                .into_iter()
+                .map(|((event, matcher, command), agents)| Entry::Hook {
+                    event,
+                    matcher,
+                    command,
+                    agents,
+                }),
+        );
+        entries
+            .into_iter()
+            .map(|entry| {
+                let mut agents = entry.agents().to_vec();
+                agents.sort();
+                agents.dedup();
+                entry.with_agents(agents)
+            })
+            .collect()
+    }
 }
 
-/// Hand `item` to the first collector that wants it; `Some` when none can keep it.
-fn route(collectors: &mut [Box<dyn Collector>], item: &Augmentation) -> Option<Skipped> {
-    let mut agents = item.agents.clone();
-    agents.sort();
-    for collector in collectors {
-        match collector.accept(item, agents.clone()) {
-            Accept::Taken => return None,
-            Accept::Skipped(skipped) => return Some(skipped),
-            Accept::Pass => {}
+fn add_named(
+    entries: &mut BTreeMap<(String, String), Vec<Agent>>,
+    source: String,
+    names: Vec<String>,
+    agents: Vec<Agent>,
+) {
+    for name in names {
+        entries
+            .entry((source.clone(), name))
+            .or_default()
+            .extend(agents.iter().copied());
+    }
+}
+
+fn group_named(
+    entries: BTreeMap<(String, String), Vec<Agent>>,
+) -> impl Iterator<Item = ((String, Vec<Agent>), Vec<String>)> {
+    let mut groups: BTreeMap<(String, Vec<Agent>), Vec<String>> = BTreeMap::new();
+    for ((source, name), mut agents) in entries {
+        agents.sort();
+        agents.dedup();
+        groups.entry((source, agents)).or_default().push(name);
+    }
+    groups.into_iter()
+}
+
+/// Reinstallable entries with exact agents, without constructing a profile.
+pub fn collect(items: &[Augmentation]) -> (Vec<Entry>, Vec<Skipped>) {
+    let mut gathered = Gathered::default();
+    let mut skipped = Vec::new();
+    for item in items.iter().flat_map(Augmentation::parts) {
+        match entries(item) {
+            Ok(entries) => entries.into_iter().for_each(|entry| gathered.add(entry)),
+            Err(reason) => skipped.push(Skipped::new(item, reason)),
         }
     }
-    Some(Skipped::new(item, Reason::NoSource))
+    (gathered.finish(), skipped)
 }
 
-fn own(agents: Vec<Agent>, default: &[Agent]) -> Vec<Agent> {
-    if agents == default { vec![] } else { agents }
-}
-
-fn merge_agents(all: &mut Vec<Agent>, more: Vec<Agent>) {
-    all.extend(more);
-    all.sort();
-    all.dedup();
+pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
+    let (entries, skipped) = collect(items);
+    let mut profile = Profile::new(name);
+    profile.entries = entries
+        .into_iter()
+        .map(|entry| {
+            let agents = entry.agents().to_vec();
+            entry.with_agents(if agents == profile.agents {
+                vec![]
+            } else {
+                agents
+            })
+        })
+        .collect();
+    Snapshot { profile, skipped }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Installer, Kind, Scope};
+    use crate::mcp::Server;
+    use crate::model::{Details, Installer, Kind, Origin, Scope};
 
     pub(super) fn item(
         name: &str,
@@ -147,6 +245,7 @@ mod tests {
         agents: &[Agent],
     ) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
             id: format!("{kind}:{name}:{agents:?}"),
@@ -278,7 +377,7 @@ mod tests {
         );
         assert!(snap.profile.entries.is_empty());
         let reasons: Vec<Reason> = snap.skipped.iter().map(|s| s.reason).collect();
-        // Assert each left-out item carries why it was left out.
+
         assert_eq!(
             reasons,
             [
@@ -311,7 +410,7 @@ mod tests {
             i
         };
         let snap = snapshot("p", &[hook(Agent::Claude), hook(Agent::Codex)]);
-        // Assert both handlers become hook entries owned by both agents.
+
         assert_eq!(
             snap.profile.entries,
             [
@@ -347,111 +446,166 @@ mod tests {
 
         let snap = snapshot("p", &[i]);
 
-        // Assert the matcher is kept whole.
         assert!(matches!(
             &snap.profile.entries[0],
             Entry::Hook { matcher: Some(m), .. } if m == "mcp__a: b"
         ));
     }
 
+    fn server(name: &str, launch: Launch, secrets: &[&str], agent: Agent) -> Augmentation {
+        Augmentation {
+            details: Details::Mcp {
+                config: "/config".into(),
+                server: Server {
+                    name: name.into(),
+                    launch,
+                    secrets: secrets.iter().map(|s| s.to_string()).collect(),
+                },
+            },
+            ..item(name, Kind::Mcp, Installer::ClaudeCli, &[agent])
+        }
+    }
+
+    fn stdio(command: &str, args: &[&str]) -> Launch {
+        Launch::Stdio {
+            command: command.into(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    fn url(url: &str, transport: &str) -> Launch {
+        Launch::Url {
+            url: url.into(),
+            transport: transport.into(),
+        }
+    }
+
     #[test]
     fn mcp_servers_are_saved_unless_they_need_secrets() {
-        let server = |name: &str, children: Vec<&str>, agent: Agent| {
-            let mut i = in_group(
-                item(name, Kind::Mcp, Installer::ClaudeCli, &[agent]),
-                "mcp",
-                None,
-            );
-            i.children = children.into_iter().map(String::from).collect();
-            i
-        };
         let snap = snapshot(
             "p",
             &[
-                server(
-                    "fs",
-                    vec!["command: npx", "arg: -y", "arg: fs"],
-                    Agent::Claude,
-                ),
-                server(
-                    "fs",
-                    vec!["command: npx", "arg: -y", "arg: fs"],
-                    Agent::Codex,
-                ),
-                server(
-                    "web",
-                    vec!["url: https://x/mcp", "transport: sse"],
-                    Agent::Claude,
-                ),
-                server(
-                    "plain",
-                    vec!["url: https://y/mcp", "transport: http"],
-                    Agent::Claude,
-                ),
-                server("keyed", vec!["command: srv", "needs: TOKEN"], Agent::Claude),
-                server("broken", vec![], Agent::Claude),
+                server("fs", stdio("npx", &["-y", "fs"]), &[], Agent::Claude),
+                server("fs", stdio("npx", &["-y", "fs"]), &[], Agent::Codex),
+                server("web", url("https://x/mcp", "sse"), &[], Agent::Claude),
+                server("plain", url("https://y/mcp", "http"), &[], Agent::Claude),
+                server("keyed", stdio("srv", &[]), &["TOKEN"], Agent::Claude),
+                item("broken", Kind::Mcp, Installer::ClaudeCli, &[Agent::Claude]),
             ],
         );
-        let reasons: Vec<Reason> = snap.skipped.iter().map(|s| s.reason).collect();
-        // Assert the secret-bearing and the unreadable server are skipped for their own reasons.
-        assert_eq!(reasons, [Reason::Secrets(1), Reason::Unreadable]);
+        assert_eq!(
+            snap.skipped.iter().map(|s| s.reason).collect::<Vec<_>>(),
+            [Reason::Secrets(1), Reason::Unreadable]
+        );
         let get = |n: &str| {
-            snap.profile.entries.iter().find_map(|e| match e {
-                Entry::Mcp { name, .. } if name == n => Some(e.clone()),
-                _ => None,
-            })
+            snap.profile
+                .entries
+                .iter()
+                .find(|e| matches!(e, Entry::Mcp { name, .. } if name == n))
         };
         assert_eq!(
             get("fs"),
-            Some(Entry::Mcp {
+            Some(&Entry::Mcp {
                 name: "fs".into(),
                 command: Some("npx".into()),
                 args: vec!["-y".into(), "fs".into()],
                 url: None,
                 transport: None,
-                agents: vec![],
+                agents: vec![]
             })
         );
-        let Some(Entry::Mcp { transport, .. }) = get("web") else {
-            panic!()
-        };
-        assert_eq!(transport.as_deref(), Some("sse"));
-        let Some(Entry::Mcp { transport, .. }) = get("plain") else {
-            panic!()
-        };
-        assert_eq!(transport, None);
+        assert!(
+            matches!(get("web"), Some(Entry::Mcp { transport: Some(transport), .. }) if transport == "sse")
+        );
+        assert!(matches!(
+            get("plain"),
+            Some(Entry::Mcp {
+                transport: None,
+                ..
+            })
+        ));
     }
 
     #[test]
     fn mcp_servers_with_credentials_in_args_or_url_are_not_saved() {
-        let server = |name: &str, children: Vec<&str>| {
-            let mut i = in_group(
-                item(name, Kind::Mcp, Installer::ClaudeCli, &[Agent::Claude]),
-                "mcp",
-                None,
-            );
-            i.children = children.into_iter().map(String::from).collect();
-            i
-        };
         let snap = snapshot(
             "p",
             &[
-                server("flag", vec!["command: srv", "arg: --api-key", "arg: abc"]),
-                server("eq", vec!["command: srv", "arg: --token=abc"]),
+                server(
+                    "flag",
+                    stdio("srv", &["--api-key", "abc"]),
+                    &[],
+                    Agent::Claude,
+                ),
+                server("eq", stdio("srv", &["--token=abc"]), &[], Agent::Claude),
                 server(
                     "query",
-                    vec!["url: https://x/mcp?key=abc", "transport: http"],
+                    url("https://x/mcp?key=abc", "http"),
+                    &[],
+                    Agent::Claude,
                 ),
-                server("user", vec!["url: https://u:p@x/mcp", "transport: http"]),
-                server("clean", vec!["command: srv", "arg: --port", "arg: 80"]),
+                server("user", url("https://u:p@x/mcp", "http"), &[], Agent::Claude),
+                server("clean", stdio("srv", &["--port", "80"]), &[], Agent::Claude),
             ],
         );
-
-        let reasons: Vec<Reason> = snap.skipped.iter().map(|s| s.reason).collect();
-
-        // every credential carrier is skipped as Secrets; only the clean server is saved
-        assert_eq!(reasons, [Reason::Secrets(1); 4]);
+        assert_eq!(
+            snap.skipped.iter().map(|s| s.reason).collect::<Vec<_>>(),
+            [Reason::Secrets(1); 4]
+        );
         assert_eq!(snap.profile.entries.len(), 1);
+    }
+
+    #[test]
+    fn handmade_skills_keep_their_install_name_without_reading_display_lines() {
+        let skill = Augmentation {
+            details: Details::Skill {
+                directory: "/p/skills/folder".into(),
+                install_name: "real".into(),
+            },
+            origin: Origin {
+                link: Some("/p/skills".into()),
+                version: None,
+            },
+            children: vec!["arbitrary presentation".into()],
+            ..item("folder", Kind::Skill, Installer::Local, &both())
+        };
+        let snap = snapshot("p", &[skill]);
+        assert_eq!(
+            snap.profile.entries,
+            [Entry::Skill {
+                source: "/p/skills".into(),
+                names: vec!["real".into()],
+                agents: vec![]
+            }]
+        );
+    }
+
+    #[test]
+    fn a_handmade_subagent_uses_its_directory_as_the_reinstall_source() {
+        let definition = Augmentation {
+            details: Details::Subagent {
+                file: "/p/agents/reviewer.md".into(),
+            },
+            origin: Origin {
+                link: Some("/p/agents".into()),
+                version: None,
+            },
+            ..item(
+                "Reviewer",
+                Kind::Subagent,
+                Installer::Local,
+                &[Agent::Claude],
+            )
+        };
+        let snap = snapshot("p", &[definition]);
+        assert_eq!(
+            snap.profile.entries,
+            [Entry::Subagent {
+                source: "/p/agents".into(),
+                names: vec!["reviewer".into()],
+                agents: vec![Agent::Claude]
+            }]
+        );
     }
 
     #[test]
@@ -462,7 +616,7 @@ mod tests {
                 "g",
                 source,
             );
-            i.children = vec![format!("file: {file}")];
+            i.details = Details::Subagent { file: file.into() };
             i
         };
         let snap = snapshot(
@@ -473,7 +627,7 @@ mod tests {
                 agent("Mine", "mine.md", None),
             ],
         );
-        // Assert only the source-less subagent is skipped.
+
         assert_eq!(snap.skipped[0].reason, Reason::NoSource);
         assert_eq!(snap.skipped.len(), 1);
         assert_eq!(
@@ -498,5 +652,37 @@ mod tests {
         );
         let text = snap.profile.to_text().unwrap();
         assert_eq!(Profile::parse("p", &text).unwrap(), snap.profile);
+    }
+    #[test]
+    fn merged_copies_keep_every_agents_installed_claim() {
+        let skill = |agent| {
+            in_group(
+                item("tdd", Kind::Skill, Installer::Npx, &[agent]),
+                "o/r",
+                Some("o/r"),
+            )
+        };
+        let merged = crate::merge::merge(vec![skill(Agent::Claude), skill(Agent::Codex)]);
+        let snap = snapshot("p", &merged);
+        assert_eq!(
+            snap.profile.resolved(),
+            [Entry::Skill {
+                source: "o/r".into(),
+                names: vec!["tdd".into()],
+                agents: both().to_vec()
+            }]
+        );
+    }
+    #[test]
+    fn source_credentials_are_skipped_without_echoing_them() {
+        let skill = in_group(
+            item("reviewer", Kind::Skill, Installer::Npx, &both()),
+            "source",
+            Some("https://user:snapshot-secret@host/repo.git"),
+        );
+        let result = snapshot("safe", &[skill]);
+        assert!(result.profile.entries.is_empty());
+        assert_eq!(result.skipped.len(), 1);
+        assert!(!result.skipped[0].label.contains("snapshot-secret"));
     }
 }

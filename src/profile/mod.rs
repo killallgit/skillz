@@ -16,8 +16,8 @@ use crate::model::Agent;
 
 pub use edit::with_added;
 pub use entry::Entry;
-pub(crate) use identity::same_thing;
 pub use identity::{Claim, claims, lacking};
+pub(crate) use identity::{Key, installed_claims, installed_keys, keys, same_thing};
 pub use store::{StillExtended, Store};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +49,16 @@ impl Profile {
             agents: default_agents(),
             entries: vec![],
         }
+    }
+
+    /// A temporary profile for comparison and installation; the stored definition stays portable.
+    pub fn in_env(mut self, env: &crate::env::Env) -> Self {
+        self.entries = self
+            .entries
+            .into_iter()
+            .map(|entry| entry.in_env(env))
+            .collect();
+        self
     }
 
     /// The agents `entry` applies to: its own, else the profile's.
@@ -95,7 +105,10 @@ impl Profile {
             self.name
         );
         self.extends.iter().try_for_each(|base| check_name(base))?;
-        self.entries.iter().try_for_each(Entry::validate)
+        self.entries.iter().try_for_each(|entry| {
+            entry.validate()?;
+            entry.ensure_no_credentials()
+        })
     }
 }
 

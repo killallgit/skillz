@@ -5,13 +5,12 @@ mod model;
 mod sync;
 
 use std::path::Path;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use super::deps::Deps;
 use super::scope::resolve_project;
 use super::session::{Notice, Session};
-use crate::model::Augmentation;
 use crate::tui::workspace::{Act, Shared, Workspace};
 use crate::update::check;
 use model::snapshot;
@@ -30,11 +29,19 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
     lock(&screen).watch_updates(results);
     lock(&screen).watch_syncs(syncs);
     let mut notice = None;
-    let mut to_check = None;
+    let mut checked = std::collections::HashSet::new();
     loop {
         let model = snapshot(&session, notice.take())?;
-        let held: Vec<Augmentation> = [&model.installed[..], &model.global[..]].concat();
-        check_in_background(deps, held, to_check.take(), &found);
+        let due = model
+            .installed
+            .iter()
+            .chain(&model.global)
+            .filter(|item| checked.insert(item.id.clone()))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !due.is_empty() {
+            check::spawn(deps.checker.clone(), due, found.clone());
+        }
         lock(&screen).load(model);
         let act = deps.prompter.workspace(&screen)?;
         if act == Act::Quit {
@@ -42,7 +49,9 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
         }
         if let Act::Update { ids, .. } = &act {
             lock(&screen).forget_updates(ids);
-            to_check = Some(ids.clone());
+            for id in ids {
+                checked.remove(id);
+            }
         }
         notice = session
             .perform(act)
@@ -52,19 +61,4 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
 
 fn lock(screen: &Shared) -> MutexGuard<'_, Workspace> {
     screen.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// Look for newer versions of `only` those installed items, project and global alike (all of
-/// them on the first call).
-fn check_in_background(
-    deps: &Deps,
-    installed: Vec<Augmentation>,
-    only: Option<Vec<String>>,
-    found: &Sender<String>,
-) {
-    let due = installed
-        .into_iter()
-        .filter(|item| only.as_ref().is_none_or(|ids| ids.contains(&item.id)))
-        .collect();
-    check::spawn(deps.checker.clone(), due, found.clone());
 }

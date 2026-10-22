@@ -9,7 +9,7 @@ use super::deps::Deps;
 use super::profile_args::ProfileCommand;
 use super::profile_entries::{add, remove};
 use super::profile_status::{list, status};
-use super::scope::{installed, resolve_project};
+use super::scope::{complete_installed, resolve_project};
 use super::session::with_session;
 use crate::model::{Augmentation, Scope};
 use crate::{profile, snapshot};
@@ -47,7 +47,7 @@ pub(super) fn profile_command(
             })
         }
         ProfileCommand::Save { name, force } => {
-            let items = installed(deps, &env, Scope::Project);
+            let items = complete_installed(deps, &env, Scope::Project)?;
             let snap = save_profile(&store, &items, &name, force)?;
             print_saved(out, &name, &snap)
         }

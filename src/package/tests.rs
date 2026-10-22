@@ -3,6 +3,7 @@ use crate::model::{Agent, Installer, Scope};
 
 fn item(kind: Kind, name: &str, source: Option<&str>, group: &str) -> Augmentation {
     Augmentation {
+        details: Default::default(),
         id: format!("{kind}:{name}"),
         name: name.into(),
         kind,

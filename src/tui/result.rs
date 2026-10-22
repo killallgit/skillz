@@ -2,29 +2,23 @@
 //! rest again, then the steps that ran.
 
 use ratatui::Frame;
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
-use ratatui::layout::{Constraint, Layout};
+use ratatui::crossterm::event::{Event, KeyEvent};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Wrap};
 
 use super::app::{Screen, Step};
 use super::clipboard;
+use super::keymap::{self, Action, Scope};
 use super::result_items::done_lines;
 use super::theme::Theme;
-use super::widgets::modal::{self, ModalSize};
 use super::widgets::panel::Panel;
-use super::widgets::scroll::Scroll;
+use super::widgets::text_modal::{Page, TextModal};
 use crate::review::{Next, Outcome};
-
-const WIDTH: u16 = 76;
-const CHROME: u16 = 4;
 
 pub struct ResultScreen {
     title: String,
     outcome: Outcome,
-    scroll: Scroll,
+    modal: TextModal,
     copied: bool,
-    shown: usize,
     copy: fn(&str),
 }
 
@@ -33,9 +27,8 @@ impl ResultScreen {
         ResultScreen {
             title: title.to_string(),
             outcome,
-            scroll: Scroll::default(),
+            modal: TextModal::default(),
             copied: false,
-            shown: 0,
             copy: copy_to_terminal,
         }
     }
@@ -54,18 +47,18 @@ impl ResultScreen {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> Step<Next> {
-        match key.code {
-            KeyCode::Char('c') => {
+        match keymap::resolve(Scope::Result, key) {
+            Some(Action::Copy) => {
                 (self.copy)(&self.clip());
                 self.copied = true;
             }
-            KeyCode::Char('r') if self.can_retry() => return Step::Act(Next::Retry),
-            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q' | ' ') => {
+            Some(Action::Retry) if self.can_retry() => return Step::Act(Next::Retry),
+            Some(Action::Back | Action::Select | Action::Quit) => {
                 return Step::Act(Next::Done);
             }
-            _ => {
-                self.scroll.key(key, self.shown);
-            }
+            Some(Action::Interrupt) => return Step::Quit,
+            Some(movement) => self.modal.navigate(movement),
+            None => {}
         }
         Step::Stay
     }
@@ -84,18 +77,18 @@ impl ResultScreen {
     }
 
     fn hints(&self, theme: &Theme) -> Line<'static> {
-        let mut spans = vec![Span::styled("enter close  ", theme.accent)];
-        if self.can_retry() {
-            spans.push(Span::styled("r retry  ", theme.warn));
-        }
-        let copy = if self.copied {
-            "c copied  "
-        } else {
-            "c copy  "
-        };
-        spans.push(Span::styled(copy, theme.muted));
-        spans.push(Span::styled("↑↓ scroll", theme.muted));
-        Line::from(spans)
+        let spans = keymap::hint_bindings(&[Scope::Result])
+            .into_iter()
+            .filter(|binding| binding.action != Action::Retry || self.can_retry())
+            .map(|binding| {
+                let label = if binding.action == Action::Copy && self.copied {
+                    "copied"
+                } else {
+                    binding.label
+                };
+                Span::styled(format!("{} {label}  ", binding.keys), theme.muted)
+            });
+        Line::from(spans.collect::<Vec<_>>())
     }
 }
 
@@ -159,30 +152,19 @@ impl Screen<Next> for ResultScreen {
         match event {
             Event::Key(key) => self.on_key(*key),
             other => {
-                self.scroll.wheel(other, self.shown);
+                self.modal.wheel(other);
                 Step::Stay
             }
         }
     }
 
     fn draw(&mut self, frame: &mut Frame, theme: &Theme) {
-        let text = self.lines(theme);
-        self.shown = text.len();
-        let size = ModalSize {
-            width: WIDTH,
-            height: (text.len() as u16).saturating_add(CHROME),
+        let page = Page {
+            panel: Panel::new(self.title.clone()).danger(!self.outcome.is_clean()),
+            lines: self.lines(theme),
+            footer: self.hints(theme),
         };
-        let panel = Panel::new(self.title.clone())
-            .focused(true)
-            .danger(!self.outcome.is_clean());
-        let inner = modal::open(frame, size, panel, theme);
-        let [body, foot] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-        let page = Paragraph::new(text)
-            .wrap(Wrap { trim: false })
-            .scroll((self.scroll.offset(), 0));
-        frame.render_widget(page, body);
-        frame.render_widget(Paragraph::new(self.hints(theme)), foot);
+        self.modal.render(frame, theme, page);
     }
 }
 
@@ -190,6 +172,7 @@ impl Screen<Next> for ResultScreen {
 mod tests {
     use super::*;
     use crate::tui::widgets::testing::key;
+    use ratatui::crossterm::event::KeyCode;
     use std::cell::RefCell;
 
     thread_local! {
@@ -217,19 +200,6 @@ mod tests {
 
         // Assert the run of three folds, and the lone repeats stay apart.
         assert_eq!(collapsed, ["a ×3", "b", "a"]);
-    }
-
-    #[test]
-    fn a_clean_run_lists_no_steps() {
-        let clean = Outcome {
-            log: vec!["removing orca".into(); 8],
-            ..Outcome::default()
-        };
-        let screen = ResultScreen::new("done", clean);
-
-        let lines = screen.lines(&Theme::mono());
-
-        assert!(lines.iter().all(|l| !l.to_string().contains("steps")));
     }
 
     fn answer(screen: &mut ResultScreen, code: KeyCode) -> Option<Next> {
@@ -287,5 +257,18 @@ mod tests {
 
         // Line 0 is the counts; the failure is the second problem block line.
         assert_eq!(lines[2].spans[0].style, theme.danger);
+    }
+
+    #[test]
+    fn control_c_quits_without_copying_the_outcome() {
+        use crate::tui::widgets::testing::ctrl;
+        let mut screen = ResultScreen::new("t", failed());
+        screen.copy = |_| panic!("an interrupt must not copy");
+
+        let interrupt = screen.handle(&Event::Key(ctrl('c')));
+
+        // Assert the common interrupt wins over the plain copy binding.
+        assert!(matches!(interrupt, Step::Quit));
+        assert!(!screen.copied);
     }
 }

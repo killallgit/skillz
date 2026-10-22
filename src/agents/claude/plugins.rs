@@ -18,7 +18,7 @@ pub(super) fn plugins(
     scope: Scope,
     installs: &[Install],
     markets: &[Marketplace],
-) -> Vec<Augmentation> {
+) -> anyhow::Result<Vec<Augmentation>> {
     let in_scope = |i: &&Install| match (scope, &i.project) {
         (Scope::Global, None) => true,
         (Scope::Project, Some(p)) => same_path(p, &env.project),
@@ -33,7 +33,12 @@ pub(super) fn plugins(
         .collect()
 }
 
-fn plugin(env: &Env, scope: Scope, install: &Install, markets: &[Marketplace]) -> Augmentation {
+fn plugin(
+    env: &Env,
+    scope: Scope,
+    install: &Install,
+    markets: &[Marketplace],
+) -> anyhow::Result<Augmentation> {
     let (_, mp) = split_plugin_id(&install.id);
     let source = markets
         .iter()
@@ -43,10 +48,26 @@ fn plugin(env: &Env, scope: Scope, install: &Install, markets: &[Marketplace]) -
     let hooks = root
         .map(|r| hooks::plugin_hooks(r, &r.join(".claude-plugin/plugin.json")))
         .unwrap_or_default();
-    let mut children = root.map(plugin_children).unwrap_or_default();
+    let skills = root
+        .map(super::super::plugin::skill_names)
+        .transpose()?
+        .unwrap_or_default();
+    let mut children = skills
+        .iter()
+        .map(|name| format!("{SKILL_CHILD}{name}"))
+        .collect::<Vec<_>>();
+    if let Some(root) = root {
+        children.extend(plugin_children(root)?);
+    }
     children.extend(hooks.iter().map(|h| format!("{HOOK_CHILD}{}", h.label())));
     children.sort();
-    Augmentation {
+    Ok(Augmentation {
+        details: crate::model::Details::Plugin {
+            location: root
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| super::files::installed_file(&env.claude_dir())),
+            skills,
+        },
         hooks,
         members: Vec::new(),
         id: format!("plugin:claude:{scope}:{}", install.id),
@@ -63,7 +84,7 @@ fn plugin(env: &Env, scope: Scope, install: &Install, markets: &[Marketplace]) -
         },
         children,
         removal: plugin_removal(&env.claude_dir(), install),
-    }
+    })
 }
 
 pub(super) fn dir_entries(dir: &Path) -> Vec<PathBuf> {
@@ -72,21 +93,20 @@ pub(super) fn dir_entries(dir: &Path) -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
-fn plugin_children(root: &Path) -> Vec<String> {
-    let mut out: Vec<String> = dir_entries(&root.join("skills"))
-        .into_iter()
-        .filter(|p| p.join("SKILL.md").is_file())
-        .filter_map(|p| Some(format!("{SKILL_CHILD}{}", p.file_name()?.to_str()?)))
-        .collect();
+fn plugin_children(root: &Path) -> anyhow::Result<Vec<String>> {
+    let mut out = Vec::new();
     for (dir, label) in [("agents", "agent"), ("commands", "command")] {
-        out.extend(
-            dir_entries(&root.join(dir))
-                .into_iter()
-                .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "md"))
-                .filter_map(|p| Some(format!("{label}: {}", p.file_stem()?.to_str()?))),
-        );
+        for entry in crate::read_optional::read_dir(&root.join(dir))? {
+            let path = entry.path();
+            if entry.file_type()?.is_file()
+                && path.extension().is_some_and(|e| e == "md")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                out.push(format!("{label}: {stem}"));
+            }
+        }
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -126,11 +146,8 @@ mod tests {
         sorted.sort();
         assert_eq!(tools.children, sorted);
         assert_eq!(tools.hooks.len(), 1);
-        assert!(
-            tools
-                .children
-                .contains(&format!("{HOOK_CHILD}Stop: say done"))
-        );
+        assert_eq!(tools.plugin_skills().collect::<Vec<_>>(), ["alpha", "beta"]);
+        assert_eq!(tools.hooks[0].command, "say done");
         let installed = installed_file(&f.env.claude_dir());
         assert_eq!(
             files(&tools.removal),

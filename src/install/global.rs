@@ -13,14 +13,19 @@ pub(super) fn confirm_duplicates(
     req: &InstallRequest,
     (source, names): (&str, &[String]),
 ) -> anyhow::Result<bool> {
-    let global = inventory(ctx.adapters, ctx.env, &[Scope::Global]).items;
-    let project = inventory(ctx.adapters, ctx.env, &[Scope::Project]).items;
+    if req.scope == Scope::Global {
+        return Ok(true);
+    }
+    let global = inventory(ctx.adapters, ctx.env, &[Scope::Global]).complete()?;
+    let project = inventory(ctx.adapters, ctx.env, &[Scope::Project]).complete()?;
     let held = only_global(&(source, &req.agents), names, (&global, &project));
     if held.is_empty() {
         return Ok(true);
     }
-    eprintln!("already installed globally: {}", held.join(", "));
-    ctx.prompter.confirm("Also install into this project?")
+    ctx.prompter.confirm(&format!(
+        "Already installed globally: {}. Also install into this project?",
+        held.join(", ")
+    ))
 }
 
 /// The names that are installed globally but not in the project.
@@ -50,6 +55,7 @@ mod tests {
 
     fn skill(name: &str, scope: Scope) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: vec![],
             members: Vec::new(),
             id: format!("skill:{name}"),
@@ -88,5 +94,33 @@ mod tests {
         let held = only_global(&("x/y", &[Agent::Claude]), &names(&["tdd"]), (&global, &[]));
 
         assert!(held.is_empty());
+    }
+    #[test]
+    fn global_install_neither_reads_project_inventory_nor_asks_about_it() {
+        let temporary = tempfile::tempdir().unwrap();
+        let env = crate::env::Env::new(
+            temporary.path().to_path_buf(),
+            temporary.path().join("project"),
+        );
+        let invalid = env.claude_dir().join("skills");
+        std::fs::create_dir_all(invalid.parent().unwrap()).unwrap();
+        std::fs::write(invalid, "not a directory").unwrap();
+        let adapters = crate::agents::registry();
+        let prompter = crate::install::test_support::ScriptedPrompter::new(&[], false);
+        let request = InstallRequest {
+            source: "o/r".into(),
+            cwd: env.project.clone(),
+            agents: vec![Agent::Claude],
+            scope: Scope::Global,
+            selection: super::super::SkillSelection::All,
+        };
+        let context = Ctx {
+            adapters: &adapters,
+            env: &env,
+            runner: &crate::runner::NoCommands,
+            prompter: &prompter,
+        };
+
+        assert!(confirm_duplicates(&context, &request, ("o/r", &names(&["tdd"]))).unwrap());
     }
 }

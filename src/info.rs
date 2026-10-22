@@ -101,6 +101,7 @@ mod tests {
 
     fn item() -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
             id: "x".into(),

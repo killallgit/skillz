@@ -1,10 +1,7 @@
-//! `skillz install`: fetch the source (`source`), then let each agent install its marketplace
-//! plugins (`AgentAdapter::install_plugins`) and send the rest of the skills through npx
-//! `skills` (`skills`).
+//! Install a local directory or fetched source through the agents’ plugin installers and npx skills.
 
 mod global;
 mod skills;
-mod source;
 #[cfg(test)]
 pub(crate) mod test_support;
 
@@ -53,13 +50,7 @@ struct Tree<'a> {
 }
 
 pub fn install(ctx: &Ctx, req: &InstallRequest) -> anyhow::Result<()> {
-    let fetch = source::Fetch {
-        source: &req.source,
-        cwd: &req.cwd,
-        project: &ctx.env.project,
-        runner: ctx.runner,
-    };
-    source::with_source(&fetch, |src, source| {
+    crate::clone::with_source(&req.source, &req.cwd, ctx.runner, |src, source| {
         install_from(ctx, req, &Tree { src, source })
     })
 }
@@ -138,7 +129,14 @@ mod tests {
         let runner = FakeRunner::new(|_| {});
         let r = req(&fx, "repo", SkillSelection::All);
         run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
-        let src = fx.env.project.join("repo").to_string_lossy().into_owned();
+        let src = fx
+            .env
+            .project
+            .join("repo")
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         let expected = npx(
             &src,
             &[
@@ -210,7 +208,14 @@ mod tests {
             calls[1].1,
             s(&["plugin", "install", "p2@mp", "--scope", "user"])
         );
-        let src = fx.env.project.join("repo").to_string_lossy().into_owned();
+        let src = fx
+            .env
+            .project
+            .join("repo")
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         assert_eq!(
             calls[2].1,
             npx(&src, &["--skill", "beta", "-a", "codex", "-g", "-y"])

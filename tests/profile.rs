@@ -45,8 +45,6 @@ fn apply_all(d: &Deps, profiles: &[&str]) {
     }
 }
 
-// --- use
-
 #[test]
 fn a_dry_run_use_runs_no_command() {
     let w = world_with_web();
@@ -86,8 +84,6 @@ fn using_a_missing_profile_fails() {
 
     assert!(res.is_err());
 }
-
-// --- profile save / show / list / delete
 
 fn saved_profile() -> (World, String) {
     let w = world_with_project_setup();
@@ -139,50 +135,24 @@ fn saving_with_force_overwrites_the_profile() {
 }
 
 #[test]
-fn a_saved_profile_is_in_the_store() {
-    let (w, _) = saved_profile();
-
-    assert_eq!(w.profile_names(), ["mine"]);
-}
-
-#[test]
-fn profile_list_prints_one_line_per_profile() {
-    let (w, _) = saved_profile();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-
-    let out = run_captured(
-        profile_cmd(ProfileCommand::List { json: false }),
-        &deps(&w, &r, &p),
-    );
-
-    assert_eq!(String::from_utf8(out).unwrap().lines().count(), 1);
-}
-
-#[test]
-fn profile_show_prints_the_stored_toml() {
-    let (w, text) = saved_profile();
-    let (r, p) = (Recorder::default(), Scripted::yes());
-    let show = profile_cmd(ProfileCommand::Show {
-        name: "mine".into(),
-    });
-
-    let out = run_captured(show, &deps(&w, &r, &p));
-
-    assert_eq!(String::from_utf8(out).unwrap(), text);
-}
-
-#[test]
 fn a_shown_profile_can_be_imported_again() {
-    let (w, text) = saved_profile();
+    let (w, _) = saved_profile();
     let (r, p) = (Recorder::default(), Scripted::yes());
     let d = deps(&w, &r, &p);
+    let original = w.profile("mine");
+    let text = run_captured(
+        profile_cmd(ProfileCommand::Show {
+            name: "mine".into(),
+        }),
+        &d,
+    );
     let file = w.project.join("mine.toml");
     std::fs::write(&file, &text).unwrap();
     run_quiet(delete_mine(), &d).unwrap();
 
     run_quiet(profile_cmd(ProfileCommand::Import { file }), &d).unwrap();
 
-    assert_eq!(w.profile("mine").to_text().unwrap(), text);
+    assert_eq!(w.profile("mine"), original);
 }
 
 #[test]

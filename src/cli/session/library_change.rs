@@ -2,7 +2,7 @@
 
 use super::Session;
 use super::notice::Notice;
-use crate::cli::scope::{installed, project_env};
+use crate::cli::scope::{complete_installed, project_env};
 use crate::library::LibraryItem;
 use crate::model::Scope;
 use crate::profile::Entry;
@@ -24,9 +24,11 @@ impl Session<'_, '_> {
     /// Sync the library with everything installed in the project and at user level.
     pub(in crate::cli) fn library_import(&self) -> anyhow::Result<Option<Notice>> {
         let env = project_env(self.deps, &self.project);
-        let items = [Scope::Project, Scope::Global]
-            .map(|scope| installed(self.deps, &env, scope))
-            .concat();
+        let items = [
+            complete_installed(self.deps, &env, Scope::Project)?,
+            complete_installed(self.deps, &env, Scope::Global)?,
+        ]
+        .concat();
         let report = sync_library(&self.store, &items, (false, &Disk))?;
         Ok(Some(Notice::Synced {
             added: report.synced.added.len(),
@@ -36,9 +38,19 @@ impl Session<'_, '_> {
     }
 
     pub(in crate::cli) fn library_remove(&self, entry: &Entry) -> anyhow::Result<Option<Notice>> {
+        let env = project_env(self.deps, &self.project);
+        let wanted = entry.clone().in_env(&env);
         let item = LibraryItem::from_entry(entry.clone());
         self.store.update(|document| {
-            document.items.remove(&item);
+            let stored = document
+                .items
+                .items()
+                .iter()
+                .find(|item| crate::profile::same_thing(&item.entry.clone().in_env(&env), &wanted))
+                .cloned();
+            if let Some(stored) = stored {
+                document.items.remove(&stored);
+            }
             Ok(())
         })?;
         Ok(Some(Notice::LibraryRemoved(item.label)))
@@ -111,5 +123,19 @@ mod tests {
                 secrets: 0
             })
         ));
+    }
+    #[test]
+    fn a_normalized_workspace_entry_removes_its_original_library_record() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("agents-src")).unwrap();
+        with_session(dir.path(), |session| {
+            session
+                .library_add("subagent ./agents-src reviewer")
+                .unwrap();
+            let env = project_env(session.deps(), session.project());
+            let view = session.store.read().unwrap().items.in_env(&env);
+            session.library_remove(&view.items()[0].entry).unwrap();
+            assert!(session.store.read().unwrap().items.items().is_empty());
+        });
     }
 }

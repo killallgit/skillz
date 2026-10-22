@@ -14,6 +14,16 @@ pub enum Group {
 }
 
 impl Group {
+    pub fn name(self) -> &'static str {
+        match self {
+            Group::Keep => "keep",
+            Group::Remove => "remove",
+            Group::Install => "install",
+            Group::Update => "update",
+            Group::Skip => "skip",
+        }
+    }
+
     pub const ALL: [Group; 5] = [
         Group::Keep,
         Group::Remove,

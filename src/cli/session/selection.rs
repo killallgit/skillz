@@ -2,9 +2,9 @@
 
 use anyhow::Context;
 
-use crate::apply::{Applier, Each, Switch};
+use crate::apply::{Applier, Report, Switch};
 use crate::cli::deps::Deps;
-use crate::cli::scope::installed;
+use crate::cli::scope::complete_installed;
 use crate::env::Env;
 use crate::library::Catalog;
 use crate::profile::{Entry, Profile};
@@ -32,16 +32,21 @@ pub(super) fn selection_plan(
         .map(|entry| library.installable(entry))
         .collect();
     let mut switch = applier.plan(&wanted, false).context("planning installs")?;
-    switch.removals = installed(deps, env, applier.scope)
+    switch.removals = complete_installed(deps, env, applier.scope)?
         .into_iter()
         .filter(|item| picked.remove.contains(&item.id))
         .collect();
     Ok(switch)
 }
 
-pub(super) fn outcome_of_each(switch: &Switch, each: Each) -> Outcome {
+pub(super) fn outcome_of(switch: &Switch, each: Report) -> Outcome {
     Outcome {
-        removed: switch.removals.len(),
+        removed: each.removed.as_ref().map_or(0, |removed| {
+            switch
+                .removals
+                .len()
+                .saturating_sub(removed.still_installed.len())
+        }),
         installed: each.installed,
         updated: each.updated,
         skipped: switch.unsupported.len(),

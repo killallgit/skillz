@@ -15,6 +15,17 @@ pub fn read_optional(path: &Path) -> anyhow::Result<Option<String>> {
     }
 }
 
+pub fn read_dir(path: &Path) -> anyhow::Result<Vec<fs::DirEntry>> {
+    let entries = match fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
+    };
+    entries
+        .collect::<Result<_, _>>()
+        .with_context(|| format!("reading {}", path.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

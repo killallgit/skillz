@@ -2,30 +2,22 @@
 //! dry run one key away. A plan that removes something is framed in the danger colour.
 
 use ratatui::Frame;
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
-use ratatui::layout::{Constraint, Layout};
+use ratatui::crossterm::event::{Event, KeyEvent};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Paragraph, Wrap};
 
 use super::app::{Screen, Step};
+use super::keymap::{self, Action, Scope};
 use super::theme::Theme;
-use super::widgets::modal::{self, ModalSize};
 use super::widgets::panel::Panel;
-use super::widgets::scroll::Scroll;
+use super::widgets::text_modal::{Page, TextModal};
 use crate::review::{Group, PlanView, Verdict};
-
-const WIDTH: u16 = 76;
-/// Border, blank line and key hints around the text.
-const CHROME: u16 = 4;
 
 pub struct PlanScreen {
     view: PlanView,
     raw: bool,
     dry_run: bool,
-    scroll: Scroll,
-    /// Lines the last frame drew, which bound the scrolling.
-    shown: usize,
+    modal: TextModal,
 }
 
 impl PlanScreen {
@@ -34,8 +26,7 @@ impl PlanScreen {
             view,
             raw: false,
             dry_run: false,
-            scroll: Scroll::default(),
-            shown: 0,
+            modal: TextModal::default(),
         }
     }
 
@@ -48,22 +39,24 @@ impl PlanScreen {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> Step<Verdict> {
-        match key.code {
-            KeyCode::Enter | KeyCode::Char('y' | 'Y') => Step::Act(self.accepted()),
-            KeyCode::Esc | KeyCode::Char('n' | 'N' | 'q') => Step::Act(Verdict::Cancel),
-            KeyCode::Char('d') => self.toggle(|s| &mut s.dry_run),
-            KeyCode::Char('s') => self.toggle(|s| &mut s.raw),
-            _ => {
-                self.scroll.key(key, self.shown);
+        match keymap::resolve(Scope::Plan, key) {
+            Some(Action::Select) => Step::Act(self.accepted()),
+            Some(Action::Back | Action::Quit) => Step::Act(Verdict::Cancel),
+            Some(Action::Interrupt) => Step::Quit,
+            Some(Action::ToggleDryRun) => self.toggle(|s| &mut s.dry_run),
+            Some(Action::ToggleSteps) => self.toggle(|s| &mut s.raw),
+            Some(movement) => {
+                self.modal.navigate(movement);
                 Step::Stay
             }
+            None => Step::Stay,
         }
     }
 
     fn toggle(&mut self, flag: fn(&mut Self) -> &mut bool) -> Step<Verdict> {
         let flag = flag(self);
         *flag = !*flag;
-        self.scroll = Scroll::default();
+        self.modal.reset();
         Step::Stay
     }
 
@@ -81,45 +74,41 @@ impl Screen<Verdict> for PlanScreen {
         match event {
             Event::Key(key) => self.on_key(*key),
             other => {
-                self.scroll.wheel(other, self.shown);
+                self.modal.wheel(other);
                 Step::Stay
             }
         }
     }
 
     fn draw(&mut self, frame: &mut Frame, theme: &Theme) {
-        let text = self.text(theme);
-        self.shown = text.len();
-        let size = ModalSize {
-            width: WIDTH,
-            height: (text.len() as u16).saturating_add(CHROME),
+        let page = Page {
+            panel: Panel::new(self.view.heading.clone()).danger(self.view.destructive()),
+            lines: self.text(theme),
+            footer: self.hints(theme),
         };
-        let panel = Panel::new(self.view.heading.clone())
-            .focused(true)
-            .danger(self.view.destructive());
-        let inner = modal::open(frame, size, panel, theme);
-        let [body, foot] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-        let page = Paragraph::new(text)
-            .wrap(Wrap { trim: false })
-            .scroll((self.scroll.offset(), 0));
-        frame.render_widget(page, body);
-        frame.render_widget(self.hints(theme), foot);
+        self.modal.render(frame, theme, page);
     }
 }
 
 impl PlanScreen {
     fn hints(&self, theme: &Theme) -> Line<'static> {
-        let on = |flag: bool, key: &'static str, label: &'static str| {
-            let style = if flag { theme.warn } else { theme.muted };
-            vec![Span::styled(format!("{key} {label}  "), style)]
-        };
-        let apply = if self.dry_run { "dry run" } else { "apply" };
-        let mut spans = vec![Span::styled(format!("enter {apply}  "), theme.accent)];
-        spans.extend(on(self.dry_run, "d", "dry run"));
-        spans.extend(on(self.raw, "s", "steps"));
-        spans.push(Span::styled("esc cancel", theme.muted));
-        Line::from(spans)
+        let spans = keymap::hint_bindings(&[Scope::Plan])
+            .into_iter()
+            .map(|binding| {
+                let active = match binding.action {
+                    Action::ToggleDryRun => self.dry_run,
+                    Action::ToggleSteps => self.raw,
+                    _ => false,
+                };
+                let label = if binding.action == Action::Select && self.dry_run {
+                    "dry run"
+                } else {
+                    binding.label
+                };
+                let style = if active { theme.warn } else { theme.muted };
+                Span::styled(format!("{} {label}  ", binding.keys), style)
+            });
+        Line::from(spans.collect::<Vec<_>>())
     }
 }
 
@@ -142,16 +131,6 @@ fn group_marker(group: Group) -> &'static str {
     }
 }
 
-fn group_name(group: Group) -> &'static str {
-    match group {
-        Group::Keep => "keep",
-        Group::Remove => "remove",
-        Group::Install => "install",
-        Group::Update => "update",
-        Group::Skip => "skip",
-    }
-}
-
 /// The counts, then each non-empty group's entries marked and coloured by what happens to them.
 fn group_lines(view: &PlanView, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = vec![count_line(view, theme)];
@@ -162,7 +141,7 @@ fn group_lines(view: &PlanView, theme: &Theme) -> Vec<Line<'static>> {
         }
         let style = group_style(group, theme);
         lines.push(Line::default());
-        let head = format!("{} ({})", group_name(group), entries.len());
+        let head = format!("{} ({})", group.name(), entries.len());
         lines.push(Line::styled(
             head,
             style.add_modifier(theme.title.add_modifier),
@@ -207,6 +186,7 @@ fn step_lines(view: &PlanView, theme: &Theme) -> Vec<Line<'static>> {
 mod tests {
     use super::*;
     use crate::tui::widgets::testing::{key, render_to_buffer};
+    use ratatui::crossterm::event::KeyCode;
 
     fn view() -> PlanView {
         PlanView {
@@ -279,5 +259,38 @@ mod tests {
         let corner = buffer.content.iter().find(|c| c.symbol() == "╭");
         // The top-left corner of the modal is drawn in the danger colour.
         assert_eq!(corner.map(|c| c.fg), theme.danger.fg);
+    }
+
+    #[test]
+    fn control_c_quits_and_control_y_cannot_approve_a_plan() {
+        use crate::tui::widgets::testing::ctrl;
+        let mut screen = PlanScreen::new(view());
+
+        let modified_yes = screen.handle(&Event::Key(ctrl('y')));
+        let interrupt = screen.handle(&Event::Key(ctrl('c')));
+
+        // Assert modified text cannot approve a destructive plan and Ctrl-C exits it.
+        assert!(matches!(modified_yes, Step::Stay));
+        assert!(matches!(interrupt, Step::Quit));
+    }
+
+    #[test]
+    fn end_reaches_the_last_visual_line_of_a_wrapped_entry() {
+        let mut screen = PlanScreen::new(PlanView {
+            heading: String::new(),
+            groups: vec![(Group::Keep, vec!["x".repeat(225)])],
+            steps: vec![],
+        });
+        let theme = Theme::dark();
+        render_to_buffer(24, 8, |frame| screen.draw(frame, &theme));
+
+        screen.handle(&Event::Key(key(KeyCode::End)));
+        let bottom = render_to_buffer(24, 8, |frame| screen.draw(frame, &theme));
+        let occupied = (1..23)
+            .filter(|&x| bottom[(x, 5)].symbol().chars().any(|c| !c.is_whitespace()))
+            .count();
+
+        // Assert the last partial visual row is reachable, rather than an earlier full row.
+        assert_eq!(occupied, 225 % 22);
     }
 }

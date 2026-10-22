@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 
-use crate::atomic::write_atomic;
+use crate::action::stage;
 use crate::env::Env;
 use crate::read_optional::read_optional;
 pub use document::Document;
@@ -46,13 +46,17 @@ impl Store {
 
     /// The stored document; empty when there is no file, [`Corrupt`] when it cannot be read.
     pub fn read(&self) -> anyhow::Result<Document> {
-        let Some(text) = read_optional(&self.path)? else {
+        self.parse(read_optional(&self.path)?.as_deref())
+    }
+
+    fn parse(&self, text: Option<&str>) -> anyhow::Result<Document> {
+        let Some(text) = text else {
             return Ok(Document::default());
         };
         let corrupt = || Corrupt {
             path: self.path.clone(),
         };
-        let document: Document = serde_json::from_str(&text).map_err(|_| corrupt())?;
+        let document: Document = serde_json::from_str(text).map_err(|_| corrupt())?;
         anyhow::ensure!(document.version == document::VERSION, corrupt());
         Ok(document)
     }
@@ -64,10 +68,12 @@ impl Store {
         change: impl FnOnce(&mut Document) -> anyhow::Result<T>,
     ) -> anyhow::Result<T> {
         let _held = Lock::acquire(&self.path.with_extension("json.lock"))?;
-        let mut document = self.read()?;
+        let original = read_optional(&self.path)?;
+        let mut document = self.parse(original.as_deref())?;
         let result = change(&mut document)?;
         let text = serde_json::to_string_pretty(&document).context("writing store")?;
-        write_atomic(&self.path, &text)?;
+        let staged = stage::stage(&self.path, original, &text)?;
+        stage::commit(&[staged])?;
         Ok(result)
     }
 }

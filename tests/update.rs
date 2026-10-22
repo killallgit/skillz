@@ -141,3 +141,40 @@ fn check_lists_nothing_when_nothing_is_outdated() {
     let rows: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert!(rows.as_array().unwrap().is_empty());
 }
+
+#[test]
+fn an_agent_filter_updates_only_the_selected_copy_of_a_merged_subagent() {
+    use skillz::model::Agent;
+    for selected in [Agent::Claude, Agent::Codex] {
+        let w = world_with_skill(false);
+        let source = w.project.join("definitions");
+        let md = "---\nname: reviewer\n---\nnew";
+        let toml = "name = \"reviewer\"\nbody = \"new\"\n";
+        write(&source.join("reviewer.md"), md);
+        write(&source.join("reviewer.toml"), toml);
+        for (agent, ext, old) in [
+            ("claude", "md", "---\nname: reviewer\n---\nold"),
+            ("codex", "toml", "name = \"reviewer\"\nbody = \"old\"\n"),
+        ] {
+            let dir = w.project.join(format!(".{agent}/agents"));
+            write(&dir.join(format!("reviewer.{ext}")), old);
+            write(
+                &dir.join(".skillz-sources.json"),
+                &serde_json::json!({format!("reviewer.{ext}"): source}).to_string(),
+            );
+        }
+        let mut command = match update_command(Some("reviewer"), false) {
+            Command::Update(args) => args,
+            _ => unreachable!(),
+        };
+        command.filter.agents = vec![selected];
+
+        let (result, _) = update_with(&w, Command::Update(command));
+
+        assert!(result.is_ok());
+        let claude = fs::read_to_string(w.project.join(".claude/agents/reviewer.md")).unwrap();
+        let codex = fs::read_to_string(w.project.join(".codex/agents/reviewer.toml")).unwrap();
+        assert_eq!(claude == md, selected == Agent::Claude);
+        assert_eq!(codex == toml, selected == Agent::Codex);
+    }
+}

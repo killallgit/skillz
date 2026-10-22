@@ -19,7 +19,7 @@ impl Entry {
             Entry::Hook { event, command, .. } => hook_args(event, command)?,
             Entry::Mcp { .. } => mcp_args(self)?,
         };
-        ensure_plain(&args, self)
+        ensure_plain(&args)
     }
 }
 
@@ -28,13 +28,27 @@ impl Entry {
     /// or profile file is plain text and is shared.
     pub fn ensure_no_credentials(&self) -> anyhow::Result<()> {
         let words = match self {
-            Entry::Hook { command, .. } => command.split_whitespace().map(String::from).collect(),
-            Entry::Mcp { args, url, .. } => args.iter().cloned().chain(url.clone()).collect(),
-            _ => vec![],
+            Entry::Hook { command, .. } => shell_words::split(command)
+                .unwrap_or_else(|_| command.split_whitespace().map(str::to_owned).collect()),
+            Entry::Mcp {
+                command, args, url, ..
+            } => {
+                let mut words = args.clone();
+                words.extend(url.clone());
+                if let Some(command) = command {
+                    words.extend(shell_words::split(command).unwrap_or_else(|_| {
+                        command.split_whitespace().map(str::to_owned).collect()
+                    }));
+                }
+                words
+            }
+            Entry::Skill { source, .. }
+            | Entry::Subagent { source, .. }
+            | Entry::Plugin { source, .. } => vec![source.clone()],
         };
         anyhow::ensure!(
             credential_count(&words) == 0,
-            "{self} carries a credential; keep secrets out of the library"
+            "entry carries a credential; keep secrets out of the library"
         );
         Ok(())
     }
@@ -43,13 +57,13 @@ impl Entry {
 fn hook_args<'a>(event: &'a str, command: &'a str) -> anyhow::Result<Vec<&'a str>> {
     anyhow::ensure!(
         !event.contains(char::is_whitespace),
-        "invalid hook event {event:?}"
+        "hook event must be one word"
     );
     Ok(vec![event, command])
 }
 
 fn sourced_args<'a>(source: &'a str, names: &'a [String]) -> anyhow::Result<Vec<&'a str>> {
-    anyhow::ensure!(!names.is_empty(), "entry for {source} names nothing");
+    anyhow::ensure!(!names.is_empty(), "entry names nothing");
     Ok(std::iter::once(source)
         .chain(names.iter().map(String::as_str))
         .collect())
@@ -69,16 +83,16 @@ fn mcp_args(entry: &Entry) -> anyhow::Result<Vec<&str>> {
     };
     anyhow::ensure!(
         command.is_some() != url.is_some(),
-        "mcp entry {name} needs exactly one of command or url"
+        "mcp entry needs exactly one of command or url"
     );
     anyhow::ensure!(
         transport.is_none() || url.is_some(),
-        "mcp entry {name}: transport only goes with a url"
+        "mcp transport only goes with a url"
     );
     if let Some(t) = transport {
         anyhow::ensure!(
             matches!(t.as_str(), "http" | "sse"),
-            "unknown transport {t:?}"
+            "unknown mcp transport; expected http or sse"
         );
     }
     Ok(std::iter::once(name.as_str())
@@ -87,11 +101,11 @@ fn mcp_args(entry: &Entry) -> anyhow::Result<Vec<&str>> {
         .collect())
 }
 
-fn ensure_plain(args: &[&str], entry: &Entry) -> anyhow::Result<()> {
+fn ensure_plain(args: &[&str]) -> anyhow::Result<()> {
     for arg in args {
         anyhow::ensure!(
             !arg.trim().is_empty() && !arg.starts_with('-'),
-            "invalid value {arg:?} in {entry}"
+            "entry contains an empty or option-like argument"
         );
     }
     Ok(())
@@ -183,5 +197,76 @@ mod tests {
         };
 
         assert!(plugin.validate().is_err());
+    }
+    #[test]
+    fn credential_rejection_never_echoes_a_hook_token_or_server_url() {
+        for spec in [
+            "hook Stop notify --token validation-secret",
+            "mcp s https://user:validation-secret@host/mcp",
+            "mcp s https://host/mcp?key=validation-secret",
+        ] {
+            let error = Entry::parse_spec(spec).unwrap_err();
+            assert!(!format!("{error:#}").contains("validation-secret"));
+        }
+    }
+
+    #[test]
+    fn invalid_fields_never_echo_other_credentials_in_the_entry() {
+        let entries = [
+            skill("https://user:validation-secret@host/repo", &[]),
+            skill("https://user:validation-secret@host/repo", &["--all"]),
+            Entry::Hook {
+                event: "invalid event".into(),
+                command: "notify --token validation-secret".into(),
+                matcher: None,
+                agents: vec![],
+            },
+            Entry::Hook {
+                event: "--invalid".into(),
+                command: "notify --token validation-secret".into(),
+                matcher: None,
+                agents: vec![],
+            },
+            mcp(
+                Some("srv"),
+                Some("https://user:validation-secret@host/mcp"),
+                None,
+            ),
+            mcp(None, Some("https://host/mcp"), Some("validation-secret")),
+        ];
+        for entry in entries {
+            let error = entry.validate().unwrap_err();
+            assert!(!format!("{error:#}").contains("validation-secret"));
+        }
+    }
+    #[test]
+    fn imported_profiles_refuse_credentials_in_commands_urls_and_repository_sources() {
+        for entry in [
+            Entry::Hook {
+                event: "Stop".into(),
+                command: "notify '--token' 'profile-secret'".into(),
+                matcher: None,
+                agents: vec![],
+            },
+            mcp(None, Some("https://user:profile-secret@host/mcp"), None),
+            skill("https://user:profile-secret@host/repo.git", &["a"]),
+            Entry::Subagent {
+                source: "https://host/repo.git?token=profile-secret".into(),
+                names: vec!["a".into()],
+                agents: vec![],
+            },
+            Entry::Plugin {
+                source: "https://user:profile-secret@host/repo.git".into(),
+                marketplace: "mp".into(),
+                name: "a".into(),
+                agents: vec![],
+            },
+        ] {
+            let mut profile = crate::profile::Profile::new("imported");
+            profile.entries = vec![entry];
+            let error = crate::profile::Profile::parse("imported", &profile.to_text().unwrap())
+                .unwrap_err();
+            assert!(!format!("{error:#}").contains("profile-secret"));
+        }
     }
 }

@@ -1,7 +1,7 @@
 //! A yes/no dialog. Focus starts on No so a stray Enter never destroys anything.
 
 use ratatui::Frame;
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -9,6 +9,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use super::modal::{self, ModalSize};
 use super::panel::Panel;
+use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
 
 /// The dialog's verdict after a key.
@@ -47,11 +48,11 @@ impl ConfirmDialog {
     }
 
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
-        match key.code {
-            KeyCode::Char('y' | 'Y') => Outcome::Yes,
-            KeyCode::Char('n' | 'N') | KeyCode::Esc => Outcome::No,
-            KeyCode::Enter => self.choice(),
-            KeyCode::Tab | KeyCode::BackTab | KeyCode::Left | KeyCode::Right => {
+        match keymap::resolve(Scope::Confirm, key) {
+            Some(Action::Yes) => Outcome::Yes,
+            Some(Action::No | Action::Back | Action::Quit | Action::Interrupt) => Outcome::No,
+            Some(Action::Select) => self.choice(),
+            Some(Action::Toggle) => {
                 self.toggle_focus();
                 Outcome::Pending
             }
@@ -114,6 +115,7 @@ impl ConfirmDialog {
 mod tests {
     use super::*;
     use crate::tui::widgets::testing::{key, render_to_buffer, row_text};
+    use ratatui::crossterm::event::KeyCode;
 
     fn dialog() -> ConfirmDialog {
         ConfirmDialog::new("Remove", "Sure?")

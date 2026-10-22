@@ -85,6 +85,10 @@ fn server_augmentation(
                 edit: Edit::JsonRemoveKey { path: key },
             });
             Augmentation {
+                details: crate::model::Details::Mcp {
+                    config: file.to_path_buf(),
+                    server: server.clone(),
+                },
                 hooks: Vec::new(),
                 members: Vec::new(),
                 id: format!("mcp:claude:{scope}:{claude_scope}:{}", server.name),

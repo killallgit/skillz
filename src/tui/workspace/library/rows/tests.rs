@@ -1,5 +1,10 @@
 use super::*;
 use crate::profile::Entry;
+use crate::stale::Disk;
+
+fn build(catalog: &Catalog) -> Vec<Row> {
+    super::build(catalog, &Held::of(&[], &[]), &Disk)
+}
 
 pub fn skill(source: &str, name: &str) -> LibraryItem {
     LibraryItem::from_entry(Entry::Skill {
@@ -51,7 +56,7 @@ fn items_hang_under_the_package_they_come_from() {
 }
 
 #[test]
-fn skills_and_a_marketplace_plugin_are_separate_packages_with_their_counts() {
+fn skills_and_a_marketplace_plugin_are_separate_packages() {
     let catalog = Catalog::from_items(vec![
         skill("o/r", "a"),
         plugin("mp", "p"),
@@ -67,10 +72,6 @@ fn skills_and_a_marketplace_plugin_are_separate_packages_with_their_counts() {
             Package::Source("o/r".into())
         ]
     );
-    assert!(matches!(
-        &rows[0],
-        Row::Package { contents, .. } if *contents == [(ItemKind::Plugin, 2)]
-    ));
 }
 
 #[test]

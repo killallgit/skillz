@@ -3,6 +3,7 @@ mod mcp;
 mod plugins;
 mod removal;
 mod timestamp;
+pub(crate) mod update;
 mod usage;
 
 #[cfg(test)]
@@ -26,6 +27,10 @@ pub struct Codex;
 impl AgentAdapter for Codex {
     fn agent(&self) -> Agent {
         Agent::Codex
+    }
+
+    fn update_steps(&self, item: &Augmentation, cwd: &std::path::Path) -> Vec<Action> {
+        update::steps(item, cwd)
     }
 
     fn home_dir_names(&self) -> &'static [&'static str] {
@@ -67,7 +72,7 @@ impl AgentAdapter for Codex {
             marketplaces: &marketplaces,
             doc: &doc,
         };
-        let plugins = plugins_from(&cx, in_project.as_deref());
+        let plugins = plugins_from(&cx, in_project.as_deref())?;
         let mps = marketplaces_from(&cx, &plugins, in_project.as_deref());
         let servers = mcp::discover(&doc, scope, &config);
         Ok(mps
@@ -188,7 +193,7 @@ mod tests {
         assert_eq!(review.agents, vec![Agent::Codex]);
         assert_eq!(review.scope, Scope::Global);
         assert_eq!(review.source.as_deref(), Some("killallgit/killall-skills"));
-        assert_eq!(review.children.len(), 3);
+        assert_eq!(review.plugin_skills().collect::<Vec<_>>(), ["lint"]);
         assert_eq!(review.hooks.len(), 1);
         assert_eq!(
             files(&review.removal),
@@ -388,7 +393,7 @@ enabled = true
 
         let review = find(&items, "plugin:codex:project:review@killall");
         assert_eq!(review.source, None);
-        assert_eq!(review.children.len(), 3);
+        assert_eq!(review.plugin_skills().collect::<Vec<_>>(), ["lint"]);
         assert_eq!(
             files(&review.removal),
             vec![rm_key(&config, "plugins", "review@killall")]
@@ -468,5 +473,38 @@ enabled = true
             PathBuf::from("/p/.codex/hooks.json")
         );
         assert_eq!(env.codex_dir(), PathBuf::from("/iso"));
+    }
+    #[test]
+    fn one_recent_cache_revision_supplies_skills_hooks_and_version() {
+        use std::time::{Duration, SystemTime};
+        let (_temp, env) = setup();
+        let cache = env.codex_dir().join("plugins/cache/killall/review");
+        write(&cache.join("a-current/skills/current/SKILL.md"), "current");
+        write(&cache.join("z-old/skills/obsolete/SKILL.md"), "obsolete");
+        write(
+            &cache.join("a-current/hooks/hooks.json"),
+            r#"{"hooks":{"Stop":[{"hooks":[{"command":"current-hook"}]}]}}"#,
+        );
+        let now = SystemTime::now();
+        for entry in fs::read_dir(&cache).unwrap() {
+            let entry = entry.unwrap();
+            let modified = if entry.file_name() == "a-current" {
+                now
+            } else {
+                now - Duration::from_secs(100)
+            };
+            fs::File::open(entry.path())
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_modified(modified))
+                .unwrap();
+        }
+
+        let found = Codex.discover(&env, Scope::Global).unwrap();
+        let plugin = find(&found, "plugin:codex:global:review@killall");
+
+        assert_eq!(plugin.origin.version.as_deref(), Some("a-current"));
+        assert_eq!(plugin.plugin_skills().collect::<Vec<_>>(), ["current"]);
+        assert_eq!(plugin.hooks.len(), 1);
+        assert_eq!(plugin.hooks[0].command, "current-hook");
     }
 }

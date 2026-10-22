@@ -1,4 +1,4 @@
-//! `skillz sync`: add what is installed to the library. It never removes anything from it.
+//! `skillz sync`: discover library items and follow unambiguous moved local sources.
 
 use std::io::Write;
 
@@ -21,7 +21,7 @@ pub(super) fn sync(
     request: &SyncRequest,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let items = scene.gather();
+    let items = scene.complete()?;
     let report = sync_library(&Store::in_env(scene.env), &items, (request.dry_run, &Disk))?;
     if request.json {
         let value = as_json(&report.synced, request.dry_run);

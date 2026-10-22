@@ -96,15 +96,11 @@ impl TreeState {
     }
 
     fn handle_filter(&mut self, key: KeyEvent) -> Outcome {
-        self.overlay = Overlay::Filter;
-        if let Some(movement) = keymap::resolve(Scope::Filter, key) {
-            self.outline.step(movement);
-            return Outcome::Continue;
-        }
-        match self.outline.edit_filter(key) {
-            Edit::Editing => {}
-            Edit::Submit | Edit::Cancel => self.overlay = Overlay::None,
-        }
+        self.overlay = if self.outline.filter_key(key) == Edit::Editing {
+            Overlay::Filter
+        } else {
+            Overlay::None
+        };
         Outcome::Continue
     }
 }

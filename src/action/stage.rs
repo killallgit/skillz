@@ -6,9 +6,9 @@ use crate::read_optional::read_optional;
 use anyhow::Context;
 
 /// An edit written to a temp file beside the real file, ready to rename over it.
-pub(super) struct Staged {
+pub(crate) struct Staged {
     target: PathBuf,
-    tmp: PathBuf,
+    tmp: tempfile::TempPath,
     /// The text the plan was made from; `None` when the file did not exist.
     original: Option<String>,
     planned: String,
@@ -18,38 +18,42 @@ pub(super) struct Staged {
 /// and readers never see a half-written file. The temp is created fresh with the original
 /// mode (never wider, even briefly), then given exactly the original permissions. A file that
 /// does not exist yet (`original` is `None`) is created along with its directory.
-pub(super) fn stage(
+pub(crate) fn stage(
     file: &Path,
     original: Option<String>,
     contents: &str,
+) -> anyhow::Result<Staged> {
+    stage_with_permissions(file, original, contents, None)
+}
+
+pub(crate) fn stage_with_permissions(
+    file: &Path,
+    original: Option<String>,
+    contents: &str,
+    creation_permissions: Option<fs::Permissions>,
 ) -> anyhow::Result<Staged> {
     let target = resolve(file, original.is_none())?;
     let name = target
         .file_name()
         .context("no file name")?
         .to_string_lossy();
-    let tmp = target.with_file_name(format!(".{name}.skillz-tmp"));
     let perms = match original {
         Some(_) => Some(fs::metadata(&target)?.permissions()),
-        None => None,
+        None => creation_permissions,
     };
-    let mut opts = fs::OpenOptions::new();
-    opts.write(true).create_new(true);
-    #[cfg(unix)]
-    if let Some(perms) = &perms {
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-        opts.mode(perms.mode());
+    let mut builder = tempfile::Builder::new();
+    let prefix = format!(".{name}.");
+    builder.prefix(&prefix);
+    builder.suffix(".skillz-tmp");
+    if let Some(permissions) = &perms {
+        builder.permissions(permissions.clone());
     }
-    // A leftover from a crashed run would block `create_new`.
-    let _ = fs::remove_file(&tmp);
-    let result = opts
-        .open(&tmp)
-        .and_then(|mut f| f.write_all(contents.as_bytes()))
-        .and_then(|()| perms.map_or(Ok(()), |p| fs::set_permissions(&tmp, p)));
-    if result.is_err() {
-        let _ = fs::remove_file(&tmp);
+    let mut temporary = builder.tempfile_in(target.parent().context("no parent directory")?)?;
+    temporary.write_all(contents.as_bytes())?;
+    if let Some(permissions) = perms {
+        temporary.as_file().set_permissions(permissions)?;
     }
-    result?;
+    let tmp = temporary.into_temp_path();
     Ok(Staged {
         target,
         tmp,
@@ -75,7 +79,7 @@ fn resolve(file: &Path, create: bool) -> anyhow::Result<PathBuf> {
 /// Renames every temp file into place, but only when no target changed since the plan was
 /// made. If a rename fails, undoes those already renamed (leaving any that someone has
 /// changed since) and drops the rest.
-pub(super) fn commit(staged: &[Staged]) -> anyhow::Result<()> {
+pub(crate) fn commit(staged: &[Staged]) -> anyhow::Result<()> {
     if let Err(e) = ensure_unchanged(staged) {
         discard(staged);
         return Err(e);
@@ -112,7 +116,7 @@ fn rollback(s: &Staged) {
     };
 }
 
-pub(super) fn discard(staged: &[Staged]) {
+pub(crate) fn discard(staged: &[Staged]) {
     for s in staged {
         let _ = fs::remove_file(&s.tmp);
     }
@@ -122,6 +126,23 @@ pub(super) fn discard(staged: &[Staged]) {
 mod tests {
     use super::*;
     use crate::action::testutil::*;
+
+    #[test]
+    fn concurrent_plans_never_share_temporary_file_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config.json");
+        write(&file, "{}");
+        let first = stage(&file, Some("{}".into()), "{\"first\":true}").unwrap();
+        let second = stage(&file, Some("{}".into()), "{\"second\":true}").unwrap();
+
+        commit(std::slice::from_ref(&first)).unwrap();
+        let concurrent = commit(std::slice::from_ref(&second));
+
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        assert_eq!(value, serde_json::json!({"first": true}));
+        assert!(concurrent.is_err());
+    }
 
     #[test]
     fn commit_failure_restores_renamed_files() {
@@ -194,7 +215,7 @@ mod tests {
         write(&file, "a = 1\n");
         write(&victim, "keep");
         fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
-        // A stale temp left as a link must be replaced, not written through.
+        // An unrelated temporary symlink must never be opened.
         std::os::unix::fs::symlink(&victim, dir.path().join(".config.toml.skillz-tmp")).unwrap();
 
         let staged = stage(&file, Some("a = 1\n".into()), "b = 2\n").unwrap();

@@ -8,8 +8,9 @@ use super::switch::Switch;
 
 impl Applier<'_> {
     /// What the scope needs to hold `target`: what is missing gets installed and, when `exact`,
-    /// what the profile does not want gets removed. Pure apart from reading the inventory.
+    /// what the profile does not want gets removed. Reads source locations and the installed inventory.
     pub fn plan(&self, target: &Profile, exact: bool) -> anyhow::Result<Switch> {
+        let target = target.clone().in_env(self.env);
         let standing = compare(&target.resolved(), &self.installed()?);
         let (installs, unsupported) = self.installs_for(&standing.missing);
         let extras = if exact { standing.extras } else { vec![] };
@@ -40,7 +41,9 @@ impl Applier<'_> {
                 self.env,
             );
             unsupported.extend(planned.unsupported);
-            installs.push((entry.clone(), planned.steps));
+            if !planned.steps.is_empty() {
+                installs.push((entry.clone(), planned.steps));
+            }
         }
         (installs, unsupported)
     }

@@ -3,35 +3,31 @@ use std::path::Path;
 use super::entry::canonical_or;
 use super::frontmatter::skill_name;
 use crate::env::Env;
-use crate::model::{Origin, SKILL_CHILD};
+use crate::model::Origin;
 
 /// What a hand-made skill can be installed again from: the directory holding it, and the
 /// name npx finds it by when that is not its directory name.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(super) struct LocalSource {
     pub origin: Origin,
-    pub children: Vec<String>,
+    pub install_name: Option<String>,
 }
 
 /// Nothing when the skill lies outside the home and the project, or npx would not see it.
 pub(super) fn local_source(env: &Env, canonical: &Path) -> LocalSource {
-    let (Some(parent), Some(dir_name)) = (canonical.parent(), canonical.file_name()) else {
+    let Some(parent) = canonical.parent() else {
         return LocalSource::default();
     };
     let Some(name) = skill_name(canonical).filter(|_| inside_home_or_project(env, canonical))
     else {
         return LocalSource::default();
     };
-    let renamed = dir_name.to_str() != Some(name.as_str());
     LocalSource {
         origin: Origin {
             link: Some(parent.to_string_lossy().into_owned()),
             version: None,
         },
-        children: renamed
-            .then(|| format!("{SKILL_CHILD}{name}"))
-            .into_iter()
-            .collect(),
+        install_name: Some(name),
     }
 }
 
@@ -62,10 +58,9 @@ mod tests {
 
         let found = local_source(&f.env, &dir);
 
-        // Assert the parent is the source and a matching name needs no note.
         let parent = f.env.home.join(".claude/skills");
         assert_eq!(found.origin.link, Some(parent.to_string_lossy().into()));
-        assert!(found.children.is_empty());
+        assert_eq!(found.install_name.as_deref(), Some("mine"));
     }
 
     #[test]
@@ -96,7 +91,7 @@ mod tests {
 
         let found = local_source(&f.env, &dir);
 
-        assert_eq!(found.children, [format!("{SKILL_CHILD}real")]);
+        assert_eq!(found.install_name.as_deref(), Some("real"));
     }
 
     #[test]

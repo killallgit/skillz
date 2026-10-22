@@ -85,7 +85,6 @@ mod tests {
 
         let synced = sync_installed(&mut catalog, &[installed_skill("tdd", Some("o/r"))], at(7));
 
-        // Assert one new item whose provenance says it was detected.
         let provenance = catalog.items()[0].provenance.clone().unwrap();
         assert_eq!((synced.added.len(), provenance.detected), (1, true));
     }
@@ -118,7 +117,6 @@ mod tests {
 
         let synced = sync_installed(&mut catalog, &[installed_skill("tdd", Some("o/r"))], at(7));
 
-        // Assert nothing was added and the manual entry is untouched.
         assert!(synced.added.is_empty());
         assert_eq!(catalog.items(), [manual("my favourite")]);
     }
@@ -137,7 +135,6 @@ mod tests {
 
         let synced = sync_installed(&mut catalog, &[mine], at(7));
 
-        // Assert nothing was skipped and the item reinstalls from the dir it was found in.
         let item = &catalog.items()[0];
         let provenance = item.provenance.clone().unwrap();
         assert!(synced.skipped.is_empty());
@@ -179,7 +176,6 @@ mod tests {
             (7, &Existing::of(&["/new/skills"])),
         );
 
-        // Assert one re-point, nothing added, and a single item with the new source.
         assert_eq!((synced.repointed.len(), synced.added.len()), (1, 0));
         assert_eq!(catalog.items().len(), 1);
         assert_eq!(catalog.items()[0].entry, skill("/new/skills", "mine"));

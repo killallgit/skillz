@@ -29,7 +29,6 @@ fn a_stale_item_is_pointed_at_the_single_live_source_in_place() {
 
     let result = repoint(&mut catalog, &[live("/new", "mine")], &probe);
 
-    // Assert one move, the position kept, and the provenance refreshed.
     let first = &catalog.items()[0];
     assert_eq!(result.moved.len(), 1);
     assert_eq!(first.entry, skill("/new", "mine"));
@@ -66,7 +65,6 @@ fn a_stale_duplicate_of_a_live_item_is_dropped() {
 
     let result = repoint(&mut catalog, &[live("/new", "mine")], &probe);
 
-    // Assert the live item is the only one left.
     assert_eq!(result.moved.len(), 1);
     assert_eq!(catalog.items(), [item("/new", "mine")]);
 }

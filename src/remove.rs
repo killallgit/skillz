@@ -185,6 +185,7 @@ mod tests {
 
     fn item(name: &str, agents: &[Agent], removal: Vec<Action>) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
             id: name.into(),

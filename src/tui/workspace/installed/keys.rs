@@ -69,8 +69,6 @@ impl InstalledTab {
         self.propose(install, remove)
     }
 
-    /// The states of what the highlighted row stands for: the item itself, or everything its
-    /// package provides.
     pub(super) fn acted_on(&self) -> Vec<State> {
         let Some(at) = self.outline.current() else {
             return vec![];
@@ -91,14 +89,11 @@ impl InstalledTab {
     }
 
     fn handle_filter(&mut self, key: KeyEvent) -> Option<Act> {
-        self.popup = Popup::Filter;
-        if let Some(movement) = keymap::resolve(keymap::Scope::Filter, key) {
-            self.outline.step(movement);
-            return None;
-        }
-        if self.outline.edit_filter(key) != Edit::Editing {
-            self.popup = Popup::None;
-        }
+        self.popup = if self.outline.filter_key(key) == Edit::Editing {
+            Popup::Filter
+        } else {
+            Popup::None
+        };
         None
     }
 

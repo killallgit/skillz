@@ -51,21 +51,6 @@ fn json_puts_each_item_in_the_package_its_source_names() {
 }
 
 #[test]
-fn the_tree_has_one_group_per_package_and_no_kind_sections() {
-    let sb = sandbox_with_packages();
-
-    let out = sb.skillz(&["list", "--all"]);
-
-    let text = String::from_utf8(out.stdout).unwrap();
-    let groups: Vec<&str> = text
-        .lines()
-        .filter(|line| !line.starts_with(' ') && !line.is_empty())
-        .collect();
-    assert!(out.status.success());
-    assert_eq!(groups.len(), 4);
-}
-
-#[test]
 fn uninstalling_two_packages_items_is_one_plan_that_removes_both() {
     let sb = sandbox_with_packages();
 

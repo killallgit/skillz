@@ -54,7 +54,7 @@ pub(super) fn gather(
     merge(gather_per_agent(deps, env, scopes, filter))
 }
 
-/// The same, one item per copy: what prune compares and what `list --json` reports.
+/// One item per agent copy, before logical items are merged.
 pub(super) fn gather_per_agent(
     deps: &Deps,
     env: &Env,
@@ -114,6 +114,16 @@ impl<'a, 'd> Scene<'a, 'd> {
         gather(self.deps, self.env, self.scopes, self.filter)
     }
 
+    pub(super) fn complete(&self) -> anyhow::Result<Vec<Augmentation>> {
+        let items = agents::inventory(&self.deps.adapters, self.env, self.scopes).complete()?;
+        Ok(merge(
+            items
+                .into_iter()
+                .filter(|item| self.filter.keeps(item))
+                .collect(),
+        ))
+    }
+
     pub(super) fn gather_per_agent(&self) -> Vec<Augmentation> {
         gather_per_agent(self.deps, self.env, self.scopes, self.filter)
     }
@@ -122,6 +132,16 @@ impl<'a, 'd> Scene<'a, 'd> {
 /// Everything installed in one scope of `env`, whatever the filters.
 pub(super) fn installed(deps: &Deps, env: &Env, scope: Scope) -> Vec<Augmentation> {
     gather(deps, env, &[scope], &Filter::default())
+}
+
+pub(super) fn complete_installed(
+    deps: &Deps,
+    env: &Env,
+    scope: Scope,
+) -> anyhow::Result<Vec<Augmentation>> {
+    agents::inventory(&deps.adapters, env, &[scope])
+        .complete()
+        .map(merge)
 }
 
 /// The environment of one project, with the config dirs this run redirects.

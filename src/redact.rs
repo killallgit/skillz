@@ -78,10 +78,14 @@ pub fn redact_line(args: &[String]) -> String {
     redact_args(args).join(" ")
 }
 
-/// Free text (a tool's stderr) with credentials hidden word by word.
+/// Free text with credential-bearing arguments hidden, including quoted flag values.
 pub fn redact_text(text: &str) -> String {
     text.lines()
-        .map(|line| line.split(' ').map(redact).collect::<Vec<_>>().join(" "))
+        .map(|line| {
+            let words = shell_words::split(line)
+                .unwrap_or_else(|_| line.split_whitespace().map(str::to_owned).collect());
+            redact_line(&words)
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -145,5 +149,16 @@ mod tests {
     fn credential_count_counts_carriers_only() {
         assert_eq!(credential_count(&args(&["-y", "pkg", "--token", "t"])), 1);
         assert_eq!(credential_count(&args(&["-y", "pkg"])), 0);
+    }
+    #[test]
+    fn diagnostic_text_hides_bare_flags_and_quoted_secret_values() {
+        for text in [
+            "notify --token text-secret",
+            "notify '--token' 'text-secret with spaces'",
+            "failed --api-key text-secret: could not connect",
+            "notify --token text-secret 'unterminated",
+        ] {
+            assert!(!redact_text(text).contains("text-secret"));
+        }
     }
 }

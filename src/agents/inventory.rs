@@ -125,6 +125,7 @@ mod tests {
 
     fn item(name: &str, kind: Kind, group: &str, source: Option<&str>) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
             id: format!("{kind}:{name}"),
@@ -152,5 +153,21 @@ mod tests {
         join_marketplace_groups(&mut items);
         let groups: Vec<&str> = items.iter().map(|i| i.group.as_str()).collect();
         assert_eq!(groups, ["mp", "mp", "x/y", "local"]);
+    }
+    #[test]
+    fn invalid_discovery_directories_make_the_inventory_incomplete() {
+        for directory in [".claude/skills", ".claude/agents"] {
+            let temp = tempfile::tempdir().unwrap();
+            let path = temp.path().join(directory);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "not a directory").unwrap();
+            let env = Env::new(temp.path().to_path_buf(), temp.path().join("project"));
+            let adapters = super::super::registry();
+
+            let found = inventory(&adapters, &env, &[Scope::Global]);
+
+            assert!(!found.warnings.is_empty());
+            assert!(found.complete().is_err());
+        }
     }
 }

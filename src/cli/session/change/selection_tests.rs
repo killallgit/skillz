@@ -141,3 +141,50 @@ fn one_failing_install_is_reported_and_the_others_still_run() {
     assert!(matches!(result.unwrap(), Some(Notice::Failed(_))));
     assert!(tried_good);
 }
+
+#[test]
+fn an_unsupported_install_is_skipped_without_counting_as_installed() {
+    let dir = tempfile::tempdir().unwrap();
+    let entries = [Entry::Plugin {
+        source: "o/r".into(),
+        marketplace: "mp".into(),
+        name: "p".into(),
+        agents: vec![crate::model::Agent::Cursor],
+    }];
+    let runner = crate::install::test_support::FakeRunner::new(|_| {});
+    let prompter = super::tests::Outcomes::default();
+    let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+
+    change(
+        &session(&deps, dir.path()),
+        Scope::Project,
+        &Change::Selection(&selection(&entries, &[])),
+    )
+    .unwrap();
+
+    let values = prompter.values.borrow();
+    assert_eq!((values[0].installed, values[0].skipped), (0, 1));
+    assert!(runner.calls().is_empty());
+}
+
+#[test]
+fn a_failed_removal_is_not_counted_as_removed() {
+    let dir = tempfile::tempdir().unwrap();
+    project_with_skill(dir.path(), "tdd");
+    let ids = [skill_id(dir.path())];
+    let runner = crate::install::test_support::FakeRunner::new(|_| {}).failing("npx");
+    let prompter = super::tests::Outcomes::default();
+    let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+
+    change(
+        &session(&deps, dir.path()),
+        Scope::Project,
+        &Change::Selection(&selection(&[], &ids)),
+    )
+    .unwrap();
+
+    let values = prompter.values.borrow();
+    assert_eq!(values[0].removed, 0);
+    assert!(!values[0].is_clean());
+    assert!(dir.path().join(".agents/skills/tdd").exists());
+}

@@ -5,34 +5,9 @@ mod common;
 use common::*;
 use serde_json::Value;
 use skillz::agents;
-use skillz::cli::Deps;
 use skillz::model::Scope;
 
 const NO_SUCH_ITEM: &str = "zzzz-no-such-thing";
-
-/// How many items a query shows after the group picker chose `pick`, as text rows or json rows.
-fn items_shown_picking(w: &World, query: &str, pick: Vec<usize>, json: bool) -> usize {
-    let (r, p) = (Recorder::default(), Scripted::picking(pick));
-    let d = Deps {
-        interactive: true,
-        checker: std::sync::Arc::new(skillz::update::check::NoCheck),
-        scanner: None,
-        ..deps(w, &r, &p)
-    };
-    let out = run_captured(list_cmd(Some(query), false, json), &d);
-    let text = String::from_utf8(out).unwrap();
-    if json {
-        return serde_json::from_str::<Value>(&text)
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .len();
-    }
-    // Items are the depth-1 rows: indented by two spaces, their details by four.
-    text.lines()
-        .filter(|l| l.starts_with("  ") && !l.starts_with("   "))
-        .count()
-}
 
 #[test]
 fn a_directory_target_lists_the_project_not_a_query() {
@@ -92,41 +67,4 @@ fn list_json_without_matches_is_empty() {
     let w = world();
 
     assert!(list_json(&w, Some(NO_SUCH_ITEM)).is_empty());
-}
-
-#[test]
-fn picking_every_group_of_a_query_shows_all_its_items() {
-    let w = world();
-
-    // `bd` names three hooks (Claude, Codex, Cursor), all in the one "(unknown) hooks" group.
-    assert_eq!(items_shown_picking(&w, "bd", vec![0], false), 3);
-}
-
-#[test]
-fn picked_groups_partition_the_items_of_a_query() {
-    let w = world();
-    // `s` hits the hooks and the `mattpocock/skills` skill: two groups.
-
-    let all = items_shown_picking(&w, "s", vec![0, 1], false);
-    let first = items_shown_picking(&w, "s", vec![0], false);
-    let second = items_shown_picking(&w, "s", vec![1], false);
-
-    assert!(first > 0 && second > 0);
-    assert_eq!(first + second, all);
-}
-
-#[test]
-fn picking_no_group_shows_no_items() {
-    let w = world();
-
-    assert_eq!(items_shown_picking(&w, "s", vec![], false), 0);
-}
-
-#[test]
-fn json_output_ignores_the_group_picker() {
-    let w = world();
-
-    let all = items_shown_picking(&w, "s", vec![0, 1, 2, 3], false);
-
-    assert_eq!(items_shown_picking(&w, "s", vec![], true), all);
 }

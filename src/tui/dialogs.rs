@@ -1,4 +1,4 @@
-//! The yes/no question the workspace pushes over itself.
+//! A yes/no question shown on the shared terminal.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::Event;

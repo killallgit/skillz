@@ -3,7 +3,7 @@
 use super::Session;
 use super::notice::Notice;
 use crate::cli::profile::save_profile;
-use crate::cli::scope::{installed, project_env};
+use crate::cli::scope::{complete_installed, project_env};
 use crate::model::Scope;
 use crate::profile::{Entry, Profile};
 
@@ -18,7 +18,7 @@ impl Session<'_, '_> {
     /// A profile of what the project has installed; what cannot be reproduced is reported.
     pub(in crate::cli) fn save_current(&self, name: &str) -> anyhow::Result<Notice> {
         let env = project_env(self.deps, &self.project);
-        let items = installed(self.deps, &env, Scope::Project);
+        let items = complete_installed(self.deps, &env, Scope::Project)?;
         let saved = save_profile(&self.profiles, &items, name, false)?;
         Ok(Notice::Saved {
             name: name.into(),

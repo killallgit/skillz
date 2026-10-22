@@ -48,10 +48,13 @@ enum Focus {
     Entries,
 }
 
+struct ProfileRow {
+    profile: Profile,
+    missing: usize,
+}
+
 pub struct ProfilesTab {
-    profiles: Vec<Profile>,
-    /// How many entries of each profile the project lacks, in the profiles' order.
-    missing: Vec<usize>,
+    profiles: Vec<ProfileRow>,
     library: Catalog,
     list: Outline,
     rows: Vec<Row>,
@@ -64,7 +67,6 @@ impl ProfilesTab {
     pub fn new() -> Self {
         ProfilesTab {
             profiles: vec![],
-            missing: vec![],
             library: Catalog::default(),
             list: Outline::new(vec![]),
             rows: vec![],
@@ -76,7 +78,7 @@ impl ProfilesTab {
 
     /// The profile under the list cursor.
     fn current(&self) -> Option<&Profile> {
-        self.list.current().map(|id| &self.profiles[id])
+        self.list.current().map(|id| &self.profiles[id].profile)
     }
 
     fn current_name(&self) -> Option<String> {
@@ -100,12 +102,19 @@ impl Tab for ProfilesTab {
     }
 
     fn load(&mut self, model: &Model) {
-        self.profiles = model.profiles.clone();
-        self.missing = (self.profiles.iter())
-            .map(|p| compare(&p.resolved(), &model.installed).missing.len())
+        self.profiles = model
+            .profiles
+            .iter()
+            .map(|profile| ProfileRow {
+                missing: compare(&profile.resolved(), &model.installed).missing.len(),
+                profile: profile.clone(),
+            })
             .collect();
         self.library = model.library.clone();
-        let names = self.profiles.iter().map(|p| (None, p.name.clone()));
+        let names = self
+            .profiles
+            .iter()
+            .map(|row| (None, row.profile.name.clone()));
         self.list.reshape(names.collect());
         self.show_entries();
     }

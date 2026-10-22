@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use toml_edit::DocumentMut;
 
@@ -6,7 +6,6 @@ use super::config::{hook_state_keys, plugin_ids, str_field, table_keys};
 use super::removal::{native, toml_remove};
 use crate::action::{Action, RemovalTarget};
 use crate::env::Env;
-use crate::hook_text::HookEntry;
 use crate::hooks;
 use crate::model::{
     Agent, Augmentation, HOOK_CHILD, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
@@ -54,7 +53,10 @@ pub(super) struct Cx<'a> {
 
 /// Plugins of the config, minus those of Codex's built-in marketplaces. `in_project` is the
 /// project's plugin ids (`None`: unknown, keep every cache).
-pub(super) fn plugins_from(cx: &Cx, in_project: Option<&[String]>) -> Vec<Augmentation> {
+pub(super) fn plugins_from(
+    cx: &Cx,
+    in_project: Option<&[String]>,
+) -> anyhow::Result<Vec<Augmentation>> {
     plugin_ids(cx.doc)
         .into_iter()
         .filter(|id| !is_in_bundled_marketplace(cx, id))
@@ -110,7 +112,7 @@ fn display_source(source: &str) -> String {
     }
 }
 
-fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
+fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> anyhow::Result<Augmentation> {
     let (name, mp) = split_plugin_id(id);
     let source = cx
         .marketplaces
@@ -118,10 +120,27 @@ fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
         .find(|m| m.name == mp)
         .and_then(|m| m.source.clone());
     let cache = cx.cache.join(mp).join(name);
-    let hooks = declared_hooks(&cache);
-    let mut children = plugin_children(&cache);
+    let version = cached_version(&cache)?;
+    let root = version.as_ref().map(|v| cache.join(v));
+    let skills = root
+        .as_deref()
+        .map(super::super::plugin::skill_names)
+        .transpose()?
+        .unwrap_or_default();
+    let hooks = root
+        .as_deref()
+        .map(|root| hooks::plugin_hooks(root, &root.join(".codex-plugin/plugin.json")))
+        .unwrap_or_default();
+    let mut children = skills
+        .iter()
+        .map(|name| format!("{SKILL_CHILD}{name}"))
+        .collect::<Vec<_>>();
     children.extend(hooks.iter().map(|h| format!("{HOOK_CHILD}{}", h.label())));
-    Augmentation {
+    Ok(Augmentation {
+        details: crate::model::Details::Plugin {
+            location: cx.config.to_path_buf(),
+            skills,
+        },
         hooks,
         members: Vec::new(),
         id: format!("plugin:codex:{}:{id}", cx.scope),
@@ -134,23 +153,26 @@ fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> Augmentation {
         installer: Installer::CodexCli,
         origin: Origin {
             link: source,
-            version: cached_version(&cache),
+            version,
         },
         children,
         removal: plugin_removal(cx, id, keep_cache),
-    }
+    })
 }
 
-/// The newest version directory Codex cached for a plugin.
-fn cached_version(plugin_cache: &Path) -> Option<String> {
-    let mut versions: Vec<String> = std::fs::read_dir(plugin_cache)
-        .ok()?
-        .flatten()
-        .filter(|e| e.path().is_dir())
-        .filter_map(|e| e.file_name().into_string().ok())
-        .collect();
+/// Cache revisions can be opaque names. Use the most recently modified directory;
+/// the name breaks equal-time ties so every part of the plugin uses the same revision.
+fn cached_version(plugin_cache: &Path) -> anyhow::Result<Option<String>> {
+    let mut versions = Vec::new();
+    for entry in crate::read_optional::read_dir(plugin_cache)? {
+        if entry.file_type()?.is_dir()
+            && let Ok(version) = entry.file_name().into_string()
+        {
+            versions.push((entry.metadata()?.modified()?, version));
+        }
+    }
     versions.sort();
-    versions.pop()
+    Ok(versions.pop().map(|(_, version)| version))
 }
 
 fn plugin_removal(cx: &Cx, id: &str, keep_cache: bool) -> Vec<Action> {
@@ -176,6 +198,9 @@ fn marketplace(
 ) -> Augmentation {
     let own: Vec<&Augmentation> = plugins.iter().filter(|p| p.group == m.name).collect();
     Augmentation {
+        details: crate::model::Details::Marketplace {
+            location: cx.config.to_path_buf(),
+        },
         hooks: Vec::new(),
         members: Vec::new(),
         id: format!("marketplace:codex:{}:{}", cx.scope, m.name),
@@ -210,32 +235,6 @@ fn marketplace_removal(
         removal.extend(RemovalTarget::new(cx.cache, [&m.name]).map(Action::RemovePath));
     }
     removal
-}
-
-/// Skills found in any version dir of a cached plugin.
-fn plugin_children(plugin_cache: &Path) -> Vec<String> {
-    let base = glob::Pattern::escape(&plugin_cache.to_string_lossy());
-    let matches = |pattern: &str| -> Vec<PathBuf> {
-        glob::glob(&format!("{base}/{pattern}"))
-            .map(|paths| paths.flatten().collect())
-            .unwrap_or_default()
-    };
-    let mut skills: Vec<String> = matches("*/skills/*/SKILL.md")
-        .iter()
-        .filter_map(|p| p.parent()?.file_name()?.to_str())
-        .map(|dir| format!("{SKILL_CHILD}{dir}"))
-        .collect();
-    skills.sort();
-    skills.dedup();
-    skills
-}
-
-/// The hooks the newest cached version of a plugin declares.
-fn declared_hooks(plugin_cache: &Path) -> Vec<HookEntry> {
-    cached_version(plugin_cache)
-        .map(|version| plugin_cache.join(version))
-        .map(|root| hooks::plugin_hooks(&root, &root.join(".codex-plugin/plugin.json")))
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -282,14 +281,14 @@ mod tests {
             marketplaces: &[],
             doc: &doc,
         };
-        let global = plugin(&cx(Scope::Global), "p@mp", false);
+        let global = plugin(&cx(Scope::Global), "p@mp", false).unwrap();
         assert_eq!(
             runs(&global.removal),
             [["codex", "plugin", "remove", "p@mp"]]
         );
-        let project = plugin(&cx(Scope::Project), "p@mp", false);
+        let project = plugin(&cx(Scope::Project), "p@mp", false).unwrap();
         assert!(runs(&project.removal).is_empty());
-        let flag = plugin(&cx(Scope::Global), "-x@mp", false);
+        let flag = plugin(&cx(Scope::Global), "-x@mp", false).unwrap();
         assert!(runs(&flag.removal).is_empty());
     }
 }

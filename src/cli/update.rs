@@ -6,13 +6,10 @@ use std::io::Write;
 use anyhow::bail;
 use serde_json::json;
 
-use super::recording::record_since;
 use super::removal::{Pick, choose};
-use super::scope::{Scene, installed};
-use crate::apply::{Applier, Switch, Watch};
+use super::scope::Scene;
+use super::session::{Change, change, with_session};
 use crate::model::{Augmentation, Scope};
-use crate::stale::Disk;
-use crate::store::Store;
 use crate::update::check::any_available;
 use crate::{remove, update};
 
@@ -29,9 +26,9 @@ pub(super) fn update(
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let items: Vec<Augmentation> = scene
-        .gather()
+        .complete()?
         .into_iter()
-        .filter(update::can_update)
+        .filter(|item| !update::steps(&scene.deps.adapters, item, &scene.env.project).is_empty())
         .collect();
     if items.is_empty() {
         bail!("nothing here can be updated");
@@ -44,62 +41,17 @@ pub(super) fn update(
         dry_run: request.dry_run,
     };
     let chosen = choose(scene, &items, &pick)?;
-    let switch = Switch::updating(
-        chosen
-            .into_iter()
-            .map(|item| (item.clone(), update::steps(item, &scene.env.project)))
-            .collect(),
-    );
-    print_plan(out, &switch)?;
-    if request.dry_run {
-        return Ok(());
-    }
-    if switch.is_empty() || !scene.deps.prompter.confirm("Proceed?")? {
-        writeln!(out, "aborted")?;
-        return Ok(());
-    }
-    run(scene, (&switch, request.scope), out)
-}
-
-fn print_plan(out: &mut dyn Write, switch: &Switch) -> anyhow::Result<()> {
-    writeln!(out, "Updating:")?;
-    for (item, _) in &switch.updates {
-        writeln!(out, "  {}", item.label(true))?;
-    }
-    writeln!(out, "Plan:")?;
-    for step in switch.steps() {
-        writeln!(out, "  {}", step.describe())?;
-    }
-    Ok(())
-}
-
-fn run(
-    scene: &Scene,
-    (switch, scope): (&Switch, Scope),
-    out: &mut dyn Write,
-) -> anyhow::Result<()> {
-    let (deps, env) = (scene.deps, scene.env);
-    let before = installed(deps, env, scope);
-    let applier = Applier {
-        adapters: &deps.adapters,
-        env,
-        scope,
-        probe: &Disk,
-    };
-    let done = applier.run_each(
-        switch,
-        deps.runner,
-        &mut Watch {
-            step: &mut |_| {},
-            item: &mut |_| {},
-        },
-    );
-    let recorded = record_since(deps, &Store::in_env(env), (env, scope), &before);
-    writeln!(out, "updated {} of {}", done.updated, switch.updates.len())?;
-    if !done.failures.is_empty() {
-        bail!("{}", done.failures.join("\n"));
-    }
-    recorded
+    let ids: Vec<String> = chosen
+        .into_iter()
+        .flat_map(|item| item.parts().iter().map(|part| part.id.clone()))
+        .collect();
+    with_session(
+        scene.deps,
+        scene.env,
+        out,
+        request.dry_run,
+        |session, console| console.conclude(change(session, request.scope, &Change::Update(&ids))?),
+    )
 }
 
 /// The items matching `query` that have a newer version, as lines or as JSON.

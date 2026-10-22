@@ -68,12 +68,13 @@ pub fn tracked(item: &Augmentation, adapters: &[Box<dyn AgentAdapter>]) -> bool 
 mod tests {
     use super::*;
     use crate::agents::registry;
+    use crate::model::Details;
     use crate::model::Installer;
-    use crate::model::SKILL_CHILD;
     use serde_json::json;
 
     fn item(kind: Kind, name: &str, agents: &[Agent], scope: Scope) -> Augmentation {
         Augmentation {
+            details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
             id: format!("{kind}:{scope}:{name}"),
@@ -92,7 +93,10 @@ mod tests {
 
     fn with_skills(item: Augmentation, skills: &[&str]) -> Augmentation {
         Augmentation {
-            children: skills.iter().map(|s| format!("{SKILL_CHILD}{s}")).collect(),
+            details: Details::Plugin {
+                location: Default::default(),
+                skills: skills.iter().map(|s| s.to_string()).collect(),
+            },
             ..item
         }
     }

@@ -31,24 +31,22 @@ pub fn discover(dir: &AgentDir, agent: Agent, scope: Scope) -> anyhow::Result<Ve
         agent,
         scope,
     };
-    Ok(definition_files(dir)
+    definition_files(dir)?
         .iter()
-        .filter_map(|path| scan.augmentation(path))
-        .collect())
+        .map(|path| scan.augmentation(path))
+        .collect::<anyhow::Result<Vec<_>>>()
+        .map(|items| items.into_iter().flatten().collect())
 }
 
 /// The `ext` files directly in `dir`, sorted.
-fn definition_files(dir: &AgentDir) -> Vec<PathBuf> {
-    let Ok(read) = fs::read_dir(dir.path) else {
-        return vec![];
-    };
-    let mut files: Vec<PathBuf> = read
-        .flatten()
+fn definition_files(dir: &AgentDir) -> anyhow::Result<Vec<PathBuf>> {
+    let mut files: Vec<PathBuf> = crate::read_optional::read_dir(dir.path)?
+        .into_iter()
         .map(|e| e.path())
         .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == dir.ext))
         .collect();
     files.sort();
-    files
+    Ok(files)
 }
 
 struct Scan<'a> {
@@ -59,18 +57,23 @@ struct Scan<'a> {
 }
 
 impl Scan<'_> {
-    fn augmentation(&self, path: &Path) -> Option<Augmentation> {
-        let file = path.file_name()?.to_str()?.to_string();
-        let stem = path.file_stem()?.to_str()?.to_string();
-        let name = fs::read_to_string(path)
-            .ok()
-            .and_then(|t| definition_name(&t, self.dir.ext))
-            .unwrap_or(stem);
-        let source = self.manifest.get(&file).map(String::from);
+    fn augmentation(&self, path: &Path) -> anyhow::Result<Option<Augmentation>> {
+        let Some(file) = path.file_name().and_then(|s| s.to_str()) else {
+            return Ok(None);
+        };
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            return Ok(None);
+        };
+        let text = fs::read_to_string(path)?;
+        let name = definition_name(&text, self.dir.ext).unwrap_or_else(|| stem.to_string());
+        let source = self.manifest.get(file).map(String::from);
         let origin = source
             .as_ref()
             .map_or_else(|| self.origin(), |_| Origin::default());
-        Some(Augmentation {
+        Ok(Some(Augmentation {
+            details: crate::model::Details::Subagent {
+                file: path.to_path_buf(),
+            },
             hooks: Vec::new(),
             members: Vec::new(),
             id: format!("subagent:{}:{}:{file}", self.agent, self.scope),
@@ -83,8 +86,8 @@ impl Scan<'_> {
             installer: Installer::Local,
             origin,
             children: vec![format!("file: {file}")],
-            removal: self.removal(&file),
-        })
+            removal: self.removal(file),
+        }))
     }
 
     /// A definition nothing recorded can still be copied again from the dir it sits in.
@@ -201,7 +204,8 @@ mod tests {
         assert!(to.path().join("engineering-frontend-developer.md").exists());
         assert!(!to.path().join("README.md").exists());
         let sources = Manifest::read(to.path()).unwrap();
-        assert_eq!(sources.get("ui-designer.md"), Some(folder.as_str()));
+        let canonical_source = fs::canonicalize(src.path()).unwrap();
+        assert_eq!(sources.get("ui-designer.md"), canonical_source.to_str());
 
         let found = discover(&md_dir(to.path()), Agent::Claude, Scope::Project).unwrap();
         let mut got: Vec<(&str, Option<&str>)> = found
@@ -212,8 +216,8 @@ mod tests {
         assert_eq!(
             got,
             [
-                ("Frontend Developer", Some(folder.as_str())),
-                ("UI Designer", Some(folder.as_str()))
+                ("Frontend Developer", canonical_source.to_str()),
+                ("UI Designer", canonical_source.to_str())
             ]
         );
     }
@@ -377,6 +381,47 @@ mod tests {
             discover(&md_dir(to.path()), Agent::Claude, Scope::Global)
                 .unwrap()
                 .is_empty()
+        );
+    }
+    #[test]
+    fn a_relative_local_source_remains_updateable_from_another_project() {
+        let (source, target, other) = (
+            tempfile::tempdir().unwrap(),
+            tempfile::tempdir().unwrap(),
+            tempfile::tempdir().unwrap(),
+        );
+        let repository = source.path().join("repo");
+        agent_file(&repository, "helper.md", "Helper");
+        let names = names(&["Helper"]);
+        copy(
+            &NoCommands,
+            &CopyRequest {
+                source: "repo",
+                cwd: source.path(),
+                names: &names,
+                ext: "md",
+                to: target.path(),
+            },
+        )
+        .unwrap();
+        let item = discover(&md_dir(target.path()), Agent::Claude, Scope::Global)
+            .unwrap()
+            .remove(0);
+        let canonical_repository = repository.canonicalize().unwrap();
+        assert_eq!(item.source.as_deref(), canonical_repository.to_str());
+        let changed = "---\nname: Helper\n---\nchanged body\n";
+        fs::write(repository.join("helper.md"), changed).unwrap();
+
+        let plan = crate::update::steps(&crate::agents::registry(), &item, other.path());
+        crate::action::execute(&plan, &NoCommands).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(target.path().join("helper.md")).unwrap(),
+            changed
+        );
+        assert_eq!(
+            Manifest::read(target.path()).unwrap().get("helper.md"),
+            canonical_repository.to_str()
         );
     }
 }

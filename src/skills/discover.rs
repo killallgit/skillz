@@ -23,7 +23,7 @@ pub(super) struct Ctx<'a> {
 
 /// Installed skills across all `dirs`, deduplicated by canonical path.
 pub fn discover(env: &Env, dirs: &[SkillDir]) -> anyhow::Result<Vec<Augmentation>> {
-    let groups = group_by_canonical(dirs);
+    let groups = group_by_canonical(dirs)?;
     let global: BTreeSet<&PathBuf> = global_targets(&groups);
     let locks = read_locks(env);
 
@@ -45,17 +45,17 @@ pub fn discover(env: &Env, dirs: &[SkillDir]) -> anyhow::Result<Vec<Augmentation
     Ok(out)
 }
 
-fn group_by_canonical(dirs: &[SkillDir]) -> Groups {
+fn group_by_canonical(dirs: &[SkillDir]) -> anyhow::Result<Groups> {
     let mut groups = Groups::new();
     for dir in dirs {
-        for e in entries(dir) {
+        for e in entries(dir)? {
             groups
                 .entry((dir.scope, e.canonical.clone()))
                 .or_default()
                 .push(e);
         }
     }
-    groups
+    Ok(groups)
 }
 
 fn global_targets(groups: &Groups) -> BTreeSet<&PathBuf> {
@@ -83,7 +83,22 @@ fn augmentation(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -> 
     };
     let mut plan = removal_plan(cx, canonical, entries, locked.as_ref());
     plan.splice(0..0, native_uninstall(cx, locked.as_ref(), &agents));
+    let install_name = locked
+        .as_ref()
+        .map(|l| l.name.clone())
+        .or(local.install_name.clone())
+        .unwrap_or_else(|| entries[0].name.clone());
+    let children = local
+        .install_name
+        .filter(|name| name != &entries[0].name)
+        .map(|name| format!("{}{name}", crate::model::SKILL_CHILD))
+        .into_iter()
+        .collect();
     Augmentation {
+        details: crate::model::Details::Skill {
+            directory: canonical.to_path_buf(),
+            install_name,
+        },
         hooks: Vec::new(),
         members: Vec::new(),
         id: skill_id(canonical, cx.scope, suffix),
@@ -95,7 +110,7 @@ fn augmentation(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -> 
         source,
         installer: installer_of(locked.as_ref()),
         origin: locked.as_ref().map_or(local.origin, origin_of),
-        children: local.children,
+        children,
         removal: plan,
     }
 }

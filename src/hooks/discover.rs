@@ -52,6 +52,9 @@ fn group_entries(entries: Vec<HookEntry>, hints: &GroupHints) -> BTreeMap<String
 
 fn augmentation(source: &Source, name: String, entries: &[HookEntry]) -> Augmentation {
     Augmentation {
+        details: crate::model::Details::Hook {
+            config: source.file.to_path_buf(),
+        },
         hooks: entries.to_vec(),
         members: Vec::new(),
         id: format!("hook:{}:{}", source.file.display(), name),
