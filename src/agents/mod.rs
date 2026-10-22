@@ -16,28 +16,13 @@ use crate::action::Action;
 use crate::env::Env;
 use crate::model::{Agent, Augmentation, Scope};
 use crate::profile::Entry;
-use crate::prompt::Prompter;
 use crate::runner::CommandRunner;
 
-/// What an adapter needs to install a source's plugins.
-pub struct PluginInstall<'a> {
-    /// The fetched tree to inspect.
-    pub src: &'a Path,
-    /// What to hand to the agent's own CLI (never a tmp clone).
-    pub source: &'a str,
-    pub scope: Scope,
-    pub env: &'a Env,
-    pub runner: &'a dyn CommandRunner,
-    pub prompter: &'a dyn Prompter,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PluginOutcome {
-    /// The agent has no plugin install for this source; its skills go through `npx skills`.
-    Unsupported,
-    /// The user picked no plugins.
-    Declined,
-    Installed,
+/// The plugins a fetched source offers one agent through its own installer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginOffer {
+    pub marketplace: String,
+    pub plugins: Vec<String>,
 }
 
 pub trait AgentAdapter {
@@ -55,10 +40,21 @@ pub trait AgentAdapter {
     fn plugin_root_var(&self) -> Option<&'static str> {
         None
     }
-    /// Install the source's marketplace plugins through the agent's own CLI. The default is
-    /// `Unsupported`.
-    fn install_plugins(&self, _req: &PluginInstall) -> anyhow::Result<PluginOutcome> {
-        Ok(PluginOutcome::Unsupported)
+    /// The plugins the tree `src` offers this agent at `scope`, or `None` when it has no plugin
+    /// install for the source; its skills then go through `npx skills`.
+    fn plugin_offer(&self, _src: &Path, _scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
+        Ok(None)
+    }
+    /// Steps that add `source`'s marketplace and install the `picked` plugins of `offer`.
+    fn plugin_steps(
+        &self,
+        _offer: &PluginOffer,
+        _picked: &[String],
+        _source: &str,
+        _scope: Scope,
+        _env: &Env,
+    ) -> Vec<Action> {
+        vec![]
     }
     /// Steps that install a profile `entry` for this agent at `scope`, or `None` when this agent
     /// has no way to take that entry there. Skills are not asked of adapters: `provision::plan`

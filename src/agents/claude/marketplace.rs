@@ -3,16 +3,15 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use anyhow::Context;
-
 use super::files::{EXTRA_KNOWN_MARKETPLACES, marketplaces_file};
 use super::records::{Install, Marketplace};
 use super::removal::{plugin_removal, unique_in_order};
 use crate::action::{Action, Edit, RemovalTarget};
-use crate::agents::{PluginInstall, PluginOutcome};
+use crate::agents::PluginOffer;
+use crate::agents::plugin::read_marketplace;
 use crate::model::{Agent, Augmentation, Installer, Kind, Scope, split_plugin_id};
 use crate::profile::Entry;
-use crate::runner::{Cmd, run_checked};
+use crate::runner::Cmd;
 
 /// One augmentation for an installed marketplace, removing it with all its plugins.
 pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> Augmentation {
@@ -76,72 +75,27 @@ fn owned_clone(claude: &Path, m: &Marketplace) -> Option<RemovalTarget> {
     RemovalTarget::new(&clones, [rest])
 }
 
-/// A `.claude-plugin/marketplace.json` reduced to what install needs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SourceMarketplace {
-    name: String,
-    plugins: Vec<String>,
+/// The Claude marketplace `src` carries, if any.
+pub(super) fn plugin_offer(src: &Path) -> anyhow::Result<Option<PluginOffer>> {
+    read_marketplace(&src.join(".claude-plugin/marketplace.json"))
 }
 
-/// An argument for `claude`, so never option-like.
-fn cli_arg(v: &serde_json::Value) -> Option<&str> {
-    v.as_str().filter(|s| !s.starts_with('-'))
-}
-
-/// `None` when `src` has no marketplace; malformed JSON is an error. Option-like (`-x`)
-/// names are dropped since they end up as `claude` args.
-fn read_source(src: &Path) -> anyhow::Result<Option<SourceMarketplace>> {
-    let path = src.join(".claude-plugin/marketplace.json");
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return Ok(None);
-    };
-    let json: serde_json::Value =
-        serde_json::from_str(&text).with_context(|| format!("invalid {}", path.display()))?;
-    let Some(name) = cli_arg(&json["name"]) else {
-        return Ok(None);
-    };
-    let plugins = json["plugins"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|p| cli_arg(&p["name"]).map(String::from))
-        .collect();
-    Ok(Some(SourceMarketplace {
-        name: name.into(),
-        plugins,
-    }))
-}
-
-/// Claude's side of `AgentAdapter::install_plugins`: only a source with a Claude marketplace.
-pub(super) fn install_plugins(req: &PluginInstall) -> anyhow::Result<PluginOutcome> {
-    let Some(mp) = read_source(req.src)? else {
-        return Ok(PluginOutcome::Unsupported);
-    };
-    Ok(if install_picked(&mp, req)? {
-        PluginOutcome::Installed
-    } else {
-        PluginOutcome::Declined
-    })
-}
-
-/// Let the user pick `mp`'s plugins, then add the marketplace to Claude and install them.
-/// `Ok(false)` when nothing was picked.
-fn install_picked(mp: &SourceMarketplace, req: &PluginInstall) -> anyhow::Result<bool> {
-    let picked = req
-        .prompter
-        .multi_select("Plugins to install", &mp.plugins)?;
-    if picked.is_empty() {
-        return Ok(false);
-    }
-    let chosen: Vec<String> = picked.iter().map(|&i| mp.plugins[i].clone()).collect();
-    let scope = match req.scope {
+/// Add `source` as a marketplace and install the `picked` plugins of `offer`.
+pub(super) fn plugin_steps(
+    offer: &PluginOffer,
+    picked: &[String],
+    source: &str,
+    scope: Scope,
+    cwd: &Path,
+) -> Vec<Action> {
+    let scope = match scope {
         Scope::Global => "user",
         Scope::Project => "project",
     };
-    for (program, args) in install_commands(req.source, &mp.name, &chosen, scope) {
-        run_checked(req.runner, &program, &args, &req.env.project)?;
-    }
-    Ok(true)
+    install_commands(source, &offer.marketplace, picked, scope)
+        .into_iter()
+        .map(|(program, args)| Action::required(&program, args, cwd))
+        .collect()
 }
 
 /// `claude plugin marketplace add` then `plugin install` for each plugin; `scope` is the
@@ -198,34 +152,14 @@ mod tests {
     use super::super::testutil::{by_id, dirs, files, fixture, remove_install, remove_key, rm};
     use super::*;
     use crate::agents::AgentAdapter;
-    use crate::install::test_support::{
-        FakeRunner, Fixture as ProjectFixture, ScriptedPrompter, marketplace_fixture, project_with,
-        s,
-    };
-    use std::fs;
+    use crate::install::test_support::{marketplace_fixture, project_with, s};
     use std::path::PathBuf;
 
-    fn mp() -> SourceMarketplace {
-        SourceMarketplace {
-            name: "mp".into(),
+    fn mp() -> PluginOffer {
+        PluginOffer {
+            marketplace: "mp".into(),
             plugins: s(&["p1", "p2"]),
         }
-    }
-
-    fn install_picks(
-        fx: &ProjectFixture,
-        runner: &FakeRunner,
-        prompter: &ScriptedPrompter,
-    ) -> anyhow::Result<bool> {
-        let req = PluginInstall {
-            src: &fx.env.project,
-            source: "o/r",
-            scope: Scope::Project,
-            env: &fx.env,
-            runner,
-            prompter,
-        };
-        install_picked(&mp(), &req)
     }
 
     #[test]
@@ -374,93 +308,37 @@ mod tests {
     }
 
     #[test]
-    fn read_source_parses_name_and_plugins() {
+    fn offer_is_the_source_marketplace() {
         let fx = project_with(marketplace_fixture);
 
-        let found = read_source(&fx.env.project.join("repo")).unwrap();
+        let found = plugin_offer(&fx.env.project.join("repo")).unwrap();
 
         assert_eq!(found, Some(mp()));
-        assert_eq!(read_source(&fx.env.project).unwrap(), None);
+        assert_eq!(plugin_offer(&fx.env.project).unwrap(), None);
     }
 
     #[test]
-    fn malformed_marketplace_is_err() {
-        let fx = project_with(|root| {
-            fs::create_dir_all(root.join(".claude-plugin")).unwrap();
-            fs::write(root.join(".claude-plugin/marketplace.json"), "{nope").unwrap();
-        });
+    fn steps_add_the_marketplace_then_install_each_pick() {
+        let cwd = Path::new("/p");
 
-        let result = read_source(&fx.env.project.join("repo"));
+        let steps = plugin_steps(&mp(), &s(&["p1", "p2"]), "o/r", Scope::Project, cwd);
 
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn read_source_skips_option_like_names() {
-        let write = |json: &str| {
-            project_with(move |root| {
-                fs::create_dir_all(root.join(".claude-plugin")).unwrap();
-                fs::write(root.join(".claude-plugin/marketplace.json"), json).unwrap();
-            })
-        };
-        let fx = write(r#"{"name":"mp","plugins":[{"name":"-g"},{"name":"p1"},{"name":"p2"}]}"#);
         assert_eq!(
-            read_source(&fx.env.project.join("repo")).unwrap(),
-            Some(mp())
-        );
-        let fx = write(r#"{"name":"-mp","plugins":[{"name":"p1"}]}"#);
-        assert_eq!(read_source(&fx.env.project.join("repo")).unwrap(), None);
-    }
-
-    #[test]
-    fn adds_marketplace_and_installs_picked_plugins() {
-        let fx = project_with(|_| {});
-        let runner = FakeRunner::new(|_| {});
-        let prompter = ScriptedPrompter::new(&[0, 1], true);
-
-        let installed = install_picks(&fx, &runner, &prompter);
-
-        assert!(installed.unwrap());
-        assert_eq!(prompter.offered.borrow()[0], s(&["p1", "p2"]));
-        let calls: Vec<Cmd> = runner.calls().into_iter().map(|(p, a, _)| (p, a)).collect();
-        assert_eq!(
-            calls,
+            steps,
             vec![
-                ("claude".into(), s(&["plugin", "marketplace", "add", "o/r"])),
-                (
-                    "claude".into(),
-                    s(&["plugin", "install", "p1@mp", "--scope", "project"])
+                Action::required("claude", s(&["plugin", "marketplace", "add", "o/r"]), cwd),
+                Action::required(
+                    "claude",
+                    s(&["plugin", "install", "p1@mp", "--scope", "project"]),
+                    cwd
                 ),
-                (
-                    "claude".into(),
-                    s(&["plugin", "install", "p2@mp", "--scope", "project"])
+                Action::required(
+                    "claude",
+                    s(&["plugin", "install", "p2@mp", "--scope", "project"]),
+                    cwd
                 ),
             ]
         );
-    }
-
-    #[test]
-    fn cancel_installs_nothing() {
-        let fx = project_with(|_| {});
-        let runner = FakeRunner::new(|_| {});
-        let prompter = ScriptedPrompter::new(&[], true);
-
-        let installed = install_picks(&fx, &runner, &prompter);
-
-        assert!(!installed.unwrap());
-        assert!(runner.calls().is_empty());
-    }
-
-    #[test]
-    fn claude_plugin_failure_is_err() {
-        let fx = project_with(|_| {});
-        let runner = FakeRunner::new(|_| {}).failing("claude");
-        let prompter = ScriptedPrompter::new(&[0], true);
-
-        let result = install_picks(&fx, &runner, &prompter);
-
-        assert!(result.is_err());
-        assert_eq!(runner.calls().len(), 1);
     }
 
     #[test]
@@ -475,31 +353,5 @@ mod tests {
             proj[1].1,
             s(&["plugin", "install", "p@mp", "--scope", "project"])
         );
-    }
-
-    #[test]
-    fn install_plugins_reports_unsupported_declined_and_installed() {
-        let outcome = |with_mp: bool, picks: &[usize]| {
-            let fx = project_with(move |root| {
-                if with_mp {
-                    marketplace_fixture(root)
-                }
-            });
-            let runner = FakeRunner::new(|_| {});
-            let prompter = ScriptedPrompter::new(picks, true);
-            let src = fx.env.project.join("repo");
-            install_plugins(&PluginInstall {
-                src: &src,
-                source: "o/r",
-                scope: Scope::Project,
-                env: &fx.env,
-                runner: &runner,
-                prompter: &prompter,
-            })
-            .unwrap()
-        };
-        assert_eq!(outcome(false, &[0]), PluginOutcome::Unsupported);
-        assert_eq!(outcome(true, &[]), PluginOutcome::Declined);
-        assert_eq!(outcome(true, &[0]), PluginOutcome::Installed);
     }
 }

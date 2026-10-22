@@ -79,6 +79,8 @@ pub enum Action {
     Build,
     Update,
     Install,
+    /// Install what a repo or path offers.
+    AddSource,
     Remove,
     ToggleDryRun,
     ToggleSteps,
@@ -164,6 +166,7 @@ pub const BINDINGS: &[Binding] = &[
     bind(Installed, A::Toggle, &[ch(' ')], "space", "pick", 1),
     bind(Installed, A::Select, &[plain(KeyCode::Enter)], "enter", "apply picks / fold", 2),
     bind(Installed, A::Install, &[ch('i')], "i", "install", 3),
+    bind(Installed, A::AddSource, &[ch('A')], "A", "add from repo", 9),
     bind(Installed, A::Remove, &[ch('r')], "r", "remove", 4),
     bind(Project, A::PickProfile, &[ch('p')], "p", "compare", 5),
     bind(Project, A::ApplyProfile, &[ch('a')], "a", "apply profile", 6),

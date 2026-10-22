@@ -193,3 +193,42 @@ fn a_small_terminal_still_draws_the_rows() {
 
     assert_eq!(checkboxes(&mut tab, 50, 12), (1, 1));
 }
+
+fn type_text(tab: &mut InstalledTab, text: &str) {
+    text.chars().for_each(|c| {
+        press(tab, KeyCode::Char(c));
+    });
+}
+
+#[test]
+fn a_typed_source_is_handed_over_with_the_tabs_scope() {
+    let mut tab = loaded();
+
+    press(&mut tab, KeyCode::Char('A'));
+    assert!(tab.captures_keys());
+    type_text(&mut tab, "o/r");
+    let act = press(&mut tab, KeyCode::Enter);
+
+    assert_eq!(
+        act,
+        Some(Act::InstallSource {
+            scope: Scope::Project,
+            source: "o/r".into()
+        })
+    );
+    assert!(!tab.captures_keys());
+}
+
+#[test]
+fn escape_or_an_empty_source_installs_nothing_and_closes_the_prompt() {
+    let mut tab = loaded();
+
+    press(&mut tab, KeyCode::Char('A'));
+    let empty = press(&mut tab, KeyCode::Enter);
+    press(&mut tab, KeyCode::Char('A'));
+    type_text(&mut tab, "o/r");
+    let escaped = press(&mut tab, KeyCode::Esc);
+
+    assert_eq!((empty, escaped), (None, None));
+    assert!(!tab.captures_keys());
+}

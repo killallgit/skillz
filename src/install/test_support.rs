@@ -159,6 +159,18 @@ pub fn marketplace_fixture(root: &Path) {
     .unwrap();
 }
 
+/// A Codex marketplace `mp` with plugins `p1` and `p2`, and the skills they ship.
+pub fn codex_marketplace_fixture(root: &Path) {
+    skill(root, "plugins/p1/skills/alpha");
+    skill(root, "plugins/p2/skills/beta");
+    fs::create_dir_all(root.join(".agents/plugins")).unwrap();
+    fs::write(
+        root.join(".agents/plugins/marketplace.json"),
+        r#"{"name":"mp","plugins":[{"name":"p1"},{"name":"p2"}]}"#,
+    )
+    .unwrap();
+}
+
 pub struct Fixture {
     _home: tempfile::TempDir,
     _project: tempfile::TempDir,

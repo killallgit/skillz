@@ -16,6 +16,8 @@ pub(in crate::cli) enum Notice {
     /// How many items were brought to their latest version.
     ItemsUpdated(usize),
     Applied(String),
+    /// The source an install ran for.
+    SourceInstalled(String),
     LibraryAdded(String),
     LibraryRemoved(String),
     /// How many items the library gained from what is installed, how many moved folders it
@@ -46,6 +48,7 @@ impl fmt::Display for Notice {
             }
             Notice::ItemsUpdated(count) => write!(f, "updated {count}"),
             Notice::Applied(profile) => write!(f, "applied {profile}"),
+            Notice::SourceInstalled(source) => write!(f, "installed from {source}"),
             Notice::LibraryAdded(what) => write!(f, "added {what} to the library"),
             Notice::LibraryRemoved(what) => write!(f, "removed {what} from the library"),
             Notice::Synced {

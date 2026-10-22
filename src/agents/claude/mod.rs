@@ -10,9 +10,9 @@ mod testutil;
 pub(crate) mod update;
 mod usage;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use super::{AgentAdapter, PluginInstall, PluginOutcome};
+use super::{AgentAdapter, PluginOffer};
 use crate::action::Action;
 use crate::env::Env;
 use crate::hooks;
@@ -109,8 +109,19 @@ impl AgentAdapter for Claude {
         }
     }
 
-    fn install_plugins(&self, req: &PluginInstall) -> anyhow::Result<PluginOutcome> {
-        marketplace::install_plugins(req)
+    fn plugin_offer(&self, src: &Path, _scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
+        marketplace::plugin_offer(src)
+    }
+
+    fn plugin_steps(
+        &self,
+        offer: &PluginOffer,
+        picked: &[String],
+        source: &str,
+        scope: Scope,
+        env: &Env,
+    ) -> Vec<Action> {
+        marketplace::plugin_steps(offer, picked, source, scope, &env.project)
     }
 
     /// `~/.claude.json` `skillUsage` (loose skills by name; `plugin:skill` keys are plugin

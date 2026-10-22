@@ -5,6 +5,8 @@ use toml_edit::DocumentMut;
 use super::config::{hook_state_keys, plugin_ids, str_field, table_keys};
 use super::removal::{native, toml_remove};
 use crate::action::{Action, RemovalTarget};
+use crate::agents::PluginOffer;
+use crate::agents::plugin::read_marketplace;
 use crate::env::Env;
 use crate::hooks;
 use crate::model::{
@@ -26,14 +28,37 @@ pub(super) fn provision(entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Ac
     if scope != Scope::Global {
         return None;
     }
+    Some(install_steps(
+        source,
+        marketplace,
+        std::slice::from_ref(name),
+        env,
+    ))
+}
+
+/// `codex plugin marketplace add` then `plugin add` for each of `names`.
+pub(super) fn install_steps(
+    source: &str,
+    marketplace: &str,
+    names: &[String],
+    env: &Env,
+) -> Vec<Action> {
     let cwd = env.codex_cwd();
     let run = |args: &[&str]| {
         Action::required("codex", args.iter().map(|a| a.to_string()).collect(), &cwd)
     };
-    Some(vec![
-        run(&["plugin", "marketplace", "add", source]),
-        run(&["plugin", "add", &format!("{name}@{marketplace}")]),
-    ])
+    std::iter::once(run(&["plugin", "marketplace", "add", source]))
+        .chain(
+            names
+                .iter()
+                .map(|name| run(&["plugin", "add", &format!("{name}@{marketplace}")])),
+        )
+        .collect()
+}
+
+/// The Codex marketplace `src` carries, if any.
+pub(super) fn plugin_offer(src: &Path) -> anyhow::Result<Option<PluginOffer>> {
+    read_marketplace(&src.join(".agents/plugins/marketplace.json"))
 }
 
 pub(super) struct Marketplace {

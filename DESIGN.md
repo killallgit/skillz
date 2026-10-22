@@ -35,6 +35,11 @@ Independent items continue after a failure. Successful shared install steps run
 once. A missing local source fails before launching its install command. Progress
 reports item start/end events and action steps.
 
+`install` turns a repo or path into one plan: each agent that offers the source plugins (`AgentAdapter::plugin_offer`)
+asks which to install and returns its steps (`plugin_steps`); the remaining agents install the source's skills through
+`npx skills`. The steps are shown as one plan and run only once approved. The CLI and the workspace
+share `Session::install_source`, which also records what arrived in the library.
+
 `cli::session::change` owns plan review, execution, inventory recording, result
 presentation, and retry. Plain commands use its `Console` prompter; the workspace
 uses the TUI prompter. Cancellation remains distinct from successful preparation,

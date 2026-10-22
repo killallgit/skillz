@@ -9,6 +9,7 @@ mod perform;
 mod plan_view;
 mod profiles;
 mod selection;
+mod source_install;
 mod updates;
 
 use std::io::Write;
