@@ -324,6 +324,15 @@ mod tests {
             &["use", "x", "--exact"],
             &["sync", "-g", "--dry-run", "--json"],
             &["sync", "-p", "."],
+            &["library", "ls", "--json", "--skills"],
+            &["library", "add", "hook Stop --x"],
+            &["library", "remove", "tdd", "-y", "--dry-run"],
+            &["library", "install", "a", "b", "-g", "-y"],
+            &["profile", "add", "web", "--from-library", "tdd"],
+            &["profile", "remove", "web", "tdd"],
+            &["profile", "status", "--json"],
+            &["list", "--available", "-g", "--json"],
+            &["list", "--json", "--check"],
         ] {
             assert!(
                 Cli::try_parse_from([&["skillz"], args].concat()).is_ok(),

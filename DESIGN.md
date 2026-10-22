@@ -86,11 +86,11 @@ Directories:
 | `agents/cursor` | skills and hooks only |
 | `install` | `skillz install`: `install()` dispatch, `InstallRequest`, `SkillSelection`; `source` (local path or clone, rejects empty/option-like sources), `skills` (scan, selection, npx `add`) |
 | `profile` | `Profile` (toml), `Entry` (skill, plugin, subagent, hook, mcp), `Store`, a facade over the `store` document, with `load_flat` for `extends`; `validate` (every value non-empty, not option-like), `spec` (the one-line typed form), `identity` (which entries are the same thing; `overlay`) |
-| `library` | `Catalog` of `LibraryItem`s (label, `Entry`, optional `Provenance`: link, engine = `Installer`, version, `recorded_at`); `import_installed` / `record_installed` turn installed `Augmentation`s into items with their `Origin`; `sync_installed` adds only what the catalog lacks (`Catalog::add_if_new`), with `Provenance::detected` set, and reports the rest as `Synced`; `Catalog::installable` swaps a skill's source for its recorded link |
+| `library` | `Held`/`Presence` (which items are installed where) and `Cue` (manual, detected or recorded by skillz), shared by the Library tab and `library list`; `Catalog` of `LibraryItem`s (label, `Entry`, optional `Provenance`: link, engine = `Installer`, version, `recorded_at`); `import_installed` / `record_installed` turn installed `Augmentation`s into items with their `Origin`; `sync_installed` adds only what the catalog lacks (`Catalog::add_if_new`), with `Provenance::detected` set, and reports the rest as `Synced`; `Catalog::installable` swaps a skill's source for its recorded link |
 | `sync` | `Scanner` (what is installed in both scopes; `InstalledScanner` reads every adapter), `sync_library` (scan result into the store under its lock, or a dry run), `spawn` (scan and sync on a thread, then call back) |
 | `snapshot` | installed items -> a `Profile` through one collector per kind (`skills`, `plugins`, `subagents`, `hooks`, `mcp`); what cannot be reinstalled comes back as `Skipped` with a `Reason` |
-| `apply` | `standing` (pure: `compare` a profile's entries with the inventory into present / missing / extras; `loaded` picks the matching profile), `Applier::plan` (`Switch`: present, installs, and with `exact` the removals), `Applier::run` (remove via `remove`, then run the install steps) |
-| `cli` | `args` (clap), `deps` (`Deps`), `scope` (scope and target rules), `run` (dispatch), one module per command group (`list`, `removal` for uninstall and reset, `prune`, `use_profile`, `isolate` for `run`, `profile`); the workspace side, a directory `workspace` (`mod` the loop, `model` the snapshot the tabs show, `perform`, `change` (plan, progress, result of one change), `plan_view`, `notice`); `cli::main` wires real dependencies |
+| `apply` | `drift` (how many entries a profile lacks and how many installed items it does not want: the Project header, the Profiles badge and `profile list`), `standing` (pure: `compare` a profile's entries with the inventory into present / missing / extras; `loaded` picks the matching profile), `Applier::plan` (`Switch`: present, installs, and with `exact` the removals), `Applier::run` (remove via `remove`, then run the install steps) |
+| `cli` | `args` (clap), `deps` (`Deps`), `scope` (scope and target rules), `run` (dispatch), one module per command group (`list`, `removal` for uninstall and reset, `prune`, `use_profile`, `isolate` for `run`, `profile`); the workspace side, a directory `library` and `profile_*` (the library and profile commands), `pick` (choose among a query's matches); `session` (what the workspace and the commands share: `Session`, `perform`, `change` (plan, progress, result of one change), `plan_view`, `notice`, and `Console`, the `Prompter` that writes a plan as lines and answers it with a yes/no or a dry run); `workspace` (`mod` the loop, `model` the snapshot the tabs show, `sync`); `cli::main` wires real dependencies |
 | `tui` | below |
 
 `tui` (ratatui + crossterm): `theme` (semantic colour roles), `glyphs` (Unicode and ASCII sets),
@@ -241,6 +241,21 @@ subagents). Removal uses this to pick the tool's own uninstall.
   each install (`install`, `use`, workspace changes) `cli::recording` adds the installed items
   that are new or changed since before the run to the library, with their provenance, then syncs everything installed in both scopes; a picked
   library item is installed from its recorded link (`Catalog::installable`).
+
+## One implementation for the workspace and the commands
+
+A workspace feature is a command: `skillz library` (`list`, `add`, `remove`, `install`),
+`skillz profile` (`list`, `status`, `new`, `add`, `remove`, `save`, `delete`), `use [--exact]`,
+`list [--available] [--json [--check]]`, `uninstall` and `update` with `--check`; the table is in
+the README. A command opens a `Session` (the project, the store, the profiles) over `Deps` whose
+prompter is a `Console`, and calls the session's own `library_add`, `library_remove`,
+`create_profile`, `set_entries`, `delete_profile` or `change`, the functions the workspace's `Act`s
+reach through `perform`; there is no second copy of the planning or the steps. `Console::plan`
+prints the plan as lines and returns `Verdict::DryRun` for `--dry-run` or the answer to
+`Proceed?` (`--yes` answers it); a `Notice::Failed` becomes the command's error and so a non-zero
+exit. The comparison (`apply::drift`, `Standing`), `library::Held` and `Cue` are the same
+functions the tabs draw from. Only navigation (movement, filter, fold, help, tab keys) is
+workspace-only. `use` and `update` predate the session and still plan through `Applier` themselves.
 
 ## Library sync
 

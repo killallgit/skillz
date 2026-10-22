@@ -16,16 +16,17 @@ is also a command.
 
 | Command | Does |
 | --- | --- |
-| `list` (`ls`) | show what is installed as a tree, or browse it with `-i` |
-| `uninstall` (`rm`, `delete`) | fuzzy match, pick, confirm, remove completely |
+| `list` (`ls`) | show what is installed as a tree, or browse it with `-i`; `--json` adds each item's location (`--check` also whether a newer version exists); `--available` lists the library items the project (`-g`: the user) lacks |
+| `uninstall` (`rm`, `delete`) | fuzzy match, pick, confirm, remove completely; several queries go in one plan |
 | `update` | update installed items with the tool that installed them (`-g`: the user's); `--check` lists the ones with a newer version (`--json` for scripts) |
 | `reset` | remove every skill, plugin and marketplace in scope |
 | `prune` | find duplicate and unused skills and plugins, remove the ones picked |
 | `sync` | add everything installed, in the project and at user level, to the library (`-p PATH`, `-g` for user level only, `--dry-run`, `--json`); never removes anything from it |
 | `install` (`add`) | install skills with `npx skills`, or Claude plugins from a marketplace; `-g` installs for the user instead of the project |
+| `library` (`lib`) | `list` (`ls`, `--json`, kind filters), `add "LINE"`, `remove` (`rm`) a label query or LINE, `install QUERY...` into the project or with `-g` for the user (each with `--dry-run`, `-y` where it asks) |
 | `use` | add what a project lacks of a profile (`--exact` also removes the rest) |
 | `run` | run a command against one profile in config dirs of its own |
-| `profile` | `list` (`ls`), `show` (`export`), `import FILE`, `save`, `delete` (`rm`) |
+| `profile` | `list` (`ls`, with how each compares with the project; `--json`), `status [NAME]` (present, missing, extra; `--json`), `show` (`export`), `import FILE`, `new`, `add NAME "LINE"` or `--from-library QUERY`, `remove NAME QUERY`, `save`, `delete` (`rm`) |
 | `project` | `list` (`ls`), `add`, `remove` (`rm`) |
 
 Kind filters on `list`, `uninstall`, `reset` and `prune`: `--skills --hooks --plugins
@@ -69,6 +70,25 @@ Scope for `list`, `uninstall`, `reset` and `prune`: a `PATH` (or `-p PATH`) mean
 project, or with `-g` on the user's installs; `use`, `run` and `profile` always act on one project,
 and the workspace has a tab for each. A project that is your home directory counts as global. A `list` PATH must
 start with `.`, `..` or `/` (`./sub`, not `sub`); any other word is a query.
+
+## From the workspace to the command line
+
+Everything the workspace does is a command, and both run the same code (a plan reviewed first,
+then the same install and removal steps):
+
+| In the workspace | On the command line |
+| --- | --- |
+| Project / Global tabs: what is installed, the split, where each item lives | `list`, `list -g`, `list --json` (`location`) |
+| Available rows (library items the scope lacks) | `list --available [-g] [--json]` |
+| Update markers | `list --json --check`, `update --check [--json]` |
+| `space` picks, `enter` installs and removes the picks as one plan | `library install QUERY... [-g]`, `uninstall QUERY...` (`-y`, `--dry-run`) |
+| `i` install / `r` remove / `u` update the highlighted item | `library install`, `uninstall`, `update` |
+| `p` compare with a profile, the header's matches / N missing / N extra | `profile status [NAME] [--json]`, `profile list [--json]` |
+| `a` apply a profile, `e` apply exactly | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`) |
+| Library: `a` add a typed line, `x` remove, `i` sync installed | `library add "skill o/r tdd"`, `library remove QUERY`, `sync` |
+| Library: origin, link, version, installed in project / global | `library list [--json]` |
+| Profiles: `n` new, `b` build, `s` save, `x` delete | `profile new`, `profile add` / `profile remove`, `profile save`, `profile delete` |
+| `/` filter, `space` fold, `?` help, `tab`, movement keys | on screen only: `list QUERY` and `list --all` do the same for the command line |
 
 ## Profiles
 
