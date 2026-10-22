@@ -65,20 +65,45 @@ fn enter_on_a_section_closes_and_reopens_it_without_asking_for_anything() {
 }
 
 #[test]
-fn applying_needs_a_compared_profile() {
+fn a_lists_the_profiles_and_the_chosen_one_replaces_everything() {
     let mut tab = loaded();
-    let without = press(&mut tab, KeyCode::Char('a'));
 
-    press(&mut tab, KeyCode::Char('p'));
-    press(&mut tab, KeyCode::Down);
-    press(&mut tab, KeyCode::Enter);
-    let with = press(&mut tab, KeyCode::Char('a'));
+    let opened = press(&mut tab, KeyCode::Char('a'));
+    let capturing = tab.captures_keys();
+    let chosen = press(&mut tab, KeyCode::Enter);
 
-    assert_eq!(without, None);
+    assert_eq!(opened, None);
+    assert!(capturing && !tab.captures_keys());
     assert_eq!(
-        with,
-        Some(Act::Apply {
+        chosen,
+        Some(Act::ApplyExact {
             profile: "web".into()
+        })
+    );
+}
+
+#[test]
+fn a_with_no_profiles_opens_nothing() {
+    let mut tab = InstalledTab::project();
+    tab.load(&Model::default());
+
+    press(&mut tab, KeyCode::Char('a'));
+
+    assert!(!tab.captures_keys());
+}
+
+#[test]
+fn s_names_a_profile_saved_from_what_the_project_has() {
+    let mut tab = loaded();
+
+    press(&mut tab, KeyCode::Char('s'));
+    type_text(&mut tab, "snap");
+    let act = press(&mut tab, KeyCode::Enter);
+
+    assert_eq!(
+        act,
+        Some(Act::SaveCurrent {
+            name: "snap".into()
         })
     );
 }
