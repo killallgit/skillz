@@ -6,8 +6,10 @@ tasks:
     cmd: cargo build
 
   install:
-    desc: Release build, symlinked into ~/.local/bin (from wherever cargo builds, which CARGO_TARGET_DIR may move)
+    desc: Fresh release build of skillz (dependencies stay cached), replacing the symlink in ~/.local/bin
     cmds:
+      - cargo clean --release -p skillz
+      - rm -f "$HOME/.local/bin/skillz"
       - cargo build --release
       - mkdir -p "$HOME/.local/bin"
       - ln -sf "$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')/release/skillz" "$HOME/.local/bin/skillz"
