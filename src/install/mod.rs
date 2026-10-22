@@ -31,7 +31,7 @@ pub enum SkillSelection {
 pub struct InstallRequest {
     /// `org/repo`, a git URL, or a local path.
     pub source: String,
-    /// What a relative local `source` is relative to: the real cwd, not the `-C` project.
+    /// What a relative local `source` is relative to: the real cwd, not the `-p` project.
     pub cwd: PathBuf,
     pub agents: Vec<Agent>,
     pub scope: Scope,
