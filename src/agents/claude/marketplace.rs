@@ -13,7 +13,7 @@ use crate::model::{Agent, Installed, Installer, Kind, Scope, split_plugin_id};
 use crate::profile::Spec;
 use crate::runner::Cmd;
 
-/// One item for an installed marketplace, removing it with all its plugins.
+/// One installed item for a marketplace, removing it with all its plugins.
 pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> Installed {
     let own: Vec<&Install> = installs
         .iter()
