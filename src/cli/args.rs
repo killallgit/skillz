@@ -10,7 +10,7 @@ use crate::model::{Agent, Augmentation, Kind};
 #[command(
     name = "skillz",
     version,
-    about = "Manage skills, plugins, marketplaces and hooks for Claude, Codex and Cursor"
+    about = "Manage skills, plugins, marketplaces and hooks for Claude and Codex"
 )]
 #[command(args_conflicts_with_subcommands = true)]
 pub struct Cli {

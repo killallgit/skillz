@@ -1,4 +1,4 @@
-Create a rust cli using clap, for managing skills/plugins/hooks for coding agents... focus only on claude/codex/cursor to start. Make the system easy to add onto in the future by following well estabilished programming principles. use dependency injection and functional style. Keep the test coverage > 75% and absoltuely do not assert on strings that would be output like error strings or other user messages that change often.
+Create a rust cli using clap, for managing skills/plugins/hooks for coding agents... focus only on claude/codex to start. Make the system easy to add onto in the future by following well estabilished programming principles. use dependency injection and functional style. Keep the test coverage > 75% and absoltuely do not assert on strings that would be output like error strings or other user messages that change often.
 
 The TUI elements need to be very basic, a list where you can mulit-select, a collapsable list/tree and a "/" find type input.
 
@@ -10,7 +10,7 @@ skillz list # list all skills, plugins, hooks, and display them like a file tree
 
 skillz list --hooks . # <- . is the path, -g,--global obviously global...
 
-skillz list --skills --agent claude|codex|cursor, et.al.
+skillz list --skills --agent claude|codex, et.al.
 
 skillz uninstall --hook <fzf matches> --agent claude
 

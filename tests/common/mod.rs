@@ -117,8 +117,8 @@ impl World {
         self.home.join(".claude/settings.json")
     }
 
-    pub fn cursor_hooks(&self) -> PathBuf {
-        self.home.join(".cursor/hooks.json")
+    pub fn codex_global_hooks(&self) -> PathBuf {
+        self.home.join(".codex/hooks.json")
     }
 
     pub fn codex_project_hooks(&self) -> PathBuf {
@@ -160,8 +160,8 @@ pub fn skill_profile_text(skill: &str) -> String {
     format!("[[entry]]\nkind = \"skill\"\nsource = \"o/r\"\nnames = [\"{skill}\"]\n")
 }
 
-/// Global: an npx skill linked into Claude + Cursor, two hook tools in Claude settings,
-/// a Cursor hook. Project: a Codex hook.
+/// Global: an npx skill linked into Claude + Codex, two hook tools in Claude settings,
+/// a Codex hook. Project: a Codex hook.
 pub fn world() -> World {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("home");
@@ -176,7 +176,7 @@ pub fn world() -> World {
         &home.join(".agents/.skill-lock.json"),
         &json!({"version": 3, "skills": {"tdd": {"source": "mattpocock/skills"}}}).to_string(),
     );
-    for agent_dir in [".claude/skills", ".cursor/skills"] {
+    for agent_dir in [".claude/skills", ".codex/skills"] {
         fs::create_dir_all(home.join(agent_dir)).unwrap();
         std::os::unix::fs::symlink(
             home.join(".agents/skills/tdd"),
@@ -199,8 +199,8 @@ pub fn world() -> World {
         .to_string(),
     );
     write(
-        &home.join(".cursor/hooks.json"),
-        &json!({"version": 1, "hooks": {"sessionStart": [{"command": "bd cursor-hook sessionStart"}]}}).to_string(),
+        &home.join(".codex/hooks.json"),
+        &json!({"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "bd codex-hook SessionStart"}]}]}}).to_string(),
     );
     write(
         &project.join(".codex/hooks.json"),

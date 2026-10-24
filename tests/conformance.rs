@@ -29,7 +29,7 @@ struct Fake {
 
 impl AgentAdapter for Fake {
     fn agent(&self) -> Agent {
-        Agent::Cursor
+        Agent::Codex
     }
     fn home_dir_names(&self) -> &'static [&'static str] {
         &["fake"]
@@ -55,7 +55,7 @@ impl AgentAdapter for Fake {
             id: format!("plugin:global:{PLUGIN}"),
             name: PLUGIN.into(),
             kind: Kind::Plugin,
-            agents: vec![Agent::Cursor],
+            agents: vec![Agent::Codex],
             scope,
             group: "mp".into(),
             source: None,
@@ -243,7 +243,7 @@ fn install_asks_the_fake_to_install_plugins_and_runs_no_other_command() {
     let req = InstallRequest {
         source: "o/r".into(),
         cwd: w.env.project.clone(),
-        agents: vec![Agent::Cursor],
+        agents: vec![Agent::Codex],
         scope: Scope::Global,
         selection: SkillSelection::Interactive,
     };

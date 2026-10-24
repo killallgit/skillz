@@ -136,6 +136,6 @@ mod tests {
         let whole = only_for(both(), &[Agent::Claude, Agent::Codex]).unwrap();
 
         assert_eq!(whole.agents, [Agent::Claude, Agent::Codex]);
-        assert!(only_for(both(), &[Agent::Cursor]).is_none());
+        assert!(only_for(both(), &[]).is_none());
     }
 }

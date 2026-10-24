@@ -25,7 +25,6 @@ use crate::redact::redact;
 pub enum Agent {
     Claude,
     Codex,
-    Cursor,
 }
 
 impl Agent {
@@ -34,7 +33,6 @@ impl Agent {
         match self {
             Agent::Claude => "claude-code",
             Agent::Codex => "codex",
-            Agent::Cursor => "cursor",
         }
     }
 }
@@ -211,7 +209,6 @@ impl fmt::Display for Agent {
         f.write_str(match self {
             Agent::Claude => "claude",
             Agent::Codex => "codex",
-            Agent::Cursor => "cursor",
         })
     }
 }
@@ -255,7 +252,7 @@ mod tests {
 
     #[test]
     fn every_agent_has_a_distinct_npx_id() {
-        let mut ids = [Agent::Claude, Agent::Codex, Agent::Cursor].map(Agent::npx_id);
+        let mut ids = [Agent::Claude, Agent::Codex].map(Agent::npx_id);
         ids.sort();
 
         let distinct = ids.windows(2).all(|w| w[0] != w[1]);

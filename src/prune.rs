@@ -184,7 +184,6 @@ mod tests {
         hook.kind = Kind::Hook;
         let items = vec![
             hook,
-            skill("cursor-only", &[Agent::Cursor], Scope::Global),
             plugin("hooks-only@mp", Agent::Codex, Scope::Global, &[]),
             item(Kind::Marketplace, "mp", &[Agent::Claude], Scope::Global),
         ];
