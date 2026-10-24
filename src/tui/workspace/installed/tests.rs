@@ -4,12 +4,12 @@ use super::rows::tests::{installed, plugin_providing_a_skill_and_a_hook};
 use super::*;
 use crate::library::ItemKind;
 use crate::model::Kind;
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::tui::widgets::testing::{key, keys, render_to_buffer};
 
 pub(super) fn model() -> Model {
     let mut web = Profile::new("web");
-    web.entries = vec![Entry::Skill {
+    web.entries = vec![Spec::Skill {
         source: "o/r".into(),
         names: vec!["grill".into()],
         agents: vec![],

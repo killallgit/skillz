@@ -5,10 +5,10 @@ mod common;
 
 use common::*;
 use serde_json::Value;
-use skillz::profile::Entry;
+use skillz::profile::Spec;
 
-fn skill(name: &str) -> Entry {
-    Entry::Skill {
+fn skill(name: &str) -> Spec {
+    Spec::Skill {
         source: "o/r".into(),
         names: vec![name.into()],
         agents: vec![],

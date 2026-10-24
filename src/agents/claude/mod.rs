@@ -16,8 +16,8 @@ use super::{AgentAdapter, PluginOffer};
 use crate::action::Action;
 use crate::env::Env;
 use crate::hooks;
-use crate::model::{Agent, Augmentation, Kind, Scope};
-use crate::profile::Entry;
+use crate::model::{Agent, Installed, Kind, Scope};
+use crate::profile::Spec;
 use crate::runner::CommandRunner;
 use crate::subagents::{self, AgentDir};
 use context::parse_context;
@@ -33,7 +33,7 @@ impl AgentAdapter for Claude {
         Agent::Claude
     }
 
-    fn update_steps(&self, item: &Augmentation, cwd: &std::path::Path) -> Vec<Action> {
+    fn update_steps(&self, item: &Installed, cwd: &std::path::Path) -> Vec<Action> {
         update::steps(item, cwd)
     }
 
@@ -56,7 +56,7 @@ impl AgentAdapter for Claude {
         settings_files(env, scope)
     }
 
-    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
+    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
         let installs = installs_from(&read_json(&installed_file(&env.claude_dir()))?);
         let markets = marketplaces_from(&read_json(&marketplaces_file(&env.claude_dir()))?);
         let mut out = plugins::plugins(env, scope, &installs, &markets)?;
@@ -97,15 +97,15 @@ impl AgentAdapter for Claude {
         }
     }
 
-    fn provision(&self, entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+    fn provision(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
         match entry {
-            Entry::Hook { .. } => hooks::provision(entry, hook_settings(env, scope)),
-            Entry::Mcp { .. } => mcp::provision(entry, scope, env),
-            Entry::Subagent { .. } => {
+            Spec::Hook { .. } => hooks::provision(entry, hook_settings(env, scope)),
+            Spec::Mcp { .. } => mcp::provision(entry, scope, env),
+            Spec::Subagent { .. } => {
                 subagents::provision(entry, &AgentDir::new(&agents_dir(env, scope), "md"), env)
             }
-            Entry::Plugin { .. } => marketplace::provision(entry, scope, &env.project),
-            Entry::Skill { .. } => None,
+            Spec::Plugin { .. } => marketplace::provision(entry, scope, &env.project),
+            Spec::Skill { .. } => None,
         }
     }
 
@@ -131,7 +131,7 @@ impl AgentAdapter for Claude {
         Ok(usage::claude_uses(&read_json(&env.claude_json())?))
     }
 
-    fn tracks(&self, item: &Augmentation) -> bool {
+    fn tracks(&self, item: &Installed) -> bool {
         matches!(item.kind, Kind::Skill | Kind::Plugin)
     }
 }

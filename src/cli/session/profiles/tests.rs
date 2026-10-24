@@ -26,8 +26,8 @@ fn with_session<T>(check: impl FnOnce(&Session, &Path) -> T) -> T {
     check(&session(&deps, dir.path()), dir.path())
 }
 
-fn skill(name: &str) -> Entry {
-    Entry::Skill {
+fn skill(name: &str) -> Spec {
+    Spec::Skill {
         source: "o/r".into(),
         names: vec![name.into()],
         agents: vec![Agent::Claude],
@@ -120,7 +120,7 @@ fn saving_the_project_keeps_a_hand_made_skill_by_the_dir_holding_it() {
         let held_in = fs::canonicalize(dir.join(".claude/skills")).unwrap();
         assert_eq!(
             session.profiles.load("snap").unwrap().entries,
-            [Entry::Skill {
+            [Spec::Skill {
                 source: held_in.to_string_lossy().into(),
                 names: vec!["mine".into()],
                 agents: vec![Agent::Claude],

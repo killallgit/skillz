@@ -1,5 +1,5 @@
 use super::*;
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::stale::Disk;
 
 fn build(catalog: &Catalog) -> Vec<Row> {
@@ -7,7 +7,7 @@ fn build(catalog: &Catalog) -> Vec<Row> {
 }
 
 pub fn skill(source: &str, name: &str) -> LibraryItem {
-    LibraryItem::from_entry(Entry::Skill {
+    LibraryItem::from_entry(Spec::Skill {
         source: source.into(),
         names: vec![name.into()],
         agents: vec![],
@@ -15,7 +15,7 @@ pub fn skill(source: &str, name: &str) -> LibraryItem {
 }
 
 pub fn hook(command: &str) -> LibraryItem {
-    LibraryItem::from_entry(Entry::Hook {
+    LibraryItem::from_entry(Spec::Hook {
         event: "Stop".into(),
         matcher: None,
         command: command.into(),
@@ -24,7 +24,7 @@ pub fn hook(command: &str) -> LibraryItem {
 }
 
 fn plugin(marketplace: &str, name: &str) -> LibraryItem {
-    LibraryItem::from_entry(Entry::Plugin {
+    LibraryItem::from_entry(Spec::Plugin {
         source: format!("o/{marketplace}"),
         marketplace: marketplace.into(),
         name: name.into(),

@@ -41,7 +41,7 @@ use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
 use crate::apply::{Drift, drift};
-use crate::model::{Augmentation, Scope};
+use crate::model::{Installed, Scope};
 use crate::profile::Profile;
 use crate::review::ItemEvent;
 use crate::tui::keymap;
@@ -68,7 +68,7 @@ enum Popup {
 pub struct InstalledTab {
     scope: Scope,
     dir: String,
-    installed: Vec<Augmentation>,
+    installed: Vec<Installed>,
     profiles: Vec<Profile>,
     rows: Vec<Row>,
     outline: Outline,

@@ -2,13 +2,13 @@
 //! a profile's entries and for the library items a profile can be built from.
 
 use crate::library::{Catalog, ItemKind};
-use crate::profile::{Entry, Profile};
+use crate::profile::{Profile, Spec};
 use crate::tui::widgets::outline::Shape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Item {
     pub label: String,
-    pub entry: Entry,
+    pub entry: Spec,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,8 +116,8 @@ pub(super) mod tests {
     use super::*;
     use crate::library::LibraryItem;
 
-    pub fn skill(name: &str) -> Entry {
-        Entry::Skill {
+    pub fn skill(name: &str) -> Spec {
+        Spec::Skill {
             source: "o/r".into(),
             names: vec![name.into()],
             agents: vec![],

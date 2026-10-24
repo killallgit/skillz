@@ -1,14 +1,14 @@
 use super::catalog::Catalog;
 use super::item::LibraryItem;
 use super::provenance::Provenance;
-use crate::model::Augmentation;
+use crate::model::Installed;
 use crate::snapshot::{Skipped, collect};
 
 /// Reinstallable entries from the installed `items`, each with the provenance its
 /// installer left; what they leave out (needing secrets, or with nothing to reinstall from) is
 /// returned apart.
 pub(super) fn collect_installed(
-    items: &[Augmentation],
+    items: &[Installed],
     recorded_at: u64,
 ) -> (Vec<LibraryItem>, Vec<Skipped>) {
     let mut kept = vec![];
@@ -26,7 +26,7 @@ pub(super) fn collect_installed(
 }
 
 /// Add every reinstallable entry from the installed `items`.
-pub fn import_installed(catalog: &mut Catalog, items: &[Augmentation], recorded_at: u64) {
+pub fn import_installed(catalog: &mut Catalog, items: &[Installed], recorded_at: u64) {
     let (kept, _) = collect_installed(items, recorded_at);
     kept.into_iter().for_each(|item| catalog.add(item));
 }
@@ -35,10 +35,10 @@ pub fn import_installed(catalog: &mut Catalog, items: &[Augmentation], recorded_
 /// changed since.
 pub fn record_installed(
     catalog: &mut Catalog,
-    (before, after): (&[Augmentation], &[Augmentation]),
+    (before, after): (&[Installed], &[Installed]),
     recorded_at: u64,
 ) {
-    let fresh: Vec<Augmentation> = after
+    let fresh: Vec<Installed> = after
         .iter()
         .filter(|item| !before.contains(item))
         .cloned()
@@ -51,8 +51,8 @@ pub(super) mod tests {
     use super::*;
     use crate::model::{Agent, Installer, Kind, Origin, Scope};
 
-    pub fn installed_skill(name: &str, source: Option<&str>) -> Augmentation {
-        Augmentation {
+    pub fn installed_skill(name: &str, source: Option<&str>) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: vec![],
             members: Vec::new(),

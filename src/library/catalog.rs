@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::item::LibraryItem;
-use crate::profile::{Entry, same_thing};
+use crate::profile::{Spec, same_thing};
 
 /// The items of a library, in the order they were first added.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,7 +57,7 @@ impl Catalog {
     }
 
     /// Add each thing `entry` names as an item of its own.
-    pub fn add_entry(&mut self, entry: Entry) {
+    pub fn add_entry(&mut self, entry: Spec) {
         LibraryItem::each_of(entry)
             .into_iter()
             .for_each(|item| self.add(item));
@@ -65,15 +65,15 @@ impl Catalog {
 
     /// The entry to install again: a skill is fetched from the link recorded when it was last
     /// installed, when there is a usable one, else from the entry's own source.
-    pub fn installable(&self, entry: &Entry) -> Entry {
+    pub fn installable(&self, entry: &Spec) -> Spec {
         let link = self
             .items
             .iter()
             .find(|i| same_thing(&i.entry, entry))
             .and_then(|i| i.provenance.as_ref()?.link.clone());
         match (entry, link) {
-            (Entry::Skill { names, agents, .. }, Some(source)) => {
-                let linked = Entry::Skill {
+            (Spec::Skill { names, agents, .. }, Some(source)) => {
+                let linked = Spec::Skill {
                     source,
                     names: names.clone(),
                     agents: agents.clone(),
@@ -144,10 +144,10 @@ mod tests {
 #[cfg(test)]
 mod split_tests {
     use super::*;
-    use crate::profile::Entry;
+    use crate::profile::Spec;
 
-    fn skills(names: &[&str]) -> Entry {
-        Entry::Skill {
+    fn skills(names: &[&str]) -> Spec {
+        Spec::Skill {
             source: "o/r".into(),
             names: names.iter().map(|n| n.to_string()).collect(),
             agents: vec![],

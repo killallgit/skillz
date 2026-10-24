@@ -1,4 +1,4 @@
-//! A user-level catalog of available augmentations that profiles are built from, each with
+//! A user-level catalog of available items that profiles are built from, each with
 //! where it came from. Items are copied into profiles; a profile never refers back to the
 //! library. The catalog is persisted in the `store`.
 

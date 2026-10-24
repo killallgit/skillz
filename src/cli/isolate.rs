@@ -85,12 +85,12 @@ mod tests {
         use crate::agents::registry;
         use crate::install::test_support::{FakeRunner, ScriptedPrompter};
         use crate::model::Agent;
-        use crate::profile::{Entry, Profile};
+        use crate::profile::{Profile, Spec};
 
         let dir = tempfile::tempdir().unwrap();
         let env = Env::new(dir.path().into(), dir.path().into());
         let mut profile = Profile::new("web");
-        profile.entries.push(Entry::Hook {
+        profile.entries.push(Spec::Hook {
             event: "Stop".into(),
             matcher: None,
             command: "notify".into(),

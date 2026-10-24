@@ -1,5 +1,5 @@
 use crate::merge::tag;
-use crate::model::{Augmentation, Kind, Scope};
+use crate::model::{Installed, Kind, Scope};
 use crate::package::{Package, group_by};
 
 mod table;
@@ -45,9 +45,9 @@ impl Node {
     }
 }
 
-/// Group augmentations for display: scope -> package -> item -> item.children. Project groups
+/// Group installed items for display: scope -> package -> item -> item.children. Project groups
 /// come first, then global; within a scope see `package::group_by`. Deterministic.
-pub fn build(items: &[Augmentation]) -> Vec<Node> {
+pub fn build(items: &[Installed]) -> Vec<Node> {
     [Scope::Project, Scope::Global]
         .into_iter()
         .flat_map(|scope| {
@@ -62,7 +62,7 @@ pub fn build(items: &[Augmentation]) -> Vec<Node> {
         .collect()
 }
 
-type Member<'a> = (usize, &'a Augmentation);
+type Member<'a> = (usize, &'a Installed);
 
 /// The package's header row. Its count is items; a package of lone marketplaces counts their
 /// plugins.
@@ -165,7 +165,7 @@ pub fn items(nodes: &[Node]) -> Vec<(usize, String)> {
     out
 }
 
-fn item_node(index: usize, item: &Augmentation) -> Node {
+fn item_node(index: usize, item: &Installed) -> Node {
     Node {
         label: item.name.clone(),
         cells: [

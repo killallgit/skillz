@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
 use crate::action::{Action, Edit};
-use crate::profile::Entry;
+use crate::profile::Spec;
 
 /// The step that adds a profile's hook to `file`. `None` for other kinds of entry.
-pub fn provision(entry: &Entry, file: PathBuf) -> Option<Vec<Action>> {
-    let Entry::Hook {
+pub fn provision(entry: &Spec, file: PathBuf) -> Option<Vec<Action>> {
+    let Spec::Hook {
         event,
         matcher,
         command,
@@ -28,8 +28,8 @@ pub fn provision(entry: &Entry, file: PathBuf) -> Option<Vec<Action>> {
 mod tests {
     use super::*;
 
-    fn hook() -> Entry {
-        Entry::Hook {
+    fn hook() -> Spec {
+        Spec::Hook {
             event: "Stop".into(),
             matcher: None,
             command: "say done".into(),
@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn other_entries_are_not_hooks() {
-        let skill = Entry::Skill {
+        let skill = Spec::Skill {
             source: "o/r".into(),
             names: vec!["a".into()],
             agents: vec![],

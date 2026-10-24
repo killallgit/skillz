@@ -1,8 +1,8 @@
 use super::*;
 use crate::model::{Agent, Installer, Scope};
 
-fn item(kind: Kind, name: &str, source: Option<&str>, group: &str) -> Augmentation {
-    Augmentation {
+fn item(kind: Kind, name: &str, source: Option<&str>, group: &str) -> Installed {
+    Installed {
         details: Default::default(),
         id: format!("{kind}:{name}"),
         name: name.into(),
@@ -20,7 +20,7 @@ fn item(kind: Kind, name: &str, source: Option<&str>, group: &str) -> Augmentati
     }
 }
 
-fn packages(items: Vec<Augmentation>) -> Vec<Package> {
+fn packages(items: Vec<Installed>) -> Vec<Package> {
     group_by(items, Package::of)
         .into_iter()
         .map(|(package, _)| package)
@@ -113,7 +113,7 @@ fn members_keep_their_order() {
 
 #[test]
 fn a_library_skill_from_a_folder_on_disk_is_local_files() {
-    let from_folder = Entry::Skill {
+    let from_folder = Spec::Skill {
         source: "/work/skills".into(),
         names: vec!["mine".into()],
         agents: vec![],
@@ -124,12 +124,12 @@ fn a_library_skill_from_a_folder_on_disk_is_local_files() {
 
 #[test]
 fn a_library_entry_belongs_to_the_package_it_is_fetched_from() {
-    let skill = Entry::Skill {
+    let skill = Spec::Skill {
         source: "o/r".into(),
         names: vec!["tdd".into()],
         agents: vec![],
     };
-    let plugin = Entry::Plugin {
+    let plugin = Spec::Plugin {
         source: "o/mp".into(),
         marketplace: "mp".into(),
         name: "p".into(),

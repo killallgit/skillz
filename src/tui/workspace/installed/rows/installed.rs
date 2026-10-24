@@ -4,10 +4,10 @@ use super::Item;
 use crate::library::ItemKind;
 use crate::location::detail;
 use crate::merge::tag;
-use crate::model::{Augmentation, Kind};
+use crate::model::{Installed, Kind};
 use crate::package::Package;
 
-pub(super) fn items(here: &[Augmentation]) -> Vec<(Package, Item)> {
+pub(super) fn items(here: &[Installed]) -> Vec<(Package, Item)> {
     here.iter()
         .filter_map(|installed| {
             let kind = ItemKind::of(installed.kind)?;
@@ -16,7 +16,7 @@ pub(super) fn items(here: &[Augmentation]) -> Vec<(Package, Item)> {
         .collect()
 }
 
-fn item(installed: &Augmentation, kind: ItemKind) -> Item {
+fn item(installed: &Installed, kind: ItemKind) -> Item {
     Item {
         label: installed.name.clone(),
         kind,
@@ -30,7 +30,7 @@ fn item(installed: &Augmentation, kind: ItemKind) -> Item {
 }
 
 /// What a plugin brings along: `3 skills, 2 hooks`.
-fn provides(plugin: &Augmentation) -> String {
+fn provides(plugin: &Installed) -> String {
     let counts = [
         (plugin.plugin_skills().count(), ItemKind::Skill),
         (plugin.hooks.len(), ItemKind::Hook),

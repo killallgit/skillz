@@ -7,7 +7,7 @@ use super::deps::Deps;
 use crate::agents;
 use crate::env::Env;
 use crate::merge::merge;
-use crate::model::{Augmentation, Scope};
+use crate::model::{Installed, Scope};
 
 /// The environment of the project at `path` (default: cwd).
 pub(super) fn resolve_project(deps: &Deps, path: Option<&Path>) -> anyhow::Result<Env> {
@@ -45,12 +45,7 @@ pub(super) fn resolve(
 }
 
 /// What is installed and passes the filters, one item per thing however many agents have it.
-pub(super) fn gather(
-    deps: &Deps,
-    env: &Env,
-    scopes: &[Scope],
-    filter: &Filter,
-) -> Vec<Augmentation> {
+pub(super) fn gather(deps: &Deps, env: &Env, scopes: &[Scope], filter: &Filter) -> Vec<Installed> {
     merge(gather_per_agent(deps, env, scopes, filter))
 }
 
@@ -60,7 +55,7 @@ pub(super) fn gather_per_agent(
     env: &Env,
     scopes: &[Scope],
     filter: &Filter,
-) -> Vec<Augmentation> {
+) -> Vec<Installed> {
     let inv = agents::inventory(&deps.adapters, env, scopes);
     for warning in &inv.warnings {
         eprintln!("warning: {warning}");
@@ -110,11 +105,11 @@ impl<'a, 'd> Scene<'a, 'd> {
         }
     }
 
-    pub(super) fn gather(&self) -> Vec<Augmentation> {
+    pub(super) fn gather(&self) -> Vec<Installed> {
         gather(self.deps, self.env, self.scopes, self.filter)
     }
 
-    pub(super) fn complete(&self) -> anyhow::Result<Vec<Augmentation>> {
+    pub(super) fn complete(&self) -> anyhow::Result<Vec<Installed>> {
         let items = agents::inventory(&self.deps.adapters, self.env, self.scopes).complete()?;
         Ok(merge(
             items
@@ -124,13 +119,13 @@ impl<'a, 'd> Scene<'a, 'd> {
         ))
     }
 
-    pub(super) fn gather_per_agent(&self) -> Vec<Augmentation> {
+    pub(super) fn gather_per_agent(&self) -> Vec<Installed> {
         gather_per_agent(self.deps, self.env, self.scopes, self.filter)
     }
 }
 
 /// Everything installed in one scope of `env`, whatever the filters.
-pub(super) fn installed(deps: &Deps, env: &Env, scope: Scope) -> Vec<Augmentation> {
+pub(super) fn installed(deps: &Deps, env: &Env, scope: Scope) -> Vec<Installed> {
     gather(deps, env, &[scope], &Filter::default())
 }
 
@@ -138,7 +133,7 @@ pub(super) fn complete_installed(
     deps: &Deps,
     env: &Env,
     scope: Scope,
-) -> anyhow::Result<Vec<Augmentation>> {
+) -> anyhow::Result<Vec<Installed>> {
     agents::inventory(&deps.adapters, env, &[scope])
         .complete()
         .map(merge)

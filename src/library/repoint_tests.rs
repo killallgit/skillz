@@ -5,7 +5,7 @@ use super::item::LibraryItem;
 use super::repoint::repoint;
 use crate::library::Provenance;
 use crate::model::Installer;
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::stale::tests::{Existing, skill};
 
 fn item(source: &str, name: &str) -> LibraryItem {
@@ -91,7 +91,7 @@ fn a_source_that_still_exists_is_not_stale() {
 
 #[test]
 fn hooks_are_not_candidates() {
-    let hook = LibraryItem::from_entry(Entry::Hook {
+    let hook = LibraryItem::from_entry(Spec::Hook {
         event: "Stop".into(),
         matcher: None,
         command: "/old/run".into(),

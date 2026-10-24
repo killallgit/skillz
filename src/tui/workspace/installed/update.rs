@@ -1,7 +1,7 @@
 //! Which rows `u` updates, and which rows are known to have an update.
 
 use super::InstalledTab;
-use crate::model::Augmentation;
+use crate::model::Installed;
 use crate::update::can_update;
 
 impl InstalledTab {
@@ -14,7 +14,7 @@ impl InstalledTab {
         self.acted_on()
             .iter()
             .filter_map(|id| self.installed.iter().find(|item| &item.id == id))
-            .flat_map(Augmentation::parts)
+            .flat_map(Installed::parts)
             .filter(|item| can_update(item))
             .map(|item| item.id.clone())
             .collect()

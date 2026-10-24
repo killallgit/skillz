@@ -3,14 +3,14 @@ use std::thread;
 
 use super::*;
 use crate::library::LibraryItem;
-use crate::profile::{Entry, Profile};
+use crate::profile::{Profile, Spec};
 
 fn store_in(dir: &tempfile::TempDir) -> Store {
     Store::new(dir.path().join("skillz/store.json"))
 }
 
 fn skill_item(name: &str) -> LibraryItem {
-    LibraryItem::from_entry(Entry::Skill {
+    LibraryItem::from_entry(Spec::Skill {
         source: "o/r".into(),
         names: vec![name.into()],
         agents: vec![],

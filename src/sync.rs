@@ -7,20 +7,20 @@ use std::thread;
 use crate::agents::{inventory, registry};
 use crate::env::Env;
 use crate::library::{Catalog, Synced, now_secs, repoint_profiles, sync_installed};
-use crate::model::{Augmentation, Scope};
+use crate::model::{Installed, Scope};
 use crate::stale::{Disk, Probe};
 use crate::store::{Document, Store};
 
 /// Finds everything installed for a project and at user level.
 pub trait Scanner: Send + Sync {
-    fn scan(&self, env: &Env) -> anyhow::Result<Vec<Augmentation>>;
+    fn scan(&self, env: &Env) -> anyhow::Result<Vec<Installed>>;
 }
 
 /// Reads the agents' own config for every adapter.
 pub struct InstalledScanner;
 
 impl Scanner for InstalledScanner {
-    fn scan(&self, env: &Env) -> anyhow::Result<Vec<Augmentation>> {
+    fn scan(&self, env: &Env) -> anyhow::Result<Vec<Installed>> {
         inventory(&registry(), env, &[Scope::Global, Scope::Project]).complete()
     }
 }
@@ -34,7 +34,7 @@ pub struct Report {
 
 /// Add what `items` hold that the document's library lacks, and follow moved folders in the
 /// library and the profiles (see `library::sync_installed`).
-pub fn merge(document: &mut Document, items: &[Augmentation], probe: &dyn Probe) -> Synced {
+pub fn merge(document: &mut Document, items: &[Installed], probe: &dyn Probe) -> Synced {
     let mut synced = sync_installed(&mut document.items, items, (now_secs(), probe));
     for moved in &mut synced.repointed {
         moved.profiles = repoint_profiles(&mut document.profiles, moved);
@@ -46,7 +46,7 @@ pub fn merge(document: &mut Document, items: &[Augmentation], probe: &dyn Probe)
 /// store is locked only for the merge.
 pub fn sync_library(
     store: &Store,
-    items: &[Augmentation],
+    items: &[Installed],
     (dry_run, probe): (bool, &dyn Probe),
 ) -> anyhow::Result<Report> {
     if dry_run {
@@ -89,16 +89,16 @@ mod tests {
     use crate::library::Catalog;
     use crate::model::{Agent, Installer, Kind, Origin};
 
-    struct Fixed(Vec<Augmentation>);
+    struct Fixed(Vec<Installed>);
 
     impl Scanner for Fixed {
-        fn scan(&self, _env: &Env) -> anyhow::Result<Vec<Augmentation>> {
+        fn scan(&self, _env: &Env) -> anyhow::Result<Vec<Installed>> {
             Ok(self.0.clone())
         }
     }
 
-    fn installed_skill(name: &str) -> Augmentation {
-        Augmentation {
+    fn installed_skill(name: &str) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: vec![],
             members: Vec::new(),

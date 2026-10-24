@@ -2,7 +2,7 @@
 //! how to draw it; flows decide how to build it.
 
 use crate::model::Agent;
-use crate::profile::Entry;
+use crate::profile::Spec;
 
 /// The kinds of line in a plan, in the order they are shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,7 +157,7 @@ pub enum Next {
 /// What a change to one item works on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
-    Install(Entry),
+    Install(Spec),
     /// The id of the installed item.
     Remove(String),
     /// The id of the installed item.

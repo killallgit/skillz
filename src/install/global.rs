@@ -3,8 +3,8 @@
 use super::{Ctx, InstallRequest};
 use crate::agents::inventory;
 use crate::apply::holds;
-use crate::model::{Augmentation, Scope};
-use crate::profile::Entry;
+use crate::model::{Installed, Scope};
+use crate::profile::Spec;
 
 /// Ask before installing `names` into the project when some are installed globally already.
 /// Says which, then asks; `false` when the user would rather not.
@@ -32,12 +32,12 @@ pub(super) fn confirm_duplicates(
 fn only_global(
     (source, agents): &(&str, &[crate::model::Agent]),
     names: &[String],
-    (global, project): (&[Augmentation], &[Augmentation]),
+    (global, project): (&[Installed], &[Installed]),
 ) -> Vec<String> {
     names
         .iter()
         .filter(|name| {
-            let entry = Entry::Skill {
+            let entry = Spec::Skill {
                 source: source.to_string(),
                 names: vec![name.to_string()],
                 agents: agents.to_vec(),
@@ -53,8 +53,8 @@ mod tests {
     use super::*;
     use crate::model::{Agent, Installer, Kind};
 
-    fn skill(name: &str, scope: Scope) -> Augmentation {
-        Augmentation {
+    fn skill(name: &str, scope: Scope) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: vec![],
             members: Vec::new(),

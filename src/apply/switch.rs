@@ -2,8 +2,8 @@
 //! machine.
 
 use crate::action::Action;
-use crate::model::Augmentation;
-use crate::profile::Entry;
+use crate::model::Installed;
+use crate::profile::Spec;
 use crate::provision::Unsupported;
 use crate::remove::Plan;
 use crate::review::{ItemEvent, Target};
@@ -13,16 +13,16 @@ use crate::review::{ItemEvent, Target};
 pub struct Switch {
     pub to: String,
     /// Wanted entries already in place.
-    pub present: Vec<Entry>,
+    pub present: Vec<Spec>,
     /// Installed items to remove first: the ones the profile does not want, in exact mode.
-    pub removals: Vec<Augmentation>,
+    pub removals: Vec<Installed>,
     /// The ids among `removals` that no profile could install again.
     pub unsourced: Vec<String>,
     /// Entries (or the parts of them) not in place yet, each with its install steps.
-    pub installs: Vec<(Entry, Vec<Action>)>,
+    pub installs: Vec<(Spec, Vec<Action>)>,
     pub unsupported: Vec<Unsupported>,
     /// Installed items to bring to their latest version, each with the steps that do it.
-    pub updates: Vec<(Augmentation, Vec<Action>)>,
+    pub updates: Vec<(Installed, Vec<Action>)>,
 }
 
 impl Switch {
@@ -53,7 +53,7 @@ impl Switch {
     }
 
     /// A switch that only updates `items`.
-    pub fn updating(items: Vec<(Augmentation, Vec<Action>)>) -> Self {
+    pub fn updating(items: Vec<(Installed, Vec<Action>)>) -> Self {
         Switch {
             to: "update".into(),
             present: vec![],
@@ -75,7 +75,7 @@ impl Switch {
             .collect()
     }
 
-    pub fn is_unsourced(&self, item: &Augmentation) -> bool {
+    pub fn is_unsourced(&self, item: &Installed) -> bool {
         self.unsourced.contains(&item.id)
     }
 }

@@ -63,12 +63,12 @@ impl Row<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::profile::Entry;
+    use crate::profile::Spec;
     use crate::stale::Disk;
     use crate::stale::tests::{Existing, skill};
 
     fn hook() -> LibraryItem {
-        LibraryItem::from_entry(Entry::Hook {
+        LibraryItem::from_entry(Spec::Hook {
             event: "Stop".into(),
             matcher: None,
             command: "fmt".into(),

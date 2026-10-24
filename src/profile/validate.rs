@@ -1,36 +1,36 @@
 //! Every value of an entry ends up as a command-line argument, so none may be empty or
 //! option-like.
 
-use super::Entry;
+use super::Spec;
 use crate::redact::credential_count;
 
-impl Entry {
+impl Spec {
     pub fn validate(&self) -> anyhow::Result<()> {
         let args = match self {
-            Entry::Skill { source, names, .. } | Entry::Subagent { source, names, .. } => {
+            Spec::Skill { source, names, .. } | Spec::Subagent { source, names, .. } => {
                 sourced_args(source, names)?
             }
-            Entry::Plugin {
+            Spec::Plugin {
                 source,
                 marketplace,
                 name,
                 ..
             } => vec![source.as_str(), marketplace, name],
-            Entry::Hook { event, command, .. } => hook_args(event, command)?,
-            Entry::Mcp { .. } => mcp_args(self)?,
+            Spec::Hook { event, command, .. } => hook_args(event, command)?,
+            Spec::Mcp { .. } => mcp_args(self)?,
         };
         ensure_plain(&args)
     }
 }
 
-impl Entry {
+impl Spec {
     /// Refuse an entry typed by hand whose command line or url carries a credential: a library
     /// or profile file is plain text and is shared.
     pub fn ensure_no_credentials(&self) -> anyhow::Result<()> {
         let words = match self {
-            Entry::Hook { command, .. } => shell_words::split(command)
+            Spec::Hook { command, .. } => shell_words::split(command)
                 .unwrap_or_else(|_| command.split_whitespace().map(str::to_owned).collect()),
-            Entry::Mcp {
+            Spec::Mcp {
                 command, args, url, ..
             } => {
                 let mut words = args.clone();
@@ -42,9 +42,9 @@ impl Entry {
                 }
                 words
             }
-            Entry::Skill { source, .. }
-            | Entry::Subagent { source, .. }
-            | Entry::Plugin { source, .. } => vec![source.clone()],
+            Spec::Skill { source, .. }
+            | Spec::Subagent { source, .. }
+            | Spec::Plugin { source, .. } => vec![source.clone()],
         };
         anyhow::ensure!(
             credential_count(&words) == 0,
@@ -70,8 +70,8 @@ fn sourced_args<'a>(source: &'a str, names: &'a [String]) -> anyhow::Result<Vec<
 }
 
 /// The arguments of an MCP entry, after checking it has one way to launch and a known transport.
-fn mcp_args(entry: &Entry) -> anyhow::Result<Vec<&str>> {
-    let Entry::Mcp {
+fn mcp_args(entry: &Spec) -> anyhow::Result<Vec<&str>> {
+    let Spec::Mcp {
         name,
         command,
         url,
@@ -115,8 +115,8 @@ fn ensure_plain(args: &[&str]) -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
-    fn mcp(command: Option<&str>, url: Option<&str>, transport: Option<&str>) -> Entry {
-        Entry::Mcp {
+    fn mcp(command: Option<&str>, url: Option<&str>, transport: Option<&str>) -> Spec {
+        Spec::Mcp {
             name: "s".into(),
             command: command.map(String::from),
             args: vec![],
@@ -126,8 +126,8 @@ mod tests {
         }
     }
 
-    fn skill(source: &str, names: &[&str]) -> Entry {
-        Entry::Skill {
+    fn skill(source: &str, names: &[&str]) -> Spec {
+        Spec::Skill {
             source: source.into(),
             names: names.iter().map(|n| n.to_string()).collect(),
             agents: vec![],
@@ -167,13 +167,13 @@ mod tests {
 
     #[test]
     fn a_hook_or_mcp_line_carrying_a_credential_is_refused() {
-        let hook = Entry::Hook {
+        let hook = Spec::Hook {
             event: "Stop".into(),
             matcher: None,
             command: "notify --token abc".into(),
             agents: vec![],
         };
-        let mcp = Entry::Mcp {
+        let mcp = Spec::Mcp {
             name: "s".into(),
             command: Some("npx".into()),
             args: vec!["--api-key=abc".into()],
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn a_plugin_needs_all_three_names() {
-        let plugin = Entry::Plugin {
+        let plugin = Spec::Plugin {
             source: "o/r".into(),
             marketplace: "".into(),
             name: "p".into(),
@@ -205,7 +205,7 @@ mod tests {
             "mcp s https://user:validation-secret@host/mcp",
             "mcp s https://host/mcp?key=validation-secret",
         ] {
-            let error = Entry::parse_spec(spec).unwrap_err();
+            let error = Spec::parse_spec(spec).unwrap_err();
             assert!(!format!("{error:#}").contains("validation-secret"));
         }
     }
@@ -215,13 +215,13 @@ mod tests {
         let entries = [
             skill("https://user:validation-secret@host/repo", &[]),
             skill("https://user:validation-secret@host/repo", &["--all"]),
-            Entry::Hook {
+            Spec::Hook {
                 event: "invalid event".into(),
                 command: "notify --token validation-secret".into(),
                 matcher: None,
                 agents: vec![],
             },
-            Entry::Hook {
+            Spec::Hook {
                 event: "--invalid".into(),
                 command: "notify --token validation-secret".into(),
                 matcher: None,
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn imported_profiles_refuse_credentials_in_commands_urls_and_repository_sources() {
         for entry in [
-            Entry::Hook {
+            Spec::Hook {
                 event: "Stop".into(),
                 command: "notify '--token' 'profile-secret'".into(),
                 matcher: None,
@@ -250,12 +250,12 @@ mod tests {
             },
             mcp(None, Some("https://user:profile-secret@host/mcp"), None),
             skill("https://user:profile-secret@host/repo.git", &["a"]),
-            Entry::Subagent {
+            Spec::Subagent {
                 source: "https://host/repo.git?token=profile-secret".into(),
                 names: vec!["a".into()],
                 agents: vec![],
             },
-            Entry::Plugin {
+            Spec::Plugin {
                 source: "https://user:profile-secret@host/repo.git".into(),
                 marketplace: "mp".into(),
                 name: "a".into(),

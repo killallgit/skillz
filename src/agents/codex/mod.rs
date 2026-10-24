@@ -15,9 +15,9 @@ use super::{AgentAdapter, PluginOffer};
 use crate::action::Action;
 use crate::env::Env;
 use crate::hooks;
-use crate::model::{Agent, Augmentation, Kind, Scope};
+use crate::model::{Agent, Installed, Kind, Scope};
 use crate::npx_skills;
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::subagents::{self, AgentDir};
 use config::{project_plugin_ids, read_config};
 use plugins::{Cx, marketplaces, marketplaces_from, plugins_from};
@@ -29,7 +29,7 @@ impl AgentAdapter for Codex {
         Agent::Codex
     }
 
-    fn update_steps(&self, item: &Augmentation, cwd: &std::path::Path) -> Vec<Action> {
+    fn update_steps(&self, item: &Installed, cwd: &std::path::Path) -> Vec<Action> {
         update::steps(item, cwd)
     }
 
@@ -55,7 +55,7 @@ impl AgentAdapter for Codex {
         vec![dir.join("hooks.json"), dir.join("config.toml")]
     }
 
-    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
+    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
         let config = env.codex_scope_dir(scope).join("config.toml");
         let agents_dir = env.codex_scope_dir(scope).join("agents");
         let agents = subagents::discover(&AgentDir::new(&agents_dir, "toml"), Agent::Codex, scope)?;
@@ -85,18 +85,18 @@ impl AgentAdapter for Codex {
 
     /// `codex plugin …` and `codex mcp …` only work on the user config, so project scope has no
     /// way in for those.
-    fn provision(&self, entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+    fn provision(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
         match entry {
-            Entry::Hook { .. } => {
+            Spec::Hook { .. } => {
                 hooks::provision(entry, env.codex_scope_dir(scope).join("hooks.json"))
             }
-            Entry::Mcp { .. } => mcp::provision(entry, scope, env),
-            Entry::Subagent { .. } => {
+            Spec::Mcp { .. } => mcp::provision(entry, scope, env),
+            Spec::Subagent { .. } => {
                 let to = env.codex_scope_dir(scope).join("agents");
                 subagents::provision(entry, &AgentDir::new(&to, "toml"), env)
             }
-            Entry::Plugin { .. } => plugins::provision(entry, scope, env),
-            Entry::Skill { .. } => None,
+            Spec::Plugin { .. } => plugins::provision(entry, scope, env),
+            Spec::Skill { .. } => None,
         }
     }
 
@@ -127,7 +127,7 @@ impl AgentAdapter for Codex {
     }
 
     /// Only skill reads leave a record, so a plugin without skills never shows a use.
-    fn tracks(&self, item: &Augmentation) -> bool {
+    fn tracks(&self, item: &Installed) -> bool {
         item.kind == Kind::Skill
             || (item.kind == Kind::Plugin && item.plugin_skills().next().is_some())
     }

@@ -3,8 +3,8 @@ use crate::location::detail;
 use crate::merge::tag;
 use crate::model::{Agent, Installer, Kind, Scope};
 
-pub fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
-    Augmentation {
+pub fn installed(name: &str, kind: Kind, source: Option<&str>) -> Installed {
+    Installed {
         details: Default::default(),
         hooks: vec![],
         members: Vec::new(),
@@ -22,8 +22,8 @@ pub fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
     }
 }
 
-pub fn global(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
-    Augmentation {
+pub fn global(name: &str, kind: Kind, source: Option<&str>) -> Installed {
+    Installed {
         details: Default::default(),
         id: format!("global-{kind}:{name}"),
         scope: Scope::Global,
@@ -31,8 +31,8 @@ pub fn global(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
     }
 }
 
-pub fn plugin_providing_a_skill_and_a_hook(name: &str) -> Augmentation {
-    Augmentation {
+pub fn plugin_providing_a_skill_and_a_hook(name: &str) -> Installed {
+    Installed {
         details: crate::model::Details::Plugin {
             location: Default::default(),
             skills: vec!["tdd".into()],
@@ -183,7 +183,7 @@ fn a_plugin_is_one_row_that_says_what_it_provides_and_lists_none_of_it() {
 
 #[test]
 fn a_marketplace_has_no_row_of_its_own() {
-    let on_marketplace = |kind, name| Augmentation {
+    let on_marketplace = |kind, name| Installed {
         group: "mp".into(),
         ..installed(name, kind, Some("o/mp"))
     };
@@ -195,8 +195,8 @@ fn a_marketplace_has_no_row_of_its_own() {
     assert_eq!(items(&build(&here)).len(), 1);
 }
 
-fn subagent_in(agent: Agent) -> Augmentation {
-    Augmentation {
+fn subagent_in(agent: Agent) -> Installed {
+    Installed {
         details: Default::default(),
         id: format!("subagent:{agent}:reviewer"),
         agents: vec![agent],
@@ -204,7 +204,7 @@ fn subagent_in(agent: Agent) -> Augmentation {
     }
 }
 
-fn merged_subagent() -> Augmentation {
+fn merged_subagent() -> Installed {
     crate::merge::merge(vec![subagent_in(Agent::Claude), subagent_in(Agent::Codex)]).remove(0)
 }
 

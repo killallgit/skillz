@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Installer, Kind, Origin, Scope};
-use crate::profile::Entry;
+use crate::model::{Agent, Installed, Installer, Kind, Origin, Scope};
+use crate::profile::Spec;
 use crate::subagent_store::{MANIFEST, Manifest, definition_name};
 
 /// Where an agent keeps its subagent definitions and what extension they carry.
@@ -24,7 +24,7 @@ impl<'a> AgentDir<'a> {
 }
 
 /// The definitions in `dir`, each removable by deleting its file (and its manifest line).
-pub fn discover(dir: &AgentDir, agent: Agent, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
+pub fn discover(dir: &AgentDir, agent: Agent, scope: Scope) -> anyhow::Result<Vec<Installed>> {
     let scan = Scan {
         dir,
         manifest: Manifest::read(dir.path)?,
@@ -33,7 +33,7 @@ pub fn discover(dir: &AgentDir, agent: Agent, scope: Scope) -> anyhow::Result<Ve
     };
     definition_files(dir)?
         .iter()
-        .map(|path| scan.augmentation(path))
+        .map(|path| scan.installed_item(path))
         .collect::<anyhow::Result<Vec<_>>>()
         .map(|items| items.into_iter().flatten().collect())
 }
@@ -57,7 +57,7 @@ struct Scan<'a> {
 }
 
 impl Scan<'_> {
-    fn augmentation(&self, path: &Path) -> anyhow::Result<Option<Augmentation>> {
+    fn installed_item(&self, path: &Path) -> anyhow::Result<Option<Installed>> {
         let Some(file) = path.file_name().and_then(|s| s.to_str()) else {
             return Ok(None);
         };
@@ -70,7 +70,7 @@ impl Scan<'_> {
         let origin = source
             .as_ref()
             .map_or_else(|| self.origin(), |_| Origin::default());
-        Ok(Some(Augmentation {
+        Ok(Some(Installed {
             details: crate::model::Details::Subagent {
                 file: path.to_path_buf(),
             },
@@ -114,8 +114,8 @@ impl Scan<'_> {
 }
 
 /// The step that copies a profile's subagents into `to`. `None` for other kinds of entry.
-pub fn provision(entry: &Entry, to: &AgentDir, env: &Env) -> Option<Vec<Action>> {
-    let Entry::Subagent { source, names, .. } = entry else {
+pub fn provision(entry: &Spec, to: &AgentDir, env: &Env) -> Option<Vec<Action>> {
+    let Spec::Subagent { source, names, .. } = entry else {
         return None;
     };
     Some(vec![Action::CopyAgents {

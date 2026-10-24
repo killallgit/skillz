@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::model::Augmentation;
+use crate::model::Installed;
 
 pub(super) const CONFIG: &str = r#"
 model = "gpt-5"
@@ -86,7 +86,7 @@ pub(super) fn setup() -> (tempfile::TempDir, Env) {
     (dir, env)
 }
 
-pub(super) fn find<'a>(items: &'a [Augmentation], id: &str) -> &'a Augmentation {
+pub(super) fn find<'a>(items: &'a [Installed], id: &str) -> &'a Installed {
     items.iter().find(|a| a.id == id).unwrap()
 }
 

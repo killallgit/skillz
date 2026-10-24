@@ -4,7 +4,7 @@ mod common;
 
 use common::*;
 use skillz::cli::{Command, Deps, ProfileCommand};
-use skillz::profile::Entry;
+use skillz::profile::Spec;
 
 fn world_with_web_and_api() -> World {
     let w = world();
@@ -101,7 +101,7 @@ fn saving_snapshots_the_installed_skill_with_its_source() {
 
     assert!(entries.iter().any(|e| matches!(
         e,
-        Entry::Skill { source, names, .. } if source == "mattpocock/skills" && names == &["tdd"]
+        Spec::Skill { source, names, .. } if source == "mattpocock/skills" && names == &["tdd"]
     )));
 }
 
@@ -111,7 +111,7 @@ fn saving_snapshots_the_installed_hooks() {
 
     let entries = w.profile("mine").entries;
 
-    assert!(entries.iter().any(|e| matches!(e, Entry::Hook { .. })));
+    assert!(entries.iter().any(|e| matches!(e, Spec::Hook { .. })));
 }
 
 #[test]

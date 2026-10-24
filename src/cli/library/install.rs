@@ -6,7 +6,7 @@ use super::super::scope::{installed, project_env};
 use super::super::session::{Change, Console, Selection, Session, change};
 use crate::apply::holds;
 use crate::model::Scope;
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::prompt::Prompter;
 
 pub(super) fn install(
@@ -36,7 +36,7 @@ fn picked_entries(
     session: &Session,
     console: &Console,
     args: &LibraryInstallArgs,
-) -> anyhow::Result<Vec<Entry>> {
+) -> anyhow::Result<Vec<Spec>> {
     let env = project_env(session.deps(), session.project());
     let library = session.library().read()?.items.in_env(&env);
     let choosing = Choosing {
@@ -44,7 +44,7 @@ fn picked_entries(
         title: "Select items to install",
         yes: args.yes,
     };
-    let mut entries: Vec<Entry> = Vec::new();
+    let mut entries: Vec<Spec> = Vec::new();
     for query in &args.queries {
         for item in pick(&choosing, query, library.items(), |i| i.label.clone())? {
             if !entries.contains(&item.entry) {
@@ -59,11 +59,11 @@ fn picked_entries(
 fn without_those_held_globally(
     session: &Session,
     console: &Console,
-    wanted: Vec<Entry>,
-) -> anyhow::Result<Vec<Entry>> {
+    wanted: Vec<Spec>,
+) -> anyhow::Result<Vec<Spec>> {
     let env = project_env(session.deps(), session.project());
     let global = installed(session.deps(), &env, Scope::Global);
-    let (held, rest): (Vec<Entry>, Vec<Entry>) =
+    let (held, rest): (Vec<Spec>, Vec<Spec>) =
         wanted.into_iter().partition(|entry| holds(&global, entry));
     let names: Vec<String> = held.iter().map(ToString::to_string).collect();
     let also = !held.is_empty()

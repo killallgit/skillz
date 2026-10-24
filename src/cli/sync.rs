@@ -87,11 +87,11 @@ fn print_synced(out: &mut dyn Write, synced: &Synced, dry_run: bool) -> anyhow::
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::profile::Entry;
+    use crate::profile::Spec;
 
     #[test]
     fn the_json_lists_added_items_with_their_kind_and_the_dry_run_flag() {
-        let hook = LibraryItem::from_entry(Entry::Hook {
+        let hook = LibraryItem::from_entry(Spec::Hook {
             event: "Stop".into(),
             matcher: None,
             command: "fmt".into(),

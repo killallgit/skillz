@@ -12,7 +12,7 @@ use crate::redact::{redact, redact_text};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub enum Entry {
+pub enum Spec {
     /// Skills of one `org/repo` (or git URL, or local path), installed with `npx skills`.
     Skill {
         source: String,
@@ -64,11 +64,11 @@ pub enum Entry {
     },
 }
 
-impl Entry {
+impl Spec {
     /// A temporary entry with local sources resolved for the current project.
     pub fn in_env(mut self, env: &crate::env::Env) -> Self {
         match &mut self {
-            Entry::Skill { source, .. } | Entry::Subagent { source, .. } => {
+            Spec::Skill { source, .. } | Spec::Subagent { source, .. } => {
                 *source = env.resolve_source(source)
             }
             _ => {}
@@ -79,53 +79,53 @@ impl Entry {
     /// The entry's own agents; empty means "the profile's".
     pub fn agents(&self) -> &[Agent] {
         match self {
-            Entry::Skill { agents, .. }
-            | Entry::Plugin { agents, .. }
-            | Entry::Mcp { agents, .. }
-            | Entry::Hook { agents, .. }
-            | Entry::Subagent { agents, .. } => agents,
+            Spec::Skill { agents, .. }
+            | Spec::Plugin { agents, .. }
+            | Spec::Mcp { agents, .. }
+            | Spec::Hook { agents, .. }
+            | Spec::Subagent { agents, .. } => agents,
         }
     }
 
     /// The same entry for exactly these agents.
-    pub fn with_agents(mut self, new: Vec<Agent>) -> Entry {
-        let (Entry::Skill { agents, .. }
-        | Entry::Plugin { agents, .. }
-        | Entry::Mcp { agents, .. }
-        | Entry::Hook { agents, .. }
-        | Entry::Subagent { agents, .. }) = &mut self;
+    pub fn with_agents(mut self, new: Vec<Agent>) -> Spec {
+        let (Spec::Skill { agents, .. }
+        | Spec::Plugin { agents, .. }
+        | Spec::Mcp { agents, .. }
+        | Spec::Hook { agents, .. }
+        | Spec::Subagent { agents, .. }) = &mut self;
         *agents = new;
         self
     }
 }
 
-impl Entry {
+impl Spec {
     /// What the entry is called inside its package.
     pub fn name(&self) -> String {
         match self {
-            Entry::Skill { names, .. } | Entry::Subagent { names, .. } => names.join(","),
-            Entry::Plugin { name, .. } | Entry::Mcp { name, .. } => name.clone(),
-            Entry::Hook { event, command, .. } => format!("{event} {command}"),
+            Spec::Skill { names, .. } | Spec::Subagent { names, .. } => names.join(","),
+            Spec::Plugin { name, .. } | Spec::Mcp { name, .. } => name.clone(),
+            Spec::Hook { event, command, .. } => format!("{event} {command}"),
         }
     }
 }
 
-impl fmt::Display for Entry {
+impl fmt::Display for Spec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Entry::Skill { source, names, .. } => {
+            Spec::Skill { source, names, .. } => {
                 write!(f, "skills {} [{}]", names.join(","), redact(source))
             }
-            Entry::Subagent { source, names, .. } => {
+            Spec::Subagent { source, names, .. } => {
                 write!(f, "subagents {} [{}]", names.join(","), redact(source))
             }
-            Entry::Hook { event, command, .. } => {
+            Spec::Hook { event, command, .. } => {
                 write!(f, "hook {event} [{}]", redact_text(command))
             }
-            Entry::Plugin {
+            Spec::Plugin {
                 marketplace, name, ..
             } => write!(f, "plugin {name}@{marketplace}"),
-            Entry::Mcp {
+            Spec::Mcp {
                 name, command, url, ..
             } => {
                 let target = command.as_deref().or(url.as_deref()).unwrap_or("");
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn an_entry_can_be_given_other_agents() {
-        let entry = Entry::Plugin {
+        let entry = Spec::Plugin {
             source: "o/mp".into(),
             marketplace: "mp".into(),
             name: "p".into(),

@@ -1,4 +1,4 @@
-//! Side effects that remove an augmentation, and the executor that applies them.
+//! Side effects that remove an installed item, and the executor that applies them.
 
 mod edit;
 mod execute;
@@ -32,7 +32,7 @@ fn redacted_text<S: Serializer>(text: &str, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(&redact_text(text))
 }
 
-/// A single side effect of changing what is installed: removing an augmentation, or (from a
+/// A single side effect of changing what is installed: removing an installed item, or (from a
 /// profile) installing one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -90,7 +90,7 @@ impl Action {
 
     /// A `Run` that must work: a program that cannot start is an error, not a skip. Installs use
     /// this; there is no file step to fall back on. Callers vet the arguments first (see
-    /// `Entry::validate`).
+    /// `Spec::validate`).
     pub fn required(program: &str, args: Vec<String>, cwd: &Path) -> Action {
         Action::Run {
             program: program.into(),

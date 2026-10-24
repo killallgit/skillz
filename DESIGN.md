@@ -11,13 +11,13 @@ hook, and subagent readers. Missing files and directories are empty; other
 failures become inventory warnings. Display flows can show a partial inventory.
 Flows that change or record installed state require a complete inventory.
 
-An `Augmentation` contains identity, scope, agents, source, typed `Details`, and
+An `Installed` contains identity, scope, agents, source, typed `Details`, and
 its removal actions. Details retain paths, install names, plugin skills, and MCP
 launch information. Display children are presentation only. Hooks retain typed
 handlers. Merging logical items preserves their per-agent members and removal
 plans.
 
-Profiles contain typed `Entry` values. `profile::Store` reads the store once per
+Profiles contain typed `Spec` values. `profile::Store` reads the store once per
 resolution, then resolves inheritance in memory with cycle detection and cached
 results. Child entries replace inherited entries with matching identities;
 partially overlapping skill/subagent entries retain the other names. Agent lists

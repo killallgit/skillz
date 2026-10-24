@@ -15,7 +15,7 @@ use super::pick::{Choosing, pick};
 use super::scope::resolve_project;
 use super::session::{Console, Session, with_session};
 use crate::library::{Catalog, LibraryItem};
-use crate::profile::Entry;
+use crate::profile::Spec;
 pub(super) use listing::available;
 
 pub(super) fn library_command(
@@ -48,7 +48,7 @@ pub(super) fn library_command(
 fn add(session: &Session, console: &Console, args: &AddArgs) -> anyhow::Result<()> {
     let spec = &args.spec;
     if args.dry_run {
-        let entry = Entry::parse_spec(spec)?;
+        let entry = Spec::parse_spec(spec)?;
         return console.say(&format!("would add {entry} to the library"));
     }
     console.conclude(session.library_add(spec)?)
@@ -74,7 +74,7 @@ fn the_items(
     text: &str,
     yes: bool,
 ) -> anyhow::Result<Vec<LibraryItem>> {
-    if let Ok(entry) = Entry::parse_spec(text) {
+    if let Ok(entry) = Spec::parse_spec(text) {
         let wanted = LibraryItem::from_entry(entry);
         let held = library.items().iter().find(|i| i.is_same_thing_as(&wanted));
         return Ok(vec![

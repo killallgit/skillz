@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::agents::AgentAdapter;
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Kind};
+use crate::model::{Agent, Installed, Kind};
 
 /// Last use in ms since the epoch, per agent and `skill:<name>` / `plugin:<name@mp>` key.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -22,7 +22,7 @@ impl Usage {
 
     /// Latest use by any of the item's agents; `None` = never used (or not tracked: hooks,
     /// marketplaces).
-    pub fn last_used(&self, item: &Augmentation) -> Option<u64> {
+    pub fn last_used(&self, item: &Installed) -> Option<u64> {
         let key = match item.kind {
             Kind::Skill => format!("skill:{}", item.name),
             Kind::Plugin => format!("plugin:{}", item.name),
@@ -60,8 +60,8 @@ mod tests {
         json!({"type": "response_item", "payload": {"type": kind, field: text}}).to_string()
     }
 
-    fn item(kind: Kind, name: &str, agents: &[Agent]) -> Augmentation {
-        Augmentation {
+    fn item(kind: Kind, name: &str, agents: &[Agent]) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),

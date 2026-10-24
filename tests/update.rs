@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use common::*;
 use skillz::cli::{Command, Deps, Filter, UpdateArgs};
-use skillz::model::Augmentation;
+use skillz::model::Installed;
 use skillz::update::check::UpdateCheck;
 
 /// A project with `tdd` installed the way `npx skills` leaves it, locked or not.
@@ -59,7 +59,7 @@ fn check_command(json: bool) -> Command {
 struct Outdated(&'static str);
 
 impl UpdateCheck for Outdated {
-    fn available(&self, item: &Augmentation) -> bool {
+    fn available(&self, item: &Installed) -> bool {
         item.name == self.0
     }
 }

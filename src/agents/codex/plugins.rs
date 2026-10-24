@@ -10,13 +10,13 @@ use crate::agents::plugin::read_marketplace;
 use crate::env::Env;
 use crate::hooks;
 use crate::model::{
-    Agent, Augmentation, HOOK_CHILD, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
+    Agent, HOOK_CHILD, Installed, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
 };
-use crate::profile::Entry;
+use crate::profile::Spec;
 
 /// `codex plugin marketplace add` then `plugin add`; the user config only.
-pub(super) fn provision(entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
-    let Entry::Plugin {
+pub(super) fn provision(entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+    let Spec::Plugin {
         source,
         marketplace,
         name,
@@ -81,7 +81,7 @@ pub(super) struct Cx<'a> {
 pub(super) fn plugins_from(
     cx: &Cx,
     in_project: Option<&[String]>,
-) -> anyhow::Result<Vec<Augmentation>> {
+) -> anyhow::Result<Vec<Installed>> {
     plugin_ids(cx.doc)
         .into_iter()
         .filter(|id| !is_in_bundled_marketplace(cx, id))
@@ -91,9 +91,9 @@ pub(super) fn plugins_from(
 
 pub(super) fn marketplaces_from(
     cx: &Cx,
-    plugins: &[Augmentation],
+    plugins: &[Installed],
     in_project: Option<&[String]>,
-) -> Vec<Augmentation> {
+) -> Vec<Installed> {
     cx.marketplaces
         .iter()
         .filter(|m| !m.bundled)
@@ -137,7 +137,7 @@ fn display_source(source: &str) -> String {
     }
 }
 
-fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> anyhow::Result<Augmentation> {
+fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> anyhow::Result<Installed> {
     let (name, mp) = split_plugin_id(id);
     let source = cx
         .marketplaces
@@ -161,7 +161,7 @@ fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> anyhow::Result<Augmentation> {
         .map(|name| format!("{SKILL_CHILD}{name}"))
         .collect::<Vec<_>>();
     children.extend(hooks.iter().map(|h| format!("{HOOK_CHILD}{}", h.label())));
-    Ok(Augmentation {
+    Ok(Installed {
         details: crate::model::Details::Plugin {
             location: cx.config.to_path_buf(),
             skills,
@@ -215,14 +215,9 @@ fn plugin_removal(cx: &Cx, id: &str, keep_cache: bool) -> Vec<Action> {
     removal
 }
 
-fn marketplace(
-    cx: &Cx,
-    m: &Marketplace,
-    plugins: &[Augmentation],
-    keep_cache: bool,
-) -> Augmentation {
-    let own: Vec<&Augmentation> = plugins.iter().filter(|p| p.group == m.name).collect();
-    Augmentation {
+fn marketplace(cx: &Cx, m: &Marketplace, plugins: &[Installed], keep_cache: bool) -> Installed {
+    let own: Vec<&Installed> = plugins.iter().filter(|p| p.group == m.name).collect();
+    Installed {
         details: crate::model::Details::Marketplace {
             location: cx.config.to_path_buf(),
         },
@@ -245,7 +240,7 @@ fn marketplace(
 fn marketplace_removal(
     cx: &Cx,
     m: &Marketplace,
-    own: &[&Augmentation],
+    own: &[&Installed],
     keep_cache: bool,
 ) -> Vec<Action> {
     let mut removal: Vec<Action> = own.iter().flat_map(|p| p.removal.clone()).collect();

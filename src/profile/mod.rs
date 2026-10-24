@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::Agent;
 
 pub use edit::with_added;
-pub use entry::Entry;
+pub use entry::Spec;
 pub use identity::{Claim, claims, lacking};
 pub(crate) use identity::{Key, installed_claims, installed_keys, keys, same_thing};
 pub use store::{StillExtended, Store};
@@ -33,7 +33,7 @@ pub struct Profile {
     #[serde(default = "default_agents")]
     pub agents: Vec<Agent>,
     #[serde(default, rename = "entry")]
-    pub entries: Vec<Entry>,
+    pub entries: Vec<Spec>,
 }
 
 fn default_agents() -> Vec<Agent> {
@@ -62,7 +62,7 @@ impl Profile {
     }
 
     /// The agents `entry` applies to: its own, else the profile's.
-    pub fn agents_for<'a>(&'a self, entry: &'a Entry) -> &'a [Agent] {
+    pub fn agents_for<'a>(&'a self, entry: &'a Spec) -> &'a [Agent] {
         match entry.agents() {
             [] => &self.agents,
             own => own,
@@ -71,7 +71,7 @@ impl Profile {
 
     /// The entries with every agent list filled in, so two entries compare equal exactly when
     /// they would install the same things.
-    pub fn resolved(&self) -> Vec<Entry> {
+    pub fn resolved(&self) -> Vec<Spec> {
         self.entries
             .iter()
             .map(|e| e.clone().with_agents(self.agents_for(e).to_vec()))
@@ -131,12 +131,12 @@ mod tests {
         let mut p = Profile::new("web");
         p.description = Some("frontend".into());
         p.entries = vec![
-            Entry::Skill {
+            Spec::Skill {
                 source: "o/r".into(),
                 names: vec!["tdd".into(), "grilling".into()],
                 agents: vec![],
             },
-            Entry::Plugin {
+            Spec::Plugin {
                 source: "o/mp".into(),
                 marketplace: "mp".into(),
                 name: "ponytail".into(),

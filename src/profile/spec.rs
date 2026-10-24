@@ -1,31 +1,31 @@
 //! An entry typed by hand in one line.
 
-use super::Entry;
+use super::Spec;
 
-impl Entry {
+impl Spec {
     /// `skill SOURCE NAME[,NAME...]`, `subagent SOURCE NAME[,NAME...]`,
     /// `plugin SOURCE MARKETPLACE NAME`, `hook EVENT COMMAND...` or `mcp NAME COMMAND|URL [ARGS...]`. It uses the
     /// profile's agents.
-    pub fn parse_spec(spec: &str) -> anyhow::Result<Entry> {
+    pub fn parse_spec(spec: &str) -> anyhow::Result<Spec> {
         let words: Vec<&str> = spec.split_whitespace().collect();
         let entry = match words.as_slice() {
-            ["skill" | "skills", source, names] => Entry::Skill {
+            ["skill" | "skills", source, names] => Spec::Skill {
                 source: source.to_string(),
                 names: comma_list(names),
                 agents: vec![],
             },
-            ["subagent" | "subagents", source, names] => Entry::Subagent {
+            ["subagent" | "subagents", source, names] => Spec::Subagent {
                 source: source.to_string(),
                 names: comma_list(names),
                 agents: vec![],
             },
-            ["plugin", source, marketplace, name] => Entry::Plugin {
+            ["plugin", source, marketplace, name] => Spec::Plugin {
                 source: source.to_string(),
                 marketplace: marketplace.to_string(),
                 name: name.to_string(),
                 agents: vec![],
             },
-            ["hook", event, command @ ..] if !command.is_empty() => Entry::Hook {
+            ["hook", event, command @ ..] if !command.is_empty() => Spec::Hook {
                 event: event.to_string(),
                 matcher: None,
                 command: command.join(" "),
@@ -50,9 +50,9 @@ fn comma_list(names: &str) -> Vec<String> {
         .collect()
 }
 
-fn mcp_entry(name: &str, target: &str, rest: &[&str]) -> Entry {
+fn mcp_entry(name: &str, target: &str, rest: &[&str]) -> Spec {
     let is_url = target.starts_with("http://") || target.starts_with("https://");
-    Entry::Mcp {
+    Spec::Mcp {
         name: name.to_string(),
         command: (!is_url).then(|| target.to_string()),
         args: if is_url {
@@ -72,11 +72,11 @@ mod tests {
 
     #[test]
     fn a_skill_line_names_the_source_and_its_skills() {
-        let entry = Entry::parse_spec("skill o/r tdd,grill").unwrap();
+        let entry = Spec::parse_spec("skill o/r tdd,grill").unwrap();
 
         assert_eq!(
             entry,
-            Entry::Skill {
+            Spec::Skill {
                 source: "o/r".into(),
                 names: vec!["tdd".into(), "grill".into()],
                 agents: vec![]
@@ -86,16 +86,16 @@ mod tests {
 
     #[test]
     fn a_plugin_line_is_trimmed() {
-        let entry = Entry::parse_spec(" plugin o/mp mp pp ").unwrap();
+        let entry = Spec::parse_spec(" plugin o/mp mp pp ").unwrap();
 
-        assert!(matches!(entry, Entry::Plugin { .. }));
+        assert!(matches!(entry, Spec::Plugin { .. }));
     }
 
     #[test]
     fn an_mcp_line_with_a_command_keeps_its_args() {
-        let Entry::Mcp {
+        let Spec::Mcp {
             command, args, url, ..
-        } = Entry::parse_spec("mcp s npx -y pkg").unwrap()
+        } = Spec::parse_spec("mcp s npx -y pkg").unwrap()
         else {
             panic!("not an mcp entry");
         };
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn an_mcp_line_with_a_url_has_no_command() {
-        let Entry::Mcp { command, url, .. } = Entry::parse_spec("mcp h https://x/mcp").unwrap()
+        let Spec::Mcp { command, url, .. } = Spec::parse_spec("mcp h https://x/mcp").unwrap()
         else {
             panic!("not an mcp entry");
         };
@@ -129,7 +129,7 @@ mod tests {
         ];
 
         for line in bad {
-            assert!(Entry::parse_spec(line).is_err(), "{line:?}");
+            assert!(Spec::parse_spec(line).is_err(), "{line:?}");
         }
     }
 }

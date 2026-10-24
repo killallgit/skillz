@@ -8,8 +8,8 @@ mod tests;
 use std::path::Path;
 
 use crate::hooks::UNOWNED_HOOKS;
-use crate::model::{Augmentation, Kind};
-use crate::profile::Entry;
+use crate::model::{Installed, Kind};
+use crate::profile::Spec;
 use crate::stale::local_source;
 
 const LOCAL_FILES: &str = "local files";
@@ -26,7 +26,7 @@ pub enum Package {
 }
 
 impl Package {
-    pub fn of(item: &Augmentation) -> Package {
+    pub fn of(item: &Installed) -> Package {
         match (item.kind, &item.source) {
             (Kind::Mcp, _) => Package::Mcp,
             (Kind::Hook, _) => Package::Hooks,
@@ -36,23 +36,23 @@ impl Package {
         }
     }
 
-    pub fn of_entry(entry: &Entry) -> Package {
+    pub fn of_entry(entry: &Spec) -> Package {
         match entry {
-            Entry::Skill { .. } | Entry::Subagent { .. } if local_source(entry).is_some() => {
+            Spec::Skill { .. } | Spec::Subagent { .. } if local_source(entry).is_some() => {
                 Package::Local
             }
-            Entry::Skill { source, .. } | Entry::Subagent { source, .. } => {
+            Spec::Skill { source, .. } | Spec::Subagent { source, .. } => {
                 Package::Source(source.clone())
             }
-            Entry::Plugin {
+            Spec::Plugin {
                 source,
                 marketplace,
                 ..
             } if Path::new(source).is_absolute() => Package::Marketplace(marketplace.clone()),
             // A marketplace hosted in a repo sits with that repo's skills.
-            Entry::Plugin { source, .. } => Package::Source(source.clone()),
-            Entry::Mcp { .. } => Package::Mcp,
-            Entry::Hook { .. } => Package::Hooks,
+            Spec::Plugin { source, .. } => Package::Source(source.clone()),
+            Spec::Mcp { .. } => Package::Mcp,
+            Spec::Hook { .. } => Package::Hooks,
         }
     }
 

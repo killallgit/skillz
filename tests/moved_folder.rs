@@ -8,7 +8,7 @@ use std::fs;
 
 use common::*;
 use serde_json::Value;
-use skillz::profile::Entry;
+use skillz::profile::Spec;
 
 const SKILL: &str = "---\nname: mine\ndescription: d\n---\n";
 
@@ -42,9 +42,9 @@ fn new_skills(sb: &Sandbox) -> String {
     sb.project.join(".agents/skills").to_string_lossy().into()
 }
 
-fn skill_source(entry: &Entry) -> &str {
+fn skill_source(entry: &Spec) -> &str {
     match entry {
-        Entry::Skill { source, .. } => source,
+        Spec::Skill { source, .. } => source,
         other => panic!("not a skill: {other:?}"),
     }
 }

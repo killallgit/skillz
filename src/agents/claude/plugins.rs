@@ -1,4 +1,4 @@
-//! Discovery of installed plugins as augmentations.
+//! Discovery of installed plugins as installed items.
 
 use std::collections::HashSet;
 use std::fs;
@@ -9,16 +9,16 @@ use super::removal::plugin_removal;
 use crate::env::Env;
 use crate::hooks;
 use crate::model::{
-    Agent, Augmentation, HOOK_CHILD, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
+    Agent, HOOK_CHILD, Installed, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
 };
 
-/// One plugin augmentation per id among the installs belonging to `scope`.
+/// One plugin item per id among the installs belonging to `scope`.
 pub(super) fn plugins(
     env: &Env,
     scope: Scope,
     installs: &[Install],
     markets: &[Marketplace],
-) -> anyhow::Result<Vec<Augmentation>> {
+) -> anyhow::Result<Vec<Installed>> {
     let in_scope = |i: &&Install| match (scope, &i.project) {
         (Scope::Global, None) => true,
         (Scope::Project, Some(p)) => same_path(p, &env.project),
@@ -38,7 +38,7 @@ fn plugin(
     scope: Scope,
     install: &Install,
     markets: &[Marketplace],
-) -> anyhow::Result<Augmentation> {
+) -> anyhow::Result<Installed> {
     let (_, mp) = split_plugin_id(&install.id);
     let source = markets
         .iter()
@@ -61,7 +61,7 @@ fn plugin(
     }
     children.extend(hooks.iter().map(|h| format!("{HOOK_CHILD}{}", h.label())));
     children.sort();
-    Ok(Augmentation {
+    Ok(Installed {
         details: crate::model::Details::Plugin {
             location: root
                 .map(Path::to_path_buf)

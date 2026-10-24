@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use crate::profile::Entry;
+use crate::profile::Spec;
 
 /// Whether a path exists; injected so the rules can be tested without a disk.
 pub trait Probe {
@@ -20,9 +20,9 @@ impl Probe for Disk {
 
 /// The directory a skill or subagent entry is installed from, when its source is an absolute
 /// local path.
-pub fn local_source(entry: &Entry) -> Option<&str> {
+pub fn local_source(entry: &Spec) -> Option<&str> {
     match entry {
-        Entry::Skill { source, .. } | Entry::Subagent { source, .. }
+        Spec::Skill { source, .. } | Spec::Subagent { source, .. }
             if Path::new(source).is_absolute() =>
         {
             Some(source)
@@ -32,14 +32,14 @@ pub fn local_source(entry: &Entry) -> Option<&str> {
 }
 
 /// The local source of `entry` when nothing is there any more.
-pub fn missing_source<'a>(entry: &'a Entry, probe: &dyn Probe) -> Option<&'a str> {
+pub fn missing_source<'a>(entry: &'a Spec, probe: &dyn Probe) -> Option<&'a str> {
     local_source(entry).filter(|source| !probe.exists(Path::new(source)))
 }
 
 /// The one name a skill or subagent entry holds; none for entries holding several or other kinds.
-pub fn sole_name(entry: &Entry) -> Option<&str> {
+pub fn sole_name(entry: &Spec) -> Option<&str> {
     match entry {
-        Entry::Skill { names, .. } | Entry::Subagent { names, .. } => match names.as_slice() {
+        Spec::Skill { names, .. } | Spec::Subagent { names, .. } => match names.as_slice() {
             [name] => Some(name),
             _ => None,
         },
@@ -48,8 +48,8 @@ pub fn sole_name(entry: &Entry) -> Option<&str> {
 }
 
 /// The same entry installed from `new_source`.
-pub fn with_source(mut entry: Entry, new_source: &str) -> Entry {
-    if let Entry::Skill { source, .. } | Entry::Subagent { source, .. } = &mut entry {
+pub fn with_source(mut entry: Spec, new_source: &str) -> Spec {
+    if let Spec::Skill { source, .. } | Spec::Subagent { source, .. } = &mut entry {
         *source = new_source.to_string();
     }
     entry
@@ -76,8 +76,8 @@ pub(crate) mod tests {
         }
     }
 
-    pub fn skill(source: &str, name: &str) -> Entry {
-        Entry::Skill {
+    pub fn skill(source: &str, name: &str) -> Spec {
+        Spec::Skill {
             source: source.into(),
             names: vec![name.into()],
             agents: vec![],
@@ -114,7 +114,7 @@ pub(crate) mod tests {
 
     #[test]
     fn only_entries_naming_one_thing_have_a_sole_name() {
-        let two = Entry::Skill {
+        let two = Spec::Skill {
             source: "/p".into(),
             names: vec!["a".into(), "b".into()],
             agents: vec![],

@@ -7,12 +7,12 @@ use crate::agents::{AgentAdapter, adapter_for};
 use crate::env::Env;
 use crate::model::{Agent, Scope};
 use crate::npx_skills;
-use crate::profile::Entry;
+use crate::profile::Spec;
 
 /// An entry one agent has no way to take.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unsupported {
-    pub entry: Entry,
+    pub entry: Spec,
     pub agent: Agent,
 }
 
@@ -25,7 +25,7 @@ pub struct Provision {
 /// The steps that install `entries`, which already name the agents they are for.
 pub fn plan_entries(
     adapters: &[Box<dyn AgentAdapter>],
-    entries: &[Entry],
+    entries: &[Spec],
     scope: Scope,
     env: &Env,
 ) -> Provision {
@@ -47,11 +47,11 @@ pub fn plan_entries(
 /// entry is a skill.
 fn skills_step(
     adapters: &[Box<dyn AgentAdapter>],
-    entry: &Entry,
+    entry: &Spec,
     scope: Scope,
     env: &Env,
 ) -> Option<Action> {
-    let Entry::Skill { source, names, .. } = entry else {
+    let Spec::Skill { source, names, .. } = entry else {
         return None;
     };
     let known: Vec<Agent> = entry
@@ -67,7 +67,7 @@ fn skills_step(
 /// Ask each of the entry's agents for its own steps; the ones that cannot are reported.
 fn provision_per_agent(
     adapters: &[Box<dyn AgentAdapter>],
-    entry: &Entry,
+    entry: &Spec,
     scope: Scope,
     env: &Env,
 ) -> Provision {
@@ -105,22 +105,22 @@ mod tests {
         Env::new("/h".into(), "/p".into())
     }
 
-    fn profile(entries: Vec<Entry>) -> Profile {
+    fn profile(entries: Vec<Spec>) -> Profile {
         let mut p = Profile::new("t");
         p.entries = entries;
         p
     }
 
-    fn skills(agents: Vec<Agent>) -> Entry {
-        Entry::Skill {
+    fn skills(agents: Vec<Agent>) -> Spec {
+        Spec::Skill {
             source: "o/r".into(),
             names: vec!["tdd".into()],
             agents,
         }
     }
 
-    fn plugin(agents: Vec<Agent>) -> Entry {
-        Entry::Plugin {
+    fn plugin(agents: Vec<Agent>) -> Spec {
+        Spec::Plugin {
             source: "o/mp".into(),
             marketplace: "mp".into(),
             name: "pp".into(),
@@ -215,8 +215,8 @@ mod tests {
         assert_eq!(install, ["plugin", "install", "pp@mp", "--scope", "local"]);
     }
 
-    fn mcp(command: Option<&str>, url: Option<&str>, transport: Option<&str>) -> Entry {
-        Entry::Mcp {
+    fn mcp(command: Option<&str>, url: Option<&str>, transport: Option<&str>) -> Spec {
+        Spec::Mcp {
             name: "srv".into(),
             command: command.map(String::from),
             args: vec!["-y".into(), "pkg".into()],
@@ -226,7 +226,7 @@ mod tests {
         }
     }
 
-    fn args_for(entry: Entry, agent: Agent, scope: Scope) -> Option<Vec<String>> {
+    fn args_for(entry: Spec, agent: Agent, scope: Scope) -> Option<Vec<String>> {
         let mut p = profile(vec![entry]);
         p.agents = vec![agent];
         let planned = plan(&registry(), &p, scope, &env()).unwrap();
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn subagents_copy_into_each_agents_own_directory() {
-        let entry = || Entry::Subagent {
+        let entry = || Spec::Subagent {
             source: "o/agents".into(),
             names: vec!["frontend".into()],
             agents: vec![],

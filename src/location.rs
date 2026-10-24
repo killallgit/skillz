@@ -1,10 +1,10 @@
 //! Where an installed item lives on disk, so it is clear why it counts for its group.
 
 use crate::merge::tag;
-use crate::model::Augmentation;
+use crate::model::Installed;
 
 /// The location discovery recorded for this installed item.
-pub fn location(item: &Augmentation) -> String {
+pub fn location(item: &Installed) -> String {
     item.details
         .path()
         .map(|path| path.display().to_string())
@@ -12,7 +12,7 @@ pub fn location(item: &Augmentation) -> String {
 }
 
 /// One `agents: location` per copy of an item seen through several agents; none for a lone item.
-pub fn places(item: &Augmentation) -> Vec<String> {
+pub fn places(item: &Installed) -> Vec<String> {
     item.members
         .iter()
         .map(|m| format!("{}: {}", tag(&m.agents), location(m)))
@@ -20,7 +20,7 @@ pub fn places(item: &Augmentation) -> Vec<String> {
 }
 
 /// What to show beside an item: its location, or every copy's with its agents.
-pub fn detail(item: &Augmentation) -> String {
+pub fn detail(item: &Installed) -> String {
     match places(item) {
         places if places.is_empty() => location(item),
         places => places.join("; "),
@@ -30,12 +30,12 @@ pub fn detail(item: &Augmentation) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Agent, Augmentation, Details, Installer, Kind, Scope};
+    use crate::model::{Agent, Details, Installed, Installer, Kind, Scope};
 
     #[test]
     fn location_comes_from_installed_metadata_even_when_the_id_has_a_scope_suffix() {
         let path = std::path::PathBuf::from("/app/skills/name:project");
-        let item = Augmentation {
+        let item = Installed {
             details: Details::Skill {
                 directory: path.clone(),
                 install_name: "name".into(),

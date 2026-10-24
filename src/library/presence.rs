@@ -2,8 +2,8 @@
 
 use std::collections::HashSet;
 
-use crate::model::Augmentation;
-use crate::profile::{Entry, Key, installed_keys, keys};
+use crate::model::Installed;
+use crate::profile::{Key, Spec, installed_keys, keys};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Presence {
@@ -18,14 +18,14 @@ pub struct Held {
 }
 
 impl Held {
-    pub fn of(project: &[Augmentation], global: &[Augmentation]) -> Self {
+    pub fn of(project: &[Installed], global: &[Installed]) -> Self {
         Held {
             project: keys_of(project),
             global: keys_of(global),
         }
     }
 
-    pub fn presence(&self, entry: &Entry) -> Presence {
+    pub fn presence(&self, entry: &Spec) -> Presence {
         Presence {
             project: holds(&self.project, entry),
             global: holds(&self.global, entry),
@@ -33,14 +33,14 @@ impl Held {
     }
 }
 
-fn keys_of(installed: &[Augmentation]) -> HashSet<Key> {
+fn keys_of(installed: &[Installed]) -> HashSet<Key> {
     installed
         .iter()
-        .flat_map(Augmentation::parts)
+        .flat_map(Installed::parts)
         .flat_map(installed_keys)
         .collect()
 }
 
-fn holds(installed: &HashSet<Key>, entry: &Entry) -> bool {
+fn holds(installed: &HashSet<Key>, entry: &Spec) -> bool {
     keys(entry).iter().any(|key| installed.contains(key))
 }

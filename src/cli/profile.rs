@@ -11,7 +11,7 @@ use super::profile_entries::{add, remove};
 use super::profile_status::{list, status};
 use super::scope::{complete_installed, resolve_project};
 use super::session::with_session;
-use crate::model::{Augmentation, Scope};
+use crate::model::{Installed, Scope};
 use crate::{profile, snapshot};
 
 pub(super) fn profile_command(
@@ -76,7 +76,7 @@ fn print_saved(out: &mut dyn Write, name: &str, snap: &snapshot::Snapshot) -> an
 /// Snapshot `items` into the profile `name`; an existing one is replaced only with `force`.
 pub(super) fn save_profile(
     store: &profile::Store,
-    items: &[Augmentation],
+    items: &[Installed],
     name: &str,
     force: bool,
 ) -> anyhow::Result<snapshot::Snapshot> {

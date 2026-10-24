@@ -5,20 +5,20 @@ use std::collections::{BTreeMap, HashSet};
 use super::AgentAdapter;
 use crate::env::Env;
 use crate::hooks::{self, GroupHints};
-use crate::model::{Augmentation, Kind, Scope};
+use crate::model::{Installed, Kind, Scope};
 use crate::skills::{self, SkillDir};
 
 /// Everything installed, plus warnings for sources that failed to read.
 #[derive(Debug, Default)]
 pub struct Inventory {
-    pub items: Vec<Augmentation>,
+    pub items: Vec<Installed>,
     pub warnings: Vec<String>,
 }
 
 impl Inventory {
     /// The items, or an error naming every source that failed to read: for callers that act on
     /// what is installed and must not guess from a partial scan.
-    pub fn complete(self) -> anyhow::Result<Vec<Augmentation>> {
+    pub fn complete(self) -> anyhow::Result<Vec<Installed>> {
         if self.warnings.is_empty() {
             return Ok(self.items);
         }
@@ -28,7 +28,7 @@ impl Inventory {
         )
     }
 
-    fn absorb(&mut self, source: &str, found: anyhow::Result<Vec<Augmentation>>) {
+    fn absorb(&mut self, source: &str, found: anyhow::Result<Vec<Installed>>) {
         match found {
             Ok(items) => self.items.extend(items),
             Err(err) => self.warnings.push(format!("{source}: {err:#}")),
@@ -105,7 +105,7 @@ fn absorb_adapter(
 
 /// npx skills group by their source repo; when a marketplace comes from that same repo, show
 /// them under the marketplace instead of as a second group.
-fn join_marketplace_groups(items: &mut [Augmentation]) {
+fn join_marketplace_groups(items: &mut [Installed]) {
     let by_source: BTreeMap<String, String> = items
         .iter()
         .filter(|i| i.kind == Kind::Marketplace)
@@ -123,8 +123,8 @@ mod tests {
     use super::*;
     use crate::model::{Agent, Installer};
 
-    fn item(name: &str, kind: Kind, group: &str, source: Option<&str>) -> Augmentation {
-        Augmentation {
+    fn item(name: &str, kind: Kind, group: &str, source: Option<&str>) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),

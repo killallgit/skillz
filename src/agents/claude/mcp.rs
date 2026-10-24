@@ -10,10 +10,10 @@ use super::files::read_json;
 use crate::action::{Action, Edit};
 use crate::env::Env;
 use crate::mcp::Server;
-use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
-use crate::profile::Entry;
+use crate::model::{Agent, Installed, Installer, Kind, Scope};
+use crate::profile::Spec;
 
-pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
+pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
     let state = env.claude_json();
     let json = read_json(&state)?;
     let project = env.project.display().to_string();
@@ -25,7 +25,7 @@ pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentati
                 file: &state,
                 path: &["mcpServers"],
             };
-            out.extend(server_augmentation(env, scope, &user, &json["mcpServers"]));
+            out.extend(server_installed(env, scope, &user, &json["mcpServers"]));
         }
         Scope::Project => {
             let local = Store {
@@ -34,7 +34,7 @@ pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentati
                 path: &["projects", project.as_str(), "mcpServers"],
             };
             let servers = &json["projects"][project.as_str()]["mcpServers"];
-            out.extend(server_augmentation(env, scope, &local, servers));
+            out.extend(server_installed(env, scope, &local, servers));
             let shared = env.project.join(".mcp.json");
             let project_store = Store {
                 claude_scope: "project",
@@ -42,7 +42,7 @@ pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentati
                 path: &["mcpServers"],
             };
             let servers = &read_json(&shared)?["mcpServers"];
-            out.extend(server_augmentation(env, scope, &project_store, servers));
+            out.extend(server_installed(env, scope, &project_store, servers));
         }
     }
     Ok(out)
@@ -56,12 +56,7 @@ struct Store<'a> {
     path: &'a [&'a str],
 }
 
-fn server_augmentation(
-    env: &Env,
-    scope: Scope,
-    store: &Store,
-    servers: &Value,
-) -> Vec<Augmentation> {
+fn server_installed(env: &Env, scope: Scope, store: &Store, servers: &Value) -> Vec<Installed> {
     let Store {
         claude_scope,
         file,
@@ -84,7 +79,7 @@ fn server_augmentation(
                 file: file.to_path_buf(),
                 edit: Edit::JsonRemoveKey { path: key },
             });
-            Augmentation {
+            Installed {
                 details: crate::model::Details::Mcp {
                     config: file.to_path_buf(),
                     server: server.clone(),
@@ -109,8 +104,8 @@ fn server_augmentation(
 
 /// `claude mcp add` for a profile entry. A project's servers go in the `local` scope, so they
 /// never touch the `.mcp.json` the team shares.
-pub(super) fn provision(entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
-    let Entry::Mcp {
+pub(super) fn provision(entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+    let Spec::Mcp {
         name,
         command,
         args,

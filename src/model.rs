@@ -37,7 +37,7 @@ impl Agent {
     }
 }
 
-/// The kind of harness augmentation.
+/// The kind of thing a harness has installed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -124,7 +124,7 @@ impl Details {
 /// Discovery builds these with `removal` already planned, so uninstalling is just
 /// executing the concatenated plans of the selected items.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Augmentation {
+pub struct Installed {
     #[serde(skip)]
     pub details: Details,
     /// Unique, stable across runs. Usually `<kind>:<path or config key>`.
@@ -149,7 +149,7 @@ pub struct Augmentation {
     /// The items seen through different agents that this one stands for; empty when it stands
     /// for itself alone.
     #[serde(skip)]
-    pub members: Vec<Augmentation>,
+    pub members: Vec<Installed>,
     /// Steps that remove this item completely. `execute` commits every `Edit` first (all or
     /// none), then runs each `RemovePath` in plan order.
     pub removal: Vec<Action>,
@@ -161,9 +161,9 @@ pub const SKILL_CHILD: &str = "skill: ";
 /// Prefix of a plugin child that shows one of the hooks it declares.
 pub const HOOK_CHILD: &str = "hook: ";
 
-impl Augmentation {
+impl Installed {
     /// The installed items behind this one: its members, or itself when nothing was merged.
-    pub fn parts(&self) -> &[Augmentation] {
+    pub fn parts(&self) -> &[Installed] {
         match self.members.is_empty() {
             true => std::slice::from_ref(self),
             false => &self.members,

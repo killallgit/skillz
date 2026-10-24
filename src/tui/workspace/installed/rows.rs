@@ -6,7 +6,7 @@
 mod installed;
 
 use crate::library::ItemKind;
-use crate::model::Augmentation;
+use crate::model::Installed;
 use crate::package::{Package, group_by};
 use crate::tui::widgets::outline::Shape;
 
@@ -45,7 +45,7 @@ pub(super) enum Row {
     Item(Item),
 }
 
-pub(super) fn build(here: &[Augmentation]) -> Vec<Row> {
+pub(super) fn build(here: &[Installed]) -> Vec<Row> {
     let items = installed::items(here);
     SECTIONS
         .into_iter()

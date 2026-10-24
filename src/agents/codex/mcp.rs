@@ -10,20 +10,20 @@ use super::removal::{native, toml_remove};
 use crate::action::Action;
 use crate::env::Env;
 use crate::mcp::Server;
-use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
-use crate::profile::Entry;
+use crate::model::{Agent, Installed, Installer, Kind, Scope};
+use crate::profile::Spec;
 
 /// The servers in the config, each removed by `codex mcp remove` (user config only) and by
 /// deleting its table.
-pub(super) fn discover(doc: &DocumentMut, scope: Scope, config: &Path) -> Vec<Augmentation> {
+pub(super) fn discover(doc: &DocumentMut, scope: Scope, config: &Path) -> Vec<Installed> {
     table_keys(doc, "mcp_servers")
         .into_iter()
         .filter_map(|(name, item)| Server::from_toml(name, item.as_table_like()?))
-        .map(|server| server_augmentation(&server, scope, config))
+        .map(|server| server_installed(&server, scope, config))
         .collect()
 }
 
-fn server_augmentation(server: &Server, scope: Scope, config: &Path) -> Augmentation {
+fn server_installed(server: &Server, scope: Scope, config: &Path) -> Installed {
     let mut removal = native(
         scope,
         config,
@@ -31,7 +31,7 @@ fn server_augmentation(server: &Server, scope: Scope, config: &Path) -> Augmenta
         &server.name,
     );
     removal.push(toml_remove(config, &["mcp_servers", &server.name]));
-    Augmentation {
+    Installed {
         details: crate::model::Details::Mcp {
             config: config.to_path_buf(),
             server: server.clone(),
@@ -54,8 +54,8 @@ fn server_augmentation(server: &Server, scope: Scope, config: &Path) -> Augmenta
 
 /// `codex mcp add` for a profile entry. Like the plugin commands it only edits the user config,
 /// so a project has no way in; Codex has no SSE transport.
-pub(super) fn provision(entry: &Entry, scope: Scope, env: &Env) -> Option<Vec<Action>> {
-    let Entry::Mcp {
+pub(super) fn provision(entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+    let Spec::Mcp {
         name,
         command,
         args,

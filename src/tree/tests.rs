@@ -2,8 +2,8 @@ use super::*;
 use crate::model::Installer;
 use crate::model::{Agent, Scope};
 
-fn aug(name: &str, kind: Kind, group: &str) -> Augmentation {
-    Augmentation {
+fn aug(name: &str, kind: Kind, group: &str) -> Installed {
+    Installed {
         details: Default::default(),
         hooks: Vec::new(),
         members: Vec::new(),
@@ -22,15 +22,15 @@ fn aug(name: &str, kind: Kind, group: &str) -> Augmentation {
     }
 }
 
-fn sourced(item: Augmentation, source: &str) -> Augmentation {
-    Augmentation {
+fn sourced(item: Installed, source: &str) -> Installed {
+    Installed {
         source: Some(source.into()),
         ..item
     }
 }
 
-fn with_children(item: Augmentation, children: &[&str]) -> Augmentation {
-    Augmentation {
+fn with_children(item: Installed, children: &[&str]) -> Installed {
+    Installed {
         children: children.iter().map(|c| c.to_string()).collect(),
         ..item
     }

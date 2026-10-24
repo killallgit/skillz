@@ -60,7 +60,7 @@ mod tests {
         use crate::env::Env;
         use crate::library::{Catalog, Held, LibraryItem};
         use crate::model::Agent;
-        use crate::profile::{Entry, Profile};
+        use crate::profile::{Profile, Spec};
         use crate::store::Store;
         use std::fs;
 
@@ -82,7 +82,7 @@ mod tests {
         )
         .unwrap();
         let env = Env::new(dir.path().into(), project.clone());
-        let entry = |name: &str| Entry::Subagent {
+        let entry = |name: &str| Spec::Subagent {
             source: "./agents-src".into(),
             names: vec![name.into()],
             agents: vec![Agent::Claude],
@@ -136,7 +136,7 @@ mod tests {
     fn explicit_missing_sources_stay_local_and_repository_references_stay_portable() {
         use crate::cli::deps::Deps;
         use crate::env::Env;
-        use crate::profile::{Entry, Profile};
+        use crate::profile::{Profile, Spec};
         use crate::stale::{Disk, missing_source};
         use crate::store::Store;
         let dir = tempfile::tempdir().unwrap();
@@ -150,7 +150,7 @@ mod tests {
             "git@host:org/repo.git",
         ]
         .into_iter()
-        .map(|source| Entry::Skill {
+        .map(|source| Spec::Skill {
             source: source.into(),
             names: vec!["reviewer".into()],
             agents: vec![],

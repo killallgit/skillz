@@ -5,13 +5,13 @@ use super::notice::Notice;
 use crate::cli::profile::save_profile;
 use crate::cli::scope::{complete_installed, project_env};
 use crate::model::Scope;
-use crate::profile::{Entry, Profile};
+use crate::profile::{Profile, Spec};
 
 impl Session<'_, '_> {
     pub(in crate::cli) fn create_profile(
         &self,
         name: &str,
-        entries: &[Entry],
+        entries: &[Spec],
     ) -> anyhow::Result<Notice> {
         let exists = self.profiles.names()?.iter().any(|n| n == name);
         anyhow::ensure!(!exists, "profile {name} exists");
@@ -35,7 +35,7 @@ impl Session<'_, '_> {
     pub(in crate::cli) fn set_entries(
         &self,
         name: &str,
-        entries: &[Entry],
+        entries: &[Spec],
     ) -> anyhow::Result<Notice> {
         let mut profile = self.profiles.load(name)?;
         profile.entries = entries.to_vec();

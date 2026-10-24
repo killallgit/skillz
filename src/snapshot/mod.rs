@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::mcp::Launch;
-use crate::model::{Agent, Augmentation};
-use crate::profile::{Entry, Profile};
+use crate::model::{Agent, Installed};
+use crate::profile::{Profile, Spec};
 
 pub use extract::entries;
 
@@ -43,7 +43,7 @@ impl fmt::Display for Reason {
 }
 
 impl Skipped {
-    pub(crate) fn new(item: &Augmentation, reason: Reason) -> Self {
+    pub(crate) fn new(item: &Installed, reason: Reason) -> Self {
         Self {
             label: item.label(true),
             reason,
@@ -67,19 +67,19 @@ struct Gathered {
 }
 
 impl Gathered {
-    fn add(&mut self, entry: Entry) {
+    fn add(&mut self, entry: Spec) {
         match entry {
-            Entry::Skill {
+            Spec::Skill {
                 source,
                 names,
                 agents,
             } => add_named(&mut self.skills, source, names, agents),
-            Entry::Subagent {
+            Spec::Subagent {
                 source,
                 names,
                 agents,
             } => add_named(&mut self.subagents, source, names, agents),
-            Entry::Plugin {
+            Spec::Plugin {
                 source,
                 marketplace,
                 name,
@@ -89,7 +89,7 @@ impl Gathered {
                 .entry((source, marketplace, name))
                 .or_default()
                 .extend(agents),
-            Entry::Hook {
+            Spec::Hook {
                 event,
                 matcher,
                 command,
@@ -99,7 +99,7 @@ impl Gathered {
                 .entry((event, matcher, command))
                 .or_default()
                 .extend(agents),
-            Entry::Mcp {
+            Spec::Mcp {
                 name,
                 command,
                 args,
@@ -123,10 +123,10 @@ impl Gathered {
         }
     }
 
-    fn finish(self) -> Vec<Entry> {
+    fn finish(self) -> Vec<Spec> {
         let mut entries = Vec::new();
         entries.extend(
-            group_named(self.skills).map(|((source, agents), names)| Entry::Skill {
+            group_named(self.skills).map(|((source, agents), names)| Spec::Skill {
                 source,
                 names,
                 agents,
@@ -135,7 +135,7 @@ impl Gathered {
         entries.extend(
             self.plugins
                 .into_iter()
-                .map(|((source, marketplace, name), agents)| Entry::Plugin {
+                .map(|((source, marketplace, name), agents)| Spec::Plugin {
                     source,
                     marketplace,
                     name,
@@ -143,7 +143,7 @@ impl Gathered {
                 }),
         );
         entries.extend(
-            group_named(self.subagents).map(|((source, agents), names)| Entry::Subagent {
+            group_named(self.subagents).map(|((source, agents), names)| Spec::Subagent {
                 source,
                 names,
                 agents,
@@ -157,7 +157,7 @@ impl Gathered {
         entries.extend(
             self.hooks
                 .into_iter()
-                .map(|((event, matcher, command), agents)| Entry::Hook {
+                .map(|((event, matcher, command), agents)| Spec::Hook {
                     event,
                     matcher,
                     command,
@@ -203,10 +203,10 @@ fn group_named(
 }
 
 /// Reinstallable entries with exact agents, without constructing a profile.
-pub fn collect(items: &[Augmentation]) -> (Vec<Entry>, Vec<Skipped>) {
+pub fn collect(items: &[Installed]) -> (Vec<Spec>, Vec<Skipped>) {
     let mut gathered = Gathered::default();
     let mut skipped = Vec::new();
-    for item in items.iter().flat_map(Augmentation::parts) {
+    for item in items.iter().flat_map(Installed::parts) {
         match entries(item) {
             Ok(entries) => entries.into_iter().for_each(|entry| gathered.add(entry)),
             Err(reason) => skipped.push(Skipped::new(item, reason)),
@@ -215,7 +215,7 @@ pub fn collect(items: &[Augmentation]) -> (Vec<Entry>, Vec<Skipped>) {
     (gathered.finish(), skipped)
 }
 
-pub fn snapshot(name: &str, items: &[Augmentation]) -> Snapshot {
+pub fn snapshot(name: &str, items: &[Installed]) -> Snapshot {
     let (entries, skipped) = collect(items);
     let mut profile = Profile::new(name);
     profile.entries = entries
@@ -243,8 +243,8 @@ mod tests {
         kind: Kind,
         installer: Installer,
         agents: &[Agent],
-    ) -> Augmentation {
-        Augmentation {
+    ) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
@@ -262,8 +262,8 @@ mod tests {
         }
     }
 
-    fn in_group(item: Augmentation, group: &str, source: Option<&str>) -> Augmentation {
-        Augmentation {
+    fn in_group(item: Installed, group: &str, source: Option<&str>) -> Installed {
+        Installed {
             group: group.into(),
             source: source.map(Into::into),
             ..item
@@ -294,7 +294,7 @@ mod tests {
             .entries
             .iter()
             .map(|e| match e {
-                Entry::Skill {
+                Spec::Skill {
                     source,
                     names,
                     agents,
@@ -339,7 +339,7 @@ mod tests {
         assert!(snap.skipped.is_empty());
         assert_eq!(
             snap.profile.entries,
-            [Entry::Plugin {
+            [Spec::Plugin {
                 source: "o/mp".into(),
                 marketplace: "mp".into(),
                 name: "pp".into(),
@@ -414,13 +414,13 @@ mod tests {
         assert_eq!(
             snap.profile.entries,
             [
-                Entry::Hook {
+                Spec::Hook {
                     event: "PostToolUse".into(),
                     matcher: Some("Edit".into()),
                     command: "cargo fmt".into(),
                     agents: vec![],
                 },
-                Entry::Hook {
+                Spec::Hook {
                     event: "Stop".into(),
                     matcher: None,
                     command: "notify: done".into(),
@@ -448,12 +448,12 @@ mod tests {
 
         assert!(matches!(
             &snap.profile.entries[0],
-            Entry::Hook { matcher: Some(m), .. } if m == "mcp__a: b"
+            Spec::Hook { matcher: Some(m), .. } if m == "mcp__a: b"
         ));
     }
 
-    fn server(name: &str, launch: Launch, secrets: &[&str], agent: Agent) -> Augmentation {
-        Augmentation {
+    fn server(name: &str, launch: Launch, secrets: &[&str], agent: Agent) -> Installed {
+        Installed {
             details: Details::Mcp {
                 config: "/config".into(),
                 server: Server {
@@ -501,11 +501,11 @@ mod tests {
             snap.profile
                 .entries
                 .iter()
-                .find(|e| matches!(e, Entry::Mcp { name, .. } if name == n))
+                .find(|e| matches!(e, Spec::Mcp { name, .. } if name == n))
         };
         assert_eq!(
             get("fs"),
-            Some(&Entry::Mcp {
+            Some(&Spec::Mcp {
                 name: "fs".into(),
                 command: Some("npx".into()),
                 args: vec!["-y".into(), "fs".into()],
@@ -515,11 +515,11 @@ mod tests {
             })
         );
         assert!(
-            matches!(get("web"), Some(Entry::Mcp { transport: Some(transport), .. }) if transport == "sse")
+            matches!(get("web"), Some(Spec::Mcp { transport: Some(transport), .. }) if transport == "sse")
         );
         assert!(matches!(
             get("plain"),
-            Some(Entry::Mcp {
+            Some(Spec::Mcp {
                 transport: None,
                 ..
             })
@@ -557,7 +557,7 @@ mod tests {
 
     #[test]
     fn handmade_skills_keep_their_install_name_without_reading_display_lines() {
-        let skill = Augmentation {
+        let skill = Installed {
             details: Details::Skill {
                 directory: "/p/skills/folder".into(),
                 install_name: "real".into(),
@@ -572,7 +572,7 @@ mod tests {
         let snap = snapshot("p", &[skill]);
         assert_eq!(
             snap.profile.entries,
-            [Entry::Skill {
+            [Spec::Skill {
                 source: "/p/skills".into(),
                 names: vec!["real".into()],
                 agents: vec![]
@@ -582,7 +582,7 @@ mod tests {
 
     #[test]
     fn a_handmade_subagent_uses_its_directory_as_the_reinstall_source() {
-        let definition = Augmentation {
+        let definition = Installed {
             details: Details::Subagent {
                 file: "/p/agents/reviewer.md".into(),
             },
@@ -600,7 +600,7 @@ mod tests {
         let snap = snapshot("p", &[definition]);
         assert_eq!(
             snap.profile.entries,
-            [Entry::Subagent {
+            [Spec::Subagent {
                 source: "/p/agents".into(),
                 names: vec!["reviewer".into()],
                 agents: vec![Agent::Claude]
@@ -632,7 +632,7 @@ mod tests {
         assert_eq!(snap.skipped.len(), 1);
         assert_eq!(
             snap.profile.entries,
-            [Entry::Subagent {
+            [Spec::Subagent {
                 source: "o/agents".into(),
                 names: vec!["eng-frontend".into(), "ui".into()],
                 agents: vec![Agent::Claude],
@@ -666,7 +666,7 @@ mod tests {
         let snap = snapshot("p", &merged);
         assert_eq!(
             snap.profile.resolved(),
-            [Entry::Skill {
+            [Spec::Skill {
                 source: "o/r".into(),
                 names: vec!["tdd".into()],
                 agents: both().to_vec()

@@ -5,7 +5,7 @@ use anyhow::bail;
 use super::args::Filter;
 use super::list::display_tree;
 use super::scope::Scene;
-use crate::model::{Agent, Augmentation, Kind};
+use crate::model::{Agent, Installed, Kind};
 use crate::{remove, spinner};
 
 pub(super) struct UninstallRequest<'a> {
@@ -56,14 +56,14 @@ pub(super) struct Pick<'a> {
 /// take a lone marketplace: its tree row is a group of plugin names with no item to select.
 pub(super) fn choose<'a>(
     scene: &Scene,
-    items: &'a [Augmentation],
+    items: &'a [Installed],
     pick: &Pick,
-) -> anyhow::Result<Vec<&'a Augmentation>> {
+) -> anyhow::Result<Vec<&'a Installed>> {
     let candidates = remove::candidates_each(items, pick.queries, pick.yes)?;
     let picked = if pick.dry_run || pick.yes {
         (0..candidates.len()).collect()
     } else {
-        let owned: Vec<Augmentation> = candidates.iter().map(|&c| c.clone()).collect();
+        let owned: Vec<Installed> = candidates.iter().map(|&c| c.clone()).collect();
         scene
             .deps
             .prompter
@@ -96,12 +96,8 @@ pub(super) fn reset(
     )
 }
 
-fn reset_set<'a>(
-    items: &'a [Augmentation],
-    filter: &Filter,
-    keep: &[String],
-) -> Vec<&'a Augmentation> {
-    let named = |i: &Augmentation, q: &String| {
+fn reset_set<'a>(items: &'a [Installed], filter: &Filter, keep: &[String]) -> Vec<&'a Installed> {
+    let named = |i: &Installed, q: &String| {
         [
             Some(i.name.as_str()),
             Some(i.group.as_str()),
@@ -111,7 +107,7 @@ fn reset_set<'a>(
         .flatten()
         .any(|f| f.eq_ignore_ascii_case(q.trim()))
     };
-    let spared: Vec<&Augmentation> = items
+    let spared: Vec<&Installed> = items
         .iter()
         .filter(|i| keep.iter().any(|q| named(i, q)))
         .collect();
@@ -136,7 +132,7 @@ pub(super) struct Review {
 
 pub(super) fn confirm_and_remove(
     scene: &Scene,
-    chosen: &[&Augmentation],
+    chosen: &[&Installed],
     review: Review,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
@@ -215,8 +211,8 @@ mod tests {
     use super::*;
     use crate::model::Scope;
 
-    fn item(name: &str, kind: Kind, group: &str) -> Augmentation {
-        Augmentation {
+    fn item(name: &str, kind: Kind, group: &str) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
@@ -244,9 +240,8 @@ mod tests {
             item("other@om", Kind::Plugin, "om"),
             item("om", Kind::Marketplace, "om"),
         ];
-        let names = |set: Vec<&Augmentation>| -> Vec<String> {
-            set.iter().map(|i| i.name.clone()).collect()
-        };
+        let names =
+            |set: Vec<&Installed>| -> Vec<String> { set.iter().map(|i| i.name.clone()).collect() };
         let all = reset_set(&items, &Filter::default(), &[]);
         assert_eq!(names(all), ["tdd", "p@mp", "mp", "other@om", "om"]);
         let hooks = Filter {

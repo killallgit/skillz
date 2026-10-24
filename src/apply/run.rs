@@ -1,5 +1,5 @@
 use crate::action::{self, Action};
-use crate::model::Augmentation;
+use crate::model::Installed;
 use crate::remove::{self, Outcome, Plan, Removal};
 use crate::review::{ItemEvent, Target};
 use crate::runner::CommandRunner;
@@ -130,7 +130,7 @@ impl Applier<'_> {
     }
 }
 
-fn removing(item: &Augmentation) -> ItemEvent {
+fn removing(item: &Installed) -> ItemEvent {
     ItemEvent::started(Target::Remove(item.id.clone()), item.name.clone())
 }
 

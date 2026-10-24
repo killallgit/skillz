@@ -3,24 +3,24 @@
 
 use std::collections::HashSet;
 
-use crate::model::{Augmentation, Kind};
-use crate::profile::{Claim, Entry, Profile, claims, installed_claims, lacking};
+use crate::model::{Installed, Kind};
+use crate::profile::{Claim, Profile, Spec, claims, installed_claims, lacking};
 use crate::snapshot;
 
 /// How a profile's entries and the installed items overlap.
 #[derive(Debug)]
 pub struct Standing {
     /// Wanted entries with everything in place.
-    pub present: Vec<Entry>,
+    pub present: Vec<Spec>,
     /// What is still to install: the wanted entries cut down to the parts not in place.
-    pub missing: Vec<Entry>,
+    pub missing: Vec<Spec>,
     /// Installed items the profile does not want.
     pub extras: Vec<Extra>,
 }
 
 #[derive(Debug)]
 pub struct Extra {
-    pub item: Augmentation,
+    pub item: Installed,
     /// Whether a profile could reinstall this item.
     pub sourced: bool,
 }
@@ -35,7 +35,7 @@ impl Standing {
 /// of them on a tie. An empty profile matches everything, so it never counts as loaded.
 pub fn loaded<'a>(
     profiles: &'a [Profile],
-    installed: &[Augmentation],
+    installed: &[Installed],
 ) -> Option<(&'a Profile, Standing)> {
     let mut best: Option<(&Profile, Standing)> = None;
     for profile in profiles.iter().filter(|p| !p.entries.is_empty()) {
@@ -54,9 +54,8 @@ fn in_place(standing: &Standing) -> usize {
     standing.present.iter().flat_map(claims).count()
 }
 
-pub fn compare(wanted: &[Entry], installed: &[Augmentation]) -> Standing {
-    let held: Vec<(&Augmentation, Vec<Claim>)> =
-        installed.iter().map(|i| (i, claims_of(i))).collect();
+pub fn compare(wanted: &[Spec], installed: &[Installed]) -> Standing {
+    let held: Vec<(&Installed, Vec<Claim>)> = installed.iter().map(|i| (i, claims_of(i))).collect();
     let have: HashSet<Claim> = held.iter().flat_map(|(_, c)| c.iter().cloned()).collect();
     let wanted = distinct(wanted);
     let wanted_claims: HashSet<Claim> = wanted.iter().flat_map(claims).collect();
@@ -79,7 +78,7 @@ pub fn compare(wanted: &[Entry], installed: &[Augmentation]) -> Standing {
 }
 
 /// Whether everything `entry` puts in place is in place among `installed`.
-pub fn holds(installed: &[Augmentation], entry: &Entry) -> bool {
+pub fn holds(installed: &[Installed], entry: &Spec) -> bool {
     let mut profile = Profile::new("holds");
     profile.entries = vec![entry.clone()];
     compare(&profile.resolved(), installed).missing.is_empty()
@@ -87,12 +86,8 @@ pub fn holds(installed: &[Augmentation], entry: &Entry) -> bool {
 
 /// The ids of installed items that `dropped` wants and `kept` does not: what is left over once
 /// only the kept entries are to stay.
-pub fn only_wanted_by(
-    dropped: &[Entry],
-    kept: &[Entry],
-    installed: &[Augmentation],
-) -> Vec<String> {
-    let unwanted_by = |entries: &[Entry]| -> HashSet<String> {
+pub fn only_wanted_by(dropped: &[Spec], kept: &[Spec], installed: &[Installed]) -> Vec<String> {
+    let unwanted_by = |entries: &[Spec]| -> HashSet<String> {
         compare(entries, installed)
             .extras
             .into_iter()
@@ -107,8 +102,8 @@ pub fn only_wanted_by(
         .collect()
 }
 
-fn distinct(entries: &[Entry]) -> Vec<Entry> {
-    let mut seen: Vec<Entry> = Vec::new();
+fn distinct(entries: &[Spec]) -> Vec<Spec> {
+    let mut seen: Vec<Spec> = Vec::new();
     for entry in entries {
         if !seen.contains(entry) {
             seen.push(entry.clone());
@@ -118,17 +113,17 @@ fn distinct(entries: &[Entry]) -> Vec<Entry> {
 }
 
 /// What an installed item puts in place, as a profile would have to claim it.
-fn claims_of(item: &Augmentation) -> Vec<Claim> {
+fn claims_of(item: &Installed) -> Vec<Claim> {
     item.parts().iter().flat_map(installed_claims).collect()
 }
 
 /// An item is wanted when any one of its claims is, so one shared with a wanted entry stays.
 /// A marketplace is wanted while a wanted plugin comes from it.
 fn extra(
-    item: &Augmentation,
+    item: &Installed,
     held: &[Claim],
     wanted_claims: &HashSet<Claim>,
-    wanted: &[Entry],
+    wanted: &[Spec],
 ) -> Option<Extra> {
     if item.kind == Kind::Marketplace {
         let used = wanted.iter().any(|e| draws_on(e, &item.name));
@@ -149,8 +144,8 @@ fn extra(
     })
 }
 
-fn draws_on(entry: &Entry, marketplace: &str) -> bool {
-    matches!(entry, Entry::Plugin { marketplace: m, .. } if m == marketplace)
+fn draws_on(entry: &Spec, marketplace: &str) -> bool {
+    matches!(entry, Spec::Plugin { marketplace: m, .. } if m == marketplace)
 }
 
 #[cfg(test)]
@@ -158,16 +153,16 @@ mod tests {
     use super::*;
     use crate::model::{Agent, Installer, Scope};
 
-    fn skill_entry(names: &[&str]) -> Entry {
-        Entry::Skill {
+    fn skill_entry(names: &[&str]) -> Spec {
+        Spec::Skill {
             source: "o/r".into(),
             names: names.iter().map(|n| n.to_string()).collect(),
             agents: vec![Agent::Claude],
         }
     }
 
-    fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
-        Augmentation {
+    fn installed(name: &str, kind: Kind, source: Option<&str>) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: vec![],
             members: Vec::new(),
@@ -185,7 +180,7 @@ mod tests {
         }
     }
 
-    fn sourced_skill(name: &str) -> Augmentation {
+    fn sourced_skill(name: &str) -> Installed {
         installed(name, Kind::Skill, Some("o/r"))
     }
 
@@ -232,7 +227,7 @@ mod tests {
 
     #[test]
     fn a_marketplace_stays_while_a_wanted_plugin_comes_from_it() {
-        let plugin = Entry::Plugin {
+        let plugin = Spec::Plugin {
             source: "o/mp".into(),
             marketplace: "mp".into(),
             name: "p".into(),
@@ -302,7 +297,7 @@ mod tests {
     }
     #[test]
     fn an_installed_server_needing_secrets_is_present_but_cannot_be_reinstalled() {
-        let server = Augmentation {
+        let server = Installed {
             details: crate::model::Details::Mcp {
                 config: "/config".into(),
                 server: crate::mcp::Server {
@@ -316,7 +311,7 @@ mod tests {
             },
             ..installed("db", Kind::Mcp, None)
         };
-        let wanted = Entry::Mcp {
+        let wanted = Spec::Mcp {
             name: "db".into(),
             command: Some("srv".into()),
             args: vec![],

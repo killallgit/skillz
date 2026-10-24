@@ -8,14 +8,14 @@ use common::*;
 use skillz::action::{Action, execute};
 use skillz::agents::{self, Inventory};
 use skillz::env::Env;
-use skillz::model::{Agent, Augmentation, Kind, Scope};
+use skillz::model::{Agent, Installed, Kind, Scope};
 use skillz::runner::NoCommands;
 
 fn inventory(env: &Env, scopes: &[Scope]) -> Inventory {
     agents::inventory(&agents::registry(), env, scopes)
 }
 
-fn skills(env: &Env, scopes: &[Scope]) -> Vec<Augmentation> {
+fn skills(env: &Env, scopes: &[Scope]) -> Vec<Installed> {
     inventory(env, scopes)
         .items
         .into_iter()
@@ -32,7 +32,7 @@ fn hooks(env: &Env) -> Vec<(String, Agent, Scope)> {
         .collect()
 }
 
-fn removed_paths(item: &Augmentation) -> Vec<PathBuf> {
+fn removed_paths(item: &Installed) -> Vec<PathBuf> {
     item.removal
         .iter()
         .filter_map(|act| match act {
