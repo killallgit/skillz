@@ -1,7 +1,7 @@
 //! How far an installed set is from a profile: what it lacks and what the profile does not ask for.
 
 use super::compare;
-use crate::model::Augmentation;
+use crate::model::Installed;
 use crate::profile::Profile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,7 +17,7 @@ impl Drift {
     }
 }
 
-pub fn drift(profile: &Profile, installed: &[Augmentation]) -> Drift {
+pub fn drift(profile: &Profile, installed: &[Installed]) -> Drift {
     let standing = compare(&profile.resolved(), installed);
     Drift {
         profile: profile.name.clone(),
@@ -30,10 +30,10 @@ pub fn drift(profile: &Profile, installed: &[Augmentation]) -> Drift {
 mod tests {
     use super::*;
     use crate::model::{Agent, Installer, Kind, Scope};
-    use crate::profile::Entry;
+    use crate::profile::Spec;
 
-    fn installed(name: &str, kind: Kind, source: Option<&str>) -> Augmentation {
-        Augmentation {
+    fn installed(name: &str, kind: Kind, source: Option<&str>) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: vec![],
             members: Vec::new(),
@@ -55,7 +55,7 @@ mod tests {
         let mut profile = Profile::new("web");
         profile.entries = names
             .iter()
-            .map(|name| Entry::Skill {
+            .map(|name| Spec::Skill {
                 source: "o/r".into(),
                 names: vec![name.to_string()],
                 agents: vec![],

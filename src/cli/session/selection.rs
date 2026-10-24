@@ -8,14 +8,14 @@ use crate::cli::scope::complete_installed;
 use crate::env::Env;
 use crate::library::Catalog;
 use crate::merge::merge;
-use crate::model::{Agent, Augmentation};
-use crate::profile::{Entry, Profile};
+use crate::model::{Agent, Installed};
+use crate::profile::{Profile, Spec};
 use crate::review::Outcome;
 
 /// What the user picked: entries to install and the ids of installed items to remove.
 #[derive(Clone, Copy)]
 pub(in crate::cli) struct Selection<'a> {
-    pub install: &'a [Entry],
+    pub install: &'a [Spec],
     pub remove: &'a [String],
     /// The agents to remove from; every agent when `None`.
     pub only: Option<&'a [Agent]>,
@@ -50,8 +50,8 @@ pub(super) fn selection_plan(
 
 /// The copies of `item` that belong wholly to `agents`, folded back into one item; `None` when
 /// no copy does.
-fn only_for(item: Augmentation, agents: &[Agent]) -> Option<Augmentation> {
-    let kept: Vec<Augmentation> = item
+fn only_for(item: Installed, agents: &[Agent]) -> Option<Installed> {
+    let kept: Vec<Installed> = item
         .parts()
         .iter()
         // A copy shared by several agents is one set of files, so it goes only when all of them do.
@@ -89,8 +89,8 @@ mod tests {
     use super::*;
     use crate::model::{Installer, Kind, Scope};
 
-    fn subagent(agent: Agent) -> Augmentation {
-        Augmentation {
+    fn subagent(agent: Agent) -> Installed {
+        Installed {
             details: Default::default(),
             id: format!("subagent:{agent}:reviewer"),
             name: "reviewer".into(),
@@ -108,7 +108,7 @@ mod tests {
         }
     }
 
-    fn both() -> Augmentation {
+    fn both() -> Installed {
         merge(vec![subagent(Agent::Claude), subagent(Agent::Codex)]).remove(0)
     }
 
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn a_copy_shared_by_two_agents_stays_unless_both_are_chosen() {
-        let shared = Augmentation {
+        let shared = Installed {
             agents: vec![Agent::Claude, Agent::Codex],
             ..subagent(Agent::Claude)
         };

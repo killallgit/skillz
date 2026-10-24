@@ -7,7 +7,7 @@ use crate::action::Action;
 use crate::agents::registry;
 use crate::env::Env;
 use crate::model::{Agent, Installer, Kind, Scope};
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::review::{ItemEvent, Phase, Target};
 use crate::runner::{CommandRunner, Output};
 use crate::stale::{Disk, Probe};
@@ -24,8 +24,8 @@ impl CommandRunner for Runner {
     }
 }
 
-fn entry(name: &str) -> Entry {
-    Entry::Skill {
+fn entry(name: &str) -> Spec {
+    Spec::Skill {
         source: "o/r".into(),
         names: vec![name.into()],
         agents: vec![],
@@ -41,8 +41,8 @@ fn step(program: &str) -> Action {
     }
 }
 
-fn installed_skill(name: &str) -> Augmentation {
-    Augmentation {
+fn installed_skill(name: &str) -> Installed {
+    Installed {
         details: Default::default(),
         hooks: vec![],
         members: Vec::new(),
@@ -60,7 +60,7 @@ fn installed_skill(name: &str) -> Augmentation {
     }
 }
 
-fn switch(installs: Vec<(Entry, Vec<Action>)>, removals: Vec<Augmentation>) -> Switch {
+fn switch(installs: Vec<(Spec, Vec<Action>)>, removals: Vec<Installed>) -> Switch {
     Switch {
         to: "test".into(),
         present: vec![],
@@ -198,7 +198,7 @@ impl CommandRunner for Recording {
 
 #[test]
 fn an_entry_whose_local_source_is_gone_fails_before_running_anything_and_the_rest_still_run() {
-    let gone = Entry::Skill {
+    let gone = Spec::Skill {
         source: "/old/skills".into(),
         names: vec!["mine".into()],
         agents: vec![],

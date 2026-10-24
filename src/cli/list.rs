@@ -8,7 +8,7 @@ use crate::cost;
 use crate::env::Env;
 use crate::location::location;
 use crate::mcp;
-use crate::model::{Augmentation, Kind};
+use crate::model::{Installed, Kind};
 use crate::package::Package;
 use crate::prompt::Choice;
 use crate::prune;
@@ -25,7 +25,7 @@ pub(super) struct ListView<'a> {
 }
 
 /// Items `list QUERY` shows: the matches, plus the whole group of any matched marketplace.
-fn queried(items: &[Augmentation], hits: &[&Augmentation]) -> Vec<Augmentation> {
+fn queried(items: &[Installed], hits: &[&Installed]) -> Vec<Installed> {
     let ids: HashSet<String> = hits.iter().map(|i| i.id.clone()).collect();
     let groups: HashSet<String> = hits
         .iter()
@@ -47,7 +47,7 @@ pub(super) fn now_ms() -> u64 {
 
 /// `tree::build` plus each row's info-modal text. Last-use data is optional: if an agent's
 /// records cannot be read the modal omits it, after a warning.
-pub(super) fn display_tree(deps: &Deps, env: &Env, items: &[Augmentation]) -> Vec<tree::Node> {
+pub(super) fn display_tree(deps: &Deps, env: &Env, items: &[Installed]) -> Vec<tree::Node> {
     let usage = usage::read(&deps.adapters, env)
         .inspect_err(|e| eprintln!("warning: last-use data unavailable: {e:#}"))
         .ok();
@@ -65,13 +65,13 @@ pub(super) fn display_tree(deps: &Deps, env: &Env, items: &[Augmentation]) -> Ve
 }
 
 /// Browse `items` in the tree UI, then show or remove whatever the user marks.
-fn browse(scene: &Scene, items: &[Augmentation], out: &mut dyn Write) -> anyhow::Result<()> {
+fn browse(scene: &Scene, items: &[Installed], out: &mut dyn Write) -> anyhow::Result<()> {
     let (deps, env) = (scene.deps, scene.env);
     let nodes = display_tree(deps, env, items);
     let Some((choice, picked)) = deps.prompter.browse("skillz", &nodes)? else {
         return Ok(());
     };
-    let chosen: Vec<&Augmentation> = picked
+    let chosen: Vec<&Installed> = picked
         .item_indices(&nodes)
         .into_iter()
         .filter_map(|i| items.get(i))
@@ -113,7 +113,7 @@ pub(super) fn list(scene: &Scene, view: ListView, out: &mut dyn Write) -> anyhow
 /// The items and their removal plans, with each one's context cost.
 fn print_json(
     scene: &Scene,
-    items: &[Augmentation],
+    items: &[Installed],
     check: bool,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
@@ -141,7 +141,7 @@ fn print_json(
 }
 
 /// The per-agent copies a merged item stands for, each with its own id, agents and location.
-fn members_json(item: &Augmentation) -> serde_json::Value {
+fn members_json(item: &Installed) -> serde_json::Value {
     let copies = item
         .members
         .iter()
@@ -162,7 +162,7 @@ enum Empty {
     NoMatch,
 }
 
-fn listing(items: &[Augmentation], view: &ListView) -> Listing {
+fn listing(items: &[Installed], view: &ListView) -> Listing {
     let empty = match (items.is_empty(), view.query.is_some()) {
         (false, _) => None,
         (true, true) => Some(Empty::NoMatch),
@@ -192,8 +192,8 @@ mod tests {
     use crate::install::test_support::{FakeRunner, ScriptedPrompter};
     use crate::model::{Agent, Installer, Scope};
 
-    fn skill(name: &str) -> Augmentation {
-        Augmentation {
+    fn skill(name: &str) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
@@ -223,7 +223,7 @@ mod tests {
         fn hook_files(&self, _: &Env, _: Scope) -> Vec<std::path::PathBuf> {
             vec![]
         }
-        fn discover(&self, _: &Env, _: Scope) -> anyhow::Result<Vec<Augmentation>> {
+        fn discover(&self, _: &Env, _: Scope) -> anyhow::Result<Vec<Installed>> {
             Ok(vec![])
         }
         fn home_dir_names(&self) -> &'static [&'static str] {

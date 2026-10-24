@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 use crate::action::Action;
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Scope};
-use crate::profile::Entry;
+use crate::model::{Agent, Installed, Scope};
+use crate::profile::Spec;
 use crate::runner::CommandRunner;
 
 /// The plugins a fetched source offers one agent through its own installer.
@@ -32,7 +32,7 @@ pub trait AgentAdapter {
     fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf>;
     /// Plugins and marketplaces for `scope`. Loose skills and hooks are discovered by the
     /// shared `skills`/`hooks` modules from `skill_dirs`/`hook_files`.
-    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>>;
+    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>>;
     /// Hidden home dir names (`.claude` -> `claude`) this agent owns; hook grouping skips them.
     fn home_dir_names(&self) -> &'static [&'static str];
     /// Env var a plugin's hook commands use for the plugin's own dir, if any.
@@ -58,10 +58,10 @@ pub trait AgentAdapter {
     /// Steps that install a profile `entry` for this agent at `scope`, or `None` when this agent
     /// has no way to take that entry there. Skills are not asked of adapters: `provision::plan`
     /// sends them through `npx skills` for every agent at once.
-    fn provision(&self, _entry: &Entry, _scope: Scope, _env: &Env) -> Option<Vec<Action>> {
+    fn provision(&self, _entry: &Spec, _scope: Scope, _env: &Env) -> Option<Vec<Action>> {
         None
     }
-    fn update_steps(&self, _item: &Augmentation, _cwd: &Path) -> Vec<Action> {
+    fn update_steps(&self, _item: &Installed, _cwd: &Path) -> Vec<Action> {
         vec![]
     }
 
@@ -84,7 +84,7 @@ pub trait AgentAdapter {
         Ok(crate::cost::estimate_dirs(&dirs))
     }
     /// Whether `usage` can see `item`'s use. Items nobody tracks are never flagged as unused.
-    fn tracks(&self, _item: &Augmentation) -> bool {
+    fn tracks(&self, _item: &Installed) -> bool {
         false
     }
 }

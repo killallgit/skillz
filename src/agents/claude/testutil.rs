@@ -9,7 +9,7 @@ use tempfile::TempDir;
 use super::files::{installed_file, marketplaces_file};
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::model::Augmentation;
+use crate::model::Installed;
 
 pub(super) struct Fixture {
     _tmp: TempDir,
@@ -138,6 +138,6 @@ pub(super) fn fixture() -> Fixture {
     }
 }
 
-pub(super) fn by_id<'a>(items: &'a [Augmentation], id: &str) -> &'a Augmentation {
+pub(super) fn by_id<'a>(items: &'a [Installed], id: &str) -> &'a Installed {
     items.iter().find(|a| a.id == id).unwrap()
 }

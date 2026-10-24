@@ -1,7 +1,7 @@
 //! The lines of the info modal: what an item or group is, as plain data built before the
 //! terminal opens, so drawing never touches the filesystem.
 
-use crate::model::{Augmentation, Installer};
+use crate::model::{Installed, Installer};
 
 /// Last use of an item, as far as the agents record it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,7 +30,7 @@ const DAY_MS: u64 = 24 * 60 * 60 * 1000;
 
 /// Everything worth knowing about one item: facts, then what it contains, then what removing it
 /// runs; the later sections are left out when empty.
-pub fn item_lines(item: &Augmentation, used: Used, now_ms: u64) -> Vec<String> {
+pub fn item_lines(item: &Installed, used: Used, now_ms: u64) -> Vec<String> {
     let mut lines = fact_lines(item);
     lines.extend(use_line(used, now_ms));
     lines.extend(section(contents(item)));
@@ -38,7 +38,7 @@ pub fn item_lines(item: &Augmentation, used: Used, now_ms: u64) -> Vec<String> {
     lines
 }
 
-fn fact_lines(item: &Augmentation) -> Vec<String> {
+fn fact_lines(item: &Installed) -> Vec<String> {
     let agents: Vec<String> = item.agents.iter().map(|a| a.to_string()).collect();
     let mut lines = vec![
         format!("kind       {}", item.kind),
@@ -62,7 +62,7 @@ fn use_line(used: Used, now_ms: u64) -> Option<String> {
     }
 }
 
-fn contents(item: &Augmentation) -> Vec<String> {
+fn contents(item: &Installed) -> Vec<String> {
     let children = crate::mcp::shown_children(item);
     if children.is_empty() {
         return vec![];
@@ -75,7 +75,7 @@ fn contents(item: &Augmentation) -> Vec<String> {
     lines
 }
 
-fn removal(item: &Augmentation) -> Vec<String> {
+fn removal(item: &Installed) -> Vec<String> {
     if item.removal.is_empty() {
         return vec![];
     }
@@ -99,8 +99,8 @@ mod tests {
     use crate::action::Action;
     use crate::model::{Agent, Kind, Scope};
 
-    fn item() -> Augmentation {
-        Augmentation {
+    fn item() -> Installed {
+        Installed {
             details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
@@ -126,7 +126,7 @@ mod tests {
         }
     }
 
-    fn count(item: &Augmentation, used: Used) -> usize {
+    fn count(item: &Installed, used: Used) -> usize {
         item_lines(item, used, 0).len()
     }
 

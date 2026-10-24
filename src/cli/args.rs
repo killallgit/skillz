@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand};
 
 use super::library_args::LibraryCommand;
 use super::profile_args::ProfileCommand;
-use crate::model::{Agent, Augmentation, Kind};
+use crate::model::{Agent, Installed, Kind};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -23,10 +23,10 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Show installed augmentations as a tree (groups collapsed unless queried or --all)
+    /// Show installed items as a tree (groups collapsed unless queried or --all)
     #[command(visible_alias = "ls")]
     List(ListArgs),
-    /// Completely remove augmentations (fuzzy match, then pick)
+    /// Completely remove installed items (fuzzy match, then pick)
     #[command(visible_aliases = ["rm", "delete"])]
     Uninstall(UninstallArgs),
     /// Update installed items with the tool that installed them (`--check` only lists the ones with a newer version)
@@ -272,7 +272,7 @@ impl Filter {
         .collect()
     }
 
-    pub fn keeps(&self, item: &Augmentation) -> bool {
+    pub fn keeps(&self, item: &Installed) -> bool {
         let kinds = self.kinds();
         (kinds.is_empty() || kinds.contains(&item.kind))
             && (self.agents.is_empty() || item.agents.iter().any(|a| self.agents.contains(a)))

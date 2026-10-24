@@ -21,7 +21,7 @@ pub use switch::Switch;
 
 use crate::agents::{self, AgentAdapter};
 use crate::env::Env;
-use crate::model::{Augmentation, Scope};
+use crate::model::{Installed, Scope};
 use crate::stale::Probe;
 
 /// Everything a switch of one scope works with.
@@ -34,7 +34,7 @@ pub struct Applier<'a> {
 }
 
 impl Applier<'_> {
-    fn installed(&self) -> anyhow::Result<Vec<Augmentation>> {
+    fn installed(&self) -> anyhow::Result<Vec<Installed>> {
         agents::inventory(self.adapters, self.env, &[self.scope]).complete()
     }
 }

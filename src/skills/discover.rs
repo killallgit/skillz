@@ -8,7 +8,7 @@ use super::ownership::{Locked, lock_ownership};
 use super::removal::{owned_roots, removal};
 use crate::action::Action;
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Installer, Kind, Origin, Scope};
+use crate::model::{Agent, Installed, Installer, Kind, Origin, Scope};
 use crate::npx_skills::{self, LockEntry};
 
 type Groups = BTreeMap<(Scope, PathBuf), Vec<Entry>>;
@@ -22,12 +22,12 @@ pub(super) struct Ctx<'a> {
 }
 
 /// Installed skills across all `dirs`, deduplicated by canonical path.
-pub fn discover(env: &Env, dirs: &[SkillDir]) -> anyhow::Result<Vec<Augmentation>> {
+pub fn discover(env: &Env, dirs: &[SkillDir]) -> anyhow::Result<Vec<Installed>> {
     let groups = group_by_canonical(dirs)?;
     let global: BTreeSet<&PathBuf> = global_targets(&groups);
     let locks = read_locks(env);
 
-    let mut out: Vec<Augmentation> = groups
+    let mut out: Vec<Installed> = groups
         .iter()
         .map(|((scope, canonical), es)| {
             let cx = Ctx {
@@ -38,7 +38,7 @@ pub fn discover(env: &Env, dirs: &[SkillDir]) -> anyhow::Result<Vec<Augmentation
             };
             // Only a project skill can collide with a global one (same canonical target).
             let suffix = *scope == Scope::Project && global.contains(canonical);
-            augmentation(&cx, canonical, es, suffix)
+            installed_item(&cx, canonical, es, suffix)
         })
         .collect();
     out.sort_by(|a, b| (&a.group, &a.name, &a.id).cmp(&(&b.group, &b.name, &b.id)));
@@ -73,7 +73,7 @@ fn read_locks(env: &Env) -> BTreeMap<Scope, BTreeMap<String, LockEntry>> {
         .collect()
 }
 
-fn augmentation(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -> Augmentation {
+fn installed_item(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -> Installed {
     let locked = lock_ownership(cx, canonical);
     let agents = agents_of(entries);
     let source = locked.as_ref().map(|l| l.entry.source.clone());
@@ -94,7 +94,7 @@ fn augmentation(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -> 
         .map(|name| format!("{}{name}", crate::model::SKILL_CHILD))
         .into_iter()
         .collect();
-    Augmentation {
+    Installed {
         details: crate::model::Details::Skill {
             directory: canonical.to_path_buf(),
             install_name,
@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn npx_skill_shared_by_symlinks_is_one_augmentation() {
+    fn npx_skill_shared_by_symlinks_is_one_installed_item() {
         let f = fixture();
         let h = &f.env.home;
         let canon = h.join(".agents/skills/tdd");

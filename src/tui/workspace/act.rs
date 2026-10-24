@@ -2,7 +2,7 @@
 //! a request still means the same if the lists changed while it was in flight.
 
 use crate::model::Scope;
-use crate::profile::Entry;
+use crate::profile::Spec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Act {
@@ -32,7 +32,7 @@ pub enum Act {
     },
     /// Add what is installed, in the project and at user level, to the library.
     LibraryImport,
-    LibraryRemove(Entry),
+    LibraryRemove(Spec),
     /// Make the project hold exactly what the profile has, removing the rest.
     ApplyExact {
         profile: String,
@@ -40,13 +40,13 @@ pub enum Act {
     /// Make the project hold these entries of its profile and not the rest of it: install the
     /// entries, remove the installed items with these ids.
     Subset {
-        install: Vec<Entry>,
+        install: Vec<Spec>,
         remove: Vec<String>,
     },
     /// Make a profile of this name holding these entries.
     CreateProfile {
         name: String,
-        entries: Vec<Entry>,
+        entries: Vec<Spec>,
     },
     /// Store what the project has installed as a new profile.
     SaveCurrent {
@@ -55,7 +55,7 @@ pub enum Act {
     /// Replace the profile's entries.
     SetEntries {
         profile: String,
-        entries: Vec<Entry>,
+        entries: Vec<Spec>,
     },
     DeleteProfile {
         name: String,

@@ -2,7 +2,7 @@
 
 use super::item::ItemKind;
 use super::repoint::Moved;
-use crate::profile::{Entry, Profile};
+use crate::profile::{Profile, Spec};
 use crate::stale::{local_source, with_source};
 
 /// Point the entries of `profiles` at the new path of `moved`; the names of the profiles changed.
@@ -19,21 +19,21 @@ pub fn repoint_profiles(profiles: &mut [Profile], moved: &Moved) -> Vec<String> 
         .collect()
 }
 
-fn names_mut(entry: &mut Entry) -> Option<&mut Vec<String>> {
+fn names_mut(entry: &mut Spec) -> Option<&mut Vec<String>> {
     match entry {
-        Entry::Skill { names, .. } | Entry::Subagent { names, .. } => Some(names),
+        Spec::Skill { names, .. } | Spec::Subagent { names, .. } => Some(names),
         _ => None,
     }
 }
 
-fn holds_old(entry: &mut Entry, moved: &Moved) -> bool {
+fn holds_old(entry: &mut Spec, moved: &Moved) -> bool {
     ItemKind::of_entry(entry) == moved.kind
         && local_source(entry) == Some(moved.from.as_str())
         && names_mut(entry).is_some_and(|names| names.contains(&moved.name))
 }
 
 /// Take the moved name out of the first entry holding it and put it under the new path.
-fn move_one(entries: &mut Vec<Entry>, moved: &Moved) -> bool {
+fn move_one(entries: &mut Vec<Spec>, moved: &Moved) -> bool {
     let Some(at) = entries.iter_mut().position(|e| holds_old(e, moved)) else {
         return false;
     };
@@ -44,7 +44,7 @@ fn move_one(entries: &mut Vec<Entry>, moved: &Moved) -> bool {
             entries.remove(at);
         }
     }
-    let same_home = |e: &Entry| {
+    let same_home = |e: &Spec| {
         ItemKind::of_entry(e) == moved.kind
             && local_source(e) == Some(moved.to.as_str())
             && e.agents() == old.agents()
@@ -60,7 +60,7 @@ fn move_one(entries: &mut Vec<Entry>, moved: &Moved) -> bool {
     true
 }
 
-fn with_names(mut entry: Entry, name: &str) -> Entry {
+fn with_names(mut entry: Spec, name: &str) -> Spec {
     if let Some(names) = names_mut(&mut entry) {
         *names = vec![name.to_string()];
     }
@@ -82,7 +82,7 @@ mod tests {
         }
     }
 
-    fn profile_with(entries: Vec<Entry>) -> Profile {
+    fn profile_with(entries: Vec<Spec>) -> Profile {
         Profile {
             entries,
             ..Profile::new("p")
@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn only_the_moved_name_leaves_a_shared_entry() {
-        let both = Entry::Skill {
+        let both = Spec::Skill {
             source: "/old".into(),
             names: vec!["a".into(), "b".into()],
             agents: vec![],
@@ -131,7 +131,7 @@ mod tests {
 
         repoint_profiles(&mut profiles, &moved("a"));
 
-        let Entry::Skill { names, .. } = &profiles[0].entries[0] else {
+        let Spec::Skill { names, .. } = &profiles[0].entries[0] else {
             panic!("a skill entry");
         };
         assert_eq!(profiles[0].entries.len(), 1);

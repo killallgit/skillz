@@ -9,7 +9,7 @@ use serde_json::json;
 use super::removal::{Pick, choose};
 use super::scope::Scene;
 use super::session::{Change, change, with_session};
-use crate::model::{Augmentation, Scope};
+use crate::model::{Installed, Scope};
 use crate::update::check::any_available;
 use crate::{remove, update};
 
@@ -25,7 +25,7 @@ pub(super) fn update(
     request: &UpdateRequest,
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
-    let items: Vec<Augmentation> = scene
+    let items: Vec<Installed> = scene
         .complete()?
         .into_iter()
         .filter(|item| !update::steps(&scene.deps.adapters, item, &scene.env.project).is_empty())
@@ -62,7 +62,7 @@ pub(super) fn check(
     out: &mut dyn Write,
 ) -> anyhow::Result<()> {
     let items = scene.gather();
-    let outdated: Vec<&Augmentation> = remove::matches(&items, query)
+    let outdated: Vec<&Installed> = remove::matches(&items, query)
         .into_iter()
         .filter(|item| any_available(scene.deps.checker.as_ref(), item))
         .collect();

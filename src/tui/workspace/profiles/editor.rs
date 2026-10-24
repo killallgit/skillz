@@ -12,7 +12,7 @@ use ratatui::widgets::Paragraph;
 
 use super::rows::{self, Row, section_title};
 use crate::library::Catalog;
-use crate::profile::{Entry, Profile, same_thing};
+use crate::profile::{Profile, Spec, same_thing};
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
 use crate::tui::widgets::input::{InputField, Outcome};
@@ -32,7 +32,7 @@ pub(super) enum Choice {
     /// Make the profile `name`, new or existing, hold exactly these entries.
     Save {
         name: String,
-        entries: Vec<Entry>,
+        entries: Vec<Spec>,
         new: bool,
     },
     Closed,
@@ -53,7 +53,7 @@ pub(super) struct Editor {
     /// Why the last save was refused, until the next key.
     refusal: Option<&'static str>,
     /// What the profile has that the library does not offer; kept as it is.
-    kept: Vec<Entry>,
+    kept: Vec<Spec>,
     rows: Vec<Row>,
     outline: Outline,
     checked: BTreeSet<usize>,
@@ -71,11 +71,11 @@ impl Editor {
 
     pub fn editing(profile: &Profile, library: &Catalog) -> Self {
         let rows = rows::of_library(library);
-        let has = |entry: &Entry| profile.entries.iter().any(|e| same_thing(e, entry));
+        let has = |entry: &Spec| profile.entries.iter().any(|e| same_thing(e, entry));
         let checked = (0..rows.len())
             .filter(|&id| matches!(&rows[id], Row::Item(item) if has(&item.entry)))
             .collect();
-        let offered = |entry: &Entry| library.items().iter().any(|i| same_thing(&i.entry, entry));
+        let offered = |entry: &Spec| library.items().iter().any(|i| same_thing(&i.entry, entry));
         let mut outline = Outline::new(rows::shape(&rows));
         outline.open_all();
         Editor {
@@ -184,7 +184,7 @@ impl Editor {
     }
 
     /// The kept entries, then the checked library ones.
-    fn entries(&self) -> Vec<Entry> {
+    fn entries(&self) -> Vec<Spec> {
         let chosen = self.checked.iter().filter_map(|&id| match &self.rows[id] {
             Row::Item(item) => Some(item.entry.clone()),
             Row::Section { .. } => None,
@@ -281,7 +281,7 @@ mod tests {
         ])
     }
 
-    fn profile_with(entries: Vec<Entry>) -> Profile {
+    fn profile_with(entries: Vec<Spec>) -> Profile {
         let mut profile = Profile::new("web");
         profile.entries = entries;
         profile
@@ -293,7 +293,7 @@ mod tests {
             .fold(Choice::Open, |_, code| chooser.handle(key(*code)))
     }
 
-    fn saved(entries: Vec<Entry>) -> Choice {
+    fn saved(entries: Vec<Spec>) -> Choice {
         Choice::Save {
             name: "web".into(),
             entries,

@@ -8,8 +8,8 @@
 
 use std::collections::HashSet;
 
-use super::Entry;
-use crate::model::{Agent, Augmentation, Details, Installer, Kind, split_plugin_id};
+use super::Spec;
+use crate::model::{Agent, Details, Installed, Installer, Kind, split_plugin_id};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Key {
@@ -21,7 +21,7 @@ pub enum Key {
 }
 
 /// `base` without what `top` replaces, followed by `top`.
-pub fn overlay(base: Vec<Entry>, top: &[Entry]) -> Vec<Entry> {
+pub fn overlay(base: Vec<Spec>, top: &[Spec]) -> Vec<Spec> {
     let taken: HashSet<Key> = top.iter().flat_map(keys).collect();
     base.into_iter()
         .filter_map(|entry| without(entry, &taken))
@@ -30,7 +30,7 @@ pub fn overlay(base: Vec<Entry>, top: &[Entry]) -> Vec<Entry> {
 }
 
 /// Whether the two entries name at least one thing in common.
-pub fn same_thing(a: &Entry, b: &Entry) -> bool {
+pub fn same_thing(a: &Spec, b: &Spec) -> bool {
     let taken: HashSet<Key> = keys(a).into_iter().collect();
     keys(b).iter().any(|k| taken.contains(k))
 }
@@ -39,7 +39,7 @@ pub fn same_thing(a: &Entry, b: &Entry) -> bool {
 pub type Claim = (Key, Agent);
 
 /// What a resolved entry (agents filled in) puts in place: each of its keys for each agent.
-pub fn claims(entry: &Entry) -> Vec<Claim> {
+pub fn claims(entry: &Spec) -> Vec<Claim> {
     let agents = entry.agents();
     keys(entry)
         .into_iter()
@@ -48,14 +48,14 @@ pub fn claims(entry: &Entry) -> Vec<Claim> {
 }
 
 /// What is installed, independent of whether a profile can reproduce its credentials or source.
-pub(crate) fn installed_claims(item: &Augmentation) -> Vec<Claim> {
+pub(crate) fn installed_claims(item: &Installed) -> Vec<Claim> {
     installed_keys(item)
         .into_iter()
         .flat_map(|key| item.agents.iter().map(move |agent| (key.clone(), *agent)))
         .collect()
 }
 
-pub(crate) fn installed_keys(item: &Augmentation) -> Vec<Key> {
+pub(crate) fn installed_keys(item: &Installed) -> Vec<Key> {
     let source = || match item.installer {
         Installer::Npx => item.source.as_ref(),
         _ => item.source.as_ref().or(item.origin.link.as_ref()),
@@ -100,7 +100,7 @@ pub(crate) fn installed_keys(item: &Augmentation) -> Vec<Key> {
 
 /// The part of a resolved entry that `have` does not cover: the names with a missing claim for
 /// some agent, or the whole entry when it has one key. `None` when everything is there.
-pub fn lacking(entry: &Entry, have: &HashSet<Claim>) -> Option<Entry> {
+pub fn lacking(entry: &Spec, have: &HashSet<Claim>) -> Option<Spec> {
     let covered: HashSet<Key> = keys(entry)
         .into_iter()
         .filter(|key| {
@@ -113,15 +113,15 @@ pub fn lacking(entry: &Entry, have: &HashSet<Claim>) -> Option<Entry> {
     without(entry.clone(), &covered)
 }
 
-pub(crate) fn keys(entry: &Entry) -> Vec<Key> {
+pub(crate) fn keys(entry: &Spec) -> Vec<Key> {
     match entry {
-        Entry::Skill { source, names, .. } => per_name(source, names, Key::Skill),
-        Entry::Subagent { source, names, .. } => per_name(source, names, Key::Subagent),
-        Entry::Plugin {
+        Spec::Skill { source, names, .. } => per_name(source, names, Key::Skill),
+        Spec::Subagent { source, names, .. } => per_name(source, names, Key::Subagent),
+        Spec::Plugin {
             marketplace, name, ..
         } => vec![Key::Plugin(marketplace.clone(), name.clone())],
-        Entry::Mcp { name, .. } => vec![Key::Mcp(name.clone())],
-        Entry::Hook {
+        Spec::Mcp { name, .. } => vec![Key::Mcp(name.clone())],
+        Spec::Hook {
             event,
             matcher,
             command,
@@ -138,12 +138,12 @@ fn per_name(source: &str, names: &[String], key: fn(String, String) -> Key) -> V
 }
 
 /// The entry minus the names whose key is taken; `None` when nothing of it is left.
-fn without(mut entry: Entry, taken: &HashSet<Key>) -> Option<Entry> {
+fn without(mut entry: Spec, taken: &HashSet<Key>) -> Option<Spec> {
     let all = keys(&entry);
     if !all.iter().any(|k| taken.contains(k)) {
         return Some(entry);
     }
-    let (Entry::Skill { names, .. } | Entry::Subagent { names, .. }) = &mut entry else {
+    let (Spec::Skill { names, .. } | Spec::Subagent { names, .. }) = &mut entry else {
         return None;
     };
     let mut kept = all.iter().map(|k| !taken.contains(k));
@@ -156,16 +156,16 @@ mod tests {
     use super::*;
     use crate::model::Agent;
 
-    fn skills(source: &str, names: &[&str]) -> Entry {
-        Entry::Skill {
+    fn skills(source: &str, names: &[&str]) -> Spec {
+        Spec::Skill {
             source: source.into(),
             names: names.iter().map(|n| n.to_string()).collect(),
             agents: vec![],
         }
     }
 
-    fn hook(matcher: Option<&str>, command: &str) -> Entry {
-        Entry::Hook {
+    fn hook(matcher: Option<&str>, command: &str) -> Spec {
+        Spec::Hook {
             event: "Stop".into(),
             matcher: matcher.map(String::from),
             command: command.into(),
@@ -173,8 +173,8 @@ mod tests {
         }
     }
 
-    fn mcp(name: &str, command: &str) -> Entry {
-        Entry::Mcp {
+    fn mcp(name: &str, command: &str) -> Spec {
+        Spec::Mcp {
             name: name.into(),
             command: Some(command.into()),
             args: vec![],
@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn a_plugin_is_identified_by_marketplace_and_name() {
-        let plugin = |source: &str| Entry::Plugin {
+        let plugin = |source: &str| Spec::Plugin {
             source: source.into(),
             marketplace: "mp".into(),
             name: "p".into(),

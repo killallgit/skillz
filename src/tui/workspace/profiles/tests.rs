@@ -3,11 +3,11 @@ use ratatui::crossterm::event::KeyCode;
 use super::rows::tests::skill;
 use super::*;
 use crate::library::LibraryItem;
-use crate::model::{Agent, Augmentation, Installer, Kind, Scope as Level};
+use crate::model::{Agent, Installed, Installer, Kind, Scope as Level};
 use crate::tui::widgets::testing::{key, keys, render_to_buffer};
 
-fn installed(name: &str) -> Augmentation {
-    Augmentation {
+fn installed(name: &str) -> Installed {
+    Installed {
         details: Default::default(),
         hooks: vec![],
         members: Vec::new(),

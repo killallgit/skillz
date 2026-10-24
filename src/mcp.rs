@@ -3,8 +3,8 @@
 use serde_json::Value;
 use toml_edit::{Item, TableLike};
 
-use crate::model::Augmentation;
 use crate::model::Details;
+use crate::model::Installed;
 use crate::redact::{credential_count, redact, redact_args};
 
 const COMMAND: &str = "command: ";
@@ -153,7 +153,7 @@ impl Server {
 }
 
 /// The item's children as safe to show: an MCP server's args and url with credentials hidden.
-pub fn shown_children(item: &Augmentation) -> Vec<String> {
+pub fn shown_children(item: &Installed) -> Vec<String> {
     match &item.details {
         Details::Mcp { server, .. } => server.clone().redacted().children(),
         _ => item.children.clone(),
@@ -166,8 +166,8 @@ mod tests {
     use crate::model::{Agent, Installer, Kind, Scope};
     use serde_json::json;
 
-    fn item(server: &Server) -> Augmentation {
-        Augmentation {
+    fn item(server: &Server) -> Installed {
+        Installed {
             details: Details::Mcp {
                 config: "config.json".into(),
                 server: server.clone(),

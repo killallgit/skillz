@@ -8,8 +8,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::apply::{holds, only_wanted_by};
-use crate::model::Augmentation;
-use crate::profile::{Entry, Profile};
+use crate::model::Installed;
+use crate::profile::{Profile, Spec};
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
 use crate::tui::widgets::list::ListView;
@@ -32,14 +32,14 @@ pub(super) enum Choice {
 #[derive(Debug, Clone)]
 pub(super) struct Subset {
     profile: String,
-    entries: Vec<(Entry, bool)>,
+    entries: Vec<(Spec, bool)>,
     list: ListView,
 }
 
 impl Subset {
     /// The profile's entries, those the project already holds checked.
-    pub fn of(profile: &Profile, installed: &[Augmentation]) -> Self {
-        let entries: Vec<(Entry, bool)> = profile
+    pub fn of(profile: &Profile, installed: &[Installed]) -> Self {
+        let entries: Vec<(Spec, bool)> = profile
             .resolved()
             .into_iter()
             .map(|entry| {
@@ -54,7 +54,7 @@ impl Subset {
         }
     }
 
-    pub fn handle(&mut self, key: KeyEvent, installed: &[Augmentation]) -> Choice {
+    pub fn handle(&mut self, key: KeyEvent, installed: &[Installed]) -> Choice {
         match keymap::resolve(Scope::Picker, key) {
             Some(Action::Select) => Choice::Done(self.act(installed)),
             Some(Action::Back) => Choice::Closed,
@@ -72,8 +72,8 @@ impl Subset {
         }
     }
 
-    fn act(&self, installed: &[Augmentation]) -> Act {
-        let side = |checked: bool| -> Vec<Entry> {
+    fn act(&self, installed: &[Installed]) -> Act {
+        let side = |checked: bool| -> Vec<Spec> {
             self.entries
                 .iter()
                 .filter(|(_, on)| *on == checked)
@@ -132,8 +132,8 @@ mod tests {
     use crate::tui::widgets::testing::key;
     use crate::tui::workspace::installed::rows::tests::installed;
 
-    fn skill(name: &str) -> Entry {
-        Entry::Skill {
+    fn skill(name: &str) -> Spec {
+        Spec::Skill {
             source: "o/r".into(),
             names: vec![name.into()],
             agents: vec![],
@@ -146,7 +146,7 @@ mod tests {
         profile
     }
 
-    fn have() -> Vec<Augmentation> {
+    fn have() -> Vec<Installed> {
         vec![installed("tdd", Kind::Skill, Some("o/r"))]
     }
 

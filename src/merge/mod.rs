@@ -1,6 +1,6 @@
 //! One logical item per thing installed, however many agents see it: a subagent in both
 //! `.claude/agents` and `.codex/agents`, or the same hook in two agents' config, is one
-//! `Augmentation` whose `members` are the copies. Pure; discovery stays per agent.
+//! `Installed` whose `members` are the copies. Pure; discovery stays per agent.
 
 mod key;
 mod tag;
@@ -11,11 +11,11 @@ use std::collections::HashMap;
 
 use self::key::Key;
 pub use self::tag::tag;
-use crate::model::{Augmentation, Details};
+use crate::model::{Details, Installed};
 
 /// `items` with every set of copies of one thing folded into its first copy's place.
-pub fn merge(items: Vec<Augmentation>) -> Vec<Augmentation> {
-    let mut slots: Vec<Vec<Augmentation>> = Vec::new();
+pub fn merge(items: Vec<Installed>) -> Vec<Installed> {
+    let mut slots: Vec<Vec<Installed>> = Vec::new();
     let mut slot_of: HashMap<Key, usize> = HashMap::new();
     for item in items {
         let slot = *slot_of.entry(Key::of(&item)).or_insert_with(|| {
@@ -28,7 +28,7 @@ pub fn merge(items: Vec<Augmentation>) -> Vec<Augmentation> {
 }
 
 /// The copies as one item: the first copy's identity, every agent, every removal step in order.
-fn fold(mut copies: Vec<Augmentation>) -> Augmentation {
+fn fold(mut copies: Vec<Installed>) -> Installed {
     if copies.len() == 1 {
         return copies.remove(0);
     }

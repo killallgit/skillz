@@ -7,18 +7,18 @@ use std::path::Path;
 
 use crate::action::Action;
 use crate::agents::{AgentAdapter, adapter_for};
-use crate::model::{Augmentation, Details, Installer, Kind, Scope};
+use crate::model::{Details, Installed, Installer, Kind, Scope};
 
 /// The steps that bring `item` to the latest version, run from `cwd`; none when it cannot be
 /// updated. An item seen through several agents is updated through each of them.
-pub fn steps(adapters: &[Box<dyn AgentAdapter>], item: &Augmentation, cwd: &Path) -> Vec<Action> {
+pub fn steps(adapters: &[Box<dyn AgentAdapter>], item: &Installed, cwd: &Path) -> Vec<Action> {
     item.parts()
         .iter()
         .flat_map(|part| part_steps(adapters, part, cwd))
         .collect()
 }
 
-fn part_steps(adapters: &[Box<dyn AgentAdapter>], item: &Augmentation, cwd: &Path) -> Vec<Action> {
+fn part_steps(adapters: &[Box<dyn AgentAdapter>], item: &Installed, cwd: &Path) -> Vec<Action> {
     let name = match &item.details {
         Details::Skill { install_name, .. } => install_name.as_str(),
         _ => item.name.as_str(),
@@ -42,7 +42,7 @@ fn part_steps(adapters: &[Box<dyn AgentAdapter>], item: &Augmentation, cwd: &Pat
     }
 }
 
-pub fn can_update(item: &Augmentation) -> bool {
+pub fn can_update(item: &Installed) -> bool {
     !steps(&crate::agents::registry(), item, Path::new("")).is_empty()
 }
 
@@ -55,7 +55,7 @@ fn npx_args(name: &str, scope: Scope) -> [&str; 6] {
 }
 
 /// A subagent copied from a source is copied again from it.
-fn recopy(item: &Augmentation, cwd: &Path) -> Vec<Action> {
+fn recopy(item: &Installed, cwd: &Path) -> Vec<Action> {
     let Some(source) = item.source.clone() else {
         return vec![];
     };
@@ -80,8 +80,8 @@ mod tests {
     use super::*;
     use crate::model::Agent;
 
-    fn item(name: &str, kind: Kind, installer: Installer) -> Augmentation {
-        Augmentation {
+    fn item(name: &str, kind: Kind, installer: Installer) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: vec![],
             members: Vec::new(),
@@ -107,7 +107,7 @@ mod tests {
         }
     }
 
-    fn programs(item: &Augmentation) -> Vec<String> {
+    fn programs(item: &Installed) -> Vec<String> {
         steps(&crate::agents::registry(), item, Path::new("/p"))
             .iter()
             .map(|step| match step {
@@ -156,15 +156,11 @@ mod tests {
         global.scope = Scope::Global;
         let project = item("tdd", Kind::Skill, Installer::Npx);
 
-        let flag = |item: &Augmentation| match &steps(
-            &crate::agents::registry(),
-            item,
-            Path::new("/p"),
-        )[0]
-        {
-            Action::Run { args, .. } => args[4].clone(),
-            other => panic!("{other:?}"),
-        };
+        let flag =
+            |item: &Installed| match &steps(&crate::agents::registry(), item, Path::new("/p"))[0] {
+                Action::Run { args, .. } => args[4].clone(),
+                other => panic!("{other:?}"),
+            };
 
         assert_eq!(
             (flag(&global).as_str(), flag(&project).as_str()),

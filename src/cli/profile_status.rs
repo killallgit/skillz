@@ -8,8 +8,8 @@ use super::deps::Deps;
 use super::scope::installed;
 use crate::apply::{Standing, compare, drift};
 use crate::env::Env;
-use crate::model::{Augmentation, Scope};
-use crate::profile::{Entry, Profile, Store};
+use crate::model::{Installed, Scope};
+use crate::profile::{Profile, Spec, Store};
 use crate::stale::{Disk, Probe, missing_source};
 
 pub(super) fn list(deps: &Deps, env: &Env, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
@@ -36,7 +36,7 @@ pub(super) fn list(deps: &Deps, env: &Env, json: bool, out: &mut dyn Write) -> a
     Ok(())
 }
 
-fn row_of(profile: &Profile, here: &[Augmentation]) -> Value {
+fn row_of(profile: &Profile, here: &[Installed]) -> Value {
     let drift = drift(profile, here);
     json!({
         "name": profile.name,
@@ -85,7 +85,7 @@ pub(super) fn status(
 
 fn standing_json(name: &str, standing: &Standing, probe: &dyn Probe) -> Value {
     let labels =
-        |entries: &[Entry]| -> Vec<String> { entries.iter().map(ToString::to_string).collect() };
+        |entries: &[Spec]| -> Vec<String> { entries.iter().map(ToString::to_string).collect() };
     let unavailable: Vec<String> = standing
         .present
         .iter()

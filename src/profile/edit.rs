@@ -1,7 +1,7 @@
-use super::{Entry, same_thing};
+use super::{Spec, same_thing};
 
 /// `entries` followed by those of `added` that name nothing `entries` already name.
-pub fn with_added(entries: &[Entry], added: Vec<Entry>) -> Vec<Entry> {
+pub fn with_added(entries: &[Spec], added: Vec<Spec>) -> Vec<Spec> {
     added.into_iter().fold(entries.to_vec(), |mut all, entry| {
         if !all.iter().any(|have| same_thing(have, &entry)) {
             all.push(entry);
@@ -14,8 +14,8 @@ pub fn with_added(entries: &[Entry], added: Vec<Entry>) -> Vec<Entry> {
 mod tests {
     use super::*;
 
-    fn skill(name: &str) -> Entry {
-        Entry::Skill {
+    fn skill(name: &str) -> Spec {
+        Spec::Skill {
             source: "o/r".into(),
             names: vec![name.into()],
             agents: vec![],

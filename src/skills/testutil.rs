@@ -7,7 +7,7 @@ use tempfile::TempDir;
 use super::SkillDir;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Scope};
+use crate::model::{Agent, Installed, Scope};
 
 pub(super) struct Fixture {
     _tmp: TempDir,
@@ -78,6 +78,6 @@ pub(super) fn write_lock(path: &Path, body: &str) {
     fs::write(path, body).unwrap();
 }
 
-pub(super) fn by_name<'a>(augs: &'a [Augmentation], name: &str) -> &'a Augmentation {
+pub(super) fn by_name<'a>(augs: &'a [Installed], name: &str) -> &'a Installed {
     augs.iter().find(|a| a.name == name).unwrap()
 }

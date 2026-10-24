@@ -4,7 +4,7 @@
 use super::pick::{Choosing, pick};
 use super::profile_args::{ProfileAddArgs, ProfileRemoveArgs};
 use super::session::{Console, Session};
-use crate::profile::{Entry, with_added};
+use crate::profile::{Spec, with_added};
 
 pub(super) fn add(
     session: &Session,
@@ -14,7 +14,7 @@ pub(super) fn add(
     let have = session.profiles().load(&args.name)?.entries;
     let mut wanted = Vec::new();
     if let Some(spec) = &args.spec {
-        wanted.push(Entry::parse_spec(spec)?);
+        wanted.push(Spec::parse_spec(spec)?);
     }
     wanted.extend(from_library(session, console, args)?);
     let entries = with_added(&have, wanted);
@@ -31,7 +31,7 @@ fn from_library(
     session: &Session,
     console: &Console,
     args: &ProfileAddArgs,
-) -> anyhow::Result<Vec<Entry>> {
+) -> anyhow::Result<Vec<Spec>> {
     let library = session.library().read()?.items;
     let choosing = Choosing {
         prompter: console,
@@ -63,6 +63,6 @@ pub(super) fn remove(
             .iter()
             .try_for_each(|entry| console.say(&format!("would remove {entry}")));
     }
-    let kept: Vec<Entry> = have.iter().filter(|e| !gone.contains(e)).cloned().collect();
+    let kept: Vec<Spec> = have.iter().filter(|e| !gone.contains(e)).cloned().collect();
     console.conclude(Some(session.set_entries(&args.name, &kept)?))
 }

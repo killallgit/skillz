@@ -5,14 +5,14 @@ use super::notice::Notice;
 use crate::cli::scope::{complete_installed, project_env};
 use crate::library::LibraryItem;
 use crate::model::Scope;
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::stale::Disk;
 use crate::sync::sync_library;
 
 impl Session<'_, '_> {
     /// Items typed in carry no provenance; one the library already knows keeps its own.
     pub(in crate::cli) fn library_add(&self, spec: &str) -> anyhow::Result<Option<Notice>> {
-        let entry = Entry::parse_spec(spec)?;
+        let entry = Spec::parse_spec(spec)?;
         let label = entry.to_string();
         self.store.update(|document| {
             document.items.add_entry(entry);
@@ -37,7 +37,7 @@ impl Session<'_, '_> {
         }))
     }
 
-    pub(in crate::cli) fn library_remove(&self, entry: &Entry) -> anyhow::Result<Option<Notice>> {
+    pub(in crate::cli) fn library_remove(&self, entry: &Spec) -> anyhow::Result<Option<Notice>> {
         let env = project_env(self.deps, &self.project);
         let wanted = entry.clone().in_env(&env);
         let item = LibraryItem::from_entry(entry.clone());
@@ -87,7 +87,7 @@ mod tests {
         let (added, removed) = with_session(dir.path(), |session| {
             session.library_add("skill o/r tdd").unwrap();
             let added = session.store.read().unwrap().items.items().len();
-            let entry = Entry::parse_spec("skill o/r tdd").unwrap();
+            let entry = Spec::parse_spec("skill o/r tdd").unwrap();
             session.library_remove(&entry).unwrap();
             (added, session.store.read().unwrap().items.items().len())
         });

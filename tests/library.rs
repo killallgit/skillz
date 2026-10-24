@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use skillz::profile::Entry;
+use skillz::profile::Spec;
 
 const SAY_HI: &str = "hook Stop say hi";
 
@@ -193,7 +193,7 @@ fn removing_by_query_takes_the_item_out_of_the_library() {
 
     let left = sb.library();
     assert!(out.status.success());
-    assert!(matches!(left.items(), [item] if matches!(item.entry, Entry::Hook { .. })));
+    assert!(matches!(left.items(), [item] if matches!(item.entry, Spec::Hook { .. })));
 }
 
 #[test]

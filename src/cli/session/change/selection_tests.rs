@@ -4,7 +4,7 @@ use super::tests::{project_with_skill, run_change, session, skill_entry, skill_i
 use super::*;
 use crate::agents::registry;
 use crate::install::test_support::ScriptedPrompter;
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::runner::{CommandRunner, Output};
 
 /// Fails every command that mentions `word`, and notes the arguments of all of them.
@@ -32,7 +32,7 @@ impl CommandRunner for FailsOn {
     }
 }
 
-fn selection<'a>(install: &'a [Entry], remove: &'a [String]) -> Selection<'a> {
+fn selection<'a>(install: &'a [Spec], remove: &'a [String]) -> Selection<'a> {
     Selection {
         install,
         remove,
@@ -149,7 +149,7 @@ fn one_failing_install_is_reported_and_the_others_still_run() {
 #[test]
 fn an_unsupported_install_is_skipped_without_counting_as_installed() {
     let dir = tempfile::tempdir().unwrap();
-    let entries = [Entry::Mcp {
+    let entries = [Spec::Mcp {
         name: "srv".into(),
         command: Some("npx".into()),
         args: vec![],

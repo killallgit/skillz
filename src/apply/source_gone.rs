@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::stale::{Probe, missing_source};
 
 /// An entry cannot be installed because the local folder it names is gone, most likely moved.
@@ -12,7 +12,7 @@ pub struct SourceGone {
 
 impl SourceGone {
     /// Why `entry` cannot be installed, when its local source is gone.
-    pub fn of(entry: &Entry, probe: &dyn Probe) -> Option<Self> {
+    pub fn of(entry: &Spec, probe: &dyn Probe) -> Option<Self> {
         missing_source(entry, probe).map(|path| SourceGone {
             entry: entry.to_string(),
             path: path.to_string(),

@@ -1,5 +1,5 @@
 use crate::action::Action;
-use crate::profile::{Entry, Profile};
+use crate::profile::{Profile, Spec};
 use crate::provision::{self, Unsupported};
 
 use super::Applier;
@@ -30,7 +30,7 @@ impl Applier<'_> {
     }
 
     /// The install steps for each entry, and what some agent cannot take.
-    fn installs_for(&self, entries: &[Entry]) -> (Vec<(Entry, Vec<Action>)>, Vec<Unsupported>) {
+    fn installs_for(&self, entries: &[Spec]) -> (Vec<(Spec, Vec<Action>)>, Vec<Unsupported>) {
         let mut installs = Vec::new();
         let mut unsupported = Vec::new();
         for entry in entries {

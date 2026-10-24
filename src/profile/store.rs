@@ -169,7 +169,7 @@ fn extended_by(profiles: &[Profile], name: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::profile::Entry;
+    use crate::profile::Spec;
 
     fn store() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();
@@ -228,8 +228,8 @@ mod tests {
         assert!(store.names().unwrap().is_empty());
     }
 
-    fn skill(name: &str) -> Entry {
-        Entry::Skill {
+    fn skill(name: &str) -> Spec {
+        Spec::Skill {
             source: "o/r".into(),
             names: vec![name.into()],
             agents: vec![],
@@ -248,7 +248,7 @@ mod tests {
             .entries
             .iter()
             .flat_map(|e| match e {
-                Entry::Skill { names, .. } => names.clone(),
+                Spec::Skill { names, .. } => names.clone(),
                 _ => vec![],
             })
             .collect()

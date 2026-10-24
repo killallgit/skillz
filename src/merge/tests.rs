@@ -3,8 +3,8 @@ use crate::action::Action;
 use crate::hook_text::HookEntry;
 use crate::model::{Agent, Details, Installer, Kind, Scope};
 
-fn item(kind: Kind, name: &str, agent: Agent) -> Augmentation {
-    Augmentation {
+fn item(kind: Kind, name: &str, agent: Agent) -> Installed {
+    Installed {
         details: Default::default(),
         id: format!("{kind}:{agent}:{name}"),
         name: name.into(),
@@ -26,8 +26,8 @@ fn step(name: &str) -> Action {
     Action::native("tool", &["remove", name], &[name], "/".as_ref()).unwrap()
 }
 
-fn hook(agent: Agent, command: &str) -> Augmentation {
-    Augmentation {
+fn hook(agent: Agent, command: &str) -> Installed {
+    Installed {
         details: Default::default(),
         hooks: vec![HookEntry {
             event: "Stop".into(),
@@ -40,7 +40,7 @@ fn hook(agent: Agent, command: &str) -> Augmentation {
 
 #[test]
 fn a_skill_in_a_shared_dir_is_already_one_and_stays_unmerged() {
-    let shared = Augmentation {
+    let shared = Installed {
         agents: vec![Agent::Claude, Agent::Codex],
         ..item(Kind::Skill, "tdd", Agent::Codex)
     };
@@ -100,7 +100,7 @@ fn hooks_with_different_handlers_stay_apart() {
 #[test]
 fn the_same_name_in_different_scopes_is_not_merged() {
     let global = item(Kind::Subagent, "reviewer", Agent::Claude);
-    let project = Augmentation {
+    let project = Installed {
         scope: Scope::Project,
         ..item(Kind::Subagent, "reviewer", Agent::Codex)
     };
@@ -112,7 +112,7 @@ fn the_same_name_in_different_scopes_is_not_merged() {
 
 #[test]
 fn the_same_name_from_different_sources_is_not_merged() {
-    let from = |agent, source: &str| Augmentation {
+    let from = |agent, source: &str| Installed {
         source: Some(source.into()),
         group: source.into(),
         ..item(Kind::Subagent, "reviewer", agent)
@@ -125,7 +125,7 @@ fn the_same_name_from_different_sources_is_not_merged() {
 
 #[test]
 fn mcp_servers_launched_differently_are_not_merged() {
-    let server = |agent, launch: &str| Augmentation {
+    let server = |agent, launch: &str| Installed {
         details: Details::Mcp {
             config: "/config".into(),
             server: crate::mcp::Server {
@@ -150,7 +150,7 @@ fn mcp_servers_launched_differently_are_not_merged() {
 
 #[test]
 fn plugins_merge_with_the_hooks_they_declare() {
-    let plugin = |agent, command| Augmentation {
+    let plugin = |agent, command| Installed {
         details: Default::default(),
         hooks: hook(agent, command).hooks,
         group: "mp".into(),
@@ -192,11 +192,11 @@ fn parts_of_a_merged_item_are_its_copies_and_of_a_lone_item_itself() {
 
 #[test]
 fn a_plugin_installed_for_two_agents_is_one_whatever_source_each_recorded() {
-    let claude = Augmentation {
+    let claude = Installed {
         source: Some("o/mp".into()),
         ..item(Kind::Plugin, "p@mp", Agent::Claude)
     };
-    let codex = Augmentation {
+    let codex = Installed {
         source: None,
         ..item(Kind::Plugin, "p@mp", Agent::Codex)
     };

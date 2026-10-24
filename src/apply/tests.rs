@@ -7,7 +7,7 @@ use std::path::Path;
 use super::*;
 use crate::agents::registry;
 use crate::model::Agent;
-use crate::profile::{Entry, Profile};
+use crate::profile::{Profile, Spec};
 use crate::runner::{CommandRunner, Output};
 use crate::stale::Disk;
 
@@ -147,7 +147,7 @@ fn profile(name: &str, skills: &[&str]) -> Profile {
     p.agents = vec![Agent::Claude];
     p.entries = skills
         .iter()
-        .map(|s| Entry::Skill {
+        .map(|s| Spec::Skill {
             source: "o/r".into(),
             names: vec![s.to_string()],
             agents: vec![],
@@ -281,7 +281,7 @@ fn a_hook_lands_in_the_settings_and_an_exact_empty_profile_takes_it_out_again() 
     let fx = Fx::new();
     let settings = fx.env.project.join(".claude/settings.local.json");
     let mut p = Profile::new("notify");
-    p.entries.push(Entry::Hook {
+    p.entries.push(Spec::Hook {
         event: "Stop".into(),
         matcher: None,
         command: "say done".into(),
@@ -317,7 +317,7 @@ fn a_relative_local_subagent_source_matches_its_canonical_install() {
     fs::create_dir_all(&source).unwrap();
     fs::write(source.join("reviewer.md"), "---\nname: reviewer\n---\nbody").unwrap();
     let mut profile = Profile::new("review");
-    profile.entries.push(Entry::Subagent {
+    profile.entries.push(Spec::Subagent {
         source: "./definitions".into(),
         names: vec!["reviewer".into()],
         agents: vec![Agent::Claude],

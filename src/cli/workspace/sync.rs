@@ -48,10 +48,10 @@ fn synced_of(result: anyhow::Result<Report>) -> Synced {
 mod tests {
     use super::*;
     use crate::library::{Catalog, ItemKind, LibraryItem, Moved, Synced as Found};
-    use crate::profile::Entry;
+    use crate::profile::Spec;
 
     fn report_adding(count: usize) -> Report {
-        let item = LibraryItem::from_entry(Entry::Hook {
+        let item = LibraryItem::from_entry(Spec::Hook {
             event: "Stop".into(),
             matcher: None,
             command: "fmt".into(),

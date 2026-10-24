@@ -7,11 +7,11 @@ use crate::action::{self, Action, Report};
 use crate::agents::{self, AgentAdapter};
 use crate::env::Env;
 use crate::matcher;
-use crate::model::{Agent, Augmentation, Scope};
+use crate::model::{Agent, Installed, Scope};
 use crate::runner::CommandRunner;
 
 /// Items named exactly `query` (case-insensitive, surrounding whitespace ignored).
-pub fn named<'a>(items: &'a [Augmentation], query: &str) -> Vec<&'a Augmentation> {
+pub fn named<'a>(items: &'a [Installed], query: &str) -> Vec<&'a Installed> {
     items
         .iter()
         .filter(|i| i.name.eq_ignore_ascii_case(query.trim()))
@@ -19,7 +19,7 @@ pub fn named<'a>(items: &'a [Augmentation], query: &str) -> Vec<&'a Augmentation
 }
 
 /// Items matching `query`: exact (case-insensitive) name matches win over fuzzy ones.
-pub fn matches<'a>(items: &'a [Augmentation], query: Option<&str>) -> Vec<&'a Augmentation> {
+pub fn matches<'a>(items: &'a [Installed], query: Option<&str>) -> Vec<&'a Installed> {
     let Some(query) = query.filter(|q| !q.trim().is_empty()) else {
         return items.iter().collect();
     };
@@ -47,10 +47,10 @@ pub fn matches<'a>(items: &'a [Augmentation], query: Option<&str>) -> Vec<&'a Au
 /// The items `uninstall QUERY` may offer. `yes` skips the picker and takes every candidate,
 /// so it is only allowed when exactly one item has that exact name.
 pub fn candidates<'a>(
-    items: &'a [Augmentation],
+    items: &'a [Installed],
     query: Option<&str>,
     yes: bool,
-) -> anyhow::Result<Vec<&'a Augmentation>> {
+) -> anyhow::Result<Vec<&'a Installed>> {
     let found = matches(items, query);
     if found.is_empty() {
         bail!("nothing installed matches");
@@ -67,14 +67,14 @@ pub fn candidates<'a>(
 /// The items any of `queries` may offer, each judged as `candidates` does, without repeats; all
 /// the items when there is no query.
 pub fn candidates_each<'a>(
-    items: &'a [Augmentation],
+    items: &'a [Installed],
     queries: &[String],
     yes: bool,
-) -> anyhow::Result<Vec<&'a Augmentation>> {
+) -> anyhow::Result<Vec<&'a Installed>> {
     if queries.is_empty() {
         return candidates(items, None, yes);
     }
-    let mut found: Vec<&Augmentation> = Vec::new();
+    let mut found: Vec<&Installed> = Vec::new();
     for query in queries {
         for item in candidates(items, Some(query), yes)? {
             if !found.iter().any(|have| have.id == item.id) {
@@ -88,16 +88,16 @@ pub fn candidates_each<'a>(
 /// What removing `chosen` would do.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Plan<'a> {
-    pub chosen: Vec<&'a Augmentation>,
+    pub chosen: Vec<&'a Installed>,
     /// Every step of every chosen item, in order (`action::execute` drops duplicates).
     pub steps: Vec<Action>,
     /// Removal is always complete, so when an agent filter narrowed the view: per item, the
     /// agents outside the filter that lose it too.
-    pub also_removes: Vec<(&'a Augmentation, Vec<Agent>)>,
+    pub also_removes: Vec<(&'a Installed, Vec<Agent>)>,
 }
 
 impl<'a> Plan<'a> {
-    pub fn new(chosen: &[&'a Augmentation], agent_filter: &[Agent]) -> Self {
+    pub fn new(chosen: &[&'a Installed], agent_filter: &[Agent]) -> Self {
         let also_removes = chosen
             .iter()
             .filter_map(|&c| {
@@ -118,8 +118,8 @@ impl<'a> Plan<'a> {
     }
 
     /// Remove every one of `items`, with no agent filter.
-    pub fn from_owned(items: &'a [Augmentation]) -> Self {
-        let refs: Vec<&Augmentation> = items.iter().collect();
+    pub fn from_owned(items: &'a [Installed]) -> Self {
+        let refs: Vec<&Installed> = items.iter().collect();
         Plan::new(&refs, &[])
     }
 
@@ -137,7 +137,7 @@ impl<'a> Plan<'a> {
 pub struct Outcome {
     pub report: Report,
     /// Chosen items the inventory still finds afterwards; empty when the removal worked.
-    pub still_installed: Vec<Augmentation>,
+    pub still_installed: Vec<Installed>,
 }
 
 impl Outcome {
@@ -183,8 +183,8 @@ mod tests {
     use super::*;
     use crate::model::{Installer, Kind};
 
-    fn item(name: &str, agents: &[Agent], removal: Vec<Action>) -> Augmentation {
-        Augmentation {
+    fn item(name: &str, agents: &[Agent], removal: Vec<Action>) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),

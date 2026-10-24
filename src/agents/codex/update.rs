@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use crate::action::Action;
-use crate::model::{Augmentation, Installer, Kind, Scope, split_plugin_id};
+use crate::model::{Installed, Installer, Kind, Scope, split_plugin_id};
 
-pub(super) fn steps(item: &Augmentation, cwd: &Path) -> Vec<Action> {
+pub(super) fn steps(item: &Installed, cwd: &Path) -> Vec<Action> {
     if item.installer != Installer::CodexCli || item.scope != Scope::Global {
         return vec![];
     }

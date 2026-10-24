@@ -3,7 +3,7 @@ use std::io::Write;
 use super::list::{display_tree, now_ms};
 use super::removal::{Review, confirm_and_remove};
 use super::scope::Scene;
-use crate::model::Augmentation;
+use crate::model::Installed;
 use crate::{prune, usage};
 
 /// Report findings; duplicates are always in the removal, unused items only when picked.
@@ -13,7 +13,7 @@ pub(super) fn prune(scene: &Scene, dry_run: bool, out: &mut dyn Write) -> anyhow
     let usage = usage::read(&deps.adapters, env)?;
     let now = now_ms();
     let found = prune::check(&items, &deps.adapters, &usage, now);
-    let unused: Vec<&Augmentation> = found
+    let unused: Vec<&Installed> = found
         .never_used
         .iter()
         .copied()
@@ -69,14 +69,11 @@ fn prune_sections(found: &prune::Findings, now_ms: u64) -> Vec<(&'static str, Ve
         .collect()
 }
 
-fn pick_unused<'a>(
-    scene: &Scene,
-    unused: &[&'a Augmentation],
-) -> anyhow::Result<Vec<&'a Augmentation>> {
+fn pick_unused<'a>(scene: &Scene, unused: &[&'a Installed]) -> anyhow::Result<Vec<&'a Installed>> {
     if unused.is_empty() {
         return Ok(vec![]);
     }
-    let owned: Vec<Augmentation> = unused.iter().map(|&i| i.clone()).collect();
+    let owned: Vec<Installed> = unused.iter().map(|&i| i.clone()).collect();
     let picked = scene.deps.prompter.select_items(
         "Select unused items to remove",
         &display_tree(scene.deps, scene.env, &owned),

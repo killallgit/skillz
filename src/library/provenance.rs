@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Augmentation, Installer};
+use crate::model::{Installed, Installer};
 
 /// How a library item got onto this machine, recorded when it was installed or imported.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,7 +19,7 @@ pub struct Provenance {
 }
 
 impl Provenance {
-    pub fn of(installed: &Augmentation, recorded_at: u64) -> Self {
+    pub fn of(installed: &Installed, recorded_at: u64) -> Self {
         Provenance {
             link: installed.origin.link.clone(),
             engine: installed.installer,

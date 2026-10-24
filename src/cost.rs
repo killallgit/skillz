@@ -9,7 +9,7 @@ use std::path::Path;
 
 use crate::agents::AgentAdapter;
 use crate::env::Env;
-use crate::model::{Agent, Augmentation, Kind};
+use crate::model::{Agent, Installed, Kind};
 use crate::runner::CommandRunner;
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -18,7 +18,7 @@ pub struct Costs(HashMap<(Agent, String), u32>);
 impl Costs {
     /// Always-on tokens of the item for the agents it serves, summed; `None` when no agent
     /// knows its cost.
-    pub fn tokens(&self, item: &Augmentation) -> Option<u32> {
+    pub fn tokens(&self, item: &Installed) -> Option<u32> {
         let key = match item.kind {
             Kind::Skill => format!("skill:{}", item.name),
             Kind::Plugin => format!("plugin:{}", item.name.split('@').next()?),
@@ -73,8 +73,8 @@ mod tests {
     use super::*;
     use crate::model::{Installer, Scope};
 
-    fn item(kind: Kind, name: &str, agents: &[Agent]) -> Augmentation {
-        Augmentation {
+    fn item(kind: Kind, name: &str, agents: &[Agent]) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),

@@ -1,11 +1,11 @@
 use std::path::{Component, Path, PathBuf};
 
 use crate::action::Action;
-use crate::model::{Augmentation, Installer, Kind};
+use crate::model::{Installed, Installer, Kind};
 use crate::runner::CommandRunner;
 use crate::update::check::UpdateCheck;
 
-pub(super) fn steps(item: &Augmentation, cwd: &Path) -> Vec<Action> {
+pub(super) fn steps(item: &Installed, cwd: &Path) -> Vec<Action> {
     let args = match (item.installer, item.kind) {
         (Installer::ClaudeCli, Kind::Plugin) => vec!["plugin", "update", &item.name],
         (Installer::ClaudeCli, Kind::Marketplace) => {
@@ -29,7 +29,7 @@ pub(crate) struct ClaudeMarketplaces<R> {
 }
 
 impl<R: CommandRunner + Send + Sync> UpdateCheck for ClaudeMarketplaces<R> {
-    fn available(&self, item: &Augmentation) -> bool {
+    fn available(&self, item: &Installed) -> bool {
         if (item.kind, item.installer) != (Kind::Marketplace, Installer::ClaudeCli) {
             return false;
         }
@@ -92,8 +92,8 @@ mod tests {
         }
     }
 
-    fn marketplace(name: &str) -> Augmentation {
-        Augmentation {
+    fn marketplace(name: &str) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: vec![],
             members: Vec::new(),

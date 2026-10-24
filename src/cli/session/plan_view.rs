@@ -77,19 +77,19 @@ fn purpose(switch: &Switch, removal: &Plan, step: &Action) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Agent, Augmentation, Installer, Kind};
-    use crate::profile::Entry;
+    use crate::model::{Agent, Installed, Installer, Kind};
+    use crate::profile::Spec;
 
-    fn skill(name: &str) -> Entry {
-        Entry::Skill {
+    fn skill(name: &str) -> Spec {
+        Spec::Skill {
             source: "o/r".into(),
             names: vec![name.into()],
             agents: vec![Agent::Claude],
         }
     }
 
-    fn removable(name: &str) -> Augmentation {
-        Augmentation {
+    fn removable(name: &str) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: vec![],
             members: Vec::new(),

@@ -2,7 +2,7 @@ use super::catalog::Catalog;
 use super::import::collect_installed;
 use super::item::LibraryItem;
 use super::repoint::{Moved, repoint};
-use crate::model::Augmentation;
+use crate::model::Installed;
 use crate::snapshot::{Reason, Skipped};
 use crate::stale::Probe;
 
@@ -33,7 +33,7 @@ impl Synced {
 /// item that replaces them instead of being added beside it.
 pub fn sync_installed(
     catalog: &mut Catalog,
-    items: &[Augmentation],
+    items: &[Installed],
     (recorded_at, probe): (u64, &dyn Probe),
 ) -> Synced {
     let (found, skipped) = collect_installed(items, recorded_at);
@@ -61,7 +61,7 @@ mod tests {
     use super::super::import::tests::installed_skill;
     use super::*;
     use crate::model::{Installer, Origin};
-    use crate::profile::Entry;
+    use crate::profile::Spec;
     use crate::stale::Disk;
 
     fn at(recorded_at: u64) -> (u64, &'static dyn Probe) {
@@ -71,7 +71,7 @@ mod tests {
     fn manual(label: &str) -> LibraryItem {
         LibraryItem::new(
             label,
-            Entry::Skill {
+            Spec::Skill {
                 source: "o/r".into(),
                 names: vec!["tdd".into()],
                 agents: vec![],
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn a_hand_made_skill_is_added_as_detected_manual_with_its_dir_as_the_link() {
         let mut catalog = Catalog::default();
-        let mine = Augmentation {
+        let mine = Installed {
             installer: Installer::Local,
             origin: Origin {
                 link: Some("/p/.agents/skills".into()),
@@ -142,9 +142,7 @@ mod tests {
             (provenance.engine, provenance.detected, provenance.link),
             (Installer::Local, true, Some("/p/.agents/skills".into()))
         );
-        assert!(
-            matches!(&item.entry, Entry::Skill { source, .. } if source == "/p/.agents/skills")
-        );
+        assert!(matches!(&item.entry, Spec::Skill { source, .. } if source == "/p/.agents/skills"));
     }
 
     #[test]
@@ -161,7 +159,7 @@ mod tests {
         use crate::stale::tests::{Existing, skill};
         let stale = LibraryItem::from_entry(skill("/old/skills", "mine"));
         let mut catalog = Catalog::from_items(vec![stale]);
-        let moved_skill = Augmentation {
+        let moved_skill = Installed {
             installer: Installer::Local,
             origin: Origin {
                 link: Some("/new/skills".into()),

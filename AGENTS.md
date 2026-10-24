@@ -16,7 +16,7 @@ Issues live in `.beads/dolt/`. The JSONL export is passive; normal sync uses
 - Keep decisions pure and effects explicit. Inject `Env`, `CommandRunner`,
   `Prompter`, and adapters into flows that need them.
 - Keep agent-specific paths, formats, and commands in `src/agents/`.
-- Discovery reads native configuration and produces typed augmentations with
+- Discovery reads native configuration and produces typed installed items with
   removal plans. File transformations are pure; execution applies the plans.
 - Tests assert on typed behavior, actions, parsed contents, or tree structure.
   Avoid assertions on messages, errors, and rendered labels. Credential-redaction

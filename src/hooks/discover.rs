@@ -6,7 +6,7 @@ use anyhow::Context;
 use super::group::{GroupHints, hook_group};
 use crate::action::{Action, Edit};
 use crate::hook_text::{Format, HookEntry, parse};
-use crate::model::{Agent, Augmentation, Installer, Kind, Scope};
+use crate::model::{Agent, Installed, Installer, Kind, Scope};
 use crate::read_optional::read_optional;
 
 /// Group of hooks that no plugin declares.
@@ -19,14 +19,14 @@ struct Source<'a> {
     scope: Scope,
 }
 
-/// Hooks in one config file, one `Augmentation` per `hook_group`, each with its removal plan.
+/// Hooks in one config file, one `Installed` per `hook_group`, each with its removal plan.
 /// A missing file yields an empty list.
 pub fn discover(
     file: &Path,
     agent: Agent,
     scope: Scope,
     hints: &GroupHints,
-) -> anyhow::Result<Vec<Augmentation>> {
+) -> anyhow::Result<Vec<Installed>> {
     let Some(text) = read_optional(file)? else {
         return Ok(Vec::new());
     };
@@ -35,7 +35,7 @@ pub fn discover(
     let source = Source { file, agent, scope };
     Ok(group_entries(entries, hints)
         .into_iter()
-        .map(|(name, entries)| augmentation(&source, name, &entries))
+        .map(|(name, entries)| installed_item(&source, name, &entries))
         .collect())
 }
 
@@ -50,8 +50,8 @@ fn group_entries(entries: Vec<HookEntry>, hints: &GroupHints) -> BTreeMap<String
     groups
 }
 
-fn augmentation(source: &Source, name: String, entries: &[HookEntry]) -> Augmentation {
-    Augmentation {
+fn installed_item(source: &Source, name: String, entries: &[HookEntry]) -> Installed {
+    Installed {
         details: crate::model::Details::Hook {
             config: source.file.to_path_buf(),
         },
@@ -94,7 +94,7 @@ mod tests {
     use crate::hook_text::testutil::*;
     use serde_json::{Value, json};
 
-    fn discover(file: &Path, agent: Agent, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
+    fn discover(file: &Path, agent: Agent, scope: Scope) -> anyhow::Result<Vec<Installed>> {
         super::discover(file, agent, scope, &GroupHints::default())
     }
 

@@ -17,7 +17,7 @@ use super::act::Act;
 use super::model::Model;
 use super::tab::Tab;
 use crate::library::Held;
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::stale::Disk;
 use crate::tui::keymap::Scope;
 use crate::tui::theme::Theme;
@@ -33,7 +33,7 @@ enum Popup {
     Filter,
     Add(InputField),
     /// Asking whether to remove this entry from the library.
-    Remove(ConfirmDialog, Entry),
+    Remove(ConfirmDialog, Spec),
 }
 
 pub struct LibraryTab {

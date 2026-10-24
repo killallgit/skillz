@@ -4,7 +4,7 @@ use super::deps::Deps;
 use super::scope::complete_installed;
 use crate::env::Env;
 use crate::library::{now_secs, record_installed};
-use crate::model::{Augmentation, Scope};
+use crate::model::{Installed, Scope};
 use crate::stale::Disk;
 use crate::store::Store;
 use crate::sync::merge;
@@ -15,7 +15,7 @@ pub(super) fn record_since(
     deps: &Deps,
     store: &Store,
     (env, scope): (&Env, Scope),
-    before: &[Augmentation],
+    before: &[Installed],
 ) -> anyhow::Result<()> {
     let scopes = [
         complete_installed(deps, env, Scope::Project)?,

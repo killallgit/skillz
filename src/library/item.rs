@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::provenance::Provenance;
 use crate::model::Kind;
-use crate::profile::{Entry, same_thing};
+use crate::profile::{Spec, same_thing};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ItemKind {
@@ -36,13 +36,13 @@ impl ItemKind {
         }
     }
 
-    pub fn of_entry(entry: &Entry) -> ItemKind {
+    pub fn of_entry(entry: &Spec) -> ItemKind {
         match entry {
-            Entry::Skill { .. } => ItemKind::Skill,
-            Entry::Plugin { .. } => ItemKind::Plugin,
-            Entry::Subagent { .. } => ItemKind::Subagent,
-            Entry::Mcp { .. } => ItemKind::Mcp,
-            Entry::Hook { .. } => ItemKind::Hook,
+            Spec::Skill { .. } => ItemKind::Skill,
+            Spec::Plugin { .. } => ItemKind::Plugin,
+            Spec::Subagent { .. } => ItemKind::Subagent,
+            Spec::Mcp { .. } => ItemKind::Mcp,
+            Spec::Hook { .. } => ItemKind::Hook,
         }
     }
 
@@ -59,17 +59,17 @@ impl ItemKind {
     }
 }
 
-/// One available augmentation: an entry a profile can be given a copy of, with a display label.
+/// One available item: a spec a profile can be given a copy of, with a display label.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LibraryItem {
     pub label: String,
-    pub entry: Entry,
+    pub entry: Spec,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<Provenance>,
 }
 
 impl LibraryItem {
-    pub fn new(label: impl Into<String>, entry: Entry) -> Self {
+    pub fn new(label: impl Into<String>, entry: Spec) -> Self {
         LibraryItem {
             label: label.into(),
             entry,
@@ -85,35 +85,35 @@ impl LibraryItem {
     }
 
     /// An item labelled by how its entry describes itself.
-    pub fn from_entry(entry: Entry) -> Self {
+    pub fn from_entry(entry: Spec) -> Self {
         LibraryItem::new(entry.to_string(), entry)
     }
 
     /// One item per thing `entry` names, so a skill listed with several names never overlaps a
     /// later item that shares only some of them.
-    pub fn each_of(entry: Entry) -> Vec<LibraryItem> {
+    pub fn each_of(entry: Spec) -> Vec<LibraryItem> {
         let single = |names: &Vec<String>| names.len() > 1;
         match &entry {
-            Entry::Skill {
+            Spec::Skill {
                 source,
                 names,
                 agents,
             } if single(names) => names
                 .iter()
-                .map(|name| Entry::Skill {
+                .map(|name| Spec::Skill {
                     source: source.clone(),
                     names: vec![name.clone()],
                     agents: agents.clone(),
                 })
                 .map(LibraryItem::from_entry)
                 .collect(),
-            Entry::Subagent {
+            Spec::Subagent {
                 source,
                 names,
                 agents,
             } if single(names) => names
                 .iter()
-                .map(|name| Entry::Subagent {
+                .map(|name| Spec::Subagent {
                     source: source.clone(),
                     names: vec![name.clone()],
                     agents: agents.clone(),
@@ -127,11 +127,11 @@ impl LibraryItem {
     /// Where it comes from or what it runs.
     pub fn source(&self) -> String {
         match &self.entry {
-            Entry::Skill { source, .. }
-            | Entry::Subagent { source, .. }
-            | Entry::Plugin { source, .. } => source.clone(),
-            Entry::Hook { command, .. } => command.clone(),
-            Entry::Mcp { command, url, .. } => command.clone().or(url.clone()).unwrap_or_default(),
+            Spec::Skill { source, .. }
+            | Spec::Subagent { source, .. }
+            | Spec::Plugin { source, .. } => source.clone(),
+            Spec::Hook { command, .. } => command.clone(),
+            Spec::Mcp { command, url, .. } => command.clone().or(url.clone()).unwrap_or_default(),
         }
     }
 
@@ -157,7 +157,7 @@ pub(super) mod tests {
     use super::*;
 
     pub fn skill(source: &str, name: &str) -> LibraryItem {
-        LibraryItem::from_entry(Entry::Skill {
+        LibraryItem::from_entry(Spec::Skill {
             source: source.into(),
             names: vec![name.into()],
             agents: vec![],
@@ -165,7 +165,7 @@ pub(super) mod tests {
     }
 
     pub fn hook(command: &str) -> LibraryItem {
-        LibraryItem::from_entry(Entry::Hook {
+        LibraryItem::from_entry(Spec::Hook {
             event: "Stop".into(),
             matcher: None,
             command: command.into(),

@@ -1,11 +1,11 @@
 use super::Reason;
 use crate::mcp::Launch;
-use crate::model::{Augmentation, Details, Installer, Kind, split_plugin_id};
-use crate::profile::Entry;
+use crate::model::{Details, Installed, Installer, Kind, split_plugin_id};
+use crate::profile::Spec;
 
 /// The validated entries this installed copy can reproduce, with its agents filled in.
 /// Marketplaces belong to their plugins and produce no entry of their own.
-pub fn entries(item: &Augmentation) -> Result<Vec<Entry>, Reason> {
+pub fn entries(item: &Installed) -> Result<Vec<Spec>, Reason> {
     let mut agents = item.agents.clone();
     agents.sort();
     agents.dedup();
@@ -22,7 +22,7 @@ pub fn entries(item: &Augmentation) -> Result<Vec<Entry>, Reason> {
                 Details::Skill { install_name, .. } => install_name,
                 _ => &item.name,
             };
-            vec![Entry::Skill {
+            vec![Spec::Skill {
                 source: source.clone(),
                 names: vec![name.clone()],
                 agents,
@@ -31,7 +31,7 @@ pub fn entries(item: &Augmentation) -> Result<Vec<Entry>, Reason> {
         Kind::Plugin => {
             let source = item.source.as_ref().ok_or(Reason::NoSource)?;
             let (name, marketplace) = split_plugin_id(&item.name);
-            vec![Entry::Plugin {
+            vec![Spec::Plugin {
                 source: source.clone(),
                 marketplace: marketplace.into(),
                 name: name.into(),
@@ -51,7 +51,7 @@ pub fn entries(item: &Augmentation) -> Result<Vec<Entry>, Reason> {
                 .file_stem()
                 .and_then(|name| name.to_str())
                 .ok_or(Reason::Unreadable)?;
-            vec![Entry::Subagent {
+            vec![Spec::Subagent {
                 source: source.clone(),
                 names: vec![name.into()],
                 agents,
@@ -63,7 +63,7 @@ pub fn entries(item: &Augmentation) -> Result<Vec<Entry>, Reason> {
             }
             item.hooks
                 .iter()
-                .map(|hook| Entry::Hook {
+                .map(|hook| Spec::Hook {
                     event: hook.event.clone(),
                     matcher: hook.matcher.clone(),
                     command: hook.command.clone(),
@@ -95,13 +95,9 @@ pub fn entries(item: &Augmentation) -> Result<Vec<Entry>, Reason> {
     Ok(entries)
 }
 
-pub(super) fn server_entry(
-    name: String,
-    launch: Launch,
-    agents: Vec<crate::model::Agent>,
-) -> Entry {
+pub(super) fn server_entry(name: String, launch: Launch, agents: Vec<crate::model::Agent>) -> Spec {
     match launch {
-        Launch::Stdio { command, args } => Entry::Mcp {
+        Launch::Stdio { command, args } => Spec::Mcp {
             name,
             command: Some(command),
             args,
@@ -109,7 +105,7 @@ pub(super) fn server_entry(
             transport: None,
             agents,
         },
-        Launch::Url { url, transport } => Entry::Mcp {
+        Launch::Url { url, transport } => Spec::Mcp {
             name,
             command: None,
             args: vec![],

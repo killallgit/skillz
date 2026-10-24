@@ -2,7 +2,7 @@
 //! the usage data and the current time.
 
 use crate::agents::AgentAdapter;
-use crate::model::{Agent, Augmentation, Kind, Scope};
+use crate::model::{Agent, Installed, Kind, Scope};
 use crate::usage::Usage;
 
 /// Older than this counts as unused.
@@ -12,14 +12,14 @@ pub const UNUSED_AFTER_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Findings<'a> {
     /// Loose skills every one of whose agents also gets the skill from an installed plugin.
-    pub duplicates: Vec<&'a Augmentation>,
-    pub never_used: Vec<&'a Augmentation>,
+    pub duplicates: Vec<&'a Installed>,
+    pub never_used: Vec<&'a Installed>,
     /// With the last use in ms since the epoch.
-    pub unused: Vec<(&'a Augmentation, u64)>,
+    pub unused: Vec<(&'a Installed, u64)>,
 }
 
 pub fn check<'a>(
-    items: &'a [Augmentation],
+    items: &'a [Installed],
     adapters: &[Box<dyn AgentAdapter>],
     usage: &Usage,
     now_ms: u64,
@@ -41,9 +41,9 @@ pub fn check<'a>(
     found
 }
 
-fn is_duplicate(skill: &Augmentation, items: &[Augmentation]) -> bool {
+fn is_duplicate(skill: &Installed, items: &[Installed]) -> bool {
     // A global plugin serves every project; a project plugin only its own project's skills.
-    let covers = |p: &Augmentation, agent: Agent| {
+    let covers = |p: &Installed, agent: Agent| {
         p.kind == Kind::Plugin
             && p.agents.contains(&agent)
             && (p.scope == Scope::Global || p.scope == skill.scope)
@@ -57,7 +57,7 @@ fn is_duplicate(skill: &Augmentation, items: &[Augmentation]) -> bool {
 }
 
 /// Items some adapter can see a use of (hooks and marketplaces never are).
-pub fn tracked(item: &Augmentation, adapters: &[Box<dyn AgentAdapter>]) -> bool {
+pub fn tracked(item: &Installed, adapters: &[Box<dyn AgentAdapter>]) -> bool {
     matches!(item.kind, Kind::Skill | Kind::Plugin)
         && adapters
             .iter()
@@ -72,8 +72,8 @@ mod tests {
     use crate::model::Installer;
     use serde_json::json;
 
-    fn item(kind: Kind, name: &str, agents: &[Agent], scope: Scope) -> Augmentation {
-        Augmentation {
+    fn item(kind: Kind, name: &str, agents: &[Agent], scope: Scope) -> Installed {
+        Installed {
             details: Default::default(),
             hooks: Vec::new(),
             members: Vec::new(),
@@ -91,8 +91,8 @@ mod tests {
         }
     }
 
-    fn with_skills(item: Augmentation, skills: &[&str]) -> Augmentation {
-        Augmentation {
+    fn with_skills(item: Installed, skills: &[&str]) -> Installed {
+        Installed {
             details: Details::Plugin {
                 location: Default::default(),
                 skills: skills.iter().map(|s| s.to_string()).collect(),
@@ -101,15 +101,15 @@ mod tests {
         }
     }
 
-    fn skill(name: &str, agents: &[Agent], scope: Scope) -> Augmentation {
+    fn skill(name: &str, agents: &[Agent], scope: Scope) -> Installed {
         item(Kind::Skill, name, agents, scope)
     }
 
-    fn plugin(name: &str, agent: Agent, scope: Scope, skills: &[&str]) -> Augmentation {
+    fn plugin(name: &str, agent: Agent, scope: Scope, skills: &[&str]) -> Installed {
         with_skills(item(Kind::Plugin, name, &[agent], scope), skills)
     }
 
-    fn ids<'a>(items: impl IntoIterator<Item = &'a Augmentation>) -> Vec<&'a str> {
+    fn ids<'a>(items: impl IntoIterator<Item = &'a Installed>) -> Vec<&'a str> {
         items.into_iter().map(|i| i.id.as_str()).collect()
     }
 

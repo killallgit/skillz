@@ -6,7 +6,7 @@ use crate::agents::registry;
 use crate::cli::scope::installed;
 use crate::install::test_support::{FakeRunner, ScriptedPrompter};
 use crate::model::Agent;
-use crate::profile::{Entry, Profile};
+use crate::profile::{Profile, Spec};
 
 /// A project with one skill installed the way `npx skills` leaves it.
 pub(super) fn project_with_skill(dir: &Path, name: &str) {
@@ -23,8 +23,8 @@ pub(super) fn project_with_skill(dir: &Path, name: &str) {
     fs::write(dir.join("skills-lock.json"), lock.to_string()).unwrap();
 }
 
-pub(super) fn skill_entry(name: &str) -> Entry {
-    Entry::Skill {
+pub(super) fn skill_entry(name: &str) -> Spec {
+    Spec::Skill {
         source: "o/r".into(),
         names: vec![name.into()],
         agents: vec![Agent::Claude],

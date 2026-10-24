@@ -15,7 +15,7 @@ use skillz::agents::{self, AgentAdapter, PluginOffer};
 use skillz::cli::{Command, Deps, Filter, UninstallArgs, run};
 use skillz::env::Env;
 use skillz::install::{Ctx, InstallRequest, SkillSelection, install};
-use skillz::model::{Agent, Augmentation, Details, Installer, Kind, Scope};
+use skillz::model::{Agent, Details, Installed, Installer, Kind, Scope};
 use skillz::prompt::Prompter;
 use skillz::prune;
 use skillz::runner::{CommandRunner, Output};
@@ -40,12 +40,12 @@ impl AgentAdapter for Fake {
     fn hook_files(&self, _env: &Env, _scope: Scope) -> Vec<PathBuf> {
         vec![]
     }
-    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Augmentation>> {
+    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
         let root = env.home.join(".fake/plugins");
         if scope != Scope::Global || !root.join(PLUGIN).exists() {
             return Ok(vec![]);
         }
-        Ok(vec![Augmentation {
+        Ok(vec![Installed {
             details: Details::Plugin {
                 location: root.join(PLUGIN),
                 skills: vec!["dup".into()],
@@ -70,10 +70,10 @@ impl AgentAdapter for Fake {
     fn usage(&self, _env: &Env) -> anyhow::Result<Vec<(String, u64)>> {
         Ok(vec![(format!("plugin:{PLUGIN}"), 1)])
     }
-    fn tracks(&self, item: &Augmentation) -> bool {
+    fn tracks(&self, item: &Installed) -> bool {
         matches!(item.kind, Kind::Skill | Kind::Plugin)
     }
-    fn update_steps(&self, item: &Augmentation, cwd: &Path) -> Vec<Action> {
+    fn update_steps(&self, item: &Installed, cwd: &Path) -> Vec<Action> {
         if item.kind != Kind::Plugin {
             return vec![];
         }
@@ -199,7 +199,7 @@ fn prune_uses_the_fakes_usage_and_tracking() {
     let inv = agents::inventory(&adapters, &w.env, &[Scope::Global]);
     let used = usage::read(&adapters, &w.env).unwrap();
     let found = prune::check(&inv.items, &adapters, &used, 100 * 24 * 60 * 60 * 1000);
-    let names = |items: Vec<&Augmentation>| -> Vec<String> {
+    let names = |items: Vec<&Installed>| -> Vec<String> {
         items.into_iter().map(|i| i.name.clone()).collect()
     };
     assert_eq!(names(found.duplicates), ["dup"]);

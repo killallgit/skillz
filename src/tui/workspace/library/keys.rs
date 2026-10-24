@@ -4,7 +4,7 @@ use ratatui::crossterm::event::KeyEvent;
 
 use super::rows::Row;
 use super::{LibraryTab, Popup};
-use crate::profile::Entry;
+use crate::profile::Spec;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::confirm::{ConfirmDialog, Outcome as Answer};
 use crate::tui::widgets::input::{InputField, Outcome as Edit};
@@ -36,7 +36,7 @@ impl LibraryTab {
         None
     }
 
-    fn current_entry(&self) -> Option<&Entry> {
+    fn current_entry(&self) -> Option<&Spec> {
         match &self.rows[self.outline.current()?] {
             Row::Item(item) => Some(&item.library.entry),
             Row::Package { .. } => None,
@@ -84,7 +84,7 @@ impl LibraryTab {
     fn handle_remove(
         &mut self,
         mut dialog: ConfirmDialog,
-        entry: Entry,
+        entry: Spec,
         key: KeyEvent,
     ) -> Option<Act> {
         match dialog.handle(key) {
