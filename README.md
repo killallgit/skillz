@@ -4,10 +4,17 @@ List, install and completely remove skills, plugins, marketplaces, hooks, MCP se
 subagents for Claude Code, Codex and Cursor, globally or per project, and keep named sets of them
 (profiles) that you can load into a project and swap.
 
+Download the archive for your platform from the
+[latest release](https://github.com/killallgit/skillz/releases/latest) (macOS and Linux, Intel
+and ARM), check it against the `.sha256` beside it, and put `skillz` on your `PATH`. Or build it:
+
 ```sh
 task install                     # release build, symlinked to ~/.local/bin/skillz
 # or: cargo install --path .
 ```
+
+Releases are cut by pushing a tag that matches the version in `Cargo.toml`
+(`git tag v0.1.0 && git push origin v0.1.0`); CI builds the four binaries and publishes them.
 
 `skillz` with no arguments opens the workspace (see [Workspace](#workspace)); everything it does
 is also a command.
