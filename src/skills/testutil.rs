@@ -56,7 +56,6 @@ pub(super) fn global_dirs(env: &Env) -> Vec<SkillDir> {
         sd(Agent::Claude, Scope::Global, h.join(".claude/skills")),
         sd(Agent::Codex, Scope::Global, h.join(".agents/skills")),
         sd(Agent::Codex, Scope::Global, h.join(".codex/skills")),
-        sd(Agent::Cursor, Scope::Global, h.join(".cursor/skills")),
     ]
 }
 

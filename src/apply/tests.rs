@@ -217,16 +217,6 @@ fn duplicate_entries_install_once() {
 }
 
 #[test]
-fn a_profile_for_another_agent_is_not_matched_by_a_claude_install() {
-    let fx = Fx::new();
-    install_skill(&fx.env.project, "tdd");
-    let mut cursor = profile("c", &["tdd"]);
-    cursor.agents = vec![Agent::Cursor];
-
-    assert!(!fx.matches(&cursor));
-}
-
-#[test]
 fn exact_removes_what_the_profile_does_not_want_and_keeps_what_it_does() {
     let fx = Fx::new();
     let runner = fx.npx();

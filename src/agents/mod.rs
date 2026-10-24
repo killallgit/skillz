@@ -3,7 +3,6 @@
 
 pub(crate) mod claude;
 pub(crate) mod codex;
-pub(crate) mod cursor;
 mod inventory;
 mod plugin;
 
@@ -91,11 +90,7 @@ pub trait AgentAdapter {
 }
 
 pub fn registry() -> Vec<Box<dyn AgentAdapter>> {
-    vec![
-        Box::new(claude::Claude),
-        Box::new(codex::Codex),
-        Box::new(cursor::Cursor),
-    ]
+    vec![Box::new(claude::Claude), Box::new(codex::Codex)]
 }
 
 /// The adapter among `adapters` that handles `agent`.

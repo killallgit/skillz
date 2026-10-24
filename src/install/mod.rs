@@ -334,13 +334,13 @@ mod tests {
         });
         let runner = FakeRunner::new(|_| {});
         let r = InstallRequest {
-            agents: vec![Agent::Claude, Agent::Codex, Agent::Cursor],
+            agents: vec![Agent::Claude, Agent::Codex],
             scope: Scope::Global,
             ..req(&fx, "repo", SkillSelection::Interactive)
         };
         run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[0], true)).unwrap();
         let programs: Vec<String> = runner.calls().into_iter().map(|c| c.0).collect();
-        assert_eq!(programs, s(&["claude", "claude", "codex", "codex", "npx"]));
+        assert_eq!(programs, s(&["claude", "claude", "codex", "codex"]));
     }
 
     #[test]

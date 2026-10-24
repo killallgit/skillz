@@ -158,7 +158,7 @@ mod tests {
         let runner = FakeRunner::new(|_| {});
         let sel = SkillSelection::Patterns(s(&["*commit, tdd"]));
         let prompter = ScriptedPrompter::new(&[], true);
-        run(&fx, &request(&fx, sel, Agent::Cursor), &runner, &prompter).unwrap();
+        run(&fx, &request(&fx, sel, Agent::Codex), &runner, &prompter).unwrap();
         let expected = npx(
             "o/r",
             &[
@@ -169,7 +169,7 @@ mod tests {
                 "--skill",
                 "tdd",
                 "-a",
-                "cursor",
+                "codex",
                 "-y",
             ],
         );

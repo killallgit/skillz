@@ -5,7 +5,7 @@ use super::{Format, HookEntry};
 use crate::json_edit::edit_json;
 
 /// Parse the hooks of a config file. JSON: the top-level `"hooks"` object, nested
-/// (Claude/Codex) or flat (Cursor) layout. TOML: the inline hooks of a Codex `config.toml`.
+/// (Claude/Codex) or flat layout. TOML: the inline hooks of a Codex `config.toml`.
 /// A document without hooks has none.
 pub fn parse(text: &str, format: Format) -> anyhow::Result<Vec<HookEntry>> {
     let mut out = Vec::new();

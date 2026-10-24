@@ -186,7 +186,6 @@ mod tests {
         let canon = h.join(".agents/skills/tdd");
         skill(&canon);
         link(&canon, &h.join(".claude/skills/tdd"));
-        link(&canon, &h.join(".cursor/skills/tdd"));
         let lock = h.join(".agents/.skill-lock.json");
         write_lock(
             &lock,
@@ -201,7 +200,7 @@ mod tests {
         assert_eq!(a.name, "tdd");
         assert_eq!(a.kind, Kind::Skill);
         assert_eq!(a.scope, Scope::Global);
-        assert_eq!(a.agents, vec![Agent::Claude, Agent::Codex, Agent::Cursor]);
+        assert_eq!(a.agents, vec![Agent::Claude, Agent::Codex]);
         assert_eq!(a.group, "mattpocock/skills");
         assert_eq!(a.source.as_deref(), Some("mattpocock/skills"));
         assert!(a.children.is_empty());
@@ -209,7 +208,6 @@ mod tests {
             files(&a.removal),
             vec![
                 rm(h.join(".claude/skills/tdd")),
-                rm(h.join(".cursor/skills/tdd")),
                 rm(canon.clone()),
                 lock_edit(lock, "tdd"),
             ]

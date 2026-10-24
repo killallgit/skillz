@@ -165,7 +165,7 @@ mod tests {
             "stop": [{"command": "/x/.orca/h.sh stop"}, {"command": "bd cursor-hook stop"}]
         }});
         std::fs::write(&file, doc.to_string()).unwrap();
-        let plan: Vec<Action> = discover(&file, Agent::Cursor, Scope::Global)
+        let plan: Vec<Action> = discover(&file, Agent::Claude, Scope::Global)
             .unwrap()
             .into_iter()
             .flat_map(|a| a.removal)

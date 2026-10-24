@@ -134,7 +134,7 @@ mod tests {
         let (prog, args) = add_command(
             "o/r",
             &s(&["a"]),
-            &[Agent::Claude, Agent::Codex, Agent::Cursor],
+            &[Agent::Claude, Agent::Codex],
             Scope::Global,
         );
         assert_eq!(prog, "npx");
@@ -151,8 +151,6 @@ mod tests {
                 "claude-code",
                 "-a",
                 "codex",
-                "-a",
-                "cursor",
                 "-g",
                 "-y"
             ])

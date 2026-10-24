@@ -1,7 +1,7 @@
 # skillz
 
 List, install and completely remove skills, plugins, marketplaces, hooks, MCP servers and
-subagents for Claude Code, Codex and Cursor, globally or per project, and keep named sets of them
+subagents for Claude Code and Codex, globally or per project, and keep named sets of them
 (profiles) that you can load into a project and swap.
 
 Download the archive for your platform from the
@@ -38,7 +38,7 @@ is also a command.
 
 Kind filters on `list`, `uninstall`, `reset` and `prune`: `--skills --hooks --plugins
 --marketplaces --mcp --subagents` (singular spellings work too; none given means all kinds).
-`-a claude|codex|cursor` filters by agent (repeatable), `-g` means global only. Run
+`-a claude|codex` filters by agent (repeatable), `-g` means global only. Run
 `skillz <command> --help` for every flag.
 
 ```sh
@@ -52,7 +52,7 @@ skillz list -i                   # browser: expand, mark, enter -> Show / Remove
 skillz list --json | jq '.[].name'  # items + removal plans; "package", "merged", "members"
 
 skillz rm tdd                    # fuzzy match -> pick -> confirm -> remove
-skillz rm --hook bd -a cursor    # every hook that runs `bd`, for Cursor
+skillz rm --hook bd -a codex     # every hook that runs `bd`, for Codex
 skillz rm caveman@caveman -y     # non-interactive: needs exactly one exact name match
 skillz rm speckit --dry-run      # print the removal plan only
 
@@ -141,8 +141,7 @@ command = "bd prime"
 ```
 
 Every value must be non-empty and must not start with `-`; an MCP entry has exactly one of
-`command` or `url`. Of the agents, Cursor only takes skills; Codex takes what its CLI and config
-can (see below); anything an agent cannot take is shown as skipped in the plan, not as an error.
+`command` or `url`. Codex takes what its CLI and config can (see below); anything an agent cannot take is shown as skipped in the plan, not as an error.
 
 | Kind | Claude | Codex |
 | --- | --- | --- |

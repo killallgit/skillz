@@ -78,7 +78,7 @@ fn a_linked_skill_names_every_agent_it_is_linked_into() {
     let found = skills(&w.env(), &[Scope::Global, Scope::Project]);
 
     assert!(found[0].agents.contains(&Agent::Claude));
-    assert!(found[0].agents.contains(&Agent::Cursor));
+    assert!(found[0].agents.contains(&Agent::Codex));
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn each_hook_tool_is_found_once_per_agent_and_scope() {
     let mut expected = vec![
         ("rtk".to_string(), Agent::Claude, Scope::Global),
         ("bd".to_string(), Agent::Claude, Scope::Global),
-        ("bd".to_string(), Agent::Cursor, Scope::Global),
+        ("bd".to_string(), Agent::Codex, Scope::Global),
         ("bd".to_string(), Agent::Codex, Scope::Project),
     ];
     expected.sort();

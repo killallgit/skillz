@@ -3,6 +3,7 @@
 //! config, never kept here; only the name of the profile last applied to it is.
 
 mod document;
+mod legacy;
 mod lock;
 
 use std::path::PathBuf;
@@ -56,7 +57,9 @@ impl Store {
         let corrupt = || Corrupt {
             path: self.path.clone(),
         };
-        let document: Document = serde_json::from_str(text).map_err(|_| corrupt())?;
+        let mut raw: serde_json::Value = serde_json::from_str(text).map_err(|_| corrupt())?;
+        legacy::drop_cursor(&mut raw);
+        let document: Document = serde_json::from_value(raw).map_err(|_| corrupt())?;
         anyhow::ensure!(document.version == document::VERSION, corrupt());
         Ok(document)
     }

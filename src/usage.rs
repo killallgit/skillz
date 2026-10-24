@@ -106,7 +106,6 @@ mod tests {
         assert_eq!(tdd(&[Agent::Claude]), Some(5));
         assert!(tdd(&[Agent::Codex]) > Some(5));
         assert_eq!(tdd(&[Agent::Claude, Agent::Codex]), tdd(&[Agent::Codex]));
-        assert_eq!(tdd(&[Agent::Cursor]), None);
         assert_eq!(
             usage.last_used(&item(Kind::Hook, "tdd", &[Agent::Claude])),
             None

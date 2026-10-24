@@ -200,15 +200,6 @@ mod tests {
                 agent: Agent::Codex
             }]
         );
-        let cursor = plan(
-            &registry(),
-            &profile(vec![plugin(vec![Agent::Cursor])]),
-            Scope::Global,
-            &env(),
-        )
-        .unwrap();
-        assert!(cursor.steps.is_empty());
-        assert_eq!(cursor.unsupported.len(), 1);
     }
 
     #[test]
@@ -311,7 +302,6 @@ mod tests {
             )
             .is_none()
         );
-        assert!(args_for(mcp(Some("npx"), None, None), Agent::Cursor, Scope::Global).is_none());
     }
 
     #[test]
@@ -342,7 +332,6 @@ mod tests {
             copy_to(Agent::Codex, Scope::Project),
             Some(("/p/.codex/agents".into(), "toml".into()))
         );
-        assert_eq!(copy_to(Agent::Cursor, Scope::Global), None);
     }
 
     #[test]

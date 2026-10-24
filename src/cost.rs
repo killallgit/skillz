@@ -109,7 +109,7 @@ mod tests {
             Some(1800)
         );
         assert_eq!(
-            costs.tokens(&item(Kind::Skill, "tdd", &[Agent::Cursor])),
+            costs.tokens(&item(Kind::Skill, "unmeasured", &[Agent::Claude])),
             None
         );
         assert_eq!(

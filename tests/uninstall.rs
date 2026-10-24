@@ -76,7 +76,7 @@ fn removing_a_hook_tool_keeps_unrelated_settings() {
 fn removing_a_hook_tool_leaves_other_agents_hooks() {
     let w = after_removing_rtk_hooks();
 
-    assert!(read_json(&w.cursor_hooks())["hooks"]["sessionStart"].is_array());
+    assert!(read_json(&w.codex_global_hooks())["hooks"]["SessionStart"].is_array());
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn removing_a_skill_deletes_its_links_in_every_agent() {
     let w = after_removing_tdd();
 
     assert!(!present(w.home.join(".claude/skills/tdd")));
-    assert!(!present(w.home.join(".cursor/skills/tdd")));
+    assert!(!present(w.home.join(".codex/skills/tdd")));
 }
 
 #[test]
@@ -234,7 +234,7 @@ fn a_project_path_leaves_global_hooks() {
 
     uninstall_with(&w, cmd, &Scripted::yes()).unwrap();
 
-    assert!(read_json(&w.cursor_hooks())["hooks"]["sessionStart"].is_array());
+    assert!(read_json(&w.codex_global_hooks())["hooks"]["SessionStart"].is_array());
 }
 
 #[test]

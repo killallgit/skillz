@@ -149,11 +149,13 @@ fn one_failing_install_is_reported_and_the_others_still_run() {
 #[test]
 fn an_unsupported_install_is_skipped_without_counting_as_installed() {
     let dir = tempfile::tempdir().unwrap();
-    let entries = [Entry::Plugin {
-        source: "o/r".into(),
-        marketplace: "mp".into(),
-        name: "p".into(),
-        agents: vec![crate::model::Agent::Cursor],
+    let entries = [Entry::Mcp {
+        name: "srv".into(),
+        command: Some("npx".into()),
+        args: vec![],
+        url: None,
+        transport: None,
+        agents: vec![crate::model::Agent::Codex],
     }];
     let runner = crate::install::test_support::FakeRunner::new(|_| {});
     let prompter = super::tests::Outcomes::default();
