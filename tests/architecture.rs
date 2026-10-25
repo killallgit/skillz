@@ -61,15 +61,18 @@ fn layer(module: &str) -> Option<Layer> {
 const ALLOWED: &[(&str, &str)] = &[
     ("agents/claude/marketplace.rs", "profile"),
     ("agents/claude/mcp.rs", "profile"),
+    ("agents/claude/mod.rs", "profile"),
     ("agents/codex/mcp.rs", "profile"),
+    ("agents/codex/mod.rs", "profile"),
     ("agents/codex/plugins.rs", "profile"),
     ("agents/mod.rs", "profile"),
     ("hooks/provision.rs", "profile"),
     ("install/global.rs", "apply"),
     ("install/global.rs", "profile"),
+    ("install/mod.rs", "prompt"),
+    ("install/mod.rs", "review"),
     ("install/skills.rs", "matcher"),
     ("install/skills.rs", "prompt"),
-    ("install/test_support.rs", "prompt"),
     ("prompt.rs", "tui"),
     ("provision.rs", "profile"),
     ("subagents.rs", "profile"),
@@ -88,12 +91,30 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 fn is_test_file(path: &Path) -> bool {
     let name = path.file_name().unwrap().to_string_lossy();
-    name == "tests.rs" || name == "testutil.rs" || name.ends_with("_tests.rs")
+    name == "tests.rs"
+        || name == "testutil.rs"
+        || name == "test_support.rs"
+        || name.ends_with("_tests.rs")
 }
 
-/// The code before the first `#[cfg(test)]`; test modules close the file.
+/// The code before the first inline `#[cfg(test)] mod name {`, which closes the file. A gated
+/// `mod name;` or `use` ends nothing: production code follows it.
 fn production(text: &str) -> &str {
-    text.find("#[cfg(test)]").map_or(text, |at| &text[..at])
+    let mut gate_at = None;
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if trimmed.starts_with("#[cfg(test)]") {
+            gate_at = Some(offset);
+        } else if gate_at.is_some() && !trimmed.starts_with("#[") {
+            if trimmed.starts_with("mod ") && trimmed.ends_with('{') {
+                return &text[..gate_at.unwrap()];
+            }
+            gate_at = None;
+        }
+        offset += line.len();
+    }
+    text
 }
 
 /// The first path segment after each `crate::`, looking inside `crate::{a, b::c}` groups.
@@ -186,4 +207,16 @@ fn group_imports_are_read() {
     let found = crate_modules("use crate::{a::b, c, d::{e, f}};\nuse crate::g;");
 
     assert_eq!(found.into_iter().collect::<Vec<_>>(), ["a", "c", "d", "g"]);
+}
+
+#[test]
+fn a_gated_module_declaration_does_not_hide_the_code_after_it() {
+    let text = "#[cfg(test)]\nmod testutil;\nuse crate::profile::Spec;\n#[cfg(test)]\nmod tests {\n    use crate::tui::x;\n}\n";
+
+    assert_eq!(
+        crate_modules(production(text))
+            .into_iter()
+            .collect::<Vec<_>>(),
+        ["profile"]
+    );
 }
