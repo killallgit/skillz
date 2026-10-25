@@ -4,8 +4,8 @@ use super::SkillDir;
 use super::entry::{Entry, canonical_or};
 use crate::env::Env;
 use crate::harness::action::{Action, Edit, RemovalTarget};
+use crate::harness::npx::commands;
 use crate::model::Scope;
-use crate::npx_skills;
 
 /// Links first, then the canonical dir if we own it, then the lock entry. No duplicates.
 /// Every `RemovePath` is under an `owned` root.
@@ -25,7 +25,7 @@ pub(super) fn removal(
     actions.extend(lock.map(|(file, name)| Action::Edit {
         file,
         edit: Edit::JsonRemoveKey {
-            path: npx_skills::lock_key(&name),
+            path: commands::lock_key(&name),
         },
     }));
     actions
@@ -54,7 +54,7 @@ pub(super) fn owned_roots(env: &Env, dirs: &[SkillDir], scope: Scope) -> Vec<Pat
     dirs.iter()
         .filter(|d| d.scope == scope)
         .map(|d| d.path.clone())
-        .chain([npx_skills::store_dir(env, scope)])
+        .chain([commands::store_dir(env, scope)])
         .map(|p| canonical_or(&p))
         .filter(|r| scope == Scope::Global || r.starts_with(&project))
         .collect()

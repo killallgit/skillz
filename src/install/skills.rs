@@ -3,9 +3,9 @@ use std::path::Path;
 use crate::harness::action::Action;
 use crate::harness::agent_skills::skill_name;
 use crate::harness::fswalk;
+use crate::harness::npx::commands;
 use crate::matcher::pattern_matches;
 use crate::model::Agent;
-use crate::npx_skills;
 use crate::prompt::Prompter;
 
 use super::global::confirm_duplicates;
@@ -37,7 +37,7 @@ pub(super) fn plan(
     if !confirm_duplicates(ctx, req, (tree.source, &chosen))? {
         return Ok(None);
     }
-    let (program, args) = npx_skills::add_command(tree.source, &chosen, agents, req.scope);
+    let (program, args) = commands::add_command(tree.source, &chosen, agents, req.scope);
     let names: Vec<String> = agents.iter().map(ToString::to_string).collect();
     Ok(Some(SkillsPlan {
         line: format!("{}: skills {}", names.join(", "), chosen.join(", ")),

@@ -6,8 +6,8 @@ use crate::agents::{AgentAdapter, adapter_for};
 use crate::env::Env;
 use crate::harness::Spec;
 use crate::harness::action::Action;
+use crate::harness::npx::commands;
 use crate::model::{Agent, Scope};
-use crate::npx_skills;
 
 /// An entry one agent has no way to take.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,7 +60,7 @@ fn skills_step(
         .copied()
         .filter(|a| adapters.iter().any(|ad| ad.agent() == *a))
         .collect();
-    let (program, args) = npx_skills::add_command(source, names, &known, scope);
+    let (program, args) = commands::add_command(source, names, &known, scope);
     Some(Action::required(&program, args, &env.project))
 }
 

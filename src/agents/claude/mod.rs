@@ -60,13 +60,6 @@ impl AgentAdapter for Claude {
         Some("CLAUDE_PLUGIN_ROOT")
     }
 
-    fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
-        vec![match scope {
-            Scope::Global => dir(env).join("skills"),
-            Scope::Project => env.project.join(".claude/skills"),
-        }]
-    }
-
     fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
         settings_files(env, scope)
     }
@@ -105,7 +98,7 @@ impl AgentAdapter for Claude {
             Err(_) => {
                 let dirs: Vec<PathBuf> = [Scope::Global, Scope::Project]
                     .iter()
-                    .flat_map(|&s| self.skill_dirs(env, s))
+                    .flat_map(|&s| crate::harness::npx::skill_dirs(env, Agent::Claude, s))
                     .collect();
                 Ok(crate::cost::estimate_dirs(&dirs))
             }
@@ -159,7 +152,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn skill_dirs_and_hook_files() {
+    fn hook_files_per_scope() {
         let env = Env {
             home: "/h".into(),
             project: "/p".into(),
@@ -167,14 +160,6 @@ mod tests {
             codex_home: None,
         };
         assert_eq!(Claude.agent(), Agent::Claude);
-        assert_eq!(
-            Claude.skill_dirs(&env, Scope::Global),
-            vec![PathBuf::from("/h/.claude/skills")]
-        );
-        assert_eq!(
-            Claude.skill_dirs(&env, Scope::Project),
-            vec![PathBuf::from("/p/.claude/skills")]
-        );
         assert_eq!(
             Claude.hook_files(&env, Scope::Global),
             vec![PathBuf::from("/h/.claude/settings.json")]
@@ -249,7 +234,7 @@ mod tests {
             ..f.env.clone()
         };
         assert_eq!(
-            Claude.skill_dirs(&env, Scope::Global),
+            crate::harness::npx::skill_dirs(&env, Agent::Claude, Scope::Global),
             [custom.join("skills")]
         );
         assert_eq!(
@@ -257,7 +242,7 @@ mod tests {
             [custom.join("settings.json")]
         );
         assert_eq!(
-            Claude.skill_dirs(&env, Scope::Project),
+            crate::harness::npx::skill_dirs(&env, Agent::Claude, Scope::Project),
             [env.project.join(".claude/skills")]
         );
         // Nothing is read from the default dir, so its plugins stay invisible.

@@ -76,7 +76,7 @@ so an isolated command launches only after its profile is ready.
 | --- | --- |
 | `model`, `env` | Installed facts, identities, scopes, and filesystem roots |
 | `agents` | Per-agent discovery, provisioning, updates, usage, and native command knowledge |
-| `skills`, `hooks`, `subagents`, `mcp` | Shared formats and typed installed facts |
+| `harness::npx` (loose skills, `npx skills` commands and lock file), `hooks`, `subagents`, `mcp` | Shared formats and typed installed facts |
 | `install`, `harness::clone`, `subagent_store` | Source resolution, selection, and installation |
 | `harness::action`, `harness::read_optional` | Pure edits, shared staged writes, owned deletion, and filesystem policy |
 | `profile`, `apply`, `snapshot` | Desired entries, inheritance, comparison, plans, and execution |

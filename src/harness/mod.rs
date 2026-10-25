@@ -6,6 +6,7 @@ pub mod agent_skills;
 pub(crate) mod clone;
 pub(crate) mod fswalk;
 pub(crate) mod json_edit;
+pub(crate) mod npx;
 pub(crate) mod read_optional;
 pub(crate) mod redact;
 pub mod runner;

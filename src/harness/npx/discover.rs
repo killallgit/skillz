@@ -8,8 +8,8 @@ use super::ownership::{Locked, lock_ownership};
 use super::removal::{owned_roots, removal};
 use crate::env::Env;
 use crate::harness::action::Action;
+use crate::harness::npx::commands::{self, LockEntry};
 use crate::model::{Agent, Installed, Installer, Kind, Origin, Scope};
-use crate::npx_skills::{self, LockEntry};
 
 type Groups = BTreeMap<(Scope, PathBuf), Vec<Entry>>;
 
@@ -69,7 +69,7 @@ fn global_targets(groups: &Groups) -> BTreeSet<&PathBuf> {
 fn read_locks(env: &Env) -> BTreeMap<Scope, BTreeMap<String, LockEntry>> {
     [Scope::Global, Scope::Project]
         .into_iter()
-        .map(|s| (s, npx_skills::read_lock(env, s)))
+        .map(|s| (s, commands::read_lock(env, s)))
         .collect()
 }
 
@@ -148,7 +148,7 @@ fn installer_of(locked: Option<&Locked>) -> Installer {
 /// The CLI that installed it goes first; the file steps then finish what it left.
 fn native_uninstall(cx: &Ctx, locked: Option<&Locked>, agents: &[Agent]) -> Option<Action> {
     let locked = locked?;
-    let (program, args) = npx_skills::remove_command(&locked.name, agents, cx.scope);
+    let (program, args) = commands::remove_command(&locked.name, agents, cx.scope);
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     Action::native(&program, &args, &[&locked.name], cx.env.root(cx.scope))
 }
@@ -159,7 +159,7 @@ fn removal_plan(
     entries: &[Entry],
     locked: Option<&Locked>,
 ) -> Vec<Action> {
-    let lock = locked.map(|l| (npx_skills::lock_path(cx.env, cx.scope), l.name.clone()));
+    let lock = locked.map(|l| (commands::lock_path(cx.env, cx.scope), l.name.clone()));
     removal(
         entries,
         canonical,
