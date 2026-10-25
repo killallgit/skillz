@@ -15,7 +15,10 @@ use super::profiles::ProfilesTab;
 use super::run::RunModal;
 use super::syncs::Syncs;
 use super::tab::Tab;
-use crate::review::ItemEvent;
+use crate::app::review::ItemEvent;
+use crate::app::workspace::Act;
+use crate::app::workspace::Model;
+use crate::app::workspace::{Screen, Synced};
 use crate::tui::filter;
 use crate::tui::help::{Help, Verdict};
 use crate::tui::keymap::{self, Action, Scope};
@@ -24,9 +27,6 @@ use crate::tui::widgets::empty;
 use crate::tui::widgets::keybar::KeyBar;
 use crate::tui::widgets::tabs::Tabs;
 use crate::tui::widgets::toast::Toasts;
-use crate::workspace::Act;
-use crate::workspace::Model;
-use crate::workspace::{Screen, Synced};
 
 #[cfg(test)]
 mod tests;

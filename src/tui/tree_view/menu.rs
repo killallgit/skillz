@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::text::Line;
 
-use crate::prompt::Choice;
+use crate::app::prompt::Choice;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
 use crate::tui::widgets::list::ListView;

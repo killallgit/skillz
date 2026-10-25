@@ -15,16 +15,16 @@ use ratatui::layout::Rect;
 
 use self::editor::Editor;
 use super::tab::Tab;
-use crate::apply::compare;
-use crate::library::Catalog;
-use crate::profile::Profile;
+use crate::app::apply::compare;
+use crate::app::library::Catalog;
+use crate::app::profile::Profile;
+use crate::app::workspace::Act;
+use crate::app::workspace::Model;
 use crate::tui::keymap::Scope;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::confirm::ConfirmDialog;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
-use crate::workspace::Act;
-use crate::workspace::Model;
 
 /// Which popup, if any, has the keys.
 #[derive(Debug, Clone, Default)]

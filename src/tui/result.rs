@@ -12,7 +12,7 @@ use super::result_items::done_lines;
 use super::theme::Theme;
 use super::widgets::panel::Panel;
 use super::widgets::text_modal::{Page, TextModal};
-use crate::review::{Next, Outcome};
+use crate::app::review::{Next, Outcome};
 
 pub struct ResultScreen {
     title: String,

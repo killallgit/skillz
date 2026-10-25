@@ -6,9 +6,9 @@ use serde_json::{Value, json};
 
 use super::deps::Deps;
 use super::scope::installed;
-use crate::apply::{Standing, compare, drift};
-use crate::profile::{Profile, Store};
-use crate::stale::{Disk, Probe, missing_source};
+use crate::app::apply::{Standing, compare, drift};
+use crate::app::profile::{Profile, Store};
+use crate::app::stale::{Disk, Probe, missing_source};
 use skillz_harness::Spec;
 use skillz_harness::env::Env;
 use skillz_harness::model::{Installed, Scope};
@@ -144,7 +144,7 @@ fn line_of_status(row: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stale::tests::{Existing, skill};
+    use crate::app::stale::tests::{Existing, skill};
     use skillz_harness::model::Agent;
 
     #[test]

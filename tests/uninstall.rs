@@ -5,9 +5,9 @@ mod common;
 use std::fs;
 
 use common::*;
+use skillz::app::prompt::{Choice, Picked, Prompter};
+use skillz::app::tree::Node;
 use skillz::cli::{Command, Deps, Filter, ListArgs, UninstallArgs};
-use skillz::prompt::{Choice, Picked, Prompter};
-use skillz::tree::Node;
 use skillz_harness::model::Agent;
 
 fn claude_hooks() -> Filter {

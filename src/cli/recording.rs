@@ -2,10 +2,10 @@
 
 use super::deps::Deps;
 use super::scope::complete_installed;
-use crate::library::{now_secs, record_installed};
-use crate::stale::Disk;
-use crate::store::Store;
-use crate::sync::merge;
+use crate::app::library::{now_secs, record_installed};
+use crate::app::stale::Disk;
+use crate::app::store::Store;
+use crate::app::sync::merge;
 use skillz_harness::env::Env;
 use skillz_harness::model::{Installed, Scope};
 
@@ -35,8 +35,8 @@ pub(super) fn record_since(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::install::test_support::{FakeRunner, ScriptedPrompter};
     use crate::cli::scope::project_env;
-    use crate::install::test_support::{FakeRunner, ScriptedPrompter};
     use skillz_harness::agents::registry;
 
     #[test]

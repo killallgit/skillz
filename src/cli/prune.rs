@@ -3,7 +3,7 @@ use std::io::Write;
 use super::list::{display_tree, now_ms};
 use super::removal::{Review, confirm_and_remove};
 use super::scope::Scene;
-use crate::prune;
+use crate::app::prune;
 use skillz_harness::model::Installed;
 use skillz_harness::usage;
 

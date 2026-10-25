@@ -11,8 +11,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::rows::{self, Row, section_title};
-use crate::library::Catalog;
-use crate::profile::{Profile, same_thing};
+use crate::app::library::Catalog;
+use crate::app::profile::{Profile, same_thing};
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
 use crate::tui::widgets::input::{InputField, Outcome};
@@ -272,7 +272,7 @@ mod tests {
 
     use super::rows::tests::skill;
     use super::*;
-    use crate::library::LibraryItem;
+    use crate::app::library::LibraryItem;
     use crate::tui::widgets::testing::key;
 
     fn library() -> Catalog {

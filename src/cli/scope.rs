@@ -4,7 +4,7 @@ use anyhow::Context;
 
 use super::args::Filter;
 use super::deps::Deps;
-use crate::merge::merge;
+use crate::app::merge::merge;
 use skillz_harness::agents;
 use skillz_harness::env::Env;
 use skillz_harness::model::{Installed, Scope};
@@ -152,7 +152,7 @@ pub(super) fn project_env(deps: &Deps, dir: &Path) -> Env {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prompt::AssumeYes;
+    use crate::app::prompt::AssumeYes;
     use skillz_harness::runner::SystemRunner;
 
     static NO_ENVS: SystemRunner = SystemRunner { envs: Vec::new() };

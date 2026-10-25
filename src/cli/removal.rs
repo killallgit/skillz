@@ -5,7 +5,7 @@ use anyhow::bail;
 use super::args::Filter;
 use super::list::display_tree;
 use super::scope::Scene;
-use crate::{remove, spinner};
+use crate::app::{remove, spinner};
 use skillz_harness::model::{Agent, Installed, Kind};
 
 pub(super) struct UninstallRequest<'a> {

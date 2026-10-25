@@ -12,8 +12,8 @@ use ratatui::DefaultTerminal;
 use super::shell::Shell;
 use super::theme::Theme;
 use super::workspace::Shared;
-use crate::prompt::Hold;
-use crate::review::{ItemEvent, Progress};
+use crate::app::prompt::Hold;
+use crate::app::review::{ItemEvent, Progress};
 
 const FRAME: Duration = Duration::from_millis(100);
 

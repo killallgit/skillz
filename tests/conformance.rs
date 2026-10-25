@@ -1,6 +1,6 @@
 //! A fake agent, registered with nothing but its `Harness` impl, flows through discovery,
 //! usage, prune, uninstall and install. If one of these needs an edit outside the adapter, an
-//! agent's knowledge has leaked out of `src/agents/`; loose skills are the one deliberate
+//! agent's knowledge has leaked out of `crates/skillz-harness/src/agents/`; loose skills are the one deliberate
 //! exception, owned by `harness::npx`.
 //!
 //! `Agent` is a closed enum, so the fake borrows the `Codex` variant and no other adapter is
@@ -11,10 +11,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use skillz::app::install::{Ctx, InstallRequest, SkillSelection, install};
+use skillz::app::prompt::Prompter;
+use skillz::app::prune;
 use skillz::cli::{Command, Deps, Filter, UninstallArgs, run};
-use skillz::install::{Ctx, InstallRequest, SkillSelection, install};
-use skillz::prompt::Prompter;
-use skillz::prune;
 use skillz_harness::action::{Action, RemovalTarget};
 use skillz_harness::agents::{self, Harness, PluginOffer};
 use skillz_harness::env::Env;

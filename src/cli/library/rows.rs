@@ -2,8 +2,8 @@
 
 use serde_json::{Value, json};
 
-use crate::library::{Cue, Held, LibraryItem, Presence};
-use crate::stale::{Probe, missing_source};
+use crate::app::library::{Cue, Held, LibraryItem, Presence};
+use crate::app::stale::{Probe, missing_source};
 
 pub(in crate::cli) struct Row<'a> {
     item: &'a LibraryItem,
@@ -63,8 +63,8 @@ impl Row<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stale::Disk;
-    use crate::stale::tests::{Existing, skill};
+    use crate::app::stale::Disk;
+    use crate::app::stale::tests::{Existing, skill};
     use skillz_harness::Spec;
 
     fn hook() -> LibraryItem {

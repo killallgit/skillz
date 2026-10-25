@@ -12,8 +12,8 @@ use super::shell::Ui;
 use super::theme::Theme;
 use super::widgets::modal::{self, ModalSize};
 use super::widgets::panel::Panel;
-use crate::prompt::Hold;
-use crate::review::Progress;
+use crate::app::prompt::Hold;
+use crate::app::review::Progress;
 
 const SIZE: ModalSize = ModalSize {
     width: 70,

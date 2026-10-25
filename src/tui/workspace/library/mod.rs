@@ -14,15 +14,15 @@ use ratatui::layout::Rect;
 
 use self::rows::{Row, build, shape};
 use super::tab::Tab;
-use crate::library::Held;
-use crate::stale::Disk;
+use crate::app::library::Held;
+use crate::app::stale::Disk;
+use crate::app::workspace::Act;
+use crate::app::workspace::Model;
 use crate::tui::keymap::Scope;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::confirm::ConfirmDialog;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
-use crate::workspace::Act;
-use crate::workspace::Model;
 use skillz_harness::Spec;
 
 /// Which popup, if any, has the keys.

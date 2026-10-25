@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use crate::apply::Drift;
+use crate::app::apply::Drift;
 use crate::tui::theme::Theme;
 
 const GAP: &str = "  ";

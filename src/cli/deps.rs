@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::prompt::Prompter;
-use crate::sync::Scanner;
+use crate::app::prompt::Prompter;
+use crate::app::sync::Scanner;
 use skillz_harness::agents::Harness;
 use skillz_harness::runner::CommandRunner;
 use skillz_harness::update::check::UpdateCheck;

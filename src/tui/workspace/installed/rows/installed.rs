@@ -1,10 +1,10 @@
 //! The items a scope has installed, each with the package it belongs to.
 
 use super::Item;
-use crate::library::ItemKind;
-use crate::location::detail;
-use crate::merge::tag;
-use crate::package::Package;
+use crate::app::library::ItemKind;
+use crate::app::location::detail;
+use crate::app::merge::tag;
+use crate::app::package::Package;
 use skillz_harness::model::{Installed, Kind};
 
 pub(super) fn items(here: &[Installed]) -> Vec<(Package, Item)> {

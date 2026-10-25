@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
 use super::*;
-use crate::review::{Phase, Target};
+use crate::app::review::{Phase, Target};
 use crate::tui::widgets::testing::{ctrl, key, render_to_buffer, row_text};
 
 /// What a fake tab saw: the keys it was given and how many snapshots it loaded.

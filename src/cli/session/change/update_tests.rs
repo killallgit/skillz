@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::tests::{project_with_skill, run_change, session, skill_id};
 use super::*;
-use crate::install::test_support::{FakeNpx, FakeRunner, ScriptedPrompter};
+use crate::app::install::test_support::{FakeNpx, FakeRunner, ScriptedPrompter};
 use skillz_harness::agents::registry;
 
 fn locked_at(dir: &Path, hash: &str) {

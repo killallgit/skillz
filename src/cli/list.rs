@@ -4,12 +4,12 @@ use std::io::Write;
 use super::deps::Deps;
 use super::removal::{Review, confirm_and_remove};
 use super::scope::Scene;
-use crate::location::location;
-use crate::package::Package;
-use crate::prompt::Choice;
-use crate::prune;
-use crate::tree;
-use crate::{info, remove};
+use crate::app::location::location;
+use crate::app::package::Package;
+use crate::app::prompt::Choice;
+use crate::app::prune;
+use crate::app::tree;
+use crate::app::{info, remove};
 use skillz_harness::cost;
 use skillz_harness::env::Env;
 use skillz_harness::mcp;
@@ -188,7 +188,7 @@ fn render_listing(listing: &Listing, out: &mut dyn Write) -> anyhow::Result<()> 
 mod tests {
     use super::super::scope::project_env;
     use super::*;
-    use crate::install::test_support::{FakeRunner, ScriptedPrompter};
+    use crate::app::install::test_support::{FakeRunner, ScriptedPrompter};
     use skillz_harness::agents::Harness;
     use skillz_harness::model::{Agent, Installer, Scope};
 

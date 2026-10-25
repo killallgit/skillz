@@ -5,8 +5,8 @@
 
 mod installed;
 
-use crate::library::ItemKind;
-use crate::package::{Package, group_by};
+use crate::app::library::ItemKind;
+use crate::app::package::{Package, group_by};
 use crate::tui::widgets::outline::Shape;
 use skillz_harness::model::Installed;
 

@@ -2,13 +2,13 @@
 
 use anyhow::Context;
 
-use crate::apply::{Applier, Report, Switch};
+use crate::app::apply::{Applier, Report, Switch};
+use crate::app::library::Catalog;
+use crate::app::merge::merge;
+use crate::app::profile::Profile;
+use crate::app::review::Outcome;
 use crate::cli::deps::Deps;
 use crate::cli::scope::complete_installed;
-use crate::library::Catalog;
-use crate::merge::merge;
-use crate::profile::Profile;
-use crate::review::Outcome;
 use skillz_harness::Spec;
 use skillz_harness::env::Env;
 use skillz_harness::model::{Agent, Installed};

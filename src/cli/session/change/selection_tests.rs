@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::tests::{project_with_skill, run_change, session, skill_entry, skill_id};
 use super::*;
-use crate::install::test_support::ScriptedPrompter;
+use crate::app::install::test_support::ScriptedPrompter;
 use skillz_harness::Spec;
 use skillz_harness::agents::registry;
 use skillz_harness::runner::{CommandRunner, Output};
@@ -157,7 +157,7 @@ fn an_unsupported_install_is_skipped_without_counting_as_installed() {
         transport: None,
         agents: vec![skillz_harness::model::Agent::Codex],
     }];
-    let runner = crate::install::test_support::FakeRunner::new(|_| {});
+    let runner = crate::app::install::test_support::FakeRunner::new(|_| {});
     let prompter = super::tests::Outcomes::default();
     let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
 
@@ -178,7 +178,7 @@ fn a_failed_removal_is_not_counted_as_removed() {
     let dir = tempfile::tempdir().unwrap();
     project_with_skill(dir.path(), "tdd");
     let ids = [skill_id(dir.path())];
-    let runner = crate::install::test_support::FakeRunner::new(|_| {}).failing("npx");
+    let runner = crate::app::install::test_support::FakeRunner::new(|_| {}).failing("npx");
     let prompter = super::tests::Outcomes::default();
     let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
 

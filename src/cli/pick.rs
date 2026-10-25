@@ -3,8 +3,8 @@
 
 use anyhow::bail;
 
-use crate::matcher::fuzzy_rank;
-use crate::prompt::Prompter;
+use crate::app::matcher::fuzzy_rank;
+use crate::app::prompt::Prompter;
 
 pub(super) struct Choosing<'a> {
     pub prompter: &'a dyn Prompter,
@@ -46,7 +46,7 @@ fn matching(query: &str, labels: &[String]) -> Vec<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prompt::AssumeYes;
+    use crate::app::prompt::AssumeYes;
 
     fn names() -> Vec<String> {
         ["tdd", "tdd-extra", "grill"].map(String::from).to_vec()
