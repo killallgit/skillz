@@ -6,8 +6,8 @@ one skillz store holds the library and named profiles.
 
 ## Read, plan, execute
 
-Discovery reads configuration through each `Harness`, plus shared skill,
-hook, and subagent readers. Missing files and directories are empty; other
+Discovery reads configuration through each `Harness`, plus the `npx` module's loose
+skills and the shared hook and subagent readers. Missing files and directories are empty; other
 failures become inventory warnings. Display flows can show a partial inventory.
 Flows that change or record installed state require a complete inventory.
 
@@ -24,7 +24,7 @@ partially overlapping skill/subagent entries retain the other names. Agent lists
 are resolved before comparison with installed claims.
 
 `apply::compare` reports present entries, missing entries, and extras. Planning
-uses adapter provisioning to turn missing entries into actions, and reuses
+asks each `Harness` (`plan_install`) to turn missing entries into actions, and reuses
 removal plans for extras only in exact mode. Snapshotting converts typed installed
 facts into reproducible entries; it reports missing sources, invalid definitions,
 and secret-bearing MCP servers as skipped.
@@ -70,6 +70,23 @@ so an isolated command launches only after its profile is ready.
   in both library and profile entries. Explicit library removal remains separate
   from uninstalling native configuration.
 
+## Vocabulary
+
+- **`Spec`**: a thing someone wants installed (skill, plugin, hook, MCP server, subagent),
+  stored in profiles and the library. The name suggests a declarative desired state.
+- **`Installed`**: what a harness reports it has, with identity, scope, agents, typed
+  details and the removal `Action`s.
+- **`Action`**: one side effect (run a command, remove a path, edit a file). Planning is pure;
+  `harness::action` executes plans with staging.
+- **`Harness`**: one coding tool (Claude, Codex). It reports `installed` and plans
+  `plan_install`, `plan_update` and `plan_add_source`. The `npx` module is the harness for
+  loose skills and for the `npx skills` commands.
+- **`agent_skills`**: the open Agent Skills format that every harness shares. The frontmatter
+  parser keeps the extra keys each harness adds, and reads blocks that are not valid YAML,
+  or that use aliases, line by line.
+
+Reconciling is: compare `Spec`s with `Installed`, plan `Action`s, execute.
+
 ## Module ownership
 
 Layers, lowest first: **harness < app < tui < cli**. A module imports its own layer and the
@@ -114,12 +131,12 @@ command examples.
 
 ## Extension and tests
 
-An agent implements `Harness` and joins `agents::registry()`. Add its closed
+A coding tool implements `Harness` and joins `agents::registry()`. Add its closed
 `Agent` enum variant for clap/serde and its external skills id. Keep native paths,
-formats, commands, and update checking in that adapter, except loose skills: the
+formats, commands, and update checking in that harness, except loose skills: the
 `harness::npx` module owns every loose skill and the directory each agent reads them from
 (`npx::skill_dirs`), so a new agent also adds an arm there. Shared flows receive the
-adapter list, and `tests/conformance.rs` verifies that injected adapters participate.
+harness list, and `tests/conformance.rs` verifies that injected harnesses participate.
 
 Tests exercise established interfaces using temporary homes, fake runners, and
 scripted prompters. Keep behavioral coverage for ownership, partial failure,
