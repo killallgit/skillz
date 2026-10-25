@@ -25,7 +25,7 @@ pub(super) struct Ctx<'a> {
 pub fn discover(env: &Env, dirs: &[SkillDir]) -> anyhow::Result<Vec<Installed>> {
     let groups = group_by_canonical(dirs)?;
     let global: BTreeSet<&PathBuf> = global_targets(&groups);
-    let locks = read_locks(env);
+    let locks = read_locks(env, dirs)?;
 
     let mut out: Vec<Installed> = groups
         .iter()
@@ -66,10 +66,15 @@ fn global_targets(groups: &Groups) -> BTreeSet<&PathBuf> {
         .collect()
 }
 
-fn read_locks(env: &Env) -> BTreeMap<Scope, BTreeMap<String, LockEntry>> {
-    [Scope::Global, Scope::Project]
+/// Only the scopes `dirs` covers: a corrupt lock in a scope nobody asked about is not an error.
+fn read_locks(
+    env: &Env,
+    dirs: &[SkillDir],
+) -> anyhow::Result<BTreeMap<Scope, BTreeMap<String, LockEntry>>> {
+    let scopes: BTreeSet<Scope> = dirs.iter().map(|d| d.scope).collect();
+    scopes
         .into_iter()
-        .map(|s| (s, commands::read_lock(env, s)))
+        .map(|s| Ok((s, commands::read_lock(env, s)?)))
         .collect()
 }
 

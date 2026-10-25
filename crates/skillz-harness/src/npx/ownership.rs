@@ -123,18 +123,24 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_lock_is_treated_as_absent() {
+    fn corrupt_lock_is_an_error_not_an_empty_lock() {
         let f = fixture();
         skill(&f.env.home.join(".agents/skills/x"));
         write_lock(&f.env.home.join(".agents/.skill-lock.json"), "{not json");
 
+        assert!(discover(&f.env, &global_dirs(&f.env)).is_err());
+    }
+
+    #[test]
+    fn a_corrupt_lock_in_a_scope_not_discovered_is_ignored() {
+        let f = fixture();
+        skill(&f.env.home.join(".agents/skills/x"));
+        std::fs::create_dir_all(&f.env.project).unwrap();
+        write_lock(&f.env.project.join("skills-lock.json"), "{not json");
+
         let augs = discover(&f.env, &global_dirs(&f.env)).unwrap();
 
-        assert_eq!(augs[0].group, "local");
-        assert_eq!(
-            files(&augs[0].removal),
-            vec![rm(f.env.home.join(".agents/skills/x"))]
-        );
+        assert_eq!(augs.len(), 1);
     }
 
     #[test]
