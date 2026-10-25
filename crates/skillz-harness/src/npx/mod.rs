@@ -10,6 +10,8 @@ mod testutil;
 
 use std::path::PathBuf;
 
+use crate::Spec;
+use crate::action::Action;
 use crate::env::Env;
 use crate::model::{Agent, Installed, Scope};
 
@@ -32,6 +34,34 @@ pub fn skill_dirs(env: &Env, agent: Agent, scope: Scope) -> Vec<PathBuf> {
             env.project.join(".codex/skills"),
         ],
     }
+}
+
+/// The `npx skills add` that installs a skill spec for all its agents among `known`; `None` for
+/// anything but a skill.
+pub fn plan_install(spec: &Spec, known: &[Agent], scope: Scope, env: &Env) -> Option<Action> {
+    let Spec::Skill { source, names, .. } = spec else {
+        return None;
+    };
+    let agents: Vec<Agent> = spec
+        .agents()
+        .iter()
+        .copied()
+        .filter(|a| known.contains(a))
+        .collect();
+    let (program, args) = commands::add_command(source, names, &agents, scope);
+    Some(Action::required(&program, args, &env.project))
+}
+
+/// The `npx skills update` for a loose skill called `name`, run from `cwd`.
+pub fn plan_update(name: &str, scope: Scope, cwd: &std::path::Path) -> Action {
+    let scope = match scope {
+        Scope::Global => "-g",
+        Scope::Project => "-p",
+    };
+    let args = ["-y", "skills", "update", name, scope, "-y"]
+        .map(String::from)
+        .to_vec();
+    Action::required("npx", args, cwd)
 }
 
 /// Every loose skill the `agents` see across `scopes`, one item per skill with the agents that
@@ -60,6 +90,8 @@ pub struct SkillDir {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     fn env() -> Env {
@@ -98,5 +130,45 @@ mod tests {
                 PathBuf::from("/p/.codex/skills")
             ]
         );
+    }
+
+    #[test]
+    fn a_skill_installs_for_the_known_agents_it_names_and_nothing_else_does() {
+        let skill = Spec::Skill {
+            source: "o/r".into(),
+            names: vec!["tdd".into()],
+            agents: vec![Agent::Codex],
+        };
+        let hook = Spec::Hook {
+            event: "Stop".into(),
+            matcher: None,
+            command: "true".into(),
+            agents: vec![],
+        };
+
+        let step = plan_install(
+            &skill,
+            &[Agent::Claude, Agent::Codex],
+            Scope::Global,
+            &env(),
+        );
+
+        let Some(Action::Run { args, .. }) = step else {
+            panic!("a skill is installed by a command");
+        };
+        assert!(args.windows(2).any(|w| w == ["-a", "codex"]));
+        assert!(!args.windows(2).any(|w| w == ["-a", "claude-code"]));
+        assert!(plan_install(&hook, &[Agent::Claude], Scope::Global, &env()).is_none());
+    }
+
+    #[test]
+    fn updating_a_loose_skill_runs_npx_with_the_scope_flag() {
+        let step = plan_update("tdd", Scope::Project, Path::new("/p"));
+
+        let Action::Run { program, args, .. } = step else {
+            panic!("an update is a command");
+        };
+        assert_eq!(program, "npx");
+        assert_eq!(args, ["-y", "skills", "update", "tdd", "-p", "-y"]);
     }
 }

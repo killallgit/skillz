@@ -7,7 +7,8 @@ use std::path::Path;
 
 use crate::action::Action;
 use crate::agents::{Harness, adapter_for};
-use crate::model::{Details, Installed, Installer, Kind, Scope};
+use crate::model::{Details, Installed, Installer, Kind};
+use crate::npx;
 
 /// The steps that bring `item` to the latest version, run from `cwd`; none when it cannot be
 /// updated. An item seen through several agents is updated through each of them.
@@ -26,12 +27,8 @@ fn part_steps(adapters: &[Box<dyn Harness>], item: &Installed, cwd: &Path) -> Ve
     if name.is_empty() || name.starts_with('-') {
         return vec![];
     }
-    let run = |program: &str, args: &[&str]| {
-        let args = args.iter().map(|a| a.to_string()).collect();
-        Action::required(program, args, cwd)
-    };
     match (item.installer, item.kind) {
-        (Installer::Npx, Kind::Skill) => vec![run("npx", &npx_args(name, item.scope))],
+        (Installer::Npx, Kind::Skill) => vec![npx::plan_update(name, item.scope, cwd)],
         (Installer::Local, Kind::Subagent) => recopy(item, cwd),
         _ => item
             .agents
@@ -44,14 +41,6 @@ fn part_steps(adapters: &[Box<dyn Harness>], item: &Installed, cwd: &Path) -> Ve
 
 pub fn can_update(item: &Installed) -> bool {
     !steps(&crate::agents::registry(), item, Path::new("")).is_empty()
-}
-
-fn npx_args(name: &str, scope: Scope) -> [&str; 6] {
-    let scope = match scope {
-        Scope::Global => "-g",
-        Scope::Project => "-p",
-    };
-    ["-y", "skills", "update", name, scope, "-y"]
 }
 
 /// A subagent copied from a source is copied again from it.
@@ -79,6 +68,7 @@ fn recopy(item: &Installed, cwd: &Path) -> Vec<Action> {
 mod tests {
     use super::*;
     use crate::model::Agent;
+    use crate::model::Scope;
 
     fn item(name: &str, kind: Kind, installer: Installer) -> Installed {
         Installed {
