@@ -14,8 +14,10 @@ Issues live in `.beads/dolt/`. The JSONL export is passive; normal sync uses
 - Use non-interactive file operations: `cp -f`, `mv -f`, `rm -f`, and their recursive
   forms. Use `ssh`/`scp -o BatchMode=yes` and `HOMEBREW_NO_AUTO_UPDATE=1` for brew.
 - Keep decisions pure and effects explicit. Inject `Env`, `CommandRunner`,
-  `Prompter`, and adapters into flows that need them.
+  `Prompter`, and harnesses into flows that need them.
 - Keep agent-specific paths, formats, and commands in `crates/skillz-harness/src/agents/`.
+  Imports go one way: `skillz-harness` (its own crate) < `src/app` < `src/tui` < `src/cli`;
+  `tests/architecture.rs` guards the last three.
 - Discovery reads native configuration and produces typed installed items with
   removal plans. File transformations are pure; execution applies the plans.
 - Tests assert on typed behavior, actions, parsed contents, or tree structure.
@@ -29,6 +31,7 @@ Issues live in `.beads/dolt/`. The JSONL export is passive; normal sync uses
 ```sh
 rtk task dev
 rtk task test
+rtk cargo fmt --all --check
 rtk cargo clippy --workspace --all-targets -- -D warnings
 rtk cargo llvm-cov --workspace --summary-only
 ```
