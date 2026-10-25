@@ -7,7 +7,7 @@ use crate::action::Action;
 use crate::agents::{Harness, adapter_for};
 use crate::env::Env;
 use crate::model::{Agent, Scope};
-use crate::npx::commands;
+use crate::npx;
 
 /// An entry one agent has no way to take.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,7 +31,8 @@ pub fn plan_entries(
 ) -> Provision {
     let mut out = Provision::default();
     for entry in entries {
-        match skills_step(adapters, entry, scope, env) {
+        let known: Vec<Agent> = adapters.iter().map(|a| a.agent()).collect();
+        match npx::plan_install(entry, &known, scope, env) {
             Some(step) => out.steps.push(step),
             None => {
                 let per_agent = provision_per_agent(adapters, entry, scope, env);
@@ -41,27 +42,6 @@ pub fn plan_entries(
         }
     }
     out
-}
-
-/// One `npx skills add` for all the entry's agents that this build knows; `None` unless the
-/// entry is a skill.
-fn skills_step(
-    adapters: &[Box<dyn Harness>],
-    entry: &Spec,
-    scope: Scope,
-    env: &Env,
-) -> Option<Action> {
-    let Spec::Skill { source, names, .. } = entry else {
-        return None;
-    };
-    let known: Vec<Agent> = entry
-        .agents()
-        .iter()
-        .copied()
-        .filter(|a| adapters.iter().any(|ad| ad.agent() == *a))
-        .collect();
-    let (program, args) = commands::add_command(source, names, &known, scope);
-    Some(Action::required(&program, args, &env.project))
 }
 
 /// Ask each of the entry's agents for its own steps; the ones that cannot are reported.
