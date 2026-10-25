@@ -6,7 +6,7 @@ use super::notice::Notice;
 use super::selection::Selection;
 use crate::install::{InstallRequest, SkillSelection};
 use crate::model::Scope;
-use crate::tui::workspace::Act;
+use crate::workspace::Act;
 
 impl Session<'_, '_> {
     /// What the toast should say, if anything.

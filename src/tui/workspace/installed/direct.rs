@@ -1,7 +1,7 @@
 //! Removing the highlighted row at once.
 
 use super::InstalledTab;
-use crate::tui::workspace::act::Act;
+use crate::workspace::Act;
 
 impl InstalledTab {
     /// Remove the highlighted item, or everything its package provides; on a section, mark every

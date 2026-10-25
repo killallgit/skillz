@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 use std::io::Write;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::app::{App, Screen};
 use super::dialogs::Ask;
@@ -14,16 +14,19 @@ use super::shell::{Shell, Ui};
 use super::theme::Theme;
 use super::tree_view;
 use super::widgets::confirm::ConfirmDialog;
-use super::workspace::{self, Act, Shared};
+use super::workspace::{self, Shared, Workspace};
 use crate::prompt::{Choice, Hold, Picked, Prompter};
 use crate::review::{ItemEvent, Next, Outcome, PlanView, Progress, Verdict};
 use crate::tree::{self, Node};
+use crate::workspace::{Act, SharedScreen};
 
 /// Terminal prompter. The theme is chosen once by the caller and handed to every screen; the
 /// terminal is entered by the first screen and left again once nothing holds it.
 pub struct TuiPrompter {
     theme: Theme,
     shell: Shell,
+    /// The workspace screen, handed to the flow that feeds it.
+    screen: Shared,
     /// The workspace on screen, once one has been shown.
     shown: RefCell<Option<Shared>>,
 }
@@ -33,6 +36,7 @@ impl TuiPrompter {
         TuiPrompter {
             theme,
             shell: Shell::new(mouse),
+            screen: Arc::new(Mutex::new(Workspace::standard())),
             shown: RefCell::default(),
         }
     }
@@ -63,9 +67,13 @@ impl Prompter for TuiPrompter {
         tree_view::browse(title, groups, &self.ui())
     }
 
-    fn workspace(&self, screen: &Shared) -> anyhow::Result<Act> {
-        *self.shown.borrow_mut() = Some(Arc::clone(screen));
-        workspace::run(screen, &self.ui())
+    fn screen(&self) -> anyhow::Result<SharedScreen> {
+        Ok(Arc::clone(&self.screen) as SharedScreen)
+    }
+
+    fn workspace(&self) -> anyhow::Result<Act> {
+        *self.shown.borrow_mut() = Some(Arc::clone(&self.screen));
+        workspace::run(&self.screen, &self.ui())
     }
 
     fn hold(&self) -> Hold<'_> {

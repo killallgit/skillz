@@ -8,14 +8,12 @@ use ratatui::text::Line;
 
 use std::sync::mpsc::Receiver;
 
-use super::act::Act;
 use super::checks::Checks;
 use super::installed::InstalledTab;
 use super::library::LibraryTab;
-use super::model::Model;
 use super::profiles::ProfilesTab;
 use super::run::RunModal;
-use super::syncs::{Synced, Syncs};
+use super::syncs::Syncs;
 use super::tab::Tab;
 use crate::review::ItemEvent;
 use crate::tui::filter;
@@ -26,6 +24,9 @@ use crate::tui::widgets::empty;
 use crate::tui::widgets::keybar::KeyBar;
 use crate::tui::widgets::tabs::Tabs;
 use crate::tui::widgets::toast::Toasts;
+use crate::workspace::Act;
+use crate::workspace::Model;
+use crate::workspace::{Screen, Synced};
 
 #[cfg(test)]
 mod tests;
@@ -45,6 +46,28 @@ pub struct Workspace {
     run: Option<RunModal>,
 }
 
+impl Screen for Workspace {
+    fn load(&mut self, mut model: Model) {
+        if let Some(notice) = model.notice.take() {
+            self.toasts.push(notice);
+        }
+        self.tabs.iter_mut().for_each(|tab| tab.load(&model));
+        self.model = model;
+    }
+
+    fn watch_updates(&mut self, found: Receiver<String>) {
+        self.checks.watch(found);
+    }
+
+    fn watch_syncs(&mut self, done: Receiver<Synced>) {
+        self.syncs.watch(done);
+    }
+
+    fn forget_updates(&mut self, ids: &[String]) {
+        self.checks.forget(ids);
+    }
+}
+
 impl Workspace {
     pub fn new(tabs: Vec<Box<dyn Tab>>) -> Self {
         let titles: Vec<&str> = tabs.iter().map(|t| t.title()).collect();
@@ -58,21 +81,6 @@ impl Workspace {
             model: Model::default(),
             run: None,
         }
-    }
-
-    /// Mark the items whose ids arrive on `found` as having an update.
-    pub fn watch_updates(&mut self, found: Receiver<String>) {
-        self.checks.watch(found);
-    }
-
-    /// Show the outcome of each library sync that arrives on `done`.
-    pub fn watch_syncs(&mut self, done: Receiver<Synced>) {
-        self.syncs.watch(done);
-    }
-
-    /// Drop the marks of items that were just updated.
-    pub fn forget_updates(&mut self, ids: &[String]) {
-        self.checks.forget(ids);
     }
 
     /// Show where an item's change stands on every tab.
@@ -108,15 +116,6 @@ impl Workspace {
             Box::new(LibraryTab::new()),
             Box::new(ProfilesTab::new()),
         ])
-    }
-
-    /// Give every tab the new snapshot and toast what the last act reported.
-    pub fn load(&mut self, mut model: Model) {
-        if let Some(notice) = model.notice.take() {
-            self.toasts.push(notice);
-        }
-        self.tabs.iter_mut().for_each(|tab| tab.load(&model));
-        self.model = model;
     }
 
     fn take_syncs(&mut self) {

@@ -6,13 +6,13 @@ mod sync;
 
 use std::path::Path;
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{MutexGuard, PoisonError};
 
 use super::deps::Deps;
 use super::scope::resolve_project;
 use super::session::{Notice, Session};
-use crate::tui::workspace::{Act, Shared, Workspace};
 use crate::update::check;
+use crate::workspace::{Act, Screen, SharedScreen};
 use model::snapshot;
 
 /// Open the workspace on `path` (default: the current directory). An act that fails shows its
@@ -24,7 +24,7 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
     let (synced, syncs) = mpsc::channel();
     sync::start(deps, &env, synced);
     let session = Session::open(deps, &env);
-    let screen: Shared = Arc::new(Mutex::new(Workspace::standard()));
+    let screen = deps.prompter.screen()?;
     let (found, results) = mpsc::channel();
     lock(&screen).watch_updates(results);
     lock(&screen).watch_syncs(syncs);
@@ -43,7 +43,7 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
             check::spawn(deps.checker.clone(), due, found.clone());
         }
         lock(&screen).load(model);
-        let act = deps.prompter.workspace(&screen)?;
+        let act = deps.prompter.workspace()?;
         if act == Act::Quit {
             return Ok(());
         }
@@ -59,6 +59,6 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
     }
 }
 
-fn lock(screen: &Shared) -> MutexGuard<'_, Workspace> {
+fn lock(screen: &SharedScreen) -> MutexGuard<'_, dyn Screen + 'static> {
     screen.lock().unwrap_or_else(PoisonError::into_inner)
 }

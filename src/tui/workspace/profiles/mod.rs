@@ -14,8 +14,6 @@ use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
 use self::editor::Editor;
-use super::act::Act;
-use super::model::Model;
 use super::tab::Tab;
 use crate::apply::compare;
 use crate::library::Catalog;
@@ -25,6 +23,8 @@ use crate::tui::theme::Theme;
 use crate::tui::widgets::confirm::ConfirmDialog;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
+use crate::workspace::Act;
+use crate::workspace::Model;
 
 /// Which popup, if any, has the keys.
 #[derive(Debug, Clone, Default)]

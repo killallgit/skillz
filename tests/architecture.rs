@@ -43,8 +43,25 @@ const HARNESS: &[&str] = &[
 ];
 
 const APP: &[&str] = &[
-    "apply", "info", "library", "location", "matcher", "merge", "package", "profile", "prompt",
-    "prune", "remove", "review", "snapshot", "spinner", "stale", "store", "sync", "tree",
+    "apply",
+    "info",
+    "library",
+    "location",
+    "matcher",
+    "merge",
+    "package",
+    "profile",
+    "prompt",
+    "prune",
+    "remove",
+    "review",
+    "snapshot",
+    "spinner",
+    "stale",
+    "store",
+    "sync",
+    "tree",
+    "workspace",
 ];
 
 fn layer(module: &str) -> Option<Layer> {
@@ -73,7 +90,6 @@ const ALLOWED: &[(&str, &str)] = &[
     ("install/mod.rs", "review"),
     ("install/skills.rs", "matcher"),
     ("install/skills.rs", "prompt"),
-    ("prompt.rs", "tui"),
     ("provision.rs", "profile"),
     ("subagents.rs", "profile"),
 ];
