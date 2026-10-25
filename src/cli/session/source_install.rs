@@ -36,11 +36,11 @@ mod tests {
 
     use super::*;
     use crate::cli::deps::Deps;
-    use crate::harness::agents::registry;
-    use crate::harness::model::{Agent, Scope};
     use crate::install::SkillSelection;
     use crate::install::test_support::{FakeRunner, ScriptedPrompter, marketplace_fixture};
     use crate::{profile, store};
+    use skillz_harness::agents::registry;
+    use skillz_harness::model::{Agent, Scope};
 
     fn request(dir: &Path) -> InstallRequest {
         InstallRequest {

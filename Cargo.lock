@@ -872,9 +872,25 @@ dependencies = [
  "serde_json",
  "shell-words",
  "signal-hook",
+ "skillz-harness",
  "tempfile",
  "toml_edit",
  "unicode-width",
+ "yaml-rust2",
+]
+
+[[package]]
+name = "skillz-harness"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "glob",
+ "serde",
+ "serde_json",
+ "shell-words",
+ "tempfile",
+ "toml_edit",
  "yaml-rust2",
 ]
 

@@ -16,8 +16,8 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use super::deps::Deps;
-use crate::harness::env::Env;
 use crate::{profile, store};
+use skillz_harness::env::Env;
 
 pub(super) use change::{Change, change};
 pub(super) use console::Console;

@@ -3,7 +3,11 @@ name = "skillz"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["crates/skillz-harness"]
+
 [dependencies]
+skillz-harness = { path = "crates/skillz-harness", features = ["clap"] }
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
 fuzzy-matcher = "0.3.7"

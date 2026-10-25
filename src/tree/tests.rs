@@ -1,6 +1,6 @@
 use super::*;
-use crate::harness::model::Installer;
-use crate::harness::model::{Agent, Scope};
+use skillz_harness::model::Installer;
+use skillz_harness::model::{Agent, Scope};
 
 fn aug(name: &str, kind: Kind, group: &str) -> Installed {
     Installed {

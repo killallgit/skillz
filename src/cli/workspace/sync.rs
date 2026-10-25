@@ -4,9 +4,9 @@ use std::sync::mpsc::Sender;
 
 use crate::cli::deps::Deps;
 use crate::cli::session::Notice;
-use crate::harness::env::Env;
 use crate::sync::{self, Report};
 use crate::workspace::Synced;
+use skillz_harness::env::Env;
 
 /// Scan and sync on a thread of their own and send the outcome to `tell`, unless the deps have
 /// no scanner.
@@ -47,8 +47,8 @@ fn synced_of(result: anyhow::Result<Report>) -> Synced {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::Spec;
     use crate::library::{Catalog, ItemKind, LibraryItem, Moved, Synced as Found};
+    use skillz_harness::Spec;
 
     fn report_adding(count: usize) -> Report {
         let item = LibraryItem::from_entry(Spec::Hook {

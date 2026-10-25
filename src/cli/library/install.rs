@@ -5,9 +5,9 @@ use super::super::pick::{Choosing, pick};
 use super::super::scope::{installed, project_env};
 use super::super::session::{Change, Console, Selection, Session, change};
 use crate::apply::holds;
-use crate::harness::Spec;
-use crate::harness::model::Scope;
 use crate::prompt::Prompter;
+use skillz_harness::Spec;
+use skillz_harness::model::Scope;
 
 pub(super) fn install(
     session: &Session,

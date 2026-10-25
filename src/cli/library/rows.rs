@@ -63,9 +63,9 @@ impl Row<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::Spec;
     use crate::stale::Disk;
     use crate::stale::tests::{Existing, skill};
+    use skillz_harness::Spec;
 
     fn hook() -> LibraryItem {
         LibraryItem::from_entry(Spec::Hook {

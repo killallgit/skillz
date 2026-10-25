@@ -6,7 +6,6 @@
 pub mod app_paths;
 pub mod apply;
 pub mod cli;
-pub mod harness;
 pub(crate) mod info;
 pub mod install;
 pub mod library;

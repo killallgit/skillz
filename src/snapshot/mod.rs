@@ -5,10 +5,10 @@ mod extract;
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::harness::Spec;
-use crate::harness::mcp::Launch;
-use crate::harness::model::{Agent, Installed};
 use crate::profile::Profile;
+use skillz_harness::Spec;
+use skillz_harness::mcp::Launch;
+use skillz_harness::model::{Agent, Installed};
 
 pub use extract::entries;
 
@@ -236,8 +236,8 @@ pub fn snapshot(name: &str, items: &[Installed]) -> Snapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::mcp::Server;
-    use crate::harness::model::{Details, Installer, Kind, Origin, Scope};
+    use skillz_harness::mcp::Server;
+    use skillz_harness::model::{Details, Installer, Kind, Origin, Scope};
 
     pub(super) fn item(
         name: &str,
@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn hooks_are_read_from_typed_data_and_merged_across_agents() {
         let handler = |event: &str, matcher: Option<&str>, command: &str| {
-            crate::harness::hook_text::HookEntry {
+            skillz_harness::hook_text::HookEntry {
                 event: event.into(),
                 matcher: matcher.map(String::from),
                 command: command.into(),
@@ -440,7 +440,7 @@ mod tests {
             "hooks",
             None,
         );
-        i.hooks = vec![crate::harness::hook_text::HookEntry {
+        i.hooks = vec![skillz_harness::hook_text::HookEntry {
             event: "PreToolUse".into(),
             matcher: Some("mcp__a: b".into()),
             command: "run".into(),

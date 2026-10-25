@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use crate::harness::Spec;
+use skillz_harness::Spec;
 
 /// Whether a path exists; injected so the rules can be tested without a disk.
 pub trait Probe {

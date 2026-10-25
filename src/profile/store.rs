@@ -5,7 +5,7 @@ use anyhow::Context;
 
 use super::identity::overlay;
 use super::{Profile, check_name};
-use crate::harness::env::Env;
+use skillz_harness::env::Env;
 
 /// A profile cannot be removed while others start from it.
 #[derive(Debug, PartialEq, Eq)]
@@ -169,7 +169,7 @@ fn extended_by(profiles: &[Profile], name: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::Spec;
+    use skillz_harness::Spec;
 
     fn store() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();
@@ -282,11 +282,11 @@ mod tests {
     fn of_two_bases_the_later_one_wins() {
         let (_dir, store) = store();
         let mut one = Profile::new("one");
-        one.agents = vec![crate::harness::model::Agent::Claude];
+        one.agents = vec![skillz_harness::model::Agent::Claude];
         one.entries = vec![skill("tdd")];
         store.save(&one).unwrap();
         let mut two = Profile::new("two");
-        two.agents = vec![crate::harness::model::Agent::Codex];
+        two.agents = vec![skillz_harness::model::Agent::Codex];
         two.entries = vec![skill("tdd")];
         store.save(&two).unwrap();
         saved(&store, "web", &["one", "two"], &[]);
@@ -296,7 +296,7 @@ mod tests {
         assert_eq!(flat.entries.len(), 1);
         assert_eq!(
             flat.entries[0].agents(),
-            [crate::harness::model::Agent::Codex]
+            [skillz_harness::model::Agent::Codex]
         );
     }
 
@@ -304,7 +304,7 @@ mod tests {
     fn a_base_keeps_the_agents_of_its_own_profile() {
         let (_dir, store) = store();
         let mut base = Profile::new("base");
-        base.agents = vec![crate::harness::model::Agent::Codex];
+        base.agents = vec![skillz_harness::model::Agent::Codex];
         base.entries = vec![skill("tdd")];
         store.save(&base).unwrap();
         saved(&store, "web", &["base"], &[]);
@@ -313,7 +313,7 @@ mod tests {
 
         assert_eq!(
             flat.entries[0].agents(),
-            [crate::harness::model::Agent::Codex]
+            [skillz_harness::model::Agent::Codex]
         );
     }
 

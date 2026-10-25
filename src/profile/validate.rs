@@ -1,11 +1,18 @@
 //! Every value of an entry ends up as a command-line argument, so none may be empty or
 //! option-like.
 
-use crate::harness::Spec;
-use crate::harness::redact::credential_count;
+use skillz_harness::Spec;
+use skillz_harness::redact::credential_count;
 
-impl Spec {
-    pub fn validate(&self) -> anyhow::Result<()> {
+/// Checks an entry typed by hand must pass before it is stored or run.
+pub trait SpecChecks {
+    fn validate(&self) -> anyhow::Result<()>;
+    /// Refuse an entry whose command line or url carries a credential.
+    fn ensure_no_credentials(&self) -> anyhow::Result<()>;
+}
+
+impl SpecChecks for Spec {
+    fn validate(&self) -> anyhow::Result<()> {
         let args = match self {
             Spec::Skill { source, names, .. } | Spec::Subagent { source, names, .. } => {
                 sourced_args(source, names)?
@@ -21,12 +28,10 @@ impl Spec {
         };
         ensure_plain(&args)
     }
-}
 
-impl Spec {
     /// Refuse an entry typed by hand whose command line or url carries a credential: a library
     /// or profile file is plain text and is shared.
-    pub fn ensure_no_credentials(&self) -> anyhow::Result<()> {
+    fn ensure_no_credentials(&self) -> anyhow::Result<()> {
         let words = match self {
             Spec::Hook { command, .. } => shell_words::split(command)
                 .unwrap_or_else(|_| command.split_whitespace().map(str::to_owned).collect()),
@@ -114,6 +119,7 @@ fn ensure_plain(args: &[&str]) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::profile::SpecParse;
 
     fn mcp(command: Option<&str>, url: Option<&str>, transport: Option<&str>) -> Spec {
         Spec::Mcp {

@@ -10,11 +10,11 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 
-use crate::harness::action::stage;
-use crate::harness::env::Env;
-use crate::harness::read_optional::read_optional;
 pub use document::Document;
 use lock::Lock;
+use skillz_harness::action::stage;
+use skillz_harness::env::Env;
+use skillz_harness::read_optional::read_optional;
 
 /// The store file exists but is not a valid store; it is left untouched.
 #[derive(Debug, PartialEq, Eq)]

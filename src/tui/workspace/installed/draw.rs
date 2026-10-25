@@ -11,12 +11,12 @@ use super::rows::{Item, Row};
 use super::status::Status;
 use super::{InstalledTab, Popup};
 use crate::apply::Drift;
-use crate::harness::model::Scope;
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
+use skillz_harness::model::Scope;
 
 /// Room per level of depth before a row's caret or status mark.
 pub(super) const INDENT: &str = "  ";

@@ -1,8 +1,8 @@
-use crate::harness::action::{self, Action};
-use crate::harness::model::Installed;
-use crate::harness::runner::CommandRunner;
 use crate::remove::{self, Outcome, Plan, Removal};
 use crate::review::{ItemEvent, Target};
+use skillz_harness::action::{self, Action};
+use skillz_harness::model::Installed;
+use skillz_harness::runner::CommandRunner;
 
 use super::Applier;
 use super::source_gone::SourceGone;

@@ -1,8 +1,8 @@
 //! How far an installed set is from a profile: what it lacks and what the profile does not ask for.
 
 use super::compare;
-use crate::harness::model::Installed;
 use crate::profile::Profile;
+use skillz_harness::model::Installed;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Drift {
@@ -29,8 +29,8 @@ pub fn drift(profile: &Profile, installed: &[Installed]) -> Drift {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::Spec;
-    use crate::harness::model::{Agent, Installer, Kind, Scope};
+    use skillz_harness::Spec;
+    use skillz_harness::model::{Agent, Installer, Kind, Scope};
 
     fn installed(name: &str, kind: Kind, source: Option<&str>) -> Installed {
         Installed {

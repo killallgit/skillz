@@ -5,6 +5,8 @@
 mod edit;
 
 mod identity;
+#[cfg(test)]
+mod provision_tests;
 mod spec;
 mod store;
 mod validate;
@@ -12,14 +14,16 @@ mod validate;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
-use crate::harness::Spec;
-use crate::harness::model::Agent;
+use skillz_harness::Spec;
+use skillz_harness::model::Agent;
 
 pub use edit::with_added;
 
 pub use identity::{Claim, claims, lacking};
 pub(crate) use identity::{Key, installed_claims, installed_keys, keys, same_thing};
+pub use spec::SpecParse;
 pub use store::{StillExtended, Store};
+pub use validate::SpecChecks;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Profile {
@@ -53,7 +57,7 @@ impl Profile {
     }
 
     /// A temporary profile for comparison and installation; the stored definition stays portable.
-    pub fn in_env(mut self, env: &crate::harness::env::Env) -> Self {
+    pub fn in_env(mut self, env: &skillz_harness::env::Env) -> Self {
         self.entries = self
             .entries
             .into_iter()

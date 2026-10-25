@@ -1,12 +1,12 @@
 use std::path::Path;
 
-use crate::harness::action::Action;
-use crate::harness::agent_skills::skill_name;
-use crate::harness::fswalk;
-use crate::harness::model::Agent;
-use crate::harness::npx::commands;
 use crate::matcher::pattern_matches;
 use crate::prompt::Prompter;
+use skillz_harness::action::Action;
+use skillz_harness::agent_skills::skill_name;
+use skillz_harness::fswalk;
+use skillz_harness::model::Agent;
+use skillz_harness::npx::commands;
 
 use super::global::confirm_duplicates;
 use super::{Ctx, InstallRequest, SkillSelection, Tree};

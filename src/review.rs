@@ -1,8 +1,8 @@
 //! What a switch shows the user before, while and after it runs, as typed data. Screens decide
 //! how to draw it; flows decide how to build it.
 
-use crate::harness::Spec;
-use crate::harness::model::Agent;
+use skillz_harness::Spec;
+use skillz_harness::model::Agent;
 
 /// The kinds of line in a plan, in the order they are shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

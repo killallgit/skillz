@@ -2,10 +2,10 @@ use std::path::Path;
 
 use super::tests::{session, skill_entry};
 use super::*;
-use crate::harness::agents::registry;
-use crate::harness::model::Installer;
 use crate::install::test_support::{FakeNpx, LOCKED_LINK, ScriptedPrompter};
 use crate::library::{LibraryItem, Provenance};
+use skillz_harness::agents::registry;
+use skillz_harness::model::Installer;
 
 fn install_picked(dir: &Path, library: &[LibraryItem]) -> (FakeNpx, Store) {
     let runner = FakeNpx::new();

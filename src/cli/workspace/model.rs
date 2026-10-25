@@ -4,9 +4,9 @@ use std::path::Path;
 
 use super::super::session::{Notice, Session};
 use crate::cli::scope::{installed, project_env};
-use crate::harness::model::Scope;
 use crate::library::Catalog;
 use crate::workspace::Model;
+use skillz_harness::model::Scope;
 
 /// The snapshot to show next, with `notice` to toast; an unreadable library is shown empty and
 /// reported in its place, along with the profiles kept beside it.
@@ -57,12 +57,12 @@ mod tests {
     #[test]
     fn local_sources_match_in_workspace_views_without_rewriting_stored_entries() {
         use crate::cli::deps::Deps;
-        use crate::harness::Spec;
-        use crate::harness::env::Env;
-        use crate::harness::model::Agent;
         use crate::library::{Catalog, Held, LibraryItem};
         use crate::profile::Profile;
         use crate::store::Store;
+        use skillz_harness::Spec;
+        use skillz_harness::env::Env;
+        use skillz_harness::model::Agent;
         use std::fs;
 
         let dir = tempfile::tempdir().unwrap();
@@ -104,8 +104,8 @@ mod tests {
         let prompter = crate::prompt::AssumeYes;
         let mut deps = Deps::for_test(
             dir.path(),
-            crate::harness::agents::registry(),
-            (&crate::harness::runner::NoCommands, &prompter),
+            skillz_harness::agents::registry(),
+            (&skillz_harness::runner::NoCommands, &prompter),
         );
         deps.cwd = project;
 
@@ -139,11 +139,11 @@ mod tests {
     #[test]
     fn explicit_missing_sources_stay_local_and_repository_references_stay_portable() {
         use crate::cli::deps::Deps;
-        use crate::harness::Spec;
-        use crate::harness::env::Env;
         use crate::profile::Profile;
         use crate::stale::{Disk, missing_source};
         use crate::store::Store;
+        use skillz_harness::Spec;
+        use skillz_harness::env::Env;
         let dir = tempfile::tempdir().unwrap();
         let env = Env::new(dir.path().into(), dir.path().into());
         let mut profile = Profile::new("sources");
@@ -172,7 +172,7 @@ mod tests {
         let deps = Deps::for_test(
             dir.path(),
             vec![],
-            (&crate::harness::runner::NoCommands, &prompter),
+            (&skillz_harness::runner::NoCommands, &prompter),
         );
 
         let model = snapshot(&Session::open(&deps, &env), None).unwrap();

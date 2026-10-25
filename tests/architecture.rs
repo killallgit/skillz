@@ -1,7 +1,8 @@
 //! Layering guard: modules may import their own layer and the ones below, never above.
 //!
-//! Layers, lowest first: harness < app < tui < cli. The harness layer is meant to become its
-//! own crate, so it may not reach into app, tui or cli. `ALLOWED` lists today's violations as
+//! Layers, lowest first: harness < app < tui < cli. The harness layer is its own crate
+//! (`crates/skillz-harness`), so cargo already stops it reaching into the others; this test
+//! covers the layers inside the `skillz` crate: app < tui < cli. `ALLOWED` lists today's violations as
 //! (file, imported top-level module); it may only shrink. An entry that no longer matches a
 //! real import fails the test so it gets deleted.
 
@@ -11,13 +12,10 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Layer {
-    Harness,
     App,
     Tui,
     Cli,
 }
-
-const HARNESS: &[&str] = &["harness"];
 
 const APP: &[&str] = &[
     "install",
@@ -47,7 +45,6 @@ fn layer(module: &str) -> Option<Layer> {
     match module {
         "tui" => Some(Layer::Tui),
         "cli" => Some(Layer::Cli),
-        m if HARNESS.contains(&m) => Some(Layer::Harness),
         m if APP.contains(&m) => Some(Layer::App),
         _ => None,
     }

@@ -87,7 +87,7 @@ fn print_synced(out: &mut dyn Write, synced: &Synced, dry_run: bool) -> anyhow::
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::Spec;
+    use skillz_harness::Spec;
 
     #[test]
     fn the_json_lists_added_items_with_their_kind_and_the_dry_run_flag() {

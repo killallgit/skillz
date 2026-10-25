@@ -2,11 +2,11 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::harness::agents::Harness;
-use crate::harness::runner::CommandRunner;
-use crate::harness::update::check::UpdateCheck;
 use crate::prompt::Prompter;
 use crate::sync::Scanner;
+use skillz_harness::agents::Harness;
+use skillz_harness::runner::CommandRunner;
+use skillz_harness::update::check::UpdateCheck;
 
 /// External effects the commands need; real ones in `main`, fakes in tests.
 pub struct Deps<'a> {
@@ -44,7 +44,7 @@ impl<'a> Deps<'a> {
             runner,
             prompter,
             interactive: false,
-            checker: Arc::new(crate::harness::update::check::NoCheck),
+            checker: Arc::new(skillz_harness::update::check::NoCheck),
             scanner: None,
         }
     }

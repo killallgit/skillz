@@ -1,7 +1,7 @@
 use super::*;
-use crate::harness::action::Action;
-use crate::harness::hook_text::HookEntry;
-use crate::harness::model::{Agent, Details, Installer, Kind, Scope};
+use skillz_harness::action::Action;
+use skillz_harness::hook_text::HookEntry;
+use skillz_harness::model::{Agent, Details, Installer, Kind, Scope};
 
 fn item(kind: Kind, name: &str, agent: Agent) -> Installed {
     Installed {
@@ -128,9 +128,9 @@ fn mcp_servers_launched_differently_are_not_merged() {
     let server = |agent, launch: &str| Installed {
         details: Details::Mcp {
             config: "/config".into(),
-            server: crate::harness::mcp::Server {
+            server: skillz_harness::mcp::Server {
                 name: "github".into(),
-                launch: crate::harness::mcp::Launch::Stdio {
+                launch: skillz_harness::mcp::Launch::Stdio {
                     command: launch.into(),
                     args: vec![],
                 },

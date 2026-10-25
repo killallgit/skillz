@@ -3,8 +3,8 @@ use std::path::Path;
 
 use super::tests::{project_with_skill, run_change, session, skill_id};
 use super::*;
-use crate::harness::agents::registry;
 use crate::install::test_support::{FakeNpx, FakeRunner, ScriptedPrompter};
+use skillz_harness::agents::registry;
 
 fn locked_at(dir: &Path, hash: &str) {
     project_with_skill(dir, "tdd");
@@ -93,7 +93,7 @@ fn an_update_records_the_new_version_in_the_library() {
 
 #[test]
 fn retrying_an_update_only_retries_the_failed_items() {
-    use crate::harness::runner::{CommandRunner, Output};
+    use skillz_harness::runner::{CommandRunner, Output};
     struct FailsOnce {
         failed: std::cell::Cell<bool>,
         names: std::cell::RefCell<Vec<String>>,

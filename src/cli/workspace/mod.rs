@@ -11,9 +11,9 @@ use std::sync::{MutexGuard, PoisonError};
 use super::deps::Deps;
 use super::scope::resolve_project;
 use super::session::{Notice, Session};
-use crate::harness::update::check;
 use crate::workspace::{Act, Screen, SharedScreen};
 use model::snapshot;
+use skillz_harness::update::check;
 
 /// Open the workspace on `path` (default: the current directory). An act that fails shows its
 /// error as a toast and the workspace stays open. The terminal is entered once and kept until

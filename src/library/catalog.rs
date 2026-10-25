@@ -1,8 +1,9 @@
+use crate::profile::SpecChecks;
 use serde::{Deserialize, Serialize};
 
 use super::item::LibraryItem;
-use crate::harness::Spec;
 use crate::profile::same_thing;
+use skillz_harness::Spec;
 
 /// The items of a library, in the order they were first added.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,7 +21,7 @@ impl Catalog {
     }
 
     /// A temporary catalog whose local entries refer to this project's physical sources.
-    pub fn in_env(mut self, env: &crate::harness::env::Env) -> Self {
+    pub fn in_env(mut self, env: &skillz_harness::env::Env) -> Self {
         for item in &mut self.items {
             let default_label = item.label == item.entry.to_string();
             item.entry = crate::app_paths::spec_in_env(env, item.entry.clone());
@@ -145,7 +146,7 @@ mod tests {
 #[cfg(test)]
 mod split_tests {
     use super::*;
-    use crate::harness::Spec;
+    use skillz_harness::Spec;
 
     fn skills(names: &[&str]) -> Spec {
         Spec::Skill {

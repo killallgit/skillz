@@ -1,12 +1,12 @@
 //! What bringing a project to a profile involves. Pure data: nothing here reads or changes the
 //! machine.
 
-use crate::harness::Spec;
-use crate::harness::action::Action;
-use crate::harness::model::Installed;
-use crate::harness::provision::Unsupported;
 use crate::remove::Plan;
 use crate::review::{ItemEvent, Target};
+use skillz_harness::Spec;
+use skillz_harness::action::Action;
+use skillz_harness::model::Installed;
+use skillz_harness::provision::Unsupported;
 
 /// Build it with `Applier::plan`, show it, then `Applier::run` it.
 #[derive(Debug)]

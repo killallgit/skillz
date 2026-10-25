@@ -16,4 +16,4 @@ tasks:
 
   test:
     desc: All tests, killed (with the whole process tree) if the run outlives five minutes
-    cmd: python3 scripts/with_timeout.py 300 cargo test
+    cmd: python3 scripts/with_timeout.py 300 cargo test --workspace

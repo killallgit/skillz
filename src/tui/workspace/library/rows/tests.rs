@@ -1,6 +1,6 @@
 use super::*;
-use crate::harness::Spec;
 use crate::stale::Disk;
+use skillz_harness::Spec;
 
 fn build(catalog: &Catalog) -> Vec<Row> {
     super::build(catalog, &Held::of(&[], &[]), &Disk)

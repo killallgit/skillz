@@ -1,8 +1,8 @@
 //! Which rows `u` updates, and which rows are known to have an update.
 
 use super::InstalledTab;
-use crate::harness::model::Installed;
-use crate::harness::update::can_update;
+use skillz_harness::model::Installed;
+use skillz_harness::update::can_update;
 
 impl InstalledTab {
     pub(super) fn is_outdated(&self, id: &str) -> bool {

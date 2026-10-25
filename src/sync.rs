@@ -4,12 +4,12 @@
 use std::sync::Arc;
 use std::thread;
 
-use crate::harness::agents::{inventory, registry};
-use crate::harness::env::Env;
-use crate::harness::model::{Installed, Scope};
 use crate::library::{Catalog, Synced, now_secs, repoint_profiles, sync_installed};
 use crate::stale::{Disk, Probe};
 use crate::store::{Document, Store};
+use skillz_harness::agents::{inventory, registry};
+use skillz_harness::env::Env;
+use skillz_harness::model::{Installed, Scope};
 
 /// Finds everything installed for a project and at user level.
 pub trait Scanner: Send + Sync {
@@ -86,8 +86,8 @@ mod tests {
     use std::sync::mpsc;
 
     use super::*;
-    use crate::harness::model::{Agent, Installer, Kind, Origin};
     use crate::library::Catalog;
+    use skillz_harness::model::{Agent, Installer, Kind, Origin};
 
     struct Fixed(Vec<Installed>);
 

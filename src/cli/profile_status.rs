@@ -7,11 +7,11 @@ use serde_json::{Value, json};
 use super::deps::Deps;
 use super::scope::installed;
 use crate::apply::{Standing, compare, drift};
-use crate::harness::Spec;
-use crate::harness::env::Env;
-use crate::harness::model::{Installed, Scope};
 use crate::profile::{Profile, Store};
 use crate::stale::{Disk, Probe, missing_source};
+use skillz_harness::Spec;
+use skillz_harness::env::Env;
+use skillz_harness::model::{Installed, Scope};
 
 pub(super) fn list(deps: &Deps, env: &Env, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
     let store = Store::in_env(env);
@@ -144,8 +144,8 @@ fn line_of_status(row: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::model::Agent;
     use crate::stale::tests::{Existing, skill};
+    use skillz_harness::model::Agent;
 
     #[test]
     fn an_entry_whose_local_source_is_gone_is_unavailable_apart_from_missing() {

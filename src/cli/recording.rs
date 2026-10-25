@@ -2,12 +2,12 @@
 
 use super::deps::Deps;
 use super::scope::complete_installed;
-use crate::harness::env::Env;
-use crate::harness::model::{Installed, Scope};
 use crate::library::{now_secs, record_installed};
 use crate::stale::Disk;
 use crate::store::Store;
 use crate::sync::merge;
+use skillz_harness::env::Env;
+use skillz_harness::model::{Installed, Scope};
 
 /// Add to the library what is installed now but was not, or was different, in `before`, then
 /// sync it with everything else installed in both scopes.
@@ -36,8 +36,8 @@ pub(super) fn record_since(
 mod tests {
     use super::*;
     use crate::cli::scope::project_env;
-    use crate::harness::agents::registry;
     use crate::install::test_support::{FakeRunner, ScriptedPrompter};
+    use skillz_harness::agents::registry;
 
     #[test]
     fn recording_an_install_also_picks_up_what_else_is_installed_at_user_level() {

@@ -3,14 +3,14 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
-use crate::harness::Spec;
-use crate::harness::action::Action;
-use crate::harness::agents::registry;
-use crate::harness::env::Env;
-use crate::harness::model::{Agent, Installer, Kind, Scope};
-use crate::harness::runner::{CommandRunner, Output};
 use crate::review::{ItemEvent, Phase, Target};
 use crate::stale::{Disk, Probe};
+use skillz_harness::Spec;
+use skillz_harness::action::Action;
+use skillz_harness::agents::registry;
+use skillz_harness::env::Env;
+use skillz_harness::model::{Agent, Installer, Kind, Scope};
+use skillz_harness::runner::{CommandRunner, Output};
 
 /// Runs every program successfully except the one named.
 struct Runner(&'static str);

@@ -4,8 +4,9 @@
 use super::pick::{Choosing, pick};
 use super::profile_args::{ProfileAddArgs, ProfileRemoveArgs};
 use super::session::{Console, Session};
-use crate::harness::Spec;
+use crate::profile::SpecParse;
 use crate::profile::with_added;
+use skillz_harness::Spec;
 
 pub(super) fn add(
     session: &Session,

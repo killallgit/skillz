@@ -5,8 +5,8 @@ use anyhow::bail;
 use super::args::Filter;
 use super::list::display_tree;
 use super::scope::Scene;
-use crate::harness::model::{Agent, Installed, Kind};
 use crate::{remove, spinner};
+use skillz_harness::model::{Agent, Installed, Kind};
 
 pub(super) struct UninstallRequest<'a> {
     pub queries: &'a [String],
@@ -209,7 +209,7 @@ fn report(out: &mut dyn Write, outcome: &remove::Outcome) -> anyhow::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::model::Scope;
+    use skillz_harness::model::Scope;
 
     fn item(name: &str, kind: Kind, group: &str) -> Installed {
         Installed {
@@ -223,7 +223,7 @@ mod tests {
             scope: Scope::Global,
             group: group.into(),
             source: None,
-            installer: crate::harness::model::Installer::Local,
+            installer: skillz_harness::model::Installer::Local,
             origin: Default::default(),
             children: vec![],
             removal: vec![],

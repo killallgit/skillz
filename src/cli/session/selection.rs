@@ -5,13 +5,13 @@ use anyhow::Context;
 use crate::apply::{Applier, Report, Switch};
 use crate::cli::deps::Deps;
 use crate::cli::scope::complete_installed;
-use crate::harness::Spec;
-use crate::harness::env::Env;
-use crate::harness::model::{Agent, Installed};
 use crate::library::Catalog;
 use crate::merge::merge;
 use crate::profile::Profile;
 use crate::review::Outcome;
+use skillz_harness::Spec;
+use skillz_harness::env::Env;
+use skillz_harness::model::{Agent, Installed};
 
 /// What the user picked: entries to install and the ids of installed items to remove.
 #[derive(Clone, Copy)]
@@ -88,7 +88,7 @@ pub(super) fn outcome_of(switch: &Switch, each: Report) -> Outcome {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::model::{Installer, Kind, Scope};
+    use skillz_harness::model::{Installer, Kind, Scope};
 
     fn subagent(agent: Agent) -> Installed {
         Installed {

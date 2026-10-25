@@ -8,8 +8,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::apply::{holds, only_wanted_by};
-use crate::harness::Spec;
-use crate::harness::model::Installed;
 use crate::profile::Profile;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
@@ -17,6 +15,8 @@ use crate::tui::widgets::list::ListView;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
 use crate::workspace::Act;
+use skillz_harness::Spec;
+use skillz_harness::model::Installed;
 
 const WIDTH: u16 = 70;
 const MAX_HEIGHT: u16 = 24;
@@ -129,9 +129,9 @@ mod tests {
     use ratatui::crossterm::event::KeyCode;
 
     use super::*;
-    use crate::harness::model::Kind;
     use crate::tui::widgets::testing::key;
     use crate::tui::workspace::installed::rows::tests::installed;
+    use skillz_harness::model::Kind;
 
     fn skill(name: &str) -> Spec {
         Spec::Skill {

@@ -5,10 +5,10 @@
 
 mod installed;
 
-use crate::harness::model::Installed;
 use crate::library::ItemKind;
 use crate::package::{Package, group_by};
 use crate::tui::widgets::outline::Shape;
+use skillz_harness::model::Installed;
 
 /// The sections in the order they are shown.
 const SECTIONS: [ItemKind; 5] = [

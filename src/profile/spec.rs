@@ -1,12 +1,18 @@
 //! An entry typed by hand in one line.
 
-use crate::harness::Spec;
+use crate::profile::SpecChecks;
+use skillz_harness::Spec;
 
-impl Spec {
+/// Reads an entry typed in one line.
+pub trait SpecParse: Sized {
+    fn parse_spec(spec: &str) -> anyhow::Result<Self>;
+}
+
+impl SpecParse for Spec {
     /// `skill SOURCE NAME[,NAME...]`, `subagent SOURCE NAME[,NAME...]`,
     /// `plugin SOURCE MARKETPLACE NAME`, `hook EVENT COMMAND...` or `mcp NAME COMMAND|URL [ARGS...]`. It uses the
     /// profile's agents.
-    pub fn parse_spec(spec: &str) -> anyhow::Result<Spec> {
+    fn parse_spec(spec: &str) -> anyhow::Result<Spec> {
         let words: Vec<&str> = spec.split_whitespace().collect();
         let entry = match words.as_slice() {
             ["skill" | "skills", source, names] => Spec::Skill {

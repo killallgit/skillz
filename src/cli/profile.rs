@@ -11,8 +11,8 @@ use super::profile_entries::{add, remove};
 use super::profile_status::{list, status};
 use super::scope::{complete_installed, resolve_project};
 use super::session::with_session;
-use crate::harness::model::{Installed, Scope};
 use crate::{profile, snapshot};
+use skillz_harness::model::{Installed, Scope};
 
 pub(super) fn profile_command(
     deps: &Deps,
