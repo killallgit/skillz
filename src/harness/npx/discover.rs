@@ -6,10 +6,10 @@ use super::entry::{Entry, entries};
 use super::local::{LocalSource, local_source};
 use super::ownership::{Locked, lock_ownership};
 use super::removal::{owned_roots, removal};
-use crate::env::Env;
 use crate::harness::action::Action;
+use crate::harness::env::Env;
+use crate::harness::model::{Agent, Installed, Installer, Kind, Origin, Scope};
 use crate::harness::npx::commands::{self, LockEntry};
-use crate::model::{Agent, Installed, Installer, Kind, Origin, Scope};
 
 type Groups = BTreeMap<(Scope, PathBuf), Vec<Entry>>;
 
@@ -91,11 +91,11 @@ fn installed_item(cx: &Ctx, canonical: &Path, entries: &[Entry], suffix: bool) -
     let children = local
         .install_name
         .filter(|name| name != &entries[0].name)
-        .map(|name| format!("{}{name}", crate::model::SKILL_CHILD))
+        .map(|name| format!("{}{name}", crate::harness::model::SKILL_CHILD))
         .into_iter()
         .collect();
     Installed {
-        details: crate::model::Details::Skill {
+        details: crate::harness::model::Details::Skill {
             directory: canonical.to_path_buf(),
             install_name,
         },

@@ -1,7 +1,7 @@
 //! The lines of the info modal: what an item or group is, as plain data built before the
 //! terminal opens, so drawing never touches the filesystem.
 
-use crate::model::{Installed, Installer};
+use crate::harness::model::{Installed, Installer};
 
 /// Last use of an item, as far as the agents record it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +63,7 @@ fn use_line(used: Used, now_ms: u64) -> Option<String> {
 }
 
 fn contents(item: &Installed) -> Vec<String> {
-    let children = crate::mcp::shown_children(item);
+    let children = crate::harness::mcp::shown_children(item);
     if children.is_empty() {
         return vec![];
     }
@@ -97,7 +97,7 @@ fn section(lines: Vec<String>) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::harness::action::Action;
-    use crate::model::{Agent, Kind, Scope};
+    use crate::harness::model::{Agent, Kind, Scope};
 
     fn item() -> Installed {
         Installed {

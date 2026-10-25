@@ -39,9 +39,9 @@ fn is_copied(cx: &Ctx, store: &Path, parent: Option<&Path>, name: &str) -> bool 
 mod tests {
     use super::super::discover;
     use super::super::testutil::*;
-    use crate::env::Env;
     use crate::harness::action::Action;
-    use crate::model::{Agent, Installer, Scope};
+    use crate::harness::env::Env;
+    use crate::harness::model::{Agent, Installer, Scope};
     use std::path::Path;
 
     #[test]

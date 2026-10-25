@@ -5,7 +5,7 @@ use super::notice::Notice;
 use crate::cli::profile::save_profile;
 use crate::cli::scope::{complete_installed, project_env};
 use crate::harness::Spec;
-use crate::model::Scope;
+use crate::harness::model::Scope;
 use crate::profile::Profile;
 
 impl Session<'_, '_> {

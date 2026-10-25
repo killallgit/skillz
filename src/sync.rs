@@ -4,10 +4,10 @@
 use std::sync::Arc;
 use std::thread;
 
-use crate::agents::{inventory, registry};
-use crate::env::Env;
+use crate::harness::agents::{inventory, registry};
+use crate::harness::env::Env;
+use crate::harness::model::{Installed, Scope};
 use crate::library::{Catalog, Synced, now_secs, repoint_profiles, sync_installed};
-use crate::model::{Installed, Scope};
 use crate::stale::{Disk, Probe};
 use crate::store::{Document, Store};
 
@@ -86,8 +86,8 @@ mod tests {
     use std::sync::mpsc;
 
     use super::*;
+    use crate::harness::model::{Agent, Installer, Kind, Origin};
     use crate::library::Catalog;
-    use crate::model::{Agent, Installer, Kind, Origin};
 
     struct Fixed(Vec<Installed>);
 

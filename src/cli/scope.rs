@@ -4,10 +4,10 @@ use anyhow::Context;
 
 use super::args::Filter;
 use super::deps::Deps;
-use crate::agents;
-use crate::env::Env;
+use crate::harness::agents;
+use crate::harness::env::Env;
+use crate::harness::model::{Installed, Scope};
 use crate::merge::merge;
-use crate::model::{Installed, Scope};
 
 /// The environment of the project at `path` (default: cwd).
 pub(super) fn resolve_project(deps: &Deps, path: Option<&Path>) -> anyhow::Result<Env> {
@@ -167,7 +167,7 @@ mod tests {
             runner: &NO_ENVS,
             prompter: &AssumeYes,
             interactive: false,
-            checker: std::sync::Arc::new(crate::update::check::NoCheck),
+            checker: std::sync::Arc::new(crate::harness::update::check::NoCheck),
             scanner: None,
         }
     }

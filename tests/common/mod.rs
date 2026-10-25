@@ -11,9 +11,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use skillz::agents;
 use skillz::cli::{Command, Deps, Filter, ListArgs, ResetArgs, UninstallArgs, UseArgs, run};
-use skillz::env::Env;
+use skillz::harness::agents;
+use skillz::harness::env::Env;
 use skillz::harness::runner::{CommandRunner, Output};
 use skillz::profile::{Profile, Store};
 use skillz::prompt::Prompter;
@@ -275,7 +275,7 @@ pub fn deps<'a>(w: &World, runner: &'a Recorder, prompter: &'a dyn Prompter) -> 
         runner,
         prompter,
         interactive: false,
-        checker: std::sync::Arc::new(skillz::update::check::NoCheck),
+        checker: std::sync::Arc::new(skillz::harness::update::check::NoCheck),
         scanner: None,
     }
 }

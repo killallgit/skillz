@@ -4,9 +4,9 @@ use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::env::Env;
+use crate::harness::env::Env;
+use crate::harness::model::{Agent, Scope};
 use crate::harness::runner::{CommandRunner, Output};
-use crate::model::{Agent, Scope};
 use crate::prompt::Prompter;
 
 use super::{InstallRequest, SkillSelection};

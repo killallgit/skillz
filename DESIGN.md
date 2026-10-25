@@ -72,20 +72,27 @@ so an isolated command launches only after its profile is ready.
 
 ## Module ownership
 
-| Module | Responsibility |
-| --- | --- |
-| `model`, `env` | Installed facts, identities, scopes, and filesystem roots |
-| `agents` | Per-agent discovery, provisioning, updates, usage, and native command knowledge |
-| `harness::npx` (loose skills, `npx skills` commands and lock file), `hooks`, `subagents`, `mcp` | Shared formats and typed installed facts |
-| `install`, `harness::clone`, `subagent_store` | Source resolution, selection, and installation |
-| `harness::action`, `harness::read_optional` | Pure edits, shared staged writes, owned deletion, and filesystem policy |
-| `profile`, `apply`, `snapshot` | Desired entries, inheritance, comparison, plans, and execution |
-| `store`, `library`, `sync`, `stale` | Persistent catalog/profiles, provenance, and moved sources |
-| `merge`, `package` | Logical copies and source-package grouping |
-| `usage`, `cost`, `prune`, `update` | Shared reporting and maintenance decisions |
-| `review`, `prompt` | Typed plans, verdicts, outcomes, progress, and interaction interfaces |
-| `cli` | Command parsing, scope selection, sessions, and real dependency wiring |
-| `tree`, `tui` | Plain tables, reusable list/outline widgets, and interactive presentation |
+Layers, lowest first: **harness < app < tui < cli**. A module imports its own layer and the
+ones below, never above; `tests/architecture.rs` fails the build otherwise. The harness layer
+(`src/harness`) is meant to become its own crate.
+
+| Layer | Module | Responsibility |
+| --- | --- | --- |
+| harness | `model`, `env` | Installed facts, identities, scopes, and filesystem roots |
+| harness | `agents` | The `Harness` trait; per-agent (Claude, Codex) discovery of plugins and marketplaces, planning, usage, and native command knowledge |
+| harness | `npx` | Every loose skill, where each agent reads skills from, the `npx skills` commands and lock file |
+| harness | `agent_skills` | The Agent Skills open format: frontmatter (harness extensions kept), validation, layout |
+| harness | `hooks`, `hook_text`, `mcp`, `subagents`, `subagent_store` | Shared formats and typed installed facts |
+| harness | `provision`, `update`, `usage`, `cost` | Planning steps against a tool's commands and reading its usage and context cost |
+| harness | `action`, `runner`, `redact`, `read_optional`, `json_edit`, `fswalk`, `clone`, `Spec` | Pure edits, staged writes, owned deletion, command running, secret redaction, the desired-thing vocabulary |
+| app | `profile`, `apply`, `snapshot` | Desired entries, inheritance, comparison, plans, and execution |
+| app | `store`, `library`, `sync`, `stale`, `app_paths` | Persistent catalog/profiles, provenance, moved sources, skillz's own paths |
+| app | `merge`, `package`, `location`, `info`, `matcher` | Logical copies, source-package grouping, display facts |
+| app | `install`, `remove`, `prune` | Source resolution, selection, and the install, removal and prune flows |
+| app | `review`, `prompt`, `workspace` | Typed plans, verdicts, outcomes, the `Prompter` and `Screen` interfaces, workspace acts and model |
+| tui | `tui` | Reusable list/outline widgets and interactive presentation |
+| app | `tree`, `spinner` | Plain tables and progress text |
+| cli | `cli` | Command parsing, scope selection, sessions, and real dependency wiring |
 
 ## Interaction
 

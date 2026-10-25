@@ -4,16 +4,16 @@ use std::io::Write;
 use super::deps::Deps;
 use super::removal::{Review, confirm_and_remove};
 use super::scope::Scene;
-use crate::cost;
-use crate::env::Env;
+use crate::harness::cost;
+use crate::harness::env::Env;
+use crate::harness::mcp;
+use crate::harness::model::{Installed, Kind};
+use crate::harness::usage;
 use crate::location::location;
-use crate::mcp;
-use crate::model::{Installed, Kind};
 use crate::package::Package;
 use crate::prompt::Choice;
 use crate::prune;
 use crate::tree;
-use crate::usage;
 use crate::{info, remove};
 
 pub(super) struct ListView<'a> {
@@ -188,9 +188,9 @@ fn render_listing(listing: &Listing, out: &mut dyn Write) -> anyhow::Result<()> 
 mod tests {
     use super::super::scope::project_env;
     use super::*;
-    use crate::agents::Harness;
+    use crate::harness::agents::Harness;
+    use crate::harness::model::{Agent, Installer, Scope};
     use crate::install::test_support::{FakeRunner, ScriptedPrompter};
-    use crate::model::{Agent, Installer, Scope};
 
     fn skill(name: &str) -> Installed {
         Installed {

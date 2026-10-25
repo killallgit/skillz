@@ -1,6 +1,6 @@
 use super::*;
-use crate::model::Installer;
-use crate::model::{Agent, Scope};
+use crate::harness::model::Installer;
+use crate::harness::model::{Agent, Scope};
 
 fn aug(name: &str, kind: Kind, group: &str) -> Installed {
     Installed {

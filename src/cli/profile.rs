@@ -11,7 +11,7 @@ use super::profile_entries::{add, remove};
 use super::profile_status::{list, status};
 use super::scope::{complete_installed, resolve_project};
 use super::session::with_session;
-use crate::model::{Installed, Scope};
+use crate::harness::model::{Installed, Scope};
 use crate::{profile, snapshot};
 
 pub(super) fn profile_command(

@@ -1,7 +1,7 @@
 use super::Reason;
 use crate::harness::Spec;
-use crate::mcp::Launch;
-use crate::model::{Details, Installed, Installer, Kind, split_plugin_id};
+use crate::harness::mcp::Launch;
+use crate::harness::model::{Details, Installed, Installer, Kind, split_plugin_id};
 
 /// The validated entries this installed copy can reproduce, with its agents filled in.
 /// Marketplaces belong to their plugins and produce no entry of their own.
@@ -95,7 +95,11 @@ pub fn entries(item: &Installed) -> Result<Vec<Spec>, Reason> {
     Ok(entries)
 }
 
-pub(super) fn server_entry(name: String, launch: Launch, agents: Vec<crate::model::Agent>) -> Spec {
+pub(super) fn server_entry(
+    name: String,
+    launch: Launch,
+    agents: Vec<crate::harness::model::Agent>,
+) -> Spec {
     match launch {
         Launch::Stdio { command, args } => Spec::Mcp {
             name,

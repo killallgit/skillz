@@ -5,11 +5,11 @@ mod common;
 use std::path::PathBuf;
 
 use common::*;
-use skillz::agents::{self, Inventory};
-use skillz::env::Env;
 use skillz::harness::action::{Action, execute};
+use skillz::harness::agents::{self, Inventory};
+use skillz::harness::env::Env;
+use skillz::harness::model::{Agent, Installed, Kind, Scope};
 use skillz::harness::runner::NoCommands;
-use skillz::model::{Agent, Installed, Kind, Scope};
 
 fn inventory(env: &Env, scopes: &[Scope]) -> Inventory {
     agents::inventory(&agents::registry(), env, scopes)

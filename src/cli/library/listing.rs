@@ -7,9 +7,9 @@ use super::super::library_args::LibraryListArgs;
 use super::super::scope::installed;
 use super::rows::{Row, rows};
 use crate::apply::holds;
-use crate::env::Env;
+use crate::harness::env::Env;
+use crate::harness::model::Scope;
 use crate::library::{Held, LibraryItem};
-use crate::model::Scope;
 use crate::stale::Disk;
 use crate::store::Store;
 

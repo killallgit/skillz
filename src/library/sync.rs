@@ -2,7 +2,7 @@ use super::catalog::Catalog;
 use super::import::collect_installed;
 use super::item::LibraryItem;
 use super::repoint::{Moved, repoint};
-use crate::model::Installed;
+use crate::harness::model::Installed;
 use crate::snapshot::{Reason, Skipped};
 use crate::stale::Probe;
 
@@ -61,7 +61,7 @@ mod tests {
     use super::super::import::tests::installed_skill;
     use super::*;
     use crate::harness::Spec;
-    use crate::model::{Installer, Origin};
+    use crate::harness::model::{Installer, Origin};
     use crate::stale::Disk;
 
     fn at(recorded_at: u64) -> (u64, &'static dyn Probe) {

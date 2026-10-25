@@ -19,9 +19,9 @@ pub use run::{Report, Watch};
 pub use standing::{Standing, compare, holds, loaded, only_wanted_by};
 pub use switch::Switch;
 
-use crate::agents::{self, Harness};
-use crate::env::Env;
-use crate::model::{Installed, Scope};
+use crate::harness::agents::{self, Harness};
+use crate::harness::env::Env;
+use crate::harness::model::{Installed, Scope};
 use crate::stale::Probe;
 
 /// Everything a switch of one scope works with.

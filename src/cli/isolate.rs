@@ -13,8 +13,8 @@ use super::args::RunArgs;
 use super::deps::Deps;
 use super::scope::resolve_project;
 use super::session::{Change, Notice, change, with_session};
-use crate::env::Env;
-use crate::model::Scope;
+use crate::harness::env::Env;
+use crate::harness::model::Scope;
 use crate::profile;
 
 pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> anyhow::Result<i32> {
@@ -55,8 +55,8 @@ fn isolated_env(env: &Env, profile: &str) -> Env {
 
 fn create_dirs(env: &Env) -> anyhow::Result<()> {
     for dir in [
-        crate::agents::claude::dir(env),
-        crate::agents::codex::dir(env),
+        crate::harness::agents::claude::dir(env),
+        crate::harness::agents::codex::dir(env),
     ] {
         fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     }
@@ -65,8 +65,11 @@ fn create_dirs(env: &Env) -> anyhow::Result<()> {
 
 fn redirects(env: &Env) -> Vec<(&'static str, PathBuf)> {
     vec![
-        ("CLAUDE_CONFIG_DIR", crate::agents::claude::dir(env)),
-        ("CODEX_HOME", crate::agents::codex::dir(env)),
+        (
+            "CLAUDE_CONFIG_DIR",
+            crate::harness::agents::claude::dir(env),
+        ),
+        ("CODEX_HOME", crate::harness::agents::codex::dir(env)),
     ]
 }
 
@@ -85,10 +88,10 @@ mod tests {
 
     #[test]
     fn declining_profile_preparation_never_launches_the_command() {
-        use crate::agents::registry;
         use crate::harness::Spec;
+        use crate::harness::agents::registry;
+        use crate::harness::model::Agent;
         use crate::install::test_support::{FakeRunner, ScriptedPrompter};
-        use crate::model::Agent;
         use crate::profile::Profile;
 
         let dir = tempfile::tempdir().unwrap();
@@ -124,11 +127,11 @@ mod tests {
         let web = isolated_env(&env, "web");
 
         assert_eq!(
-            crate::agents::claude::dir(&web),
+            crate::harness::agents::claude::dir(&web),
             PathBuf::from("/h/.config/skillz/envs/web/claude")
         );
         assert_eq!(
-            crate::agents::codex::dir(&web),
+            crate::harness::agents::codex::dir(&web),
             PathBuf::from("/h/.config/skillz/envs/web/codex")
         );
         assert_eq!(web.project, env.project);
@@ -141,12 +144,12 @@ mod tests {
 
         assert_eq!(
             (
-                crate::agents::claude::dir(&before),
-                crate::agents::codex::dir(&before)
+                crate::harness::agents::claude::dir(&before),
+                crate::harness::agents::codex::dir(&before)
             ),
             (
-                crate::agents::claude::dir(&after),
-                crate::agents::codex::dir(&after)
+                crate::harness::agents::claude::dir(&after),
+                crate::harness::agents::codex::dir(&after)
             )
         );
     }

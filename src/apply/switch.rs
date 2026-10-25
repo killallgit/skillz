@@ -3,8 +3,8 @@
 
 use crate::harness::Spec;
 use crate::harness::action::Action;
-use crate::model::Installed;
-use crate::provision::Unsupported;
+use crate::harness::model::Installed;
+use crate::harness::provision::Unsupported;
 use crate::remove::Plan;
 use crate::review::{ItemEvent, Target};
 

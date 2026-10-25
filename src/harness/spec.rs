@@ -7,8 +7,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::harness::model::Agent;
 use crate::harness::redact::{redact, redact_text};
-use crate::model::Agent;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]

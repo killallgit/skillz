@@ -2,9 +2,9 @@
 
 use super::deps::Deps;
 use super::scope::complete_installed;
-use crate::env::Env;
+use crate::harness::env::Env;
+use crate::harness::model::{Installed, Scope};
 use crate::library::{now_secs, record_installed};
-use crate::model::{Installed, Scope};
 use crate::stale::Disk;
 use crate::store::Store;
 use crate::sync::merge;
@@ -35,8 +35,8 @@ pub(super) fn record_since(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agents::registry;
     use crate::cli::scope::project_env;
+    use crate::harness::agents::registry;
     use crate::install::test_support::{FakeRunner, ScriptedPrompter};
 
     #[test]

@@ -10,8 +10,8 @@ mod testutil;
 
 use std::path::PathBuf;
 
-use crate::env::Env;
-use crate::model::{Agent, Installed, Scope};
+use crate::harness::env::Env;
+use crate::harness::model::{Agent, Installed, Scope};
 
 pub use discover::discover;
 
@@ -19,10 +19,12 @@ pub use discover::discover;
 /// `.agents/skills` store that `npx skills` writes.
 pub fn skill_dirs(env: &Env, agent: Agent, scope: Scope) -> Vec<PathBuf> {
     match (agent, scope) {
-        (Agent::Claude, Scope::Global) => vec![crate::agents::claude::dir(env).join("skills")],
+        (Agent::Claude, Scope::Global) => {
+            vec![crate::harness::agents::claude::dir(env).join("skills")]
+        }
         (Agent::Claude, Scope::Project) => vec![env.project.join(".claude/skills")],
         (Agent::Codex, Scope::Global) => vec![
-            crate::agents::codex::dir(env).join("skills"),
+            crate::harness::agents::codex::dir(env).join("skills"),
             commands::store_dir(env, scope),
         ],
         (Agent::Codex, Scope::Project) => vec![

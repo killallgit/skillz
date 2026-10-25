@@ -1,9 +1,9 @@
 //! `skillz prune`: which installed items look redundant. Pure: callers pass the inventory,
 //! the usage data and the current time.
 
-use crate::agents::Harness;
-use crate::model::{Agent, Installed, Kind, Scope};
-use crate::usage::Usage;
+use crate::harness::agents::Harness;
+use crate::harness::model::{Agent, Installed, Kind, Scope};
+use crate::harness::usage::Usage;
 
 /// Older than this counts as unused.
 pub const UNUSED_AFTER_MS: u64 = 7 * 24 * 60 * 60 * 1000;
@@ -67,9 +67,9 @@ pub fn tracked(item: &Installed, adapters: &[Box<dyn Harness>]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agents::registry;
-    use crate::model::Details;
-    use crate::model::Installer;
+    use crate::harness::agents::registry;
+    use crate::harness::model::Details;
+    use crate::harness::model::Installer;
     use serde_json::json;
 
     fn item(kind: Kind, name: &str, agents: &[Agent], scope: Scope) -> Installed {
@@ -130,13 +130,13 @@ mod tests {
         }
         let doc = json!({"skillUsage": skills, "pluginUsage": plugins});
         std::fs::write(home.path().join(".claude.json"), doc.to_string()).unwrap();
-        let env = crate::env::Env {
+        let env = crate::harness::env::Env {
             home: home.path().into(),
             project: home.path().into(),
             claude_config: None,
             codex_home: None,
         };
-        crate::usage::read(&registry(), &env).unwrap()
+        crate::harness::usage::read(&registry(), &env).unwrap()
     }
 
     #[test]

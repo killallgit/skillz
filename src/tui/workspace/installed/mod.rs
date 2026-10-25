@@ -39,7 +39,7 @@ use self::status::Statuses;
 use self::subset::Subset;
 use super::tab::Tab;
 use crate::apply::{Drift, drift};
-use crate::model::{Installed, Scope};
+use crate::harness::model::{Installed, Scope};
 use crate::profile::Profile;
 use crate::review::ItemEvent;
 use crate::tui::keymap;

@@ -16,7 +16,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use super::deps::Deps;
-use crate::env::Env;
+use crate::harness::env::Env;
 use crate::{profile, store};
 
 pub(super) use change::{Change, change};

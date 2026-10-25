@@ -9,9 +9,10 @@ use serde_json::json;
 use super::removal::{Pick, choose};
 use super::scope::Scene;
 use super::session::{Change, change, with_session};
-use crate::model::{Installed, Scope};
-use crate::update::check::any_available;
-use crate::{remove, update};
+use crate::harness::model::{Installed, Scope};
+use crate::harness::update;
+use crate::harness::update::check::any_available;
+use crate::remove;
 
 pub(super) struct UpdateRequest<'a> {
     pub query: Option<&'a str>,

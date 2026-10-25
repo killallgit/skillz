@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 use crate::harness::Spec;
-use crate::model::{Installed, Kind};
+use crate::harness::model::{Installed, Kind};
 use crate::profile::{Claim, Profile, claims, installed_claims, lacking};
 use crate::snapshot;
 
@@ -152,7 +152,7 @@ fn draws_on(entry: &Spec, marketplace: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Agent, Installer, Scope};
+    use crate::harness::model::{Agent, Installer, Scope};
 
     fn skill_entry(names: &[&str]) -> Spec {
         Spec::Skill {
@@ -299,11 +299,11 @@ mod tests {
     #[test]
     fn an_installed_server_needing_secrets_is_present_but_cannot_be_reinstalled() {
         let server = Installed {
-            details: crate::model::Details::Mcp {
+            details: crate::harness::model::Details::Mcp {
                 config: "/config".into(),
-                server: crate::mcp::Server {
+                server: crate::harness::mcp::Server {
                     name: "db".into(),
-                    launch: crate::mcp::Launch::Stdio {
+                    launch: crate::harness::mcp::Launch::Stdio {
                         command: "srv".into(),
                         args: vec![],
                     },

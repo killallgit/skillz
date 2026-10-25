@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use crate::harness::Spec;
-use crate::model::Installed;
+use crate::harness::model::Installed;
 use crate::profile::{Key, installed_keys, keys};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

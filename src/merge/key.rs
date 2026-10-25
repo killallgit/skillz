@@ -1,5 +1,5 @@
-use crate::mcp::Server;
-use crate::model::{Details, Installed, Kind, Scope};
+use crate::harness::mcp::Server;
+use crate::harness::model::{Details, Installed, Kind, Scope};
 
 /// What makes two items the same thing seen through different agents. Hooks are the same when
 /// they hold the same handlers and MCP servers when they launch the same way; the rest by

@@ -3,8 +3,9 @@ use std::io::Write;
 use super::list::{display_tree, now_ms};
 use super::removal::{Review, confirm_and_remove};
 use super::scope::Scene;
-use crate::model::Installed;
-use crate::{prune, usage};
+use crate::harness::model::Installed;
+use crate::harness::usage;
+use crate::prune;
 
 /// Report findings; duplicates are always in the removal, unused items only when picked.
 pub(super) fn prune(scene: &Scene, dry_run: bool, out: &mut dyn Write) -> anyhow::Result<()> {

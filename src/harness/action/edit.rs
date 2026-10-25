@@ -7,8 +7,8 @@ use serde_json::Value;
 use super::json::{remove_array_items, remove_json_key};
 use super::toml::toml_remove_key;
 use super::{Action, Edit};
+use crate::harness::hook_text::{self, Format};
 use crate::harness::json_edit::edit_json;
-use crate::hook_text::{self, Format};
 
 /// Apply `edit` to `contents` of `file` (whose extension picks the format where the edit
 /// depends on it). The result is guaranteed to parse in the same format.

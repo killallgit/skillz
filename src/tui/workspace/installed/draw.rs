@@ -11,7 +11,7 @@ use super::rows::{Item, Row};
 use super::status::Status;
 use super::{InstalledTab, Popup};
 use crate::apply::Drift;
-use crate::model::Scope;
+use crate::harness::model::Scope;
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;

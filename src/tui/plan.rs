@@ -202,7 +202,7 @@ fn step_lines(view: &PlanView, theme: &Theme) -> Vec<Line<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Agent;
+    use crate::harness::model::Agent;
     use crate::tui::widgets::testing::{key, render_to_buffer};
     use ratatui::crossterm::event::KeyCode;
 

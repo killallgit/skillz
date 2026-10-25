@@ -4,8 +4,8 @@ use std::path::Path;
 
 use super::super::session::{Notice, Session};
 use crate::cli::scope::{installed, project_env};
+use crate::harness::model::Scope;
 use crate::library::Catalog;
-use crate::model::Scope;
 use crate::workspace::Model;
 
 /// The snapshot to show next, with `notice` to toast; an unreadable library is shown empty and
@@ -57,10 +57,10 @@ mod tests {
     #[test]
     fn local_sources_match_in_workspace_views_without_rewriting_stored_entries() {
         use crate::cli::deps::Deps;
-        use crate::env::Env;
         use crate::harness::Spec;
+        use crate::harness::env::Env;
+        use crate::harness::model::Agent;
         use crate::library::{Catalog, Held, LibraryItem};
-        use crate::model::Agent;
         use crate::profile::Profile;
         use crate::store::Store;
         use std::fs;
@@ -104,7 +104,7 @@ mod tests {
         let prompter = crate::prompt::AssumeYes;
         let mut deps = Deps::for_test(
             dir.path(),
-            crate::agents::registry(),
+            crate::harness::agents::registry(),
             (&crate::harness::runner::NoCommands, &prompter),
         );
         deps.cwd = project;
@@ -139,8 +139,8 @@ mod tests {
     #[test]
     fn explicit_missing_sources_stay_local_and_repository_references_stay_portable() {
         use crate::cli::deps::Deps;
-        use crate::env::Env;
         use crate::harness::Spec;
+        use crate::harness::env::Env;
         use crate::profile::Profile;
         use crate::stale::{Disk, missing_source};
         use crate::store::Store;

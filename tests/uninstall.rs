@@ -6,7 +6,7 @@ use std::fs;
 
 use common::*;
 use skillz::cli::{Command, Deps, Filter, ListArgs, UninstallArgs};
-use skillz::model::Agent;
+use skillz::harness::model::Agent;
 use skillz::prompt::{Choice, Picked, Prompter};
 use skillz::tree::Node;
 
@@ -280,7 +280,7 @@ fn after_browser_removes_the_skills_group() -> World {
     let prompter = RemoveGroups(vec![1]);
     let d = Deps {
         interactive: true,
-        checker: std::sync::Arc::new(skillz::update::check::NoCheck),
+        checker: std::sync::Arc::new(skillz::harness::update::check::NoCheck),
         scanner: None,
         ..deps(&w, &runner, &prompter)
     };
