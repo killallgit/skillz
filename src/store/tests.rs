@@ -23,7 +23,10 @@ fn the_store_lives_in_the_skillz_dir() {
 
     let store = Store::in_env(&env);
 
-    assert_eq!(store.path, env.skillz_dir().join("store.json"));
+    assert_eq!(
+        store.path,
+        crate::app_paths::skillz_dir(&env).join("store.json")
+    );
 }
 
 #[test]

@@ -107,6 +107,6 @@ pub fn update_checker<R: CommandRunner + Send + Sync + 'static>(
 ) -> Arc<dyn crate::update::check::UpdateCheck> {
     Arc::new(claude::update::ClaudeMarketplaces {
         runner,
-        clones: env.claude_dir().join("plugins/marketplaces"),
+        clones: crate::agents::claude::dir(env).join("plugins/marketplaces"),
     })
 }

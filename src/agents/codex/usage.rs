@@ -12,7 +12,7 @@ use crate::env::Env;
 pub(super) fn all_uses(env: &Env) -> Vec<(String, u64)> {
     let mut uses = vec![];
     for dir in ["sessions", "archived_sessions"] {
-        let pattern = glob::Pattern::escape(&env.codex_dir().join(dir).to_string_lossy());
+        let pattern = glob::Pattern::escape(&super::dir(env).join(dir).to_string_lossy());
         for log in glob::glob(&format!("{pattern}/**/*.jsonl"))
             .into_iter()
             .flatten()

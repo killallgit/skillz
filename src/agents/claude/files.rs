@@ -25,7 +25,7 @@ pub(super) fn marketplaces_file(claude: &Path) -> PathBuf {
 /// Where Claude loads subagent definitions from.
 pub(super) fn agents_dir(env: &Env, scope: Scope) -> PathBuf {
     match scope {
-        Scope::Global => env.claude_dir().join("agents"),
+        Scope::Global => super::dir(env).join("agents"),
         Scope::Project => env.project.join(".claude/agents"),
     }
 }
@@ -33,14 +33,14 @@ pub(super) fn agents_dir(env: &Env, scope: Scope) -> PathBuf {
 /// Where a profile's hooks go: the global settings, or the project's personal (uncommitted) ones.
 pub(super) fn hook_settings(env: &Env, scope: Scope) -> PathBuf {
     match scope {
-        Scope::Global => env.claude_dir().join("settings.json"),
+        Scope::Global => super::dir(env).join("settings.json"),
         Scope::Project => env.project.join(".claude/settings.local.json"),
     }
 }
 
 pub(super) fn settings_files(env: &Env, scope: Scope) -> Vec<PathBuf> {
     match scope {
-        Scope::Global => global_settings(&env.claude_dir()),
+        Scope::Global => global_settings(&super::dir(env)),
         Scope::Project => project_settings(&env.project),
     }
 }

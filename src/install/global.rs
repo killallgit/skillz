@@ -102,7 +102,7 @@ mod tests {
             temporary.path().to_path_buf(),
             temporary.path().join("project"),
         );
-        let invalid = env.claude_dir().join("skills");
+        let invalid = crate::agents::claude::dir(&env).join("skills");
         std::fs::create_dir_all(invalid.parent().unwrap()).unwrap();
         std::fs::write(invalid, "not a directory").unwrap();
         let adapters = crate::agents::registry();

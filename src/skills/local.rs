@@ -32,7 +32,12 @@ pub(super) fn local_source(env: &Env, canonical: &Path) -> LocalSource {
 }
 
 fn inside_home_or_project(env: &Env, path: &Path) -> bool {
-    let roots = [&env.home, &env.project, &env.claude_dir(), &env.codex_dir()];
+    let roots = [
+        &env.home,
+        &env.project,
+        &crate::agents::claude::dir(env),
+        &crate::agents::codex::dir(env),
+    ];
     roots
         .into_iter()
         .any(|root| path.starts_with(canonical_or(root)))

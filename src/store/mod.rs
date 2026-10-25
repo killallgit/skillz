@@ -42,7 +42,7 @@ impl Store {
     }
 
     pub fn in_env(env: &Env) -> Self {
-        Store::new(env.store_path())
+        Store::new(crate::app_paths::store_path(env))
     }
 
     /// The stored document; empty when there is no file, [`Corrupt`] when it cannot be read.

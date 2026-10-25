@@ -43,7 +43,7 @@ pub(super) fn install_steps(
     names: &[String],
     env: &Env,
 ) -> Vec<Action> {
-    let cwd = env.codex_cwd();
+    let cwd = super::cwd(env);
     let run = |args: &[&str]| {
         Action::required("codex", args.iter().map(|a| a.to_string()).collect(), &cwd)
     };
