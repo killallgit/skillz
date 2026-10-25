@@ -14,8 +14,8 @@ use super::library_args::{AddArgs, LibraryCommand, LibraryRemoveArgs};
 use super::pick::{Choosing, pick};
 use super::scope::resolve_project;
 use super::session::{Console, Session, with_session};
+use crate::harness::Spec;
 use crate::library::{Catalog, LibraryItem};
-use crate::profile::Spec;
 pub(super) use listing::available;
 
 pub(super) fn library_command(

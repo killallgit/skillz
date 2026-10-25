@@ -6,12 +6,12 @@ use std::path::Path;
 use super::files::{EXTRA_KNOWN_MARKETPLACES, marketplaces_file};
 use super::records::{Install, Marketplace};
 use super::removal::{plugin_removal, unique_in_order};
-use crate::action::{Action, Edit, RemovalTarget};
 use crate::agents::PluginOffer;
 use crate::agents::plugin::read_marketplace;
+use crate::harness::Spec;
+use crate::harness::action::{Action, Edit, RemovalTarget};
+use crate::harness::runner::Cmd;
 use crate::model::{Agent, Installed, Installer, Kind, Scope, split_plugin_id};
-use crate::profile::Spec;
-use crate::runner::Cmd;
 
 /// One installed item for a marketplace, removing it with all its plugins.
 pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> Installed {

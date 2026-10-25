@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::action::Action;
+use crate::harness::action::Action;
 use crate::model::{Installed, Installer, Kind, Scope, split_plugin_id};
 
 pub(super) fn steps(item: &Installed, cwd: &Path) -> Vec<Action> {

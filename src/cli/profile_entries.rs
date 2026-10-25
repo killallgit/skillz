@@ -4,7 +4,8 @@
 use super::pick::{Choosing, pick};
 use super::profile_args::{ProfileAddArgs, ProfileRemoveArgs};
 use super::session::{Console, Session};
-use crate::profile::{Spec, with_added};
+use crate::harness::Spec;
+use crate::profile::with_added;
 
 pub(super) fn add(
     session: &Session,

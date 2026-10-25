@@ -2,7 +2,7 @@ use anyhow::Context;
 use serde_json::Value;
 
 use super::{Format, HookEntry};
-use crate::json_edit::edit_json;
+use crate::harness::json_edit::edit_json;
 
 /// Parse the hooks of a config file. JSON: the top-level `"hooks"` object, nested
 /// (Claude/Codex) or flat layout. TOML: the inline hooks of a Codex `config.toml`.

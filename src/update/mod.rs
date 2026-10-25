@@ -5,8 +5,8 @@ pub mod check;
 
 use std::path::Path;
 
-use crate::action::Action;
 use crate::agents::{AgentAdapter, adapter_for};
+use crate::harness::action::Action;
 use crate::model::{Details, Installed, Installer, Kind, Scope};
 
 /// The steps that bring `item` to the latest version, run from `cwd`; none when it cannot be

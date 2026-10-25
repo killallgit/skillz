@@ -7,8 +7,8 @@ use super::json::json_has;
 use super::removal_target::remove_path;
 use super::stage::{commit, stage};
 use super::{Action, RemovalTarget, Report};
-use crate::redact::{redact_line, redact_text};
-use crate::runner::CommandRunner;
+use crate::harness::redact::{redact_line, redact_text};
+use crate::harness::runner::CommandRunner;
 
 /// Dedupe, run every `Run` in plan order (stopping at the first failure), then plan every
 /// edit in memory (any failure returns before the filesystem is touched), then write all
@@ -212,9 +212,9 @@ fn should_remove(action: &Action) -> anyhow::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::Edit;
-    use crate::action::testutil::*;
-    use crate::runner::NoCommands;
+    use crate::harness::action::Edit;
+    use crate::harness::action::testutil::*;
+    use crate::harness::runner::NoCommands;
     use serde_json::{Value, json};
     use std::fs;
 

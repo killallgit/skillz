@@ -1,5 +1,5 @@
 use super::*;
-use crate::profile::Spec;
+use crate::harness::Spec;
 use crate::stale::Disk;
 
 fn build(catalog: &Catalog) -> Vec<Row> {

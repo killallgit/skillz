@@ -29,8 +29,8 @@ pub fn drift(profile: &Profile, installed: &[Installed]) -> Drift {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::harness::Spec;
     use crate::model::{Agent, Installer, Kind, Scope};
-    use crate::profile::Spec;
 
     fn installed(name: &str, kind: Kind, source: Option<&str>) -> Installed {
         Installed {

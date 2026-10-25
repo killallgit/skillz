@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use serde::{Serialize, Serializer};
 use serde_json::Value;
 
-use crate::redact::{redact, redact_args, redact_line, redact_text};
+use crate::harness::redact::{redact, redact_args, redact_line, redact_text};
 
 pub use edit::apply_edit;
 pub use execute::{execute, execute_with};
@@ -206,7 +206,7 @@ mod tests {
             cwd: "/".into(),
             fallback: false,
         };
-        let failure = crate::action::execute(
+        let failure = crate::harness::action::execute(
             std::slice::from_ref(&run),
             &testutil::Recorder {
                 calls: Default::default(),

@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::item::LibraryItem;
-use crate::profile::{Spec, same_thing};
+use crate::harness::Spec;
+use crate::profile::same_thing;
 
 /// The items of a library, in the order they were first added.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,7 +23,7 @@ impl Catalog {
     pub fn in_env(mut self, env: &crate::env::Env) -> Self {
         for item in &mut self.items {
             let default_label = item.label == item.entry.to_string();
-            item.entry = item.entry.clone().in_env(env);
+            item.entry = crate::app_paths::spec_in_env(env, item.entry.clone());
             if default_label {
                 item.label = item.entry.to_string();
             }
@@ -144,7 +145,7 @@ mod tests {
 #[cfg(test)]
 mod split_tests {
     use super::*;
-    use crate::profile::Spec;
+    use crate::harness::Spec;
 
     fn skills(names: &[&str]) -> Spec {
         Spec::Skill {

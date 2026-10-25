@@ -169,7 +169,7 @@ fn extended_by(profiles: &[Profile], name: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::profile::Spec;
+    use crate::harness::Spec;
 
     fn store() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();

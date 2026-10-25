@@ -3,9 +3,9 @@
 use super::Session;
 use super::notice::Notice;
 use crate::cli::scope::{complete_installed, project_env};
+use crate::harness::Spec;
 use crate::library::LibraryItem;
 use crate::model::Scope;
-use crate::profile::Spec;
 use crate::stale::Disk;
 use crate::sync::sync_library;
 
@@ -39,14 +39,19 @@ impl Session<'_, '_> {
 
     pub(in crate::cli) fn library_remove(&self, entry: &Spec) -> anyhow::Result<Option<Notice>> {
         let env = project_env(self.deps, &self.project);
-        let wanted = entry.clone().in_env(&env);
+        let wanted = crate::app_paths::spec_in_env(&env, entry.clone());
         let item = LibraryItem::from_entry(entry.clone());
         self.store.update(|document| {
             let stored = document
                 .items
                 .items()
                 .iter()
-                .find(|item| crate::profile::same_thing(&item.entry.clone().in_env(&env), &wanted))
+                .find(|item| {
+                    crate::profile::same_thing(
+                        &crate::app_paths::spec_in_env(&env, item.entry.clone()),
+                        &wanted,
+                    )
+                })
                 .cloned();
             if let Some(stored) = stored {
                 document.items.remove(&stored);

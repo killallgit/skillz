@@ -7,8 +7,8 @@ use serde_json::Value;
 use super::json::{remove_array_items, remove_json_key};
 use super::toml::toml_remove_key;
 use super::{Action, Edit};
+use crate::harness::json_edit::edit_json;
 use crate::hook_text::{self, Format};
-use crate::json_edit::edit_json;
 
 /// Apply `edit` to `contents` of `file` (whose extension picks the format where the edit
 /// depends on it). The result is guaranteed to parse in the same format.
@@ -65,7 +65,7 @@ pub(super) struct FilePlan {
 
 impl FilePlan {
     fn open(file: &Path, edit: &Edit) -> anyhow::Result<Self> {
-        let existing = crate::read_optional::read_optional(file)?;
+        let existing = crate::harness::read_optional::read_optional(file)?;
         let texts = match (existing, edit) {
             (Some(text), _) => Some(Texts {
                 before: Some(text.clone()),
@@ -146,7 +146,7 @@ fn plan_for<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::testutil::*;
+    use crate::harness::action::testutil::*;
     use serde_json::json;
 
     #[test]

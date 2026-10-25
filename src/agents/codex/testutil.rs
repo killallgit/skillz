@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::Path;
 
-use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
+use crate::harness::action::{Action, Edit, RemovalTarget};
 use crate::model::Installed;
 
 pub(super) const CONFIG: &str = r#"

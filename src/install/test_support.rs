@@ -5,9 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::env::Env;
+use crate::harness::runner::{CommandRunner, Output};
 use crate::model::{Agent, Scope};
 use crate::prompt::Prompter;
-use crate::runner::{CommandRunner, Output};
 
 use super::{InstallRequest, SkillSelection};
 

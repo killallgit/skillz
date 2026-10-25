@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::read_optional::read_optional;
+use crate::harness::read_optional::read_optional;
 use anyhow::Context;
 
 /// An edit written to a temp file beside the real file, ready to rename over it.
@@ -125,7 +125,7 @@ pub(crate) fn discard(staged: &[Staged]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::testutil::*;
+    use crate::harness::action::testutil::*;
 
     #[test]
     fn concurrent_plans_never_share_temporary_file_contents() {

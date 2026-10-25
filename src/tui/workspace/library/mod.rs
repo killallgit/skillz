@@ -14,8 +14,8 @@ use ratatui::layout::Rect;
 
 use self::rows::{Row, build, shape};
 use super::tab::Tab;
+use crate::harness::Spec;
 use crate::library::Held;
-use crate::profile::Spec;
 use crate::stale::Disk;
 use crate::tui::keymap::Scope;
 use crate::tui::theme::Theme;

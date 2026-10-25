@@ -12,12 +12,12 @@ mod testutil;
 use std::path::{Path, PathBuf};
 
 use super::{AgentAdapter, PluginOffer};
-use crate::action::Action;
 use crate::env::Env;
+use crate::harness::Spec;
+use crate::harness::action::Action;
 use crate::hooks;
 use crate::model::{Agent, Installed, Kind, Scope};
 use crate::npx_skills;
-use crate::profile::Spec;
 use crate::subagents::{self, AgentDir};
 use config::{project_plugin_ids, read_config};
 use plugins::{Cx, marketplaces, marketplaces_from, plugins_from};
@@ -153,7 +153,7 @@ impl AgentAdapter for Codex {
 mod tests {
     use super::testutil::*;
     use super::*;
-    use crate::action::Action;
+    use crate::harness::action::Action;
     use crate::model::Installer;
     use std::fs;
 

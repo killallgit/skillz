@@ -9,8 +9,8 @@ use std::path::Path;
 
 use crate::agents::AgentAdapter;
 use crate::env::Env;
+use crate::harness::runner::CommandRunner;
 use crate::model::{Agent, Installed, Kind};
-use crate::runner::CommandRunner;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Costs(HashMap<(Agent, String), u32>);

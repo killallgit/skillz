@@ -1,9 +1,9 @@
 //! What bringing a project to a profile involves. Pure data: nothing here reads or changes the
 //! machine.
 
-use crate::action::Action;
+use crate::harness::Spec;
+use crate::harness::action::Action;
 use crate::model::Installed;
-use crate::profile::Spec;
 use crate::provision::Unsupported;
 use crate::remove::Plan;
 use crate::review::{ItemEvent, Target};

@@ -2,8 +2,9 @@
 
 use std::collections::HashSet;
 
+use crate::harness::Spec;
 use crate::model::Installed;
-use crate::profile::{Key, Spec, installed_keys, keys};
+use crate::profile::{Key, installed_keys, keys};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Presence {

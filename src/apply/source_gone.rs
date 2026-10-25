@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::profile::Spec;
+use crate::harness::Spec;
 use crate::stale::{Probe, missing_source};
 
 /// An entry cannot be installed because the local folder it names is gone, most likely moved.

@@ -1,8 +1,8 @@
 //! Every value of an entry ends up as a command-line argument, so none may be empty or
 //! option-like.
 
-use super::Spec;
-use crate::redact::credential_count;
+use crate::harness::Spec;
+use crate::harness::redact::credential_count;
 
 impl Spec {
     pub fn validate(&self) -> anyhow::Result<()> {

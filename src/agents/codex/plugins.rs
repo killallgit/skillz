@@ -4,15 +4,15 @@ use toml_edit::DocumentMut;
 
 use super::config::{hook_state_keys, plugin_ids, str_field, table_keys};
 use super::removal::{native, toml_remove};
-use crate::action::{Action, RemovalTarget};
 use crate::agents::PluginOffer;
 use crate::agents::plugin::read_marketplace;
 use crate::env::Env;
+use crate::harness::Spec;
+use crate::harness::action::{Action, RemovalTarget};
 use crate::hooks;
 use crate::model::{
     Agent, HOOK_CHILD, Installed, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
 };
-use crate::profile::Spec;
 
 /// `codex plugin marketplace add` then `plugin add`; the user config only.
 pub(super) fn provision(entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
@@ -189,7 +189,7 @@ fn plugin(cx: &Cx, id: &str, keep_cache: bool) -> anyhow::Result<Installed> {
 /// the name breaks equal-time ties so every part of the plugin uses the same revision.
 fn cached_version(plugin_cache: &Path) -> anyhow::Result<Option<String>> {
     let mut versions = Vec::new();
-    for entry in crate::read_optional::read_dir(plugin_cache)? {
+    for entry in crate::harness::read_optional::read_dir(plugin_cache)? {
         if entry.file_type()?.is_dir()
             && let Ok(version) = entry.file_name().into_string()
         {

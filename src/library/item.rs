@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::provenance::Provenance;
+use crate::harness::Spec;
 use crate::model::Kind;
-use crate::profile::{Spec, same_thing};
+use crate::profile::same_thing;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ItemKind {

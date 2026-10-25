@@ -8,11 +8,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
-use crate::action::stage;
-use crate::clone::with_source;
-use crate::fswalk;
-use crate::read_optional::read_optional;
-use crate::runner::CommandRunner;
+use crate::harness::action::stage;
+use crate::harness::clone::with_source;
+use crate::harness::fswalk;
+use crate::harness::read_optional::read_optional;
+use crate::harness::runner::CommandRunner;
 
 pub(crate) const MANIFEST: &str = ".skillz-sources.json";
 
@@ -185,7 +185,7 @@ fn pick_definitions(root: &Path, req: &CopyRequest) -> anyhow::Result<Vec<PathBu
             anyhow::ensure!(
                 matches.len() == 1,
                 "expected one subagent called {wanted} in {}, found {}",
-                crate::redact::redact_text(req.source),
+                crate::harness::redact::redact_text(req.source),
                 matches.len()
             );
             Ok(matches[0].0.clone())
@@ -247,7 +247,7 @@ mod tests {
     fn copy_names(root: &Path, to: &Path, names: &[&str]) -> anyhow::Result<Vec<PathBuf>> {
         let names = names.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         copy(
-            &crate::runner::NoCommands,
+            &crate::harness::runner::NoCommands,
             &CopyRequest {
                 source: root.to_str().unwrap(),
                 cwd: root,

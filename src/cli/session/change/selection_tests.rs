@@ -3,9 +3,9 @@ use std::path::Path;
 use super::tests::{project_with_skill, run_change, session, skill_entry, skill_id};
 use super::*;
 use crate::agents::registry;
+use crate::harness::Spec;
+use crate::harness::runner::{CommandRunner, Output};
 use crate::install::test_support::ScriptedPrompter;
-use crate::profile::Spec;
-use crate::runner::{CommandRunner, Output};
 
 /// Fails every command that mentions `word`, and notes the arguments of all of them.
 struct FailsOn {

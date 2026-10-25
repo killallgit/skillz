@@ -10,15 +10,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use skillz::action::{Action, RemovalTarget};
 use skillz::agents::{self, AgentAdapter, PluginOffer};
 use skillz::cli::{Command, Deps, Filter, UninstallArgs, run};
 use skillz::env::Env;
+use skillz::harness::action::{Action, RemovalTarget};
+use skillz::harness::runner::{CommandRunner, Output};
 use skillz::install::{Ctx, InstallRequest, SkillSelection, install};
 use skillz::model::{Agent, Details, Installed, Installer, Kind, Scope};
 use skillz::prompt::Prompter;
 use skillz::prune;
-use skillz::runner::{CommandRunner, Output};
 use skillz::usage;
 
 const PLUGIN: &str = "fake-plug@mp";

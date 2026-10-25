@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::env::Env;
+use crate::harness::Spec;
 
 /// skillz's own config: the store and the dirs `run` keeps.
 pub fn skillz_dir(env: &Env) -> PathBuf {
@@ -36,4 +37,15 @@ pub fn resolve_source(env: &Env, source: &str) -> String {
             .into_owned();
     }
     source.to_string()
+}
+
+/// A temporary spec with local sources resolved for the current project.
+pub fn spec_in_env(env: &Env, mut spec: Spec) -> Spec {
+    match &mut spec {
+        Spec::Skill { source, .. } | Spec::Subagent { source, .. } => {
+            *source = resolve_source(env, source)
+        }
+        _ => {}
+    }
+    spec
 }

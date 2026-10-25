@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::action::Action;
+use crate::harness::action::Action;
+use crate::harness::redact::redact;
 use crate::hook_text::HookEntry;
-use crate::redact::redact;
 
 /// A coding agent whose harness we manage. Add a variant + an adapter in `agents/` to extend.
 #[derive(

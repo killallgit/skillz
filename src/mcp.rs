@@ -3,9 +3,9 @@
 use serde_json::Value;
 use toml_edit::{Item, TableLike};
 
+use crate::harness::redact::{credential_count, redact, redact_args};
 use crate::model::Details;
 use crate::model::Installed;
-use crate::redact::{credential_count, redact, redact_args};
 
 const COMMAND: &str = "command: ";
 const ARG: &str = "arg: ";

@@ -58,9 +58,10 @@ mod tests {
     fn local_sources_match_in_workspace_views_without_rewriting_stored_entries() {
         use crate::cli::deps::Deps;
         use crate::env::Env;
+        use crate::harness::Spec;
         use crate::library::{Catalog, Held, LibraryItem};
         use crate::model::Agent;
-        use crate::profile::{Profile, Spec};
+        use crate::profile::Profile;
         use crate::store::Store;
         use std::fs;
 
@@ -104,7 +105,7 @@ mod tests {
         let mut deps = Deps::for_test(
             dir.path(),
             crate::agents::registry(),
-            (&crate::runner::NoCommands, &prompter),
+            (&crate::harness::runner::NoCommands, &prompter),
         );
         deps.cwd = project;
 
@@ -139,7 +140,8 @@ mod tests {
     fn explicit_missing_sources_stay_local_and_repository_references_stay_portable() {
         use crate::cli::deps::Deps;
         use crate::env::Env;
-        use crate::profile::{Profile, Spec};
+        use crate::harness::Spec;
+        use crate::profile::Profile;
         use crate::stale::{Disk, missing_source};
         use crate::store::Store;
         let dir = tempfile::tempdir().unwrap();
@@ -167,7 +169,11 @@ mod tests {
             })
             .unwrap();
         let prompter = crate::prompt::AssumeYes;
-        let deps = Deps::for_test(dir.path(), vec![], (&crate::runner::NoCommands, &prompter));
+        let deps = Deps::for_test(
+            dir.path(),
+            vec![],
+            (&crate::harness::runner::NoCommands, &prompter),
+        );
 
         let model = snapshot(&Session::open(&deps, &env), None).unwrap();
         let entries = &model.profiles[0].entries;

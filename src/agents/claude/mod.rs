@@ -13,12 +13,12 @@ mod usage;
 use std::path::{Path, PathBuf};
 
 use super::{AgentAdapter, PluginOffer};
-use crate::action::Action;
 use crate::env::Env;
+use crate::harness::Spec;
+use crate::harness::action::Action;
+use crate::harness::runner::CommandRunner;
 use crate::hooks;
 use crate::model::{Agent, Installed, Kind, Scope};
-use crate::profile::Spec;
-use crate::runner::CommandRunner;
 use crate::subagents::{self, AgentDir};
 use context::parse_context;
 use files::{
@@ -233,7 +233,7 @@ mod tests {
         };
 
         let rows = Claude
-            .context_costs(&env, &crate::runner::NoCommands)
+            .context_costs(&env, &crate::harness::runner::NoCommands)
             .unwrap();
 
         assert_eq!(rows.len(), 1);

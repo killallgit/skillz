@@ -152,8 +152,8 @@ pub(super) fn project_env(deps: &Deps, dir: &Path) -> Env {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::harness::runner::SystemRunner;
     use crate::prompt::AssumeYes;
-    use crate::runner::SystemRunner;
 
     static NO_ENVS: SystemRunner = SystemRunner { envs: Vec::new() };
 

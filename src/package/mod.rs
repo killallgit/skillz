@@ -7,9 +7,9 @@ mod tests;
 
 use std::path::Path;
 
+use crate::harness::Spec;
 use crate::hooks::UNOWNED_HOOKS;
 use crate::model::{Installed, Kind};
-use crate::profile::Spec;
 use crate::stale::local_source;
 
 const LOCAL_FILES: &str = "local files";

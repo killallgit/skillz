@@ -5,7 +5,7 @@ mod common;
 
 use common::*;
 use serde_json::Value;
-use skillz::profile::Spec;
+use skillz::harness::Spec;
 
 fn skill(name: &str) -> Spec {
     Spec::Skill {

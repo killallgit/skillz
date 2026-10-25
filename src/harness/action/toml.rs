@@ -19,8 +19,8 @@ pub(super) fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result
 
 #[cfg(test)]
 mod tests {
-    use crate::action::testutil::*;
-    use crate::action::{Edit, apply_edit};
+    use crate::harness::action::testutil::*;
+    use crate::harness::action::{Edit, apply_edit};
     use std::path::Path;
 
     #[test]

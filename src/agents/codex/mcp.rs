@@ -7,11 +7,11 @@ use toml_edit::DocumentMut;
 
 use super::config::table_keys;
 use super::removal::{native, toml_remove};
-use crate::action::Action;
 use crate::env::Env;
+use crate::harness::Spec;
+use crate::harness::action::Action;
 use crate::mcp::Server;
 use crate::model::{Agent, Installed, Installer, Kind, Scope};
-use crate::profile::Spec;
 
 /// The servers in the config, each removed by `codex mcp remove` (user config only) and by
 /// deleting its table.

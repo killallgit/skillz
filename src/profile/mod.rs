@@ -3,7 +3,7 @@
 //! Pure data plus a facade over the store. Turning entries into install steps is `provision`.
 
 mod edit;
-mod entry;
+
 mod identity;
 mod spec;
 mod store;
@@ -12,10 +12,11 @@ mod validate;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+use crate::harness::Spec;
 use crate::model::Agent;
 
 pub use edit::with_added;
-pub use entry::Spec;
+
 pub use identity::{Claim, claims, lacking};
 pub(crate) use identity::{Key, installed_claims, installed_keys, keys, same_thing};
 pub use store::{StillExtended, Store};
@@ -56,7 +57,7 @@ impl Profile {
         self.entries = self
             .entries
             .into_iter()
-            .map(|entry| entry.in_env(env))
+            .map(|entry| crate::app_paths::spec_in_env(env, entry))
             .collect();
         self
     }

@@ -6,10 +6,11 @@ use crate::apply::{Applier, Report, Switch};
 use crate::cli::deps::Deps;
 use crate::cli::scope::complete_installed;
 use crate::env::Env;
+use crate::harness::Spec;
 use crate::library::Catalog;
 use crate::merge::merge;
 use crate::model::{Agent, Installed};
-use crate::profile::{Profile, Spec};
+use crate::profile::Profile;
 use crate::review::Outcome;
 
 /// What the user picked: entries to install and the ids of installed items to remove.

@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Context;
 
 use super::PluginOffer;
-use crate::read_optional::read_dir;
+use crate::harness::read_optional::read_dir;
 
 pub(super) fn skill_names(root: &Path) -> anyhow::Result<Vec<String>> {
     let mut names = Vec::new();

@@ -63,7 +63,7 @@ impl Row<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::profile::Spec;
+    use crate::harness::Spec;
     use crate::stale::Disk;
     use crate::stale::tests::{Existing, skill};
 

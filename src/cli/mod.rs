@@ -42,8 +42,8 @@ pub use run::run;
 pub use workspace::workspace;
 
 use crate::agents;
+use crate::harness::runner::SystemRunner;
 use crate::prompt::{AssumeYes, Prompter};
-use crate::runner::SystemRunner;
 use crate::sync::{InstalledScanner, Scanner};
 use crate::tui::prompter::TuiPrompter;
 use crate::tui::theme::Theme;

@@ -6,9 +6,10 @@
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
+use crate::harness::Spec;
 use crate::library::Catalog;
 use crate::model::{Installed, Scope};
-use crate::profile::{Profile, Spec};
+use crate::profile::Profile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Act {

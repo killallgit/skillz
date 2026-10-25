@@ -7,11 +7,11 @@ use std::path::Path;
 use serde_json::Value;
 
 use super::files::read_json;
-use crate::action::{Action, Edit};
 use crate::env::Env;
+use crate::harness::Spec;
+use crate::harness::action::{Action, Edit};
 use crate::mcp::Server;
 use crate::model::{Agent, Installed, Installer, Kind, Scope};
-use crate::profile::Spec;
 
 pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
     let state = super::json(env);

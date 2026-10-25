@@ -71,7 +71,7 @@ fn redirects(env: &Env) -> Vec<(&'static str, PathBuf)> {
 }
 
 fn launch(
-    runner: &dyn crate::runner::CommandRunner,
+    runner: &dyn crate::harness::runner::CommandRunner,
     command: &[String],
     env: &Env,
 ) -> anyhow::Result<i32> {
@@ -86,9 +86,10 @@ mod tests {
     #[test]
     fn declining_profile_preparation_never_launches_the_command() {
         use crate::agents::registry;
+        use crate::harness::Spec;
         use crate::install::test_support::{FakeRunner, ScriptedPrompter};
         use crate::model::Agent;
-        use crate::profile::{Profile, Spec};
+        use crate::profile::Profile;
 
         let dir = tempfile::tempdir().unwrap();
         let env = Env::new(dir.path().into(), dir.path().into());

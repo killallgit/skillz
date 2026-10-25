@@ -4,7 +4,7 @@ use ratatui::crossterm::event::KeyEvent;
 
 use super::rows::Row;
 use super::{LibraryTab, Popup};
-use crate::profile::Spec;
+use crate::harness::Spec;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::confirm::{ConfirmDialog, Outcome as Answer};
 use crate::tui::widgets::input::{InputField, Outcome as Edit};
