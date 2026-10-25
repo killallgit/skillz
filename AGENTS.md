@@ -31,6 +31,7 @@ Issues live in `.beads/dolt/`. The JSONL export is passive; normal sync uses
 ```sh
 rtk task dev
 rtk task test
+rtk cargo fmt --all --check
 rtk cargo clippy --workspace --all-targets -- -D warnings
 rtk cargo llvm-cov --workspace --summary-only
 ```

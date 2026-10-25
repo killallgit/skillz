@@ -1,7 +1,8 @@
 //! skillz: manage skills, plugins, marketplaces and hooks for coding agents.
 //!
-//! Layout: `harness::agents` read what is installed and describe how to remove it as
-//! `Action`s; `harness::action` applies those actions; `cli` wires real dependencies to the flows.
+//! Layout: the `skillz_harness` crate reads what is installed and describes how to change it as
+//! `Action`s and applies them; `app` decides what to do; `tui` draws; `cli` wires real
+//! dependencies to the flows.
 
 pub mod app;
 pub mod cli;
