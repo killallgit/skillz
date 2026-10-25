@@ -99,7 +99,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let before = fs::read(env.store_path()).unwrap();
+        let before = fs::read(crate::app_paths::store_path(&env)).unwrap();
         let prompter = crate::prompt::AssumeYes;
         let mut deps = Deps::for_test(
             dir.path(),
@@ -129,7 +129,10 @@ mod tests {
                 ..custom
             }
         );
-        assert_eq!(fs::read(env.store_path()).unwrap(), before);
+        assert_eq!(
+            fs::read(crate::app_paths::store_path(&env)).unwrap(),
+            before
+        );
     }
 
     #[test]

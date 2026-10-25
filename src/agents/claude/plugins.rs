@@ -65,7 +65,7 @@ fn plugin(
         details: crate::model::Details::Plugin {
             location: root
                 .map(Path::to_path_buf)
-                .unwrap_or_else(|| super::files::installed_file(&env.claude_dir())),
+                .unwrap_or_else(|| super::files::installed_file(&super::dir(env))),
             skills,
         },
         hooks,
@@ -83,7 +83,7 @@ fn plugin(
             version: install.version.clone(),
         },
         children,
-        removal: plugin_removal(&env.claude_dir(), install),
+        removal: plugin_removal(&super::dir(env), install),
     })
 }
 
@@ -148,7 +148,7 @@ mod tests {
         assert_eq!(tools.hooks.len(), 1);
         assert_eq!(tools.plugin_skills().collect::<Vec<_>>(), ["alpha", "beta"]);
         assert_eq!(tools.hooks[0].command, "say done");
-        let installed = installed_file(&f.env.claude_dir());
+        let installed = installed_file(&crate::agents::claude::dir(&f.env));
         assert_eq!(
             files(&tools.removal),
             [
@@ -197,7 +197,11 @@ mod tests {
                         &p.join(".claude/settings.local.json"),
                         &["enabledPlugins", "tools@acme"]
                     ),
-                    remove_install(&installed_file(&f.env.claude_dir()), "tools@acme", Some(p)),
+                    remove_install(
+                        &installed_file(&crate::agents::claude::dir(&f.env)),
+                        "tools@acme",
+                        Some(p)
+                    ),
                 ],
                 dirs(&f.env.home, "tools", "acme"),
             ]

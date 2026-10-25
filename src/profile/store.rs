@@ -40,7 +40,7 @@ impl Store {
     }
 
     pub fn in_env(env: &Env) -> Self {
-        Store::new(env.store_path())
+        Store::new(crate::app_paths::store_path(env))
     }
 
     fn all(&self) -> anyhow::Result<Vec<Profile>> {

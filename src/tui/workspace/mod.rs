@@ -12,7 +12,6 @@ mod shell;
 mod syncs;
 mod tab;
 
-pub use crate::workspace::{Act, Model, Synced};
 pub use shell::Workspace;
 pub use tab::Tab;
 
@@ -20,6 +19,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use super::closure::event_loop;
 use super::shell::Ui;
+use crate::workspace::Act;
 
 /// The workspace, shared with whatever redraws it while a change runs.
 pub type Shared = Arc<Mutex<Workspace>>;

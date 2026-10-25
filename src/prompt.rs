@@ -156,4 +156,12 @@ mod tests {
         assert_eq!(AssumeYes.multi_select("t", &opts).unwrap(), vec![0, 1]);
         assert!(AssumeYes.confirm("q").unwrap());
     }
+
+    #[test]
+    fn without_a_terminal_there_is_no_screen_and_no_workspace() {
+        let prompter = crate::install::test_support::ScriptedPrompter::new(&[], true);
+
+        assert!(prompter.screen().is_err());
+        assert!(prompter.workspace().is_err());
+    }
 }

@@ -43,6 +43,7 @@ const HARNESS: &[&str] = &[
 ];
 
 const APP: &[&str] = &[
+    "app_paths",
     "apply",
     "info",
     "library",

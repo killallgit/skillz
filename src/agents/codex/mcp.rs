@@ -80,5 +80,5 @@ pub(super) fn provision(entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Act
         }
         _ => return None,
     }
-    Some(vec![Action::required("codex", cmd, &env.codex_cwd())])
+    Some(vec![Action::required("codex", cmd, &super::cwd(env))])
 }

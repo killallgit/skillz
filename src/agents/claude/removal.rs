@@ -184,7 +184,8 @@ mod tests {
                 .flat_map(|a| a.removal)
                 .collect();
             crate::action::execute(&plan, &crate::runner::NoCommands).unwrap();
-            let installed = read_json(&installed_file(&f.env.claude_dir())).unwrap();
+            let installed =
+                read_json(&installed_file(&crate::agents::claude::dir(&f.env))).unwrap();
             let kept = installed["plugins"].get("tools@acme").is_some();
             (kept, f.cache.exists(), data.exists())
         };
