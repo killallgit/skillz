@@ -80,7 +80,7 @@ mod tests {
             r#"{"skills":{"tdd":{"source":"o/r","sourceUrl":"https://h/o/r.git"}}}"#,
         );
 
-        let augs = crate::skills::discover(&f.env, &global_dirs(&f.env)).unwrap();
+        let augs = crate::harness::npx::discover(&f.env, &global_dirs(&f.env)).unwrap();
 
         let link = |name: &str| by_name(&augs, name).origin.link.clone();
         let held_in = f.env.home.join(".claude/skills");

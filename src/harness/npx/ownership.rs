@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::discover::Ctx;
 use super::entry::canonical_or;
-use crate::npx_skills::{self, LockEntry};
+use crate::harness::npx::commands::{self, LockEntry};
 
 /// A skill the npx lock claims: its name in the lock and what the lock records of it.
 pub(super) struct Locked {
@@ -13,7 +13,7 @@ pub(super) struct Locked {
 /// npx keys its lock by the dir name in its store. With `--copy` it writes real dirs into
 /// agent skill dirs instead; those own the entry only when the store has no such skill.
 pub(super) fn lock_ownership(cx: &Ctx, canonical: &Path) -> Option<Locked> {
-    let store = canonical_or(&npx_skills::store_dir(cx.env, cx.scope));
+    let store = canonical_or(&commands::store_dir(cx.env, cx.scope));
     let parent = canonical.parent();
     canonical
         .file_name()

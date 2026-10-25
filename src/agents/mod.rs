@@ -26,12 +26,10 @@ pub struct PluginOffer {
 
 pub trait AgentAdapter {
     fn agent(&self) -> Agent;
-    /// Directories this agent loads loose skills from, for `scope`.
-    fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf>;
     /// Hook config files this agent reads for `scope` (parsed by `hooks::discover`).
     fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf>;
     /// Plugins and marketplaces for `scope`. Loose skills and hooks are discovered by the
-    /// shared `skills`/`hooks` modules from `skill_dirs`/`hook_files`.
+    /// shared `npx`/`hooks` modules from `npx::skill_dirs`/`hook_files`.
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>>;
     /// Hidden home dir names (`.claude` -> `claude`) this agent owns; hook grouping skips them.
     fn home_dir_names(&self) -> &'static [&'static str];
@@ -79,7 +77,7 @@ pub trait AgentAdapter {
     ) -> anyhow::Result<Vec<(String, u32)>> {
         let dirs: Vec<PathBuf> = [Scope::Global, Scope::Project]
             .iter()
-            .flat_map(|&s| self.skill_dirs(env, s))
+            .flat_map(|&s| crate::harness::npx::skill_dirs(env, self.agent(), s))
             .collect();
         Ok(crate::cost::estimate_dirs(&dirs))
     }

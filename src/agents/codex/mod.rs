@@ -17,7 +17,6 @@ use crate::harness::Spec;
 use crate::harness::action::Action;
 use crate::hooks;
 use crate::model::{Agent, Installed, Kind, Scope};
-use crate::npx_skills;
 use crate::subagents::{self, AgentDir};
 use config::{project_plugin_ids, read_config};
 use plugins::{Cx, marketplaces, marketplaces_from, plugins_from};
@@ -56,16 +55,6 @@ impl AgentAdapter for Codex {
 
     fn home_dir_names(&self) -> &'static [&'static str] {
         &["codex", "agents"]
-    }
-
-    fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
-        match scope {
-            Scope::Global => vec![dir(env).join("skills"), npx_skills::store_dir(env, scope)],
-            Scope::Project => vec![
-                npx_skills::store_dir(env, scope),
-                env.project.join(".codex/skills"),
-            ],
-        }
     }
 
     fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
@@ -166,20 +155,6 @@ mod tests {
             codex_home: None,
         };
         assert_eq!(Codex.agent(), Agent::Codex);
-        assert_eq!(
-            Codex.skill_dirs(&env, Scope::Global),
-            vec![
-                PathBuf::from("/h/.codex/skills"),
-                "/h/.agents/skills".into()
-            ]
-        );
-        assert_eq!(
-            Codex.skill_dirs(&env, Scope::Project),
-            vec![
-                PathBuf::from("/p/.agents/skills"),
-                "/p/.codex/skills".into()
-            ]
-        );
         assert_eq!(
             Codex.hook_files(&env, Scope::Global),
             vec![
@@ -494,7 +469,7 @@ enabled = true
             claude_config: None,
             codex_home: Some(PathBuf::from("/iso")),
         };
-        let skills = Codex.skill_dirs(&env, Scope::Global);
+        let skills = crate::harness::npx::skill_dirs(&env, Agent::Codex, Scope::Global);
         assert_eq!(skills[0], PathBuf::from("/iso/skills"));
         assert_eq!(
             Codex.hook_files(&env, Scope::Global),

@@ -76,7 +76,7 @@ so an isolated command launches only after its profile is ready.
 | --- | --- |
 | `model`, `env` | Installed facts, identities, scopes, and filesystem roots |
 | `agents` | Per-agent discovery, provisioning, updates, usage, and native command knowledge |
-| `skills`, `hooks`, `subagents`, `mcp` | Shared formats and typed installed facts |
+| `harness::npx` (loose skills, `npx skills` commands and lock file), `hooks`, `subagents`, `mcp` | Shared formats and typed installed facts |
 | `install`, `harness::clone`, `subagent_store` | Source resolution, selection, and installation |
 | `harness::action`, `harness::read_optional` | Pure edits, shared staged writes, owned deletion, and filesystem policy |
 | `profile`, `apply`, `snapshot` | Desired entries, inheritance, comparison, plans, and execution |
@@ -108,7 +108,9 @@ command examples.
 
 An agent implements `AgentAdapter` and joins `agents::registry()`. Add its closed
 `Agent` enum variant for clap/serde and its external skills id. Keep native paths,
-formats, commands, and update checking in that adapter. Shared flows receive the
+formats, commands, and update checking in that adapter, except loose skills: the
+`harness::npx` module owns every loose skill and the directory each agent reads them from
+(`npx::skill_dirs`), so a new agent also adds an arm there. Shared flows receive the
 adapter list, and `tests/conformance.rs` verifies that injected adapters participate.
 
 Tests exercise established interfaces using temporary homes, fake runners, and

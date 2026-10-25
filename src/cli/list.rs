@@ -217,9 +217,6 @@ mod tests {
         fn agent(&self) -> Agent {
             Agent::Claude
         }
-        fn skill_dirs(&self, _: &Env, _: Scope) -> Vec<std::path::PathBuf> {
-            vec![]
-        }
         fn hook_files(&self, _: &Env, _: Scope) -> Vec<std::path::PathBuf> {
             vec![]
         }

@@ -1,9 +1,10 @@
 //! A fake agent, registered with nothing but its `AgentAdapter` impl, flows through discovery,
 //! usage, prune, uninstall and install. If one of these needs an edit outside the adapter, an
-//! agent's knowledge has leaked out of `src/agents/`.
+//! agent's knowledge has leaked out of `src/agents/`; loose skills are the one deliberate
+//! exception, owned by `harness::npx`.
 //!
-//! `Agent` is a closed enum, so the fake borrows the `Cursor` variant and no other adapter is
-//! registered.
+//! `Agent` is a closed enum, so the fake borrows the `Codex` variant and no other adapter is
+//! registered. Loose skills are the `npx` module's, so the fake does not name skill dirs.
 
 use std::cell::Cell;
 use std::fs;
@@ -33,9 +34,6 @@ impl AgentAdapter for Fake {
     }
     fn home_dir_names(&self) -> &'static [&'static str] {
         &["fake"]
-    }
-    fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
-        vec![env.root(scope).join(".fake/skills")]
     }
     fn hook_files(&self, _env: &Env, _scope: Scope) -> Vec<PathBuf> {
         vec![]
@@ -152,16 +150,16 @@ impl World {
     }
 }
 
-/// Home with a loose skill `dup` in the fake's skill dir and the fake plugin that also ships
-/// `dup`.
+/// Home with a loose skill `dup` in the Codex skill dir (the `npx` module knows where skills
+/// live) and the fake plugin that also ships `dup`.
 fn world() -> World {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("home");
     let project = tmp.path().join("proj");
     fs::create_dir_all(&project).unwrap();
-    fs::create_dir_all(home.join(".fake/skills/dup")).unwrap();
+    fs::create_dir_all(home.join(".codex/skills/dup")).unwrap();
     fs::write(
-        home.join(".fake/skills/dup/SKILL.md"),
+        home.join(".codex/skills/dup/SKILL.md"),
         "---\nname: dup\n---\n",
     )
     .unwrap();
@@ -234,7 +232,7 @@ fn uninstall_runs_the_fakes_removal_plan() {
     });
     run(cmd, &deps, &mut Vec::new()).unwrap();
     assert!(!w.env.home.join(".fake/plugins").join(PLUGIN).exists());
-    assert!(w.env.home.join(".fake/skills/dup").exists());
+    assert!(w.env.home.join(".codex/skills/dup").exists());
 }
 
 #[test]

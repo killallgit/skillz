@@ -4,9 +4,9 @@ use std::collections::{BTreeMap, HashSet};
 
 use super::AgentAdapter;
 use crate::env::Env;
+use crate::harness::npx;
 use crate::hooks::{self, GroupHints};
 use crate::model::{Installed, Kind, Scope};
-use crate::skills::{self, SkillDir};
 
 /// Everything installed, plus warnings for sources that failed to read.
 #[derive(Debug, Default)]
@@ -41,10 +41,8 @@ impl Inventory {
 pub fn inventory(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]) -> Inventory {
     let mut inv = Inventory::default();
     // One discover over every scope, so a project link into a global skill is its own item.
-    inv.absorb(
-        "skills",
-        skills::discover(env, &skill_dirs(adapters, env, scopes)),
-    );
+    let agents: Vec<_> = adapters.iter().map(|a| a.agent()).collect();
+    inv.absorb("skills", npx::installed(env, &agents, scopes));
     let hints = group_hints(adapters);
     for &scope in scopes {
         for a in adapters {
@@ -55,23 +53,6 @@ pub fn inventory(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]
     inv.items.retain(|item| seen.insert(item.id.clone()));
     join_marketplace_groups(&mut inv.items);
     inv
-}
-
-fn skill_dirs(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]) -> Vec<SkillDir> {
-    scopes
-        .iter()
-        .flat_map(|&scope| {
-            adapters.iter().flat_map(move |a| {
-                a.skill_dirs(env, scope)
-                    .into_iter()
-                    .map(move |path| SkillDir {
-                        agent: a.agent(),
-                        scope,
-                        path,
-                    })
-            })
-        })
-        .collect()
 }
 
 fn group_hints(adapters: &[Box<dyn AgentAdapter>]) -> GroupHints {
