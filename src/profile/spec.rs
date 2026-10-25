@@ -1,6 +1,6 @@
 //! An entry typed by hand in one line.
 
-use super::Spec;
+use crate::harness::Spec;
 
 impl Spec {
     /// `skill SOURCE NAME[,NAME...]`, `subagent SOURCE NAME[,NAME...]`,

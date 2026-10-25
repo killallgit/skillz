@@ -3,8 +3,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::agents::AgentAdapter;
+use crate::harness::runner::CommandRunner;
 use crate::prompt::Prompter;
-use crate::runner::CommandRunner;
 use crate::sync::Scanner;
 use crate::update::check::UpdateCheck;
 

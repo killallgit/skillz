@@ -8,7 +8,7 @@
 
 use std::collections::HashSet;
 
-use super::Spec;
+use crate::harness::Spec;
 use crate::model::{Agent, Details, Installed, Installer, Kind, split_plugin_id};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -5,10 +5,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
+use crate::harness::Spec;
+use crate::harness::action::{Action, Edit, RemovalTarget};
 use crate::model::{Agent, Installed, Installer, Kind, Origin, Scope};
-use crate::profile::Spec;
 use crate::subagent_store::{MANIFEST, Manifest, definition_name};
 
 /// Where an agent keeps its subagent definitions and what extension they carry.
@@ -40,7 +40,7 @@ pub fn discover(dir: &AgentDir, agent: Agent, scope: Scope) -> anyhow::Result<Ve
 
 /// The `ext` files directly in `dir`, sorted.
 fn definition_files(dir: &AgentDir) -> anyhow::Result<Vec<PathBuf>> {
-    let mut files: Vec<PathBuf> = crate::read_optional::read_dir(dir.path)?
+    let mut files: Vec<PathBuf> = crate::harness::read_optional::read_dir(dir.path)?
         .into_iter()
         .map(|e| e.path())
         .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == dir.ext))
@@ -130,7 +130,7 @@ pub fn provision(entry: &Spec, to: &AgentDir, env: &Env) -> Option<Vec<Action>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runner::{CommandRunner, NoCommands, Output};
+    use crate::harness::runner::{CommandRunner, NoCommands, Output};
     use crate::subagent_store::{CopyRequest, copy};
 
     fn agent_file(dir: &Path, rel: &str, name: &str) {
@@ -355,7 +355,7 @@ mod tests {
         let item = discover(&md_dir(to.path()), Agent::Claude, Scope::Global)
             .unwrap()
             .remove(0);
-        crate::action::execute(&item.removal, &NoCommands).unwrap();
+        crate::harness::action::execute(&item.removal, &NoCommands).unwrap();
         assert!(!to.path().join("a.md").exists());
         assert!(
             !fs::read_to_string(to.path().join(MANIFEST))
@@ -413,7 +413,7 @@ mod tests {
         fs::write(repository.join("helper.md"), changed).unwrap();
 
         let plan = crate::update::steps(&crate::agents::registry(), &item, other.path());
-        crate::action::execute(&plan, &NoCommands).unwrap();
+        crate::harness::action::execute(&plan, &NoCommands).unwrap();
 
         assert_eq!(
             fs::read_to_string(target.path().join("helper.md")).unwrap(),

@@ -3,8 +3,9 @@
 
 use std::collections::HashSet;
 
+use crate::harness::Spec;
 use crate::model::{Installed, Kind};
-use crate::profile::{Claim, Profile, Spec, claims, installed_claims, lacking};
+use crate::profile::{Claim, Profile, claims, installed_claims, lacking};
 use crate::snapshot;
 
 /// How a profile's entries and the installed items overlap.

@@ -3,7 +3,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::Context;
 
-use crate::redact::{redact_line, redact_text};
+use crate::harness::redact::{redact_line, redact_text};
 
 /// A program and its arguments.
 pub type Cmd = (String, Vec<String>);

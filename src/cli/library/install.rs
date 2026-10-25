@@ -5,8 +5,8 @@ use super::super::pick::{Choosing, pick};
 use super::super::scope::{installed, project_env};
 use super::super::session::{Change, Console, Selection, Session, change};
 use crate::apply::holds;
+use crate::harness::Spec;
 use crate::model::Scope;
-use crate::profile::Spec;
 use crate::prompt::Prompter;
 
 pub(super) fn install(

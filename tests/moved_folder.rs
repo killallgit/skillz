@@ -8,7 +8,7 @@ use std::fs;
 
 use common::*;
 use serde_json::Value;
-use skillz::profile::Spec;
+use skillz::harness::Spec;
 
 const SKILL: &str = "---\nname: mine\ndescription: d\n---\n";
 

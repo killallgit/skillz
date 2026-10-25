@@ -1,5 +1,5 @@
 use super::*;
-use crate::action::Action;
+use crate::harness::action::Action;
 use crate::hook_text::HookEntry;
 use crate::model::{Agent, Details, Installer, Kind, Scope};
 

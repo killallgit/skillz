@@ -96,7 +96,7 @@ pub(super) fn dir_entries(dir: &Path) -> Vec<PathBuf> {
 fn plugin_children(root: &Path) -> anyhow::Result<Vec<String>> {
     let mut out = Vec::new();
     for (dir, label) in [("agents", "agent"), ("commands", "command")] {
-        for entry in crate::read_optional::read_dir(&root.join(dir))? {
+        for entry in crate::harness::read_optional::read_dir(&root.join(dir))? {
             let path = entry.path();
             if entry.file_type()?.is_file()
                 && path.extension().is_some_and(|e| e == "md")

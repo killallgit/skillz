@@ -2,12 +2,12 @@
 //! does. Skills go through `npx skills` for every agent at once; anything else is asked of each
 //! agent's adapter (`AgentAdapter::provision`).
 
-use crate::action::Action;
 use crate::agents::{AgentAdapter, adapter_for};
 use crate::env::Env;
+use crate::harness::Spec;
+use crate::harness::action::Action;
 use crate::model::{Agent, Scope};
 use crate::npx_skills;
-use crate::profile::Spec;
 
 /// An entry one agent has no way to take.
 #[derive(Debug, Clone, PartialEq, Eq)]

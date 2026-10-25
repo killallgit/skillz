@@ -7,13 +7,13 @@ pub(crate) mod test_support;
 
 use std::path::{Path, PathBuf};
 
-use crate::action::{self, Action};
 use crate::agents::{AgentAdapter, adapter_for};
 use crate::env::Env;
+use crate::harness::action::{self, Action};
+use crate::harness::runner::CommandRunner;
 use crate::model::{Agent, Scope};
 use crate::prompt::Prompter;
 use crate::review::{Group, PlanView, Verdict};
-use crate::runner::CommandRunner;
 
 /// Which skills to install from a multi-skill source.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +59,7 @@ struct Plan {
 
 /// `true` when the plan was approved and ran.
 pub fn install(ctx: &Ctx, req: &InstallRequest) -> anyhow::Result<bool> {
-    crate::clone::with_source(&req.source, &req.cwd, ctx.runner, |src, source| {
+    crate::harness::clone::with_source(&req.source, &req.cwd, ctx.runner, |src, source| {
         let tree = Tree { src, source };
         let Some(plan) = plan(ctx, req, &tree)? else {
             return Ok(false);

@@ -78,7 +78,7 @@ so an isolated command launches only after its profile is ready.
 | `agents` | Per-agent discovery, provisioning, updates, usage, and native command knowledge |
 | `skills`, `hooks`, `subagents`, `mcp` | Shared formats and typed installed facts |
 | `install`, `clone`, `subagent_store` | Source resolution, selection, and installation |
-| `action`, `read_optional` | Pure edits, shared staged writes, owned deletion, and filesystem policy |
+| `harness::action`, `harness::read_optional` | Pure edits, shared staged writes, owned deletion, and filesystem policy |
 | `profile`, `apply`, `snapshot` | Desired entries, inheritance, comparison, plans, and execution |
 | `store`, `library`, `sync`, `stale` | Persistent catalog/profiles, provenance, and moved sources |
 | `merge`, `package` | Logical copies and source-package grouping |

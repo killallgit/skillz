@@ -1,8 +1,9 @@
 //! The rows of an entry outline: a section per kind, holding the entries of that kind. Shown for
 //! a profile's entries and for the library items a profile can be built from.
 
+use crate::harness::Spec;
 use crate::library::{Catalog, ItemKind};
-use crate::profile::{Profile, Spec};
+use crate::profile::Profile;
 use crate::tui::widgets::outline::Shape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

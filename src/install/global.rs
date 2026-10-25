@@ -3,8 +3,8 @@
 use super::{Ctx, InstallRequest};
 use crate::agents::inventory;
 use crate::apply::holds;
+use crate::harness::Spec;
 use crate::model::{Installed, Scope};
-use crate::profile::Spec;
 
 /// Ask before installing `names` into the project when some are installed globally already.
 /// Says which, then asks; `false` when the user would rather not.
@@ -117,7 +117,7 @@ mod tests {
         let context = Ctx {
             adapters: &adapters,
             env: &env,
-            runner: &crate::runner::NoCommands,
+            runner: &crate::harness::runner::NoCommands,
             prompter: &prompter,
         };
 

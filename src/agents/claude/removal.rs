@@ -9,7 +9,7 @@ use super::files::{
 };
 use super::plugins::dir_entries;
 use super::records::Install;
-use crate::action::{Action, Edit, RemovalTarget};
+use crate::harness::action::{Action, Edit, RemovalTarget};
 use crate::model::split_plugin_id;
 
 pub(super) fn plugin_removal(claude: &Path, install: &Install) -> Vec<Action> {
@@ -164,8 +164,8 @@ mod tests {
     use super::super::records::installs_from;
     use super::super::testutil::*;
     use super::*;
-    use crate::action::apply_edit;
     use crate::agents::AgentAdapter;
+    use crate::harness::action::apply_edit;
     use crate::model::{Kind, Scope};
     use serde_json::json;
     use std::fs;
@@ -183,7 +183,7 @@ mod tests {
                 .filter(|a| a.kind == Kind::Plugin && a.name == "tools@acme")
                 .flat_map(|a| a.removal)
                 .collect();
-            crate::action::execute(&plan, &crate::runner::NoCommands).unwrap();
+            crate::harness::action::execute(&plan, &crate::harness::runner::NoCommands).unwrap();
             let installed =
                 read_json(&installed_file(&crate::agents::claude::dir(&f.env))).unwrap();
             let kept = installed["plugins"].get("tools@acme").is_some();

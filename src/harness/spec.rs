@@ -7,8 +7,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::harness::redact::{redact, redact_text};
 use crate::model::Agent;
-use crate::redact::{redact, redact_text};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -65,17 +65,6 @@ pub enum Spec {
 }
 
 impl Spec {
-    /// A temporary entry with local sources resolved for the current project.
-    pub fn in_env(mut self, env: &crate::env::Env) -> Self {
-        match &mut self {
-            Spec::Skill { source, .. } | Spec::Subagent { source, .. } => {
-                *source = crate::app_paths::resolve_source(env, source)
-            }
-            _ => {}
-        }
-        self
-    }
-
     /// The entry's own agents; empty means "the profile's".
     pub fn agents(&self) -> &[Agent] {
         match self {

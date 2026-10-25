@@ -6,8 +6,8 @@ use super::entry::{Entry, entries};
 use super::local::{LocalSource, local_source};
 use super::ownership::{Locked, lock_ownership};
 use super::removal::{owned_roots, removal};
-use crate::action::Action;
 use crate::env::Env;
+use crate::harness::action::Action;
 use crate::model::{Agent, Installed, Installer, Kind, Origin, Scope};
 use crate::npx_skills::{self, LockEntry};
 

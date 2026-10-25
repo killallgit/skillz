@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::action::{Action, Edit};
+use crate::harness::action::{Action, Edit};
 use crate::model::Scope;
 
 /// `codex plugin …` always works on the user config, so only global items use it; a project's

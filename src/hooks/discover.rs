@@ -4,10 +4,10 @@ use std::path::Path;
 use anyhow::Context;
 
 use super::group::{GroupHints, hook_group};
-use crate::action::{Action, Edit};
+use crate::harness::action::{Action, Edit};
+use crate::harness::read_optional::read_optional;
 use crate::hook_text::{Format, HookEntry, parse};
 use crate::model::{Agent, Installed, Installer, Kind, Scope};
-use crate::read_optional::read_optional;
 
 /// Group of hooks that no plugin declares.
 pub const UNOWNED_HOOKS: &str = "(unknown) hooks";
@@ -170,7 +170,7 @@ mod tests {
             .into_iter()
             .flat_map(|a| a.removal)
             .collect();
-        crate::action::execute(&plan, &crate::runner::NoCommands).unwrap();
+        crate::harness::action::execute(&plan, &crate::harness::runner::NoCommands).unwrap();
         let after: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(after, json!({"version": 1, "hooks": {}}));
     }

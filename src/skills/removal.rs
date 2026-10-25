@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use super::SkillDir;
 use super::entry::{Entry, canonical_or};
-use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
+use crate::harness::action::{Action, Edit, RemovalTarget};
 use crate::model::Scope;
 use crate::npx_skills;
 

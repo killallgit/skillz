@@ -4,7 +4,7 @@ use anyhow::Context;
 
 use serde_json::{Map, Value};
 
-use crate::read_optional::read_optional;
+use crate::harness::read_optional::read_optional;
 
 /// The object holding the last key of `path`, and that key.
 fn json_parent<'a>(
@@ -59,8 +59,8 @@ pub(super) fn json_has(file: &Path, key: &[String]) -> anyhow::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::testutil::*;
-    use crate::action::{Edit, apply_edit};
+    use crate::harness::action::testutil::*;
+    use crate::harness::action::{Edit, apply_edit};
     use serde_json::json;
 
     #[test]

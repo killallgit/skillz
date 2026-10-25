@@ -5,9 +5,10 @@ mod extract;
 use std::collections::BTreeMap;
 use std::fmt;
 
+use crate::harness::Spec;
 use crate::mcp::Launch;
 use crate::model::{Agent, Installed};
-use crate::profile::{Profile, Spec};
+use crate::profile::Profile;
 
 pub use extract::entries;
 

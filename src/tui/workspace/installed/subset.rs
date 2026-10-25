@@ -8,8 +8,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::apply::{holds, only_wanted_by};
+use crate::harness::Spec;
 use crate::model::Installed;
-use crate::profile::{Profile, Spec};
+use crate::profile::Profile;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
 use crate::tui::widgets::list::ListView;

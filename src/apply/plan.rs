@@ -1,5 +1,6 @@
-use crate::action::Action;
-use crate::profile::{Profile, Spec};
+use crate::harness::Spec;
+use crate::harness::action::Action;
+use crate::profile::Profile;
 use crate::provision::{self, Unsupported};
 
 use super::Applier;

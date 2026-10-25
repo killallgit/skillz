@@ -3,13 +3,13 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
-use crate::action::Action;
 use crate::agents::registry;
 use crate::env::Env;
+use crate::harness::Spec;
+use crate::harness::action::Action;
+use crate::harness::runner::{CommandRunner, Output};
 use crate::model::{Agent, Installer, Kind, Scope};
-use crate::profile::Spec;
 use crate::review::{ItemEvent, Phase, Target};
-use crate::runner::{CommandRunner, Output};
 use crate::stale::{Disk, Probe};
 
 /// Runs every program successfully except the one named.

@@ -1,7 +1,7 @@
 use super::Reason;
+use crate::harness::Spec;
 use crate::mcp::Launch;
 use crate::model::{Details, Installed, Installer, Kind, split_plugin_id};
-use crate::profile::Spec;
 
 /// The validated entries this installed copy can reproduce, with its agents filled in.
 /// Marketplaces belong to their plugins and produce no entry of their own.

@@ -8,8 +8,9 @@ use super::deps::Deps;
 use super::scope::installed;
 use crate::apply::{Standing, compare, drift};
 use crate::env::Env;
+use crate::harness::Spec;
 use crate::model::{Installed, Scope};
-use crate::profile::{Profile, Spec, Store};
+use crate::profile::{Profile, Store};
 use crate::stale::{Disk, Probe, missing_source};
 
 pub(super) fn list(deps: &Deps, env: &Env, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {

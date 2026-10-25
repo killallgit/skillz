@@ -1,8 +1,8 @@
 use std::path::{Component, Path, PathBuf};
 
-use crate::action::Action;
+use crate::harness::action::Action;
+use crate::harness::runner::CommandRunner;
 use crate::model::{Installed, Installer, Kind};
-use crate::runner::CommandRunner;
 use crate::update::check::UpdateCheck;
 
 pub(super) fn steps(item: &Installed, cwd: &Path) -> Vec<Action> {
@@ -66,9 +66,9 @@ impl<R: CommandRunner> ClaudeMarketplaces<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::harness::runner::CommandRunner;
+    use crate::harness::runner::Output;
     use crate::model::{Agent, Scope};
-    use crate::runner::CommandRunner;
-    use crate::runner::Output;
     use crate::update::check::spawn;
     use std::path::Path;
     use std::sync::Arc;

@@ -6,7 +6,7 @@ use std::path::Path;
 use serde_json::Value;
 
 use super::{Action, Edit, RemovalTarget, apply_edit};
-use crate::runner::CommandRunner;
+use crate::harness::runner::CommandRunner;
 
 pub(crate) fn strings(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
@@ -69,11 +69,11 @@ impl CommandRunner for Recorder {
         program: &str,
         args: &[String],
         _cwd: &Path,
-    ) -> anyhow::Result<crate::runner::Output> {
+    ) -> anyhow::Result<crate::harness::runner::Output> {
         self.calls
             .borrow_mut()
             .push(format!("{program} {}", args.join(" ")));
-        Ok(crate::runner::Output {
+        Ok(crate::harness::runner::Output {
             success: !self.fail,
             stderr: "boom".into(),
         })

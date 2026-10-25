@@ -14,9 +14,9 @@ use serde_json::{Value, json};
 use skillz::agents;
 use skillz::cli::{Command, Deps, Filter, ListArgs, ResetArgs, UninstallArgs, UseArgs, run};
 use skillz::env::Env;
+use skillz::harness::runner::{CommandRunner, Output};
 use skillz::profile::{Profile, Store};
 use skillz::prompt::Prompter;
-use skillz::runner::{CommandRunner, Output};
 
 pub type Call = (String, Vec<String>);
 

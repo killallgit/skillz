@@ -4,7 +4,7 @@ use anyhow::Context;
 use toml_edit::{DocumentMut, Item};
 
 use crate::env::Env;
-use crate::read_optional::read_optional;
+use crate::harness::read_optional::read_optional;
 
 pub(super) fn read_config(path: &Path) -> anyhow::Result<Option<DocumentMut>> {
     read_optional(path)?

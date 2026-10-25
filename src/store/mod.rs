@@ -10,9 +10,9 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 
-use crate::action::stage;
 use crate::env::Env;
-use crate::read_optional::read_optional;
+use crate::harness::action::stage;
+use crate::harness::read_optional::read_optional;
 pub use document::Document;
 use lock::Lock;
 

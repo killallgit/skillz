@@ -4,8 +4,8 @@ use std::path::Path;
 
 use anyhow::Context;
 
-use crate::redact::redact_text;
-use crate::runner::{Cmd, CommandRunner};
+use crate::harness::redact::redact_text;
+use crate::harness::runner::{Cmd, CommandRunner};
 
 /// Sources reach git/npx/claude as positional args, so a leading `-` would be read as an option.
 fn check_source(source: &str) -> anyhow::Result<()> {

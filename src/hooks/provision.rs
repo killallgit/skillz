@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use crate::action::{Action, Edit};
-use crate::profile::Spec;
+use crate::harness::Spec;
+use crate::harness::action::{Action, Edit};
 
 /// The step that adds a profile's hook to `file`. `None` for other kinds of entry.
 pub fn provision(entry: &Spec, file: PathBuf) -> Option<Vec<Action>> {

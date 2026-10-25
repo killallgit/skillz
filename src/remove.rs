@@ -3,12 +3,12 @@
 
 use anyhow::bail;
 
-use crate::action::{self, Action, Report};
 use crate::agents::{self, AgentAdapter};
 use crate::env::Env;
+use crate::harness::action::{self, Action, Report};
+use crate::harness::runner::CommandRunner;
 use crate::matcher;
 use crate::model::{Agent, Installed, Scope};
-use crate::runner::CommandRunner;
 
 /// Items named exactly `query` (case-insensitive, surrounding whitespace ignored).
 pub fn named<'a>(items: &'a [Installed], query: &str) -> Vec<&'a Installed> {
@@ -236,11 +236,12 @@ mod tests {
 
     #[test]
     fn run_reports_what_changed_and_reports_nothing_left_with_no_inventory() {
-        use crate::runner::NoCommands;
+        use crate::harness::runner::NoCommands;
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("skills/x");
         std::fs::create_dir_all(&file).unwrap();
-        let target = crate::action::RemovalTarget::new(dir.path(), ["skills", "x"]).unwrap();
+        let target =
+            crate::harness::action::RemovalTarget::new(dir.path(), ["skills", "x"]).unwrap();
         let a = item("x", &[Agent::Claude], vec![Action::RemovePath(target)]);
         let plan = Plan::new(&[&a], &[]);
         let env = Env::new(dir.path().into(), dir.path().into());

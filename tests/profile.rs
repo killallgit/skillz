@@ -4,7 +4,7 @@ mod common;
 
 use common::*;
 use skillz::cli::{Command, Deps, ProfileCommand};
-use skillz::profile::Spec;
+use skillz::harness::Spec;
 
 fn world_with_web_and_api() -> World {
     let w = world();

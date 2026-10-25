@@ -7,8 +7,8 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::files::{installed_file, marketplaces_file};
-use crate::action::{Action, Edit, RemovalTarget};
 use crate::env::Env;
+use crate::harness::action::{Action, Edit, RemovalTarget};
 use crate::model::Installed;
 
 pub(super) struct Fixture {

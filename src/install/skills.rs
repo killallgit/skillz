@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use crate::action::Action;
-use crate::fswalk;
+use crate::harness::action::Action;
+use crate::harness::fswalk;
 use crate::matcher::pattern_matches;
 use crate::model::Agent;
 use crate::npx_skills;

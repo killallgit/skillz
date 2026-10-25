@@ -93,7 +93,7 @@ fn an_update_records_the_new_version_in_the_library() {
 
 #[test]
 fn retrying_an_update_only_retries_the_failed_items() {
-    use crate::runner::{CommandRunner, Output};
+    use crate::harness::runner::{CommandRunner, Output};
     struct FailsOnce {
         failed: std::cell::Cell<bool>,
         names: std::cell::RefCell<Vec<String>>,

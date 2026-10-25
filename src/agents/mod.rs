@@ -11,11 +11,11 @@ pub use inventory::{Inventory, inventory};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::action::Action;
 use crate::env::Env;
+use crate::harness::Spec;
+use crate::harness::action::Action;
+use crate::harness::runner::CommandRunner;
 use crate::model::{Agent, Installed, Scope};
-use crate::profile::Spec;
-use crate::runner::CommandRunner;
 
 /// The plugins a fetched source offers one agent through its own installer.
 #[derive(Debug, Clone, PartialEq, Eq)]

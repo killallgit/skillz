@@ -18,7 +18,7 @@ pub(super) struct Entry {
 pub(super) fn entries(dir: &SkillDir) -> anyhow::Result<Vec<Entry>> {
     // Canonical parent makes a real (non-symlinked) skill's link equal its canonical path.
     let base = canonical_or(&dir.path);
-    let mut out: Vec<Entry> = crate::read_optional::read_dir(&base)?
+    let mut out: Vec<Entry> = crate::harness::read_optional::read_dir(&base)?
         .into_iter()
         .filter_map(|e| entry(dir.agent, base.join(e.file_name())))
         .collect();

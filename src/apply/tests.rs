@@ -6,9 +6,10 @@ use std::path::Path;
 
 use super::*;
 use crate::agents::registry;
+use crate::harness::Spec;
+use crate::harness::runner::{CommandRunner, Output};
 use crate::model::Agent;
-use crate::profile::{Profile, Spec};
-use crate::runner::{CommandRunner, Output};
+use crate::profile::Profile;
 use crate::stale::Disk;
 
 /// Installs the skills named by `--skill` into the project like `npx skills add` would: the

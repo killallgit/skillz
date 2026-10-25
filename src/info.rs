@@ -96,7 +96,7 @@ fn section(lines: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::Action;
+    use crate::harness::action::Action;
     use crate::model::{Agent, Kind, Scope};
 
     fn item() -> Installed {

@@ -270,9 +270,9 @@ fn saving_a_profile_keeps_the_hooks_in_the_config() {
         saved
             .entries
             .iter()
-            .any(|e| matches!(e, skillz::profile::Spec::Skill { names, .. } if names == &["tdd"]))
+            .any(|e| matches!(e, skillz::harness::Spec::Skill { names, .. } if names == &["tdd"]))
     );
     assert!(saved.entries.iter().any(
-        |e| matches!(e, skillz::profile::Spec::Hook { command, .. } if command == "say done")
+        |e| matches!(e, skillz::harness::Spec::Hook { command, .. } if command == "say done")
     ));
 }

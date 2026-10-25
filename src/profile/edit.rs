@@ -1,4 +1,5 @@
-use super::{Spec, same_thing};
+use super::same_thing;
+use crate::harness::Spec;
 
 /// `entries` followed by those of `added` that name nothing `entries` already name.
 pub fn with_added(entries: &[Spec], added: Vec<Spec>) -> Vec<Spec> {

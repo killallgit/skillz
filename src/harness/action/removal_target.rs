@@ -80,9 +80,9 @@ fn under_symlinked_ancestor(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::testutil::*;
-    use crate::action::{Action, execute};
-    use crate::runner::NoCommands;
+    use crate::harness::action::testutil::*;
+    use crate::harness::action::{Action, execute};
+    use crate::harness::runner::NoCommands;
 
     #[test]
     fn removal_target_accepts_only_plain_segments() {

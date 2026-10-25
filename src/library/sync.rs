@@ -60,8 +60,8 @@ fn mark_detected(item: LibraryItem) -> LibraryItem {
 mod tests {
     use super::super::import::tests::installed_skill;
     use super::*;
+    use crate::harness::Spec;
     use crate::model::{Installer, Origin};
-    use crate::profile::Spec;
     use crate::stale::Disk;
 
     fn at(recorded_at: u64) -> (u64, &'static dyn Probe) {

@@ -1,8 +1,8 @@
-use crate::action::{self, Action};
+use crate::harness::action::{self, Action};
+use crate::harness::runner::CommandRunner;
 use crate::model::Installed;
 use crate::remove::{self, Outcome, Plan, Removal};
 use crate::review::{ItemEvent, Target};
-use crate::runner::CommandRunner;
 
 use super::Applier;
 use super::source_gone::SourceGone;
