@@ -1,6 +1,6 @@
 //! A fake agent, registered with nothing but its `Harness` impl, flows through discovery,
 //! usage, prune, uninstall and install. If one of these needs an edit outside the adapter, an
-//! agent's knowledge has leaked out of `src/agents/`; loose skills are the one deliberate
+//! agent's knowledge has leaked out of `crates/skillz-harness/src/agents/`; loose skills are the one deliberate
 //! exception, owned by `harness::npx`.
 //!
 //! `Agent` is a closed enum, so the fake borrows the `Codex` variant and no other adapter is
