@@ -12,7 +12,8 @@ use crate::model::{Agent, Scope};
 
 /// The canonical store agent skill dirs symlink into: `<root>/.agents/skills`.
 pub fn store_dir(env: &Env, scope: Scope) -> PathBuf {
-    env.root(scope).join(".agents/skills")
+    env.root(scope)
+        .join(crate::harness::agent_skills::SHARED_DIR)
 }
 
 pub fn lock_path(env: &Env, scope: Scope) -> PathBuf {

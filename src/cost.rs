@@ -48,7 +48,7 @@ pub fn read(adapters: &[Box<dyn AgentAdapter>], env: &Env, runner: &dyn CommandR
 /// token, calibrated against Claude's own `/context` numbers.
 fn estimate_skill(skill_md: &Path) -> Option<u32> {
     let text = fs::read_to_string(skill_md).ok()?;
-    let front = crate::skills::frontmatter::parse(&text)?.block;
+    let front = crate::harness::agent_skills::parse(&text)?.raw;
     Some((front.len() as u32 * 2).div_ceil(7))
 }
 
