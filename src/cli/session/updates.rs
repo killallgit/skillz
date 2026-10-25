@@ -1,6 +1,6 @@
 //! The plan for updating the installed items a user picked.
 
-use crate::apply::Switch;
+use crate::app::apply::Switch;
 use crate::cli::deps::Deps;
 use crate::cli::scope::complete_installed;
 use skillz_harness::env::Env;
@@ -19,7 +19,7 @@ pub(super) fn update_plan(
         .flat_map(|item| item.parts().to_vec())
         .filter(|item| ids.contains(&item.id))
         .collect();
-    let updates = crate::merge::merge(copies)
+    let updates = crate::app::merge::merge(copies)
         .into_iter()
         .map(|item| (update::steps(&deps.adapters, &item, &env.project), item))
         .filter(|(steps, _)| !steps.is_empty())

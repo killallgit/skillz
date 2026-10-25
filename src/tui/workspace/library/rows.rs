@@ -1,8 +1,8 @@
 //! The rows of the library outline: a group per source package, holding its items.
 
-use crate::library::{Catalog, Held, LibraryItem, Presence};
-use crate::package::{Package, group_by};
-use crate::stale::{Probe, missing_source};
+use crate::app::library::{Catalog, Held, LibraryItem, Presence};
+use crate::app::package::{Package, group_by};
+use crate::app::stale::{Probe, missing_source};
 use crate::tui::widgets::outline::Shape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

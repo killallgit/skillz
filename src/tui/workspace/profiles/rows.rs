@@ -1,8 +1,8 @@
 //! The rows of an entry outline: a section per kind, holding the entries of that kind. Shown for
 //! a profile's entries and for the library items a profile can be built from.
 
-use crate::library::{Catalog, ItemKind};
-use crate::profile::Profile;
+use crate::app::library::{Catalog, ItemKind};
+use crate::app::profile::Profile;
 use crate::tui::widgets::outline::Shape;
 use skillz_harness::Spec;
 
@@ -115,7 +115,7 @@ fn grouped(mut items: Vec<Item>) -> Vec<Row> {
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-    use crate::library::LibraryItem;
+    use crate::app::library::LibraryItem;
 
     pub fn skill(name: &str) -> Spec {
         Spec::Skill {

@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use super::menu::Menu;
-use crate::tree::{COLUMNS, Node, Widths};
+use crate::app::tree::{COLUMNS, Node, Widths};
 use crate::tui::help::Help;
 use crate::tui::widgets::outline::{Outline, Shape};
 

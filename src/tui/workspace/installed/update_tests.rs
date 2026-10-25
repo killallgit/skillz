@@ -102,7 +102,7 @@ fn updating_a_merged_package_selects_each_installed_copy() {
         .collect();
     let expected = copies.iter().map(|item| item.id.clone()).collect();
     let model = Model {
-        installed: crate::merge::merge(copies),
+        installed: crate::app::merge::merge(copies),
         ..Model::default()
     };
     let mut tab = InstalledTab::project();

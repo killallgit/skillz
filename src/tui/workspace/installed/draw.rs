@@ -10,7 +10,7 @@ use super::header::{self, Comparison};
 use super::rows::{Item, Row};
 use super::status::Status;
 use super::{InstalledTab, Popup};
-use crate::apply::Drift;
+use crate::app::apply::Drift;
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;

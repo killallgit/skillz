@@ -6,10 +6,10 @@ use super::picker::{Pick, Picker};
 use super::rows::{Row, items_of};
 use super::subset::{Choice, Subset};
 use super::{InstalledTab, Popup};
+use crate::app::workspace::Act;
 use crate::tui::keymap::{self, Action};
 use crate::tui::widgets::input::{InputField, Outcome as Edit};
 use crate::tui::workspace::Tab;
-use crate::workspace::Act;
 
 const NAME_PLACEHOLDER: &str = "profile name";
 const SOURCE_PLACEHOLDER: &str = "owner/repo, git URL or path";

@@ -2,7 +2,7 @@ use ratatui::crossterm::event::KeyCode;
 
 use super::rows::tests::{installed, plugin_providing_a_skill_and_a_hook};
 use super::*;
-use crate::library::ItemKind;
+use crate::app::library::ItemKind;
 use crate::tui::widgets::testing::{key, keys, render_to_buffer};
 use skillz_harness::Spec;
 use skillz_harness::model::Kind;

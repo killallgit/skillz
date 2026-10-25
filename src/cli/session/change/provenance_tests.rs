@@ -2,8 +2,8 @@ use std::path::Path;
 
 use super::tests::{session, skill_entry};
 use super::*;
-use crate::install::test_support::{FakeNpx, LOCKED_LINK, ScriptedPrompter};
-use crate::library::{LibraryItem, Provenance};
+use crate::app::install::test_support::{FakeNpx, LOCKED_LINK, ScriptedPrompter};
+use crate::app::library::{LibraryItem, Provenance};
 use skillz_harness::agents::registry;
 use skillz_harness::model::Installer;
 

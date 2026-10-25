@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use super::closure::event_loop;
 use super::shell::Ui;
-use crate::workspace::Act;
+use crate::app::workspace::Act;
 
 /// The workspace, shared with whatever redraws it while a change runs.
 pub type Shared = Arc<Mutex<Workspace>>;

@@ -4,10 +4,10 @@ use ratatui::crossterm::event::KeyEvent;
 
 use super::rows::Row;
 use super::{LibraryTab, Popup};
+use crate::app::workspace::Act;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::confirm::{ConfirmDialog, Outcome as Answer};
 use crate::tui::widgets::input::{InputField, Outcome as Edit};
-use crate::workspace::Act;
 use skillz_harness::Spec;
 
 const ADD_PLACEHOLDER: &str =

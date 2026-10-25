@@ -2,9 +2,9 @@
 
 use super::Session;
 use super::notice::Notice;
+use crate::app::profile::Profile;
 use crate::cli::profile::save_profile;
 use crate::cli::scope::{complete_installed, project_env};
-use crate::profile::Profile;
 use skillz_harness::Spec;
 use skillz_harness::model::Scope;
 

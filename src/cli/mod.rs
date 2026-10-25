@@ -41,8 +41,8 @@ pub use profile_args::{ProfileAddArgs, ProfileCommand, ProfileRemoveArgs};
 pub use run::run;
 pub use workspace::workspace;
 
-use crate::prompt::{AssumeYes, Prompter};
-use crate::sync::{InstalledScanner, Scanner};
+use crate::app::prompt::{AssumeYes, Prompter};
+use crate::app::sync::{InstalledScanner, Scanner};
 use crate::tui::prompter::TuiPrompter;
 use crate::tui::theme::Theme;
 use skillz_harness::agents;

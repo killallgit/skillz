@@ -14,7 +14,7 @@ use ratatui::text::Line;
 
 use super::input::InputField;
 use super::list::ListView;
-use crate::matcher::{fuzzy_rank, match_positions};
+use crate::app::matcher::{fuzzy_rank, match_positions};
 use crate::tui::filter;
 use crate::tui::glyphs::Glyphs;
 use crate::tui::theme::Theme;

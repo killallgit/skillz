@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use super::model::TreeState;
-use crate::prompt::Picked;
+use crate::app::prompt::Picked;
 
 /// Whether a row is chosen: all of it, only part of it (a group with some items marked), or not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

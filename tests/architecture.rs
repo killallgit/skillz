@@ -2,9 +2,10 @@
 //!
 //! Layers, lowest first: harness < app < tui < cli. The harness layer is its own crate
 //! (`crates/skillz-harness`), so cargo already stops it reaching into the others; this test
-//! covers the layers inside the `skillz` crate: app < tui < cli. `ALLOWED` lists today's violations as
-//! (file, imported top-level module); it may only shrink. An entry that no longer matches a
-//! real import fails the test so it gets deleted.
+//! covers the layers inside the `skillz` crate (`src/app`, `src/tui`, `src/cli`). `ALLOWED`
+//! lists violations as (file, imported top-level module); it is empty and stays empty unless a
+//! violation is knowingly accepted. An entry that no longer matches a real import fails the
+//! test so it gets deleted.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -17,35 +18,11 @@ enum Layer {
     Cli,
 }
 
-const APP: &[&str] = &[
-    "install",
-    "app_paths",
-    "apply",
-    "info",
-    "library",
-    "location",
-    "matcher",
-    "merge",
-    "package",
-    "profile",
-    "prompt",
-    "prune",
-    "remove",
-    "review",
-    "snapshot",
-    "spinner",
-    "stale",
-    "store",
-    "sync",
-    "tree",
-    "workspace",
-];
-
 fn layer(module: &str) -> Option<Layer> {
     match module {
         "tui" => Some(Layer::Tui),
         "cli" => Some(Layer::Cli),
-        m if APP.contains(&m) => Some(Layer::App),
+        "app" => Some(Layer::App),
         _ => None,
     }
 }
@@ -186,12 +163,12 @@ fn group_imports_are_read() {
 
 #[test]
 fn a_gated_module_declaration_does_not_hide_the_code_after_it() {
-    let text = "#[cfg(test)]\nmod testutil;\nuse crate::profile::Spec;\n#[cfg(test)]\nmod tests {\n    use crate::tui::x;\n}\n";
+    let text = "#[cfg(test)]\nmod testutil;\nuse crate::library::Spec;\n#[cfg(test)]\nmod tests {\n    use crate::tui::x;\n}\n";
 
     assert_eq!(
         crate_modules(production(text))
             .into_iter()
             .collect::<Vec<_>>(),
-        ["profile"]
+        ["library"]
     );
 }

@@ -2,7 +2,7 @@ use ratatui::crossterm::event::KeyCode;
 
 use super::rows::tests::{hook, skill};
 use super::*;
-use crate::library::Catalog;
+use crate::app::library::Catalog;
 use crate::tui::widgets::testing::key;
 
 fn loaded() -> LibraryTab {

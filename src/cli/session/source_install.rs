@@ -3,9 +3,9 @@
 use anyhow::Context;
 
 use super::{Notice, Session};
+use crate::app::install::{self, InstallRequest};
 use crate::cli::recording::record_since;
 use crate::cli::scope::{complete_installed, project_env};
-use crate::install::{self, InstallRequest};
 
 impl Session<'_, '_> {
     /// Install `request`'s source through the agents' own installers, then record what arrived.
@@ -35,10 +35,10 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::app::install::SkillSelection;
+    use crate::app::install::test_support::{FakeRunner, ScriptedPrompter, marketplace_fixture};
+    use crate::app::{profile, store};
     use crate::cli::deps::Deps;
-    use crate::install::SkillSelection;
-    use crate::install::test_support::{FakeRunner, ScriptedPrompter, marketplace_fixture};
-    use crate::{profile, store};
     use skillz_harness::agents::registry;
     use skillz_harness::model::{Agent, Scope};
 

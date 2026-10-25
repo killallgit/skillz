@@ -13,7 +13,7 @@ use super::args::RunArgs;
 use super::deps::Deps;
 use super::scope::resolve_project;
 use super::session::{Change, Notice, change, with_session};
-use crate::profile;
+use crate::app::profile;
 use skillz_harness::env::Env;
 use skillz_harness::model::Scope;
 
@@ -45,7 +45,9 @@ pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> a
 
 /// The environment whose global config is the profile's own dirs; the project stays the real one.
 fn isolated_env(env: &Env, profile: &str) -> Env {
-    let root = crate::app_paths::skillz_dir(env).join("envs").join(profile);
+    let root = crate::app::app_paths::skillz_dir(env)
+        .join("envs")
+        .join(profile);
     Env {
         claude_config: Some(root.join("claude")),
         codex_home: Some(root.join("codex")),
@@ -88,8 +90,8 @@ mod tests {
 
     #[test]
     fn declining_profile_preparation_never_launches_the_command() {
-        use crate::install::test_support::{FakeRunner, ScriptedPrompter};
-        use crate::profile::Profile;
+        use crate::app::install::test_support::{FakeRunner, ScriptedPrompter};
+        use crate::app::profile::Profile;
         use skillz_harness::Spec;
         use skillz_harness::agents::registry;
         use skillz_harness::model::Agent;

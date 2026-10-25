@@ -3,7 +3,7 @@
 use ratatui::style::{Color, Modifier, Style};
 
 use super::glyphs::Glyphs;
-use crate::library::ItemKind;
+use crate::app::library::ItemKind;
 
 /// How a status reads at a glance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

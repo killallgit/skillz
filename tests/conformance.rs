@@ -11,10 +11,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use skillz::app::install::{Ctx, InstallRequest, SkillSelection, install};
+use skillz::app::prompt::Prompter;
+use skillz::app::prune;
 use skillz::cli::{Command, Deps, Filter, UninstallArgs, run};
-use skillz::install::{Ctx, InstallRequest, SkillSelection, install};
-use skillz::prompt::Prompter;
-use skillz::prune;
 use skillz_harness::action::{Action, RemovalTarget};
 use skillz_harness::agents::{self, Harness, PluginOffer};
 use skillz_harness::env::Env;

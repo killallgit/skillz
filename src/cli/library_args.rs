@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use crate::library::ItemKind;
+use crate::app::library::ItemKind;
 
 #[derive(Debug, Subcommand)]
 pub enum LibraryCommand {

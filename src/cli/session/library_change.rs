@@ -2,11 +2,11 @@
 
 use super::Session;
 use super::notice::Notice;
+use crate::app::library::LibraryItem;
+use crate::app::profile::SpecParse;
+use crate::app::stale::Disk;
+use crate::app::sync::sync_library;
 use crate::cli::scope::{complete_installed, project_env};
-use crate::library::LibraryItem;
-use crate::profile::SpecParse;
-use crate::stale::Disk;
-use crate::sync::sync_library;
 use skillz_harness::Spec;
 use skillz_harness::model::Scope;
 
@@ -40,7 +40,7 @@ impl Session<'_, '_> {
 
     pub(in crate::cli) fn library_remove(&self, entry: &Spec) -> anyhow::Result<Option<Notice>> {
         let env = project_env(self.deps, &self.project);
-        let wanted = crate::app_paths::spec_in_env(&env, entry.clone());
+        let wanted = crate::app::app_paths::spec_in_env(&env, entry.clone());
         let item = LibraryItem::from_entry(entry.clone());
         self.store.update(|document| {
             let stored = document
@@ -48,8 +48,8 @@ impl Session<'_, '_> {
                 .items()
                 .iter()
                 .find(|item| {
-                    crate::profile::same_thing(
-                        &crate::app_paths::spec_in_env(&env, item.entry.clone()),
+                    crate::app::profile::same_thing(
+                        &crate::app::app_paths::spec_in_env(&env, item.entry.clone()),
                         &wanted,
                     )
                 })
@@ -68,9 +68,9 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::app::install::test_support::{FakeRunner, ScriptedPrompter};
+    use crate::app::{profile, store};
     use crate::cli::deps::Deps;
-    use crate::install::test_support::{FakeRunner, ScriptedPrompter};
-    use crate::{profile, store};
     use skillz_harness::agents::registry;
 
     fn with_session<T>(dir: &Path, test: impl FnOnce(&Session) -> T) -> T {

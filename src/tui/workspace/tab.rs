@@ -7,12 +7,12 @@ use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
-use crate::review::ItemEvent;
+use crate::app::review::ItemEvent;
+use crate::app::workspace::Act;
+use crate::app::workspace::Model;
 use crate::tui::keymap::Scope;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::input::InputField;
-use crate::workspace::Act;
-use crate::workspace::Model;
 
 pub trait Tab: Send {
     fn title(&self) -> &'static str;

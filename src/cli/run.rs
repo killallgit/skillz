@@ -16,7 +16,7 @@ use super::scope::{Scene, resolve, resolve_project, split_target};
 use super::session::{Change, Session, with_session};
 use super::sync::{SyncRequest, sync};
 use super::update::{UpdateRequest, check, update};
-use crate::install::{InstallRequest, SkillSelection};
+use crate::app::install::{InstallRequest, SkillSelection};
 use skillz_harness::model::Scope;
 
 /// Runs the command and returns the process exit code: the child's for `run`, else 0.

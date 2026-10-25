@@ -7,14 +7,14 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::apply::{holds, only_wanted_by};
-use crate::profile::Profile;
+use crate::app::apply::{holds, only_wanted_by};
+use crate::app::profile::Profile;
+use crate::app::workspace::Act;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
 use crate::tui::widgets::list::ListView;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
-use crate::workspace::Act;
 use skillz_harness::Spec;
 use skillz_harness::model::Installed;
 

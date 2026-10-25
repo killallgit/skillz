@@ -3,7 +3,7 @@
 use ratatui::text::{Line, Span};
 
 use super::theme::Theme;
-use crate::review::{ItemEvent, Outcome, Phase, Target};
+use crate::app::review::{ItemEvent, Outcome, Phase, Target};
 
 /// One line per item that worked, in the order they ran. Failures are listed with their
 /// reasons by the problems block.

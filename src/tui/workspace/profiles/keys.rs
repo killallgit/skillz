@@ -4,10 +4,10 @@ use ratatui::crossterm::event::KeyEvent;
 
 use super::editor::{Choice, Editor};
 use super::{Popup, ProfilesTab};
+use crate::app::workspace::Act;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::confirm::{ConfirmDialog, Outcome as Answer};
 use crate::tui::widgets::input::Outcome as Edit;
-use crate::workspace::Act;
 
 impl ProfilesTab {
     pub(super) fn handle_key(&mut self, key: KeyEvent) -> Option<Act> {

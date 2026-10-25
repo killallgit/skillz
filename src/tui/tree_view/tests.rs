@@ -310,7 +310,7 @@ fn picker_enter_accepts_marks_without_the_menu() {
 
 #[test]
 fn flat_options_pick_by_position() {
-    let nodes = crate::tree::flat(&["a".into(), "b".into(), "c".into()]);
+    let nodes = crate::app::tree::flat(&["a".into(), "b".into(), "c".into()]);
     let mut s = TreeState::picker(&nodes);
     feed(&mut s, keys("jx"));
 

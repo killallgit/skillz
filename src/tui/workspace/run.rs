@@ -5,7 +5,7 @@ use ratatui::Frame;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use crate::review::{ItemEvent, Phase};
+use crate::app::review::{ItemEvent, Phase};
 use crate::tui::theme::Theme;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
@@ -111,7 +111,7 @@ impl RunModal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::review::Target;
+    use crate::app::review::Target;
 
     fn planned(names: &[&str]) -> Vec<ItemEvent> {
         names

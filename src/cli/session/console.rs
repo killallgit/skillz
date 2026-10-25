@@ -7,8 +7,8 @@ use std::io::Write;
 use anyhow::bail;
 
 use super::Notice;
-use crate::prompt::Prompter;
-use crate::review::{Group, PlanView, Verdict};
+use crate::app::prompt::Prompter;
+use crate::app::review::{Group, PlanView, Verdict};
 
 pub(in crate::cli) struct Console<'a> {
     asks: &'a dyn Prompter,
@@ -74,7 +74,7 @@ fn render(view: &PlanView) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prompt::AssumeYes;
+    use crate::app::prompt::AssumeYes;
 
     fn view() -> PlanView {
         PlanView {

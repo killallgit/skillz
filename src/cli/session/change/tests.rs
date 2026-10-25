@@ -2,9 +2,9 @@ use std::fs;
 use std::path::Path;
 
 use super::*;
+use crate::app::install::test_support::{FakeRunner, ScriptedPrompter};
+use crate::app::profile::Profile;
 use crate::cli::scope::installed;
-use crate::install::test_support::{FakeRunner, ScriptedPrompter};
-use crate::profile::Profile;
 use skillz_harness::Spec;
 use skillz_harness::agents::registry;
 use skillz_harness::model::Agent;
@@ -110,18 +110,18 @@ fn applying_additively_keeps_what_the_profile_does_not_have() {
 
 #[derive(Default)]
 pub(super) struct Outcomes {
-    pub values: std::cell::RefCell<Vec<crate::review::Outcome>>,
+    pub values: std::cell::RefCell<Vec<crate::app::review::Outcome>>,
     pub retry_once: bool,
 }
 
-impl crate::prompt::Prompter for Outcomes {
+impl crate::app::prompt::Prompter for Outcomes {
     fn multi_select(&self, _: &str, options: &[String]) -> anyhow::Result<Vec<usize>> {
         Ok((0..options.len()).collect())
     }
     fn confirm(&self, _: &str) -> anyhow::Result<bool> {
         Ok(true)
     }
-    fn outcome(&self, _: &str, outcome: &crate::review::Outcome) -> anyhow::Result<Next> {
+    fn outcome(&self, _: &str, outcome: &crate::app::review::Outcome) -> anyhow::Result<Next> {
         let mut values = self.values.borrow_mut();
         values.push(outcome.clone());
         Ok(if self.retry_once && values.len() == 1 {
