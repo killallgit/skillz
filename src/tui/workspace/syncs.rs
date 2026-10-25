@@ -2,15 +2,7 @@
 
 use std::sync::mpsc::Receiver;
 
-use crate::library::Catalog;
-
-/// The outcome of one background sync: the library as it now is, when that could be read, and
-/// what to toast, when there is anything worth saying.
-#[derive(Debug, Default)]
-pub struct Synced {
-    pub library: Option<Catalog>,
-    pub notice: Option<String>,
-}
+use crate::workspace::Synced;
 
 #[derive(Default)]
 pub(super) struct Syncs {

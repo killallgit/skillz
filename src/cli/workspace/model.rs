@@ -6,7 +6,7 @@ use super::super::session::{Notice, Session};
 use crate::cli::scope::{installed, project_env};
 use crate::library::Catalog;
 use crate::model::Scope;
-use crate::tui::workspace::Model;
+use crate::workspace::Model;
 
 /// The snapshot to show next, with `notice` to toast; an unreadable library is shown empty and
 /// reported in its place, along with the profiles kept beside it.

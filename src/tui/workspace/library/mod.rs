@@ -13,8 +13,6 @@ use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
 use self::rows::{Row, build, shape};
-use super::act::Act;
-use super::model::Model;
 use super::tab::Tab;
 use crate::library::Held;
 use crate::profile::Spec;
@@ -24,6 +22,8 @@ use crate::tui::theme::Theme;
 use crate::tui::widgets::confirm::ConfirmDialog;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
+use crate::workspace::Act;
+use crate::workspace::Model;
 
 /// Which popup, if any, has the keys.
 #[derive(Debug, Clone, Default)]

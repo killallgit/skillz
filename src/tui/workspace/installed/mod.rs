@@ -37,8 +37,6 @@ use self::picker::Picker;
 use self::rows::{Row, build, shape};
 use self::status::Statuses;
 use self::subset::Subset;
-use super::act::Act;
-use super::model::Model;
 use super::tab::Tab;
 use crate::apply::{Drift, drift};
 use crate::model::{Installed, Scope};
@@ -48,6 +46,8 @@ use crate::tui::keymap;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
+use crate::workspace::Act;
+use crate::workspace::Model;
 
 /// Which popup, if any, has the keys.
 #[derive(Debug, Clone, Default)]

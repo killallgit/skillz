@@ -9,7 +9,7 @@ use super::{InstalledTab, Popup};
 use crate::tui::keymap::{self, Action};
 use crate::tui::widgets::input::{InputField, Outcome as Edit};
 use crate::tui::workspace::Tab;
-use crate::tui::workspace::act::Act;
+use crate::workspace::Act;
 
 const NAME_PLACEHOLDER: &str = "profile name";
 const SOURCE_PLACEHOLDER: &str = "owner/repo, git URL or path";

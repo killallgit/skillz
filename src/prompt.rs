@@ -1,6 +1,6 @@
 use crate::review::{ItemEvent, Next, NoProgress, Outcome, PlanView, Progress, Verdict};
 use crate::tree::Node;
-use crate::tui::workspace::{Act, Shared};
+use crate::workspace::{Act, SharedScreen};
 
 /// User interaction. Injected so flows are testable without a terminal.
 pub trait Prompter {
@@ -32,9 +32,13 @@ pub trait Prompter {
             (Choice::Show, picked)
         }))
     }
-    /// The workspace screen: show `workspace` until the user asks for something. Needs a
-    /// terminal, so the default is an error.
-    fn workspace(&self, _workspace: &Shared) -> anyhow::Result<Act> {
+    /// The workspace screen the flow feeds between acts. Needs a terminal, so the default is
+    /// an error.
+    fn screen(&self) -> anyhow::Result<SharedScreen> {
+        anyhow::bail!("the workspace needs a terminal")
+    }
+    /// Show the workspace screen until the user asks for something.
+    fn workspace(&self) -> anyhow::Result<Act> {
         anyhow::bail!("the workspace needs a terminal")
     }
     /// Keep the interactive session open across several prompts until the guard is dropped.
@@ -151,5 +155,13 @@ mod tests {
         let opts = vec!["a".to_string(), "b".to_string()];
         assert_eq!(AssumeYes.multi_select("t", &opts).unwrap(), vec![0, 1]);
         assert!(AssumeYes.confirm("q").unwrap());
+    }
+
+    #[test]
+    fn without_a_terminal_there_is_no_screen_and_no_workspace() {
+        let prompter = crate::install::test_support::ScriptedPrompter::new(&[], true);
+
+        assert!(prompter.screen().is_err());
+        assert!(prompter.workspace().is_err());
     }
 }

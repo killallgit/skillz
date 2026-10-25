@@ -62,6 +62,7 @@ const APP: &[&str] = &[
     "store",
     "sync",
     "tree",
+    "workspace",
 ];
 
 fn layer(module: &str) -> Option<Layer> {
@@ -90,7 +91,6 @@ const ALLOWED: &[(&str, &str)] = &[
     ("install/mod.rs", "review"),
     ("install/skills.rs", "matcher"),
     ("install/skills.rs", "prompt"),
-    ("prompt.rs", "tui"),
     ("provision.rs", "profile"),
     ("subagents.rs", "profile"),
 ];

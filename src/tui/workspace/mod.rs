@@ -3,27 +3,23 @@
 //! toasts, and hands every tab the same `Model`. Keys become an `Act` that `cli::workspace`
 //! performs before the screen is shown again.
 
-mod act;
 mod checks;
 mod installed;
 mod library;
-mod model;
 mod profiles;
 mod run;
 mod shell;
 mod syncs;
 mod tab;
 
-pub use act::Act;
-pub use model::Model;
 pub use shell::Workspace;
-pub use syncs::Synced;
 pub use tab::Tab;
 
 use std::sync::{Arc, Mutex, PoisonError};
 
 use super::closure::event_loop;
 use super::shell::Ui;
+use crate::workspace::Act;
 
 /// The workspace, shared with whatever redraws it while a change runs.
 pub type Shared = Arc<Mutex<Workspace>>;

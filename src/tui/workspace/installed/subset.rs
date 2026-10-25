@@ -15,7 +15,7 @@ use crate::tui::theme::Theme;
 use crate::tui::widgets::list::ListView;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
-use crate::tui::workspace::act::Act;
+use crate::workspace::Act;
 
 const WIDTH: u16 = 70;
 const MAX_HEIGHT: u16 = 24;

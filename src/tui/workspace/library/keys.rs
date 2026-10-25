@@ -8,7 +8,7 @@ use crate::profile::Spec;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::confirm::{ConfirmDialog, Outcome as Answer};
 use crate::tui::widgets::input::{InputField, Outcome as Edit};
-use crate::tui::workspace::act::Act;
+use crate::workspace::Act;
 
 const ADD_PLACEHOLDER: &str =
     "skill SOURCE NAMES | plugin SOURCE MARKETPLACE NAME | hook EVENT COMMAND | mcp NAME COMMAND";

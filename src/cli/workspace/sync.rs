@@ -6,7 +6,7 @@ use crate::cli::deps::Deps;
 use crate::cli::session::Notice;
 use crate::env::Env;
 use crate::sync::{self, Report};
-use crate::tui::workspace::Synced;
+use crate::workspace::Synced;
 
 /// Scan and sync on a thread of their own and send the outcome to `tell`, unless the deps have
 /// no scanner.
