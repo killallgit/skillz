@@ -1,5 +1,7 @@
-//! One adapter per agent. Adding an agent = a new module implementing `AgentAdapter` plus a
-//! line in `registry()`.
+//! One `Harness` per coding tool. It reports what is installed (`installed`) and plans the
+//! changes (`plan_install`, `plan_update`, `plan_add_source`) as `Action`s; removal is carried by
+//! each `Installed`. Adding an agent = a new module implementing `Harness` plus a line in
+//! `registry()`.
 
 pub(crate) mod claude;
 pub(crate) mod codex;
@@ -24,13 +26,13 @@ pub struct PluginOffer {
     pub plugins: Vec<String>,
 }
 
-pub trait AgentAdapter {
+pub trait Harness {
     fn agent(&self) -> Agent;
     /// Hook config files this agent reads for `scope` (parsed by `hooks::discover`).
     fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf>;
     /// Plugins and marketplaces for `scope`. Loose skills and hooks are discovered by the
     /// shared `npx`/`hooks` modules from `npx::skill_dirs`/`hook_files`.
-    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>>;
+    fn installed(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>>;
     /// Hidden home dir names (`.claude` -> `claude`) this agent owns; hook grouping skips them.
     fn home_dir_names(&self) -> &'static [&'static str];
     /// Env var a plugin's hook commands use for the plugin's own dir, if any.
@@ -43,7 +45,7 @@ pub trait AgentAdapter {
         Ok(None)
     }
     /// Steps that add `source`'s marketplace and install the `picked` plugins of `offer`.
-    fn plugin_steps(
+    fn plan_add_source(
         &self,
         _offer: &PluginOffer,
         _picked: &[String],
@@ -56,10 +58,10 @@ pub trait AgentAdapter {
     /// Steps that install a profile `entry` for this agent at `scope`, or `None` when this agent
     /// has no way to take that entry there. Skills are not asked of adapters: `provision::plan`
     /// sends them through `npx skills` for every agent at once.
-    fn provision(&self, _entry: &Spec, _scope: Scope, _env: &Env) -> Option<Vec<Action>> {
+    fn plan_install(&self, _entry: &Spec, _scope: Scope, _env: &Env) -> Option<Vec<Action>> {
         None
     }
-    fn update_steps(&self, _item: &Installed, _cwd: &Path) -> Vec<Action> {
+    fn plan_update(&self, _item: &Installed, _cwd: &Path) -> Vec<Action> {
         vec![]
     }
 
@@ -87,12 +89,12 @@ pub trait AgentAdapter {
     }
 }
 
-pub fn registry() -> Vec<Box<dyn AgentAdapter>> {
+pub fn registry() -> Vec<Box<dyn Harness>> {
     vec![Box::new(claude::Claude), Box::new(codex::Codex)]
 }
 
 /// The adapter among `adapters` that handles `agent`.
-pub fn adapter_for(adapters: &[Box<dyn AgentAdapter>], agent: Agent) -> Option<&dyn AgentAdapter> {
+pub fn adapter_for(adapters: &[Box<dyn Harness>], agent: Agent) -> Option<&dyn Harness> {
     adapters
         .iter()
         .find(|a| a.agent() == agent)

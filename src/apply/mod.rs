@@ -19,14 +19,14 @@ pub use run::{Report, Watch};
 pub use standing::{Standing, compare, holds, loaded, only_wanted_by};
 pub use switch::Switch;
 
-use crate::agents::{self, AgentAdapter};
+use crate::agents::{self, Harness};
 use crate::env::Env;
 use crate::model::{Installed, Scope};
 use crate::stale::Probe;
 
 /// Everything a switch of one scope works with.
 pub struct Applier<'a> {
-    pub adapters: &'a [Box<dyn AgentAdapter>],
+    pub adapters: &'a [Box<dyn Harness>],
     pub env: &'a Env,
     pub scope: Scope,
     /// Tells whether a local source still exists before anything is installed from it.

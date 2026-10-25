@@ -115,12 +115,12 @@ mod tests {
     use super::super::files::installed_file;
     use super::super::testutil::*;
     use super::*;
-    use crate::agents::AgentAdapter;
+    use crate::agents::Harness;
 
     #[test]
     fn global_plugins() {
         let f = fixture();
-        let items = Claude.discover(&f.env, Scope::Global).unwrap();
+        let items = Claude.installed(&f.env, Scope::Global).unwrap();
         let plugins: Vec<&str> = items
             .iter()
             .filter(|a| a.kind == Kind::Plugin)
@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn project_plugins_one_per_id() {
         let f = fixture();
-        let items = Claude.discover(&f.env, Scope::Project).unwrap();
+        let items = Claude.installed(&f.env, Scope::Project).unwrap();
         assert_eq!(items.len(), 1);
         let tools = &items[0];
         assert_eq!(tools.id, "plugin:claude:project:tools@acme");
@@ -220,7 +220,7 @@ mod tests {
             codex_home: None,
         };
 
-        let items = Claude.discover(&env, Scope::Project).unwrap();
+        let items = Claude.installed(&env, Scope::Project).unwrap();
 
         assert_eq!(
             items.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),

@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use super::AgentAdapter;
+use super::Harness;
 use crate::env::Env;
 use crate::harness::npx;
 use crate::hooks::{self, GroupHints};
@@ -38,7 +38,7 @@ impl Inventory {
 
 /// Combine every adapter's discovery and the shared skill discovery for `scopes`.
 /// Items are deduplicated by id; a failing source becomes a warning, not an error.
-pub fn inventory(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]) -> Inventory {
+pub fn inventory(adapters: &[Box<dyn Harness>], env: &Env, scopes: &[Scope]) -> Inventory {
     let mut inv = Inventory::default();
     // One discover over every scope, so a project link into a global skill is its own item.
     let agents: Vec<_> = adapters.iter().map(|a| a.agent()).collect();
@@ -55,7 +55,7 @@ pub fn inventory(adapters: &[Box<dyn AgentAdapter>], env: &Env, scopes: &[Scope]
     inv
 }
 
-fn group_hints(adapters: &[Box<dyn AgentAdapter>]) -> GroupHints {
+fn group_hints(adapters: &[Box<dyn Harness>]) -> GroupHints {
     GroupHints {
         plugin_root_vars: adapters
             .iter()
@@ -71,7 +71,7 @@ fn group_hints(adapters: &[Box<dyn AgentAdapter>]) -> GroupHints {
 
 fn absorb_adapter(
     inv: &mut Inventory,
-    a: &dyn AgentAdapter,
+    a: &dyn Harness,
     (env, scope): (&Env, Scope),
     hints: &GroupHints,
 ) {
@@ -81,7 +81,7 @@ fn absorb_adapter(
             hooks::discover(&file, a.agent(), scope, hints),
         );
     }
-    inv.absorb(&a.agent().to_string(), a.discover(env, scope));
+    inv.absorb(&a.agent().to_string(), a.installed(env, scope));
 }
 
 /// npx skills group by their source repo; when a marketplace comes from that same repo, show

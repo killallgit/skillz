@@ -6,7 +6,7 @@ one skillz store holds the library and named profiles.
 
 ## Read, plan, execute
 
-Discovery reads configuration through each `AgentAdapter`, plus shared skill,
+Discovery reads configuration through each `Harness`, plus shared skill,
 hook, and subagent readers. Missing files and directories are empty; other
 failures become inventory warnings. Display flows can show a partial inventory.
 Flows that change or record installed state require a complete inventory.
@@ -35,8 +35,8 @@ Independent items continue after a failure. Successful shared install steps run
 once. A missing local source fails before launching its install command. Progress
 reports item start/end events and action steps.
 
-`install` turns a repo or path into one plan: each agent that offers the source plugins (`AgentAdapter::plugin_offer`)
-asks which to install and returns its steps (`plugin_steps`); the remaining agents install the source's skills through
+`install` turns a repo or path into one plan: each agent that offers the source plugins (`Harness::plugin_offer`)
+asks which to install and returns its steps (`plan_add_source`); the remaining agents install the source's skills through
 `npx skills`. The steps are shown as one plan and run only once approved. The CLI and the workspace
 share `Session::install_source`, which also records what arrived in the library.
 
@@ -106,7 +106,7 @@ command examples.
 
 ## Extension and tests
 
-An agent implements `AgentAdapter` and joins `agents::registry()`. Add its closed
+An agent implements `Harness` and joins `agents::registry()`. Add its closed
 `Agent` enum variant for clap/serde and its external skills id. Keep native paths,
 formats, commands, and update checking in that adapter, except loose skills: the
 `harness::npx` module owns every loose skill and the directory each agent reads them from

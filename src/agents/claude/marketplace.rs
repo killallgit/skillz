@@ -151,7 +151,7 @@ mod tests {
     use super::super::files::installed_file;
     use super::super::testutil::{by_id, dirs, files, fixture, remove_install, remove_key, rm};
     use super::*;
-    use crate::agents::AgentAdapter;
+    use crate::agents::Harness;
     use crate::install::test_support::{marketplace_fixture, project_with, s};
     use std::path::PathBuf;
 
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn marketplaces() {
         let f = fixture();
-        let items = Claude.discover(&f.env, Scope::Global).unwrap();
+        let items = Claude.installed(&f.env, Scope::Global).unwrap();
         let home = &f.env.home;
         let installed = installed_file(&home.join(".claude"));
         let known = marketplaces_file(&home.join(".claude"));

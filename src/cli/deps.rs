@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::agents::AgentAdapter;
+use crate::agents::Harness;
 use crate::harness::runner::CommandRunner;
 use crate::prompt::Prompter;
 use crate::sync::Scanner;
@@ -16,7 +16,7 @@ pub struct Deps<'a> {
     /// `CODEX_HOME`, when set: the only Codex config skillz touches.
     pub codex_home: Option<PathBuf>,
     pub cwd: PathBuf,
-    pub adapters: Rc<[Box<dyn AgentAdapter>]>,
+    pub adapters: Rc<[Box<dyn Harness>]>,
     pub runner: &'a dyn CommandRunner,
     pub prompter: &'a dyn Prompter,
     pub interactive: bool,
@@ -32,7 +32,7 @@ impl<'a> Deps<'a> {
     /// Deps rooted in `dir` (home and cwd), with the given adapters and fakes.
     pub(super) fn for_test(
         dir: &std::path::Path,
-        adapters: Vec<Box<dyn AgentAdapter>>,
+        adapters: Vec<Box<dyn Harness>>,
         (runner, prompter): (&'a dyn CommandRunner, &'a dyn Prompter),
     ) -> Deps<'a> {
         Deps {

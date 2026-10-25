@@ -12,7 +12,7 @@ mod usage;
 
 use std::path::{Path, PathBuf};
 
-use super::{AgentAdapter, PluginOffer};
+use super::{Harness, PluginOffer};
 use crate::env::Env;
 use crate::harness::Spec;
 use crate::harness::action::Action;
@@ -43,12 +43,12 @@ pub(crate) fn json(env: &Env) -> PathBuf {
 
 pub struct Claude;
 
-impl AgentAdapter for Claude {
+impl Harness for Claude {
     fn agent(&self) -> Agent {
         Agent::Claude
     }
 
-    fn update_steps(&self, item: &Installed, cwd: &std::path::Path) -> Vec<Action> {
+    fn plan_update(&self, item: &Installed, cwd: &std::path::Path) -> Vec<Action> {
         update::steps(item, cwd)
     }
 
@@ -64,7 +64,7 @@ impl AgentAdapter for Claude {
         settings_files(env, scope)
     }
 
-    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
+    fn installed(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
         let installs = installs_from(&read_json(&installed_file(&dir(env)))?);
         let markets = marketplaces_from(&read_json(&marketplaces_file(&dir(env)))?);
         let mut out = plugins::plugins(env, scope, &installs, &markets)?;
@@ -105,7 +105,7 @@ impl AgentAdapter for Claude {
         }
     }
 
-    fn provision(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+    fn plan_install(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
         match entry {
             Spec::Hook { .. } => hooks::provision(entry, hook_settings(env, scope)),
             Spec::Mcp { .. } => mcp::provision(entry, scope, env),
@@ -121,7 +121,7 @@ impl AgentAdapter for Claude {
         marketplace::plugin_offer(src)
     }
 
-    fn plugin_steps(
+    fn plan_add_source(
         &self,
         offer: &PluginOffer,
         picked: &[String],
@@ -183,8 +183,8 @@ mod tests {
             codex_home: None,
         };
 
-        let global = Claude.discover(&env, Scope::Global).unwrap();
-        let project = Claude.discover(&env, Scope::Project).unwrap();
+        let global = Claude.installed(&env, Scope::Global).unwrap();
+        let project = Claude.installed(&env, Scope::Project).unwrap();
 
         assert!(global.is_empty());
         assert!(project.is_empty());
@@ -196,8 +196,8 @@ mod tests {
             let f = fixture();
             write(&file(&dir(&f.env)), "{not json");
 
-            let global = Claude.discover(&f.env, Scope::Global);
-            let project = Claude.discover(&f.env, Scope::Project);
+            let global = Claude.installed(&f.env, Scope::Global);
+            let project = Claude.installed(&f.env, Scope::Project);
 
             assert!(global.is_err());
             assert!(project.is_err());
@@ -246,7 +246,7 @@ mod tests {
             [env.project.join(".claude/skills")]
         );
         // Nothing is read from the default dir, so its plugins stay invisible.
-        assert!(Claude.discover(&env, Scope::Global).unwrap().is_empty());
+        assert!(Claude.installed(&env, Scope::Global).unwrap().is_empty());
         assert_eq!(json(&env), custom.join(".claude.json"));
         assert_eq!(json(&f.env), f.env.home.join(".claude.json"));
     }

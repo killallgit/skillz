@@ -1,12 +1,12 @@
 //! When each skill and plugin was last used, from the agents' own records.
 //!
-//! Each adapter reports its own records (`AgentAdapter::usage`); this module only merges them.
+//! Each adapter reports its own records (`Harness::usage`); this module only merges them.
 //! Keys: `skill:<name>` (loose skill) and `plugin:<name@mp>` (whole plugin: its hooks and other
 //! parts too).
 
 use std::collections::HashMap;
 
-use crate::agents::AgentAdapter;
+use crate::agents::Harness;
 use crate::env::Env;
 use crate::model::{Agent, Installed, Kind};
 
@@ -37,7 +37,7 @@ impl Usage {
 }
 
 /// Every adapter's usage records. An adapter whose source is unreadable fails the read.
-pub fn read(adapters: &[Box<dyn AgentAdapter>], env: &Env) -> anyhow::Result<Usage> {
+pub fn read(adapters: &[Box<dyn Harness>], env: &Env) -> anyhow::Result<Usage> {
     let mut usage = Usage::default();
     for a in adapters {
         for (key, ms) in a.usage(env)? {

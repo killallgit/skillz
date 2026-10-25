@@ -11,7 +11,7 @@ mod testutil;
 
 use std::path::{Path, PathBuf};
 
-use super::{AgentAdapter, PluginOffer};
+use super::{Harness, PluginOffer};
 use crate::env::Env;
 use crate::harness::Spec;
 use crate::harness::action::Action;
@@ -44,12 +44,12 @@ pub(crate) fn scope_dir(env: &Env, scope: Scope) -> PathBuf {
 
 pub struct Codex;
 
-impl AgentAdapter for Codex {
+impl Harness for Codex {
     fn agent(&self) -> Agent {
         Agent::Codex
     }
 
-    fn update_steps(&self, item: &Installed, cwd: &std::path::Path) -> Vec<Action> {
+    fn plan_update(&self, item: &Installed, cwd: &std::path::Path) -> Vec<Action> {
         update::steps(item, cwd)
     }
 
@@ -62,7 +62,7 @@ impl AgentAdapter for Codex {
         vec![dir.join("hooks.json"), dir.join("config.toml")]
     }
 
-    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
+    fn installed(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
         let config = scope_dir(env, scope).join("config.toml");
         let agents_dir = scope_dir(env, scope).join("agents");
         let agents = subagents::discover(&AgentDir::new(&agents_dir, "toml"), Agent::Codex, scope)?;
@@ -92,7 +92,7 @@ impl AgentAdapter for Codex {
 
     /// `codex plugin …` and `codex mcp …` only work on the user config, so project scope has no
     /// way in for those.
-    fn provision(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+    fn plan_install(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
         match entry {
             Spec::Hook { .. } => hooks::provision(entry, scope_dir(env, scope).join("hooks.json")),
             Spec::Mcp { .. } => mcp::provision(entry, scope, env),
@@ -113,7 +113,7 @@ impl AgentAdapter for Codex {
         plugins::plugin_offer(src)
     }
 
-    fn plugin_steps(
+    fn plan_add_source(
         &self,
         offer: &PluginOffer,
         picked: &[String],
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn global_discovery_skips_bundled() {
         let (_d, env) = setup();
-        let items = Codex.discover(&env, Scope::Global).unwrap();
+        let items = Codex.installed(&env, Scope::Global).unwrap();
         let mut ids: Vec<&str> = items.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
         assert_eq!(
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn global_plugin_fields_and_removal() {
         let (_d, env) = setup();
-        let items = Codex.discover(&env, Scope::Global).unwrap();
+        let items = Codex.installed(&env, Scope::Global).unwrap();
         let config = env.home.join(".codex/config.toml");
         let cache = env.home.join(".codex/plugins/cache/killall");
 
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn global_marketplace_fields_and_removal() {
         let (_d, env) = setup();
-        let items = Codex.discover(&env, Scope::Global).unwrap();
+        let items = Codex.installed(&env, Scope::Global).unwrap();
         let config = env.home.join(".codex/config.toml");
         let cache = env.home.join(".codex/plugins/cache");
 
@@ -278,7 +278,7 @@ mod tests {
             rm_key(&config, "plugins", "commit@killall"),
             rm(&cache, &["killall", "commit"]),
         ];
-        let items = Codex.discover(&env, Scope::Global).unwrap();
+        let items = Codex.installed(&env, Scope::Global).unwrap();
         assert_eq!(
             files(&find(&items, "plugin:codex:global:review@killall").removal),
             review
@@ -299,7 +299,7 @@ mod tests {
 
         // Unreadable project config: keep every cache rather than guess.
         write(&project_config, "[plugins\n");
-        let items = Codex.discover(&env, Scope::Global).unwrap();
+        let items = Codex.installed(&env, Scope::Global).unwrap();
         assert!(
             items
                 .iter()
@@ -314,7 +314,7 @@ mod tests {
             claude_config: None,
             codex_home: None,
         };
-        let items = Codex.discover(&home, Scope::Global).unwrap();
+        let items = Codex.installed(&home, Scope::Global).unwrap();
         assert!(
             find(&items, "plugin:codex:global:review@killall")
                 .removal
@@ -350,7 +350,7 @@ enabled = true
 enabled = true
 "#,
         );
-        let items = Codex.discover(&env, Scope::Global).unwrap();
+        let items = Codex.installed(&env, Scope::Global).unwrap();
         let mut ids: Vec<&str> = items.iter().map(|a| a.id.as_str()).collect();
         ids.sort();
         assert_eq!(
@@ -398,7 +398,7 @@ enabled = true
 enabled = true
 "#,
         );
-        let items = Codex.discover(&env, Scope::Project).unwrap();
+        let items = Codex.installed(&env, Scope::Project).unwrap();
         assert_eq!(items.len(), 2);
 
         let review = find(&items, "plugin:codex:project:review@killall");
@@ -422,7 +422,7 @@ enabled = true
             &config,
             "[marketplaces.team]\nsource_type = \"git\"\nsource = \"git@example.com:t/p.git\"\n",
         );
-        let items = Codex.discover(&env, Scope::Project).unwrap();
+        let items = Codex.installed(&env, Scope::Project).unwrap();
         let mp = find(&items, "marketplace:codex:project:team");
         assert_eq!(mp.source.as_deref(), Some("git@example.com:t/p.git"));
         assert_eq!(
@@ -440,8 +440,8 @@ enabled = true
             claude_config: None,
             codex_home: None,
         };
-        assert!(Codex.discover(&env, Scope::Global).unwrap().is_empty());
-        assert!(Codex.discover(&env, Scope::Project).unwrap().is_empty());
+        assert!(Codex.installed(&env, Scope::Global).unwrap().is_empty());
+        assert!(Codex.installed(&env, Scope::Project).unwrap().is_empty());
     }
 
     #[test]
@@ -451,14 +451,14 @@ enabled = true
             &env.project.join(".codex/config.toml"),
             "[plugins\nbroken = ",
         );
-        assert!(Codex.discover(&env, Scope::Project).is_err());
+        assert!(Codex.installed(&env, Scope::Project).is_err());
     }
 
     #[test]
     fn unreadable_config_is_err() {
         let (_d, env) = setup();
         fs::create_dir_all(env.project.join(".codex/config.toml")).unwrap();
-        assert!(Codex.discover(&env, Scope::Project).is_err());
+        assert!(Codex.installed(&env, Scope::Project).is_err());
     }
 
     #[test]
@@ -509,7 +509,7 @@ enabled = true
                 .unwrap();
         }
 
-        let found = Codex.discover(&env, Scope::Global).unwrap();
+        let found = Codex.installed(&env, Scope::Global).unwrap();
         let plugin = find(&found, "plugin:codex:global:review@killall");
 
         assert_eq!(plugin.origin.version.as_deref(), Some("a-current"));

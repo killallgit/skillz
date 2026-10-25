@@ -1,8 +1,8 @@
 //! Turn a profile into the steps that install it. Pure: nothing runs here; `action::execute`
 //! does. Skills go through `npx skills` for every agent at once; anything else is asked of each
-//! agent's adapter (`AgentAdapter::provision`).
+//! agent's adapter (`Harness::plan_install`).
 
-use crate::agents::{AgentAdapter, adapter_for};
+use crate::agents::{Harness, adapter_for};
 use crate::env::Env;
 use crate::harness::Spec;
 use crate::harness::action::Action;
@@ -24,7 +24,7 @@ pub struct Provision {
 
 /// The steps that install `entries`, which already name the agents they are for.
 pub fn plan_entries(
-    adapters: &[Box<dyn AgentAdapter>],
+    adapters: &[Box<dyn Harness>],
     entries: &[Spec],
     scope: Scope,
     env: &Env,
@@ -46,7 +46,7 @@ pub fn plan_entries(
 /// One `npx skills add` for all the entry's agents that this build knows; `None` unless the
 /// entry is a skill.
 fn skills_step(
-    adapters: &[Box<dyn AgentAdapter>],
+    adapters: &[Box<dyn Harness>],
     entry: &Spec,
     scope: Scope,
     env: &Env,
@@ -66,14 +66,14 @@ fn skills_step(
 
 /// Ask each of the entry's agents for its own steps; the ones that cannot are reported.
 fn provision_per_agent(
-    adapters: &[Box<dyn AgentAdapter>],
+    adapters: &[Box<dyn Harness>],
     entry: &Spec,
     scope: Scope,
     env: &Env,
 ) -> Provision {
     let mut out = Provision::default();
     for &agent in entry.agents() {
-        let steps = adapter_for(adapters, agent).and_then(|a| a.provision(entry, scope, env));
+        let steps = adapter_for(adapters, agent).and_then(|a| a.plan_install(entry, scope, env));
         match steps {
             Some(steps) => out.steps.extend(steps),
             None => out.unsupported.push(Unsupported {
@@ -92,7 +92,7 @@ mod tests {
     use crate::profile::Profile;
 
     fn plan(
-        adapters: &[Box<dyn AgentAdapter>],
+        adapters: &[Box<dyn Harness>],
         profile: &Profile,
         scope: Scope,
         env: &Env,
