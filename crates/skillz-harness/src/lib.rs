@@ -1,5 +1,5 @@
 //! The lowest layer: what a coding tool's files and commands look like, and the actions that
-//! change them. Nothing here may import `app`, `tui` or `cli` code; see `tests/architecture.rs`.
+//! change them. This crate depends on nothing of skillz's, so cargo itself keeps `app`, `tui` and `cli` out.
 
 pub mod action;
 pub mod agent_skills;
