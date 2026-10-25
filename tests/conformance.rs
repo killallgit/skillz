@@ -1,6 +1,7 @@
 //! A fake agent, registered with nothing but its `AgentAdapter` impl, flows through discovery,
 //! usage, prune, uninstall and install. If one of these needs an edit outside the adapter, an
-//! agent's knowledge has leaked out of `src/agents/`.
+//! agent's knowledge has leaked out of `src/agents/`; loose skills are the one deliberate
+//! exception, owned by `harness::npx`.
 //!
 //! `Agent` is a closed enum, so the fake borrows the `Codex` variant and no other adapter is
 //! registered. Loose skills are the `npx` module's, so the fake does not name skill dirs.
@@ -149,8 +150,8 @@ impl World {
     }
 }
 
-/// Home with a loose skill `dup` in the Codex skill dir (the fake is a Codex adapter; the `npx` module knows where skills live) and the fake plugin that also ships
-/// `dup`.
+/// Home with a loose skill `dup` in the Codex skill dir (the `npx` module knows where skills
+/// live) and the fake plugin that also ships `dup`.
 fn world() -> World {
     let tmp = tempfile::tempdir().unwrap();
     let home = tmp.path().join("home");

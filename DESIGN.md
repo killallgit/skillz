@@ -108,7 +108,9 @@ command examples.
 
 An agent implements `AgentAdapter` and joins `agents::registry()`. Add its closed
 `Agent` enum variant for clap/serde and its external skills id. Keep native paths,
-formats, commands, and update checking in that adapter. Shared flows receive the
+formats, commands, and update checking in that adapter, except loose skills: the
+`harness::npx` module owns every loose skill and the directory each agent reads them from
+(`npx::skill_dirs`), so a new agent also adds an arm there. Shared flows receive the
 adapter list, and `tests/conformance.rs` verifies that injected adapters participate.
 
 Tests exercise established interfaces using temporary homes, fake runners, and
