@@ -1,7 +1,7 @@
 //! Where an installed item lives on disk, so it is clear why it counts for its group.
 
-use crate::harness::model::Installed;
 use crate::merge::tag;
+use skillz_harness::model::Installed;
 
 /// The location discovery recorded for this installed item.
 pub fn location(item: &Installed) -> String {
@@ -30,7 +30,7 @@ pub fn detail(item: &Installed) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::model::{Agent, Details, Installed, Installer, Kind, Scope};
+    use skillz_harness::model::{Agent, Details, Installed, Installer, Kind, Scope};
 
     #[test]
     fn location_comes_from_installed_metadata_even_when_the_id_has_a_scope_suffix() {

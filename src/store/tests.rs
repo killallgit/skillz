@@ -2,9 +2,9 @@ use std::fs;
 use std::thread;
 
 use super::*;
-use crate::harness::Spec;
 use crate::library::LibraryItem;
 use crate::profile::Profile;
+use skillz_harness::Spec;
 
 fn store_in(dir: &tempfile::TempDir) -> Store {
     Store::new(dir.path().join("skillz/store.json"))

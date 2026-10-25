@@ -3,10 +3,10 @@
 
 use std::collections::HashSet;
 
-use crate::harness::Spec;
-use crate::harness::model::{Installed, Kind};
 use crate::profile::{Claim, Profile, claims, installed_claims, lacking};
 use crate::snapshot;
+use skillz_harness::Spec;
+use skillz_harness::model::{Installed, Kind};
 
 /// How a profile's entries and the installed items overlap.
 #[derive(Debug)]
@@ -152,7 +152,7 @@ fn draws_on(entry: &Spec, marketplace: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::model::{Agent, Installer, Scope};
+    use skillz_harness::model::{Agent, Installer, Scope};
 
     fn skill_entry(names: &[&str]) -> Spec {
         Spec::Skill {
@@ -299,11 +299,11 @@ mod tests {
     #[test]
     fn an_installed_server_needing_secrets_is_present_but_cannot_be_reinstalled() {
         let server = Installed {
-            details: crate::harness::model::Details::Mcp {
+            details: skillz_harness::model::Details::Mcp {
                 config: "/config".into(),
-                server: crate::harness::mcp::Server {
+                server: skillz_harness::mcp::Server {
                     name: "db".into(),
-                    launch: crate::harness::mcp::Launch::Stdio {
+                    launch: skillz_harness::mcp::Launch::Stdio {
                         command: "srv".into(),
                         args: vec![],
                     },

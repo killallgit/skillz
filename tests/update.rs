@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use common::*;
 use skillz::cli::{Command, Deps, Filter, UpdateArgs};
-use skillz::harness::model::Installed;
-use skillz::harness::update::check::UpdateCheck;
+use skillz_harness::model::Installed;
+use skillz_harness::update::check::UpdateCheck;
 
 /// A project with `tdd` installed the way `npx skills` leaves it, locked or not.
 fn world_with_skill(locked: bool) -> World {
@@ -144,7 +144,7 @@ fn check_lists_nothing_when_nothing_is_outdated() {
 
 #[test]
 fn an_agent_filter_updates_only_the_selected_copy_of_a_merged_subagent() {
-    use skillz::harness::model::Agent;
+    use skillz_harness::model::Agent;
     for selected in [Agent::Claude, Agent::Codex] {
         let w = world_with_skill(false);
         let source = w.project.join("definitions");

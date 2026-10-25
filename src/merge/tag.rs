@@ -1,4 +1,4 @@
-use crate::harness::model::Agent;
+use skillz_harness::model::Agent;
 
 /// Agents listed by name up to this many; more are abbreviated to the first two and a count.
 const SHOWN_IN_FULL: usize = 3;

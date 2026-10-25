@@ -12,11 +12,11 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use skillz::cli::{Command, Deps, Filter, ListArgs, ResetArgs, UninstallArgs, UseArgs, run};
-use skillz::harness::agents;
-use skillz::harness::env::Env;
-use skillz::harness::runner::{CommandRunner, Output};
 use skillz::profile::{Profile, Store};
 use skillz::prompt::Prompter;
+use skillz_harness::agents;
+use skillz_harness::env::Env;
+use skillz_harness::runner::{CommandRunner, Output};
 
 pub type Call = (String, Vec<String>);
 
@@ -275,7 +275,7 @@ pub fn deps<'a>(w: &World, runner: &'a Recorder, prompter: &'a dyn Prompter) -> 
         runner,
         prompter,
         interactive: false,
-        checker: std::sync::Arc::new(skillz::harness::update::check::NoCheck),
+        checker: std::sync::Arc::new(skillz_harness::update::check::NoCheck),
         scanner: None,
     }
 }

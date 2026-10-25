@@ -3,8 +3,8 @@ use ratatui::crossterm::event::KeyCode;
 use super::rows::tests::installed;
 use super::tests::{PACKAGE, PLUGINS, TDD, loaded, model, on_item, press, space};
 use super::*;
-use crate::harness::model::{Kind, Scope};
 use crate::tui::widgets::testing::render_to_buffer;
+use skillz_harness::model::{Kind, Scope};
 
 #[test]
 fn space_picks_an_item_and_again_unpicks_it() {

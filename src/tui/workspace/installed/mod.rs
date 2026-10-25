@@ -39,7 +39,6 @@ use self::status::Statuses;
 use self::subset::Subset;
 use super::tab::Tab;
 use crate::apply::{Drift, drift};
-use crate::harness::model::{Installed, Scope};
 use crate::profile::Profile;
 use crate::review::ItemEvent;
 use crate::tui::keymap;
@@ -48,6 +47,7 @@ use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
 use crate::workspace::Act;
 use crate::workspace::Model;
+use skillz_harness::model::{Installed, Scope};
 
 /// Which popup, if any, has the keys.
 #[derive(Debug, Clone, Default)]

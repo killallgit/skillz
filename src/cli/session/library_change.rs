@@ -3,11 +3,12 @@
 use super::Session;
 use super::notice::Notice;
 use crate::cli::scope::{complete_installed, project_env};
-use crate::harness::Spec;
-use crate::harness::model::Scope;
 use crate::library::LibraryItem;
+use crate::profile::SpecParse;
 use crate::stale::Disk;
 use crate::sync::sync_library;
+use skillz_harness::Spec;
+use skillz_harness::model::Scope;
 
 impl Session<'_, '_> {
     /// Items typed in carry no provenance; one the library already knows keeps its own.
@@ -68,9 +69,9 @@ mod tests {
 
     use super::*;
     use crate::cli::deps::Deps;
-    use crate::harness::agents::registry;
     use crate::install::test_support::{FakeRunner, ScriptedPrompter};
     use crate::{profile, store};
+    use skillz_harness::agents::registry;
 
     fn with_session<T>(dir: &Path, test: impl FnOnce(&Session) -> T) -> T {
         let runner = FakeRunner::new(|_| {});

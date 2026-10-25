@@ -7,11 +7,11 @@ use super::super::library_args::LibraryListArgs;
 use super::super::scope::installed;
 use super::rows::{Row, rows};
 use crate::apply::holds;
-use crate::harness::env::Env;
-use crate::harness::model::Scope;
 use crate::library::{Held, LibraryItem};
 use crate::stale::Disk;
 use crate::store::Store;
+use skillz_harness::env::Env;
+use skillz_harness::model::Scope;
 
 /// What the project and the user have installed, as the library tells it apart.
 fn held_by(deps: &Deps, env: &Env) -> Held {

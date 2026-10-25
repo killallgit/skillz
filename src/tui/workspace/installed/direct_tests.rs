@@ -3,7 +3,7 @@ use ratatui::crossterm::event::KeyCode;
 use super::rows::tests::installed;
 use super::tests::{PLUGIN, PLUGINS, TDD, loaded, on_item, press};
 use super::*;
-use crate::harness::model::{Kind, Scope};
+use skillz_harness::model::{Kind, Scope};
 
 fn remove(ids: &[&str]) -> Option<Act> {
     Some(Act::Remove {

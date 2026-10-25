@@ -1,10 +1,10 @@
 //! A switch as the typed plan and step labels the screens show.
 
 use crate::apply::Switch;
-use crate::harness::action::Action;
-use crate::harness::model::Scope;
 use crate::remove::Plan;
 use crate::review::{Group, PlanView};
+use skillz_harness::action::Action;
+use skillz_harness::model::Scope;
 
 pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
     let kept = switch.present.iter().map(ToString::to_string).collect();
@@ -77,8 +77,8 @@ fn purpose(switch: &Switch, removal: &Plan, step: &Action) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::Spec;
-    use crate::harness::model::{Agent, Installed, Installer, Kind};
+    use skillz_harness::Spec;
+    use skillz_harness::model::{Agent, Installed, Installer, Kind};
 
     fn skill(name: &str) -> Spec {
         Spec::Skill {

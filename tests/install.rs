@@ -7,7 +7,7 @@ use std::path::Path;
 
 use common::*;
 use skillz::cli::{Command, InstallArgs};
-use skillz::harness::model::Agent;
+use skillz_harness::model::Agent;
 
 const SKILL_MD: &str = "---\nname: tdd\ndescription: d\n---\n";
 

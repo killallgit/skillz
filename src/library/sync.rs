@@ -2,9 +2,9 @@ use super::catalog::Catalog;
 use super::import::collect_installed;
 use super::item::LibraryItem;
 use super::repoint::{Moved, repoint};
-use crate::harness::model::Installed;
 use crate::snapshot::{Reason, Skipped};
 use crate::stale::Probe;
+use skillz_harness::model::Installed;
 
 /// What a sync found that the library did not have, and what it had to leave out.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -60,9 +60,9 @@ fn mark_detected(item: LibraryItem) -> LibraryItem {
 mod tests {
     use super::super::import::tests::installed_skill;
     use super::*;
-    use crate::harness::Spec;
-    use crate::harness::model::{Installer, Origin};
     use crate::stale::Disk;
+    use skillz_harness::Spec;
+    use skillz_harness::model::{Installer, Origin};
 
     fn at(recorded_at: u64) -> (u64, &'static dyn Probe) {
         (recorded_at, &Disk)

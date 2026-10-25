@@ -3,11 +3,11 @@ use std::path::Path;
 
 use super::*;
 use crate::cli::deps::Deps;
-use crate::harness::agents::registry;
-use crate::harness::model::Agent;
 use crate::install::test_support::{FakeRunner, ScriptedPrompter};
 use crate::profile::{self, StillExtended};
 use crate::store;
+use skillz_harness::agents::registry;
+use skillz_harness::model::Agent;
 
 fn session<'a, 'd>(deps: &'a Deps<'d>, dir: &Path) -> Session<'a, 'd> {
     Session {

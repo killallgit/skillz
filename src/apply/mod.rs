@@ -19,10 +19,10 @@ pub use run::{Report, Watch};
 pub use standing::{Standing, compare, holds, loaded, only_wanted_by};
 pub use switch::Switch;
 
-use crate::harness::agents::{self, Harness};
-use crate::harness::env::Env;
-use crate::harness::model::{Installed, Scope};
 use crate::stale::Probe;
+use skillz_harness::agents::{self, Harness};
+use skillz_harness::env::Env;
+use skillz_harness::model::{Installed, Scope};
 
 /// Everything a switch of one scope works with.
 pub struct Applier<'a> {

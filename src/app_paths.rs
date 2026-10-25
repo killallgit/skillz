@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use crate::harness::Spec;
-use crate::harness::env::Env;
+use skillz_harness::Spec;
+use skillz_harness::env::Env;
 
 /// skillz's own config: the store and the dirs `run` keeps.
 pub fn skillz_dir(env: &Env) -> PathBuf {

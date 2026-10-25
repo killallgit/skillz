@@ -29,8 +29,8 @@ Issues live in `.beads/dolt/`. The JSONL export is passive; normal sync uses
 ```sh
 rtk task dev
 rtk task test
-rtk cargo clippy --all-targets -- -D warnings
-rtk cargo llvm-cov --summary-only
+rtk cargo clippy --workspace --all-targets -- -D warnings
+rtk cargo llvm-cov --workspace --summary-only
 ```
 
 Keep line coverage above 75%. The test task enforces a five-minute process-tree

@@ -11,7 +11,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::rows::{self, Row, section_title};
-use crate::harness::Spec;
 use crate::library::Catalog;
 use crate::profile::{Profile, same_thing};
 use crate::tui::keymap::{self, Action, Scope};
@@ -20,6 +19,7 @@ use crate::tui::widgets::input::{InputField, Outcome};
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::outline::Outline;
 use crate::tui::widgets::panel::Panel;
+use skillz_harness::Spec;
 
 const SIZE: ModalSize = ModalSize {
     width: 70,

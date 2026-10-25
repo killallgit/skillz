@@ -2,9 +2,9 @@
 
 use super::item::ItemKind;
 use super::repoint::Moved;
-use crate::harness::Spec;
 use crate::profile::Profile;
 use crate::stale::{local_source, with_source};
+use skillz_harness::Spec;
 
 /// Point the entries of `profiles` at the new path of `moved`; the names of the profiles changed.
 pub fn repoint_profiles(profiles: &mut [Profile], moved: &Moved) -> Vec<String> {

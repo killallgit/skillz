@@ -5,12 +5,12 @@ use std::fs;
 use std::path::Path;
 
 use super::*;
-use crate::harness::Spec;
-use crate::harness::agents::registry;
-use crate::harness::model::Agent;
-use crate::harness::runner::{CommandRunner, Output};
 use crate::profile::Profile;
 use crate::stale::Disk;
+use skillz_harness::Spec;
+use skillz_harness::agents::registry;
+use skillz_harness::model::Agent;
+use skillz_harness::runner::{CommandRunner, Output};
 
 /// Installs the skills named by `--skill` into the project like `npx skills add` would: the
 /// files, the link for Claude and the lock entry that records the source.

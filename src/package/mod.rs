@@ -7,10 +7,10 @@ mod tests;
 
 use std::path::Path;
 
-use crate::harness::Spec;
-use crate::harness::hooks::UNOWNED_HOOKS;
-use crate::harness::model::{Installed, Kind};
 use crate::stale::local_source;
+use skillz_harness::Spec;
+use skillz_harness::hooks::UNOWNED_HOOKS;
+use skillz_harness::model::{Installed, Kind};
 
 const LOCAL_FILES: &str = "local files";
 const MCP_SERVERS: &str = "MCP servers";

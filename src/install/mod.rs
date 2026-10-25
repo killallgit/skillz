@@ -7,13 +7,13 @@ pub(crate) mod test_support;
 
 use std::path::{Path, PathBuf};
 
-use crate::harness::action::{self, Action};
-use crate::harness::agents::{Harness, adapter_for};
-use crate::harness::env::Env;
-use crate::harness::model::{Agent, Scope};
-use crate::harness::runner::CommandRunner;
 use crate::prompt::Prompter;
 use crate::review::{Group, PlanView, Verdict};
+use skillz_harness::action::{self, Action};
+use skillz_harness::agents::{Harness, adapter_for};
+use skillz_harness::env::Env;
+use skillz_harness::model::{Agent, Scope};
+use skillz_harness::runner::CommandRunner;
 
 /// Which skills to install from a multi-skill source.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +59,7 @@ struct Plan {
 
 /// `true` when the plan was approved and ran.
 pub fn install(ctx: &Ctx, req: &InstallRequest) -> anyhow::Result<bool> {
-    crate::harness::clone::with_source(&req.source, &req.cwd, ctx.runner, |src, source| {
+    skillz_harness::clone::with_source(&req.source, &req.cwd, ctx.runner, |src, source| {
         let tree = Tree { src, source };
         let Some(plan) = plan(ctx, req, &tree)? else {
             return Ok(false);
@@ -157,7 +157,7 @@ fn run(ctx: &Ctx, steps: &[Action]) -> anyhow::Result<()> {
 mod tests {
     use super::test_support::*;
     use super::*;
-    use crate::harness::agents::registry;
+    use skillz_harness::agents::registry;
 
     fn run_install(
         fx: &Fixture,

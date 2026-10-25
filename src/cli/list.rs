@@ -4,17 +4,17 @@ use std::io::Write;
 use super::deps::Deps;
 use super::removal::{Review, confirm_and_remove};
 use super::scope::Scene;
-use crate::harness::cost;
-use crate::harness::env::Env;
-use crate::harness::mcp;
-use crate::harness::model::{Installed, Kind};
-use crate::harness::usage;
 use crate::location::location;
 use crate::package::Package;
 use crate::prompt::Choice;
 use crate::prune;
 use crate::tree;
 use crate::{info, remove};
+use skillz_harness::cost;
+use skillz_harness::env::Env;
+use skillz_harness::mcp;
+use skillz_harness::model::{Installed, Kind};
+use skillz_harness::usage;
 
 pub(super) struct ListView<'a> {
     pub(super) query: Option<&'a str>,
@@ -188,9 +188,9 @@ fn render_listing(listing: &Listing, out: &mut dyn Write) -> anyhow::Result<()> 
 mod tests {
     use super::super::scope::project_env;
     use super::*;
-    use crate::harness::agents::Harness;
-    use crate::harness::model::{Agent, Installer, Scope};
     use crate::install::test_support::{FakeRunner, ScriptedPrompter};
+    use skillz_harness::agents::Harness;
+    use skillz_harness::model::{Agent, Installer, Scope};
 
     fn skill(name: &str) -> Installed {
         Installed {

@@ -1,8 +1,8 @@
 use super::catalog::Catalog;
 use super::item::LibraryItem;
 use super::provenance::Provenance;
-use crate::harness::model::Installed;
 use crate::snapshot::{Skipped, collect};
+use skillz_harness::model::Installed;
 
 /// Reinstallable entries from the installed `items`, each with the provenance its
 /// installer left; what they leave out (needing secrets, or with nothing to reinstall from) is
@@ -49,7 +49,7 @@ pub fn record_installed(
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-    use crate::harness::model::{Agent, Installer, Kind, Origin, Scope};
+    use skillz_harness::model::{Agent, Installer, Kind, Origin, Scope};
 
     pub fn installed_skill(name: &str, source: Option<&str>) -> Installed {
         Installed {

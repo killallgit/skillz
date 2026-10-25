@@ -1,7 +1,7 @@
 use super::*;
-use crate::harness::model::{Agent, Installer, Kind, Scope};
 use crate::location::detail;
 use crate::merge::tag;
+use skillz_harness::model::{Agent, Installer, Kind, Scope};
 
 pub fn installed(name: &str, kind: Kind, source: Option<&str>) -> Installed {
     Installed {
@@ -33,16 +33,16 @@ pub fn global(name: &str, kind: Kind, source: Option<&str>) -> Installed {
 
 pub fn plugin_providing_a_skill_and_a_hook(name: &str) -> Installed {
     Installed {
-        details: crate::harness::model::Details::Plugin {
+        details: skillz_harness::model::Details::Plugin {
             location: Default::default(),
             skills: vec!["tdd".into()],
         },
-        hooks: vec![crate::harness::hook_text::HookEntry {
+        hooks: vec![skillz_harness::hook_text::HookEntry {
             event: "Stop".into(),
             matcher: None,
             command: "say done".into(),
         }],
-        children: vec![format!("{}tdd", crate::harness::model::SKILL_CHILD)],
+        children: vec![format!("{}tdd", skillz_harness::model::SKILL_CHILD)],
         ..installed(name, Kind::Plugin, Some("mp"))
     }
 }

@@ -4,9 +4,9 @@ use super::Session;
 use super::notice::Notice;
 use crate::cli::profile::save_profile;
 use crate::cli::scope::{complete_installed, project_env};
-use crate::harness::Spec;
-use crate::harness::model::Scope;
 use crate::profile::Profile;
+use skillz_harness::Spec;
+use skillz_harness::model::Scope;
 
 impl Session<'_, '_> {
     pub(in crate::cli) fn create_profile(

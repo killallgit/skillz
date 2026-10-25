@@ -12,15 +12,15 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use skillz::cli::{Command, Deps, Filter, UninstallArgs, run};
-use skillz::harness::action::{Action, RemovalTarget};
-use skillz::harness::agents::{self, Harness, PluginOffer};
-use skillz::harness::env::Env;
-use skillz::harness::model::{Agent, Details, Installed, Installer, Kind, Scope};
-use skillz::harness::runner::{CommandRunner, Output};
-use skillz::harness::usage;
 use skillz::install::{Ctx, InstallRequest, SkillSelection, install};
 use skillz::prompt::Prompter;
 use skillz::prune;
+use skillz_harness::action::{Action, RemovalTarget};
+use skillz_harness::agents::{self, Harness, PluginOffer};
+use skillz_harness::env::Env;
+use skillz_harness::model::{Agent, Details, Installed, Installer, Kind, Scope};
+use skillz_harness::runner::{CommandRunner, Output};
+use skillz_harness::usage;
 
 const PLUGIN: &str = "fake-plug@mp";
 
@@ -220,7 +220,7 @@ fn uninstall_runs_the_fakes_removal_plan() {
         runner: &NoRun,
         prompter: &Yes,
         interactive: false,
-        checker: std::sync::Arc::new(skillz::harness::update::check::NoCheck),
+        checker: std::sync::Arc::new(skillz_harness::update::check::NoCheck),
         scanner: None,
     };
     let cmd = Command::Uninstall(UninstallArgs {
@@ -275,7 +275,7 @@ fn a_registered_adapter_owns_its_update_commands() {
         .find(|item| item.kind == Kind::Plugin)
         .unwrap();
 
-    let steps = skillz::harness::update::steps(&adapters, plugin, &world.env.project);
+    let steps = skillz_harness::update::steps(&adapters, plugin, &world.env.project);
 
     assert!(
         matches!(&steps[..], [Action::Run { program, args, cwd, .. }]

@@ -4,10 +4,10 @@ use anyhow::Context;
 
 use super::args::Filter;
 use super::deps::Deps;
-use crate::harness::agents;
-use crate::harness::env::Env;
-use crate::harness::model::{Installed, Scope};
 use crate::merge::merge;
+use skillz_harness::agents;
+use skillz_harness::env::Env;
+use skillz_harness::model::{Installed, Scope};
 
 /// The environment of the project at `path` (default: cwd).
 pub(super) fn resolve_project(deps: &Deps, path: Option<&Path>) -> anyhow::Result<Env> {
@@ -152,8 +152,8 @@ pub(super) fn project_env(deps: &Deps, dir: &Path) -> Env {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::runner::SystemRunner;
     use crate::prompt::AssumeYes;
+    use skillz_harness::runner::SystemRunner;
 
     static NO_ENVS: SystemRunner = SystemRunner { envs: Vec::new() };
 
@@ -167,7 +167,7 @@ mod tests {
             runner: &NO_ENVS,
             prompter: &AssumeYes,
             interactive: false,
-            checker: std::sync::Arc::new(crate::harness::update::check::NoCheck),
+            checker: std::sync::Arc::new(skillz_harness::update::check::NoCheck),
             scanner: None,
         }
     }

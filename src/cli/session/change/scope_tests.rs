@@ -4,8 +4,8 @@ use std::path::Path;
 use super::tests::{session, skill_entry};
 use super::*;
 use crate::cli::scope::installed;
-use crate::harness::agents::registry;
 use crate::install::test_support::{FakeRunner, ScriptedPrompter};
+use skillz_harness::agents::registry;
 
 /// A skill in the user's own directories, the way `npx skills -g` leaves it.
 fn global_skill(home: &Path, name: &str) {

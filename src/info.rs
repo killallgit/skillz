@@ -1,7 +1,7 @@
 //! The lines of the info modal: what an item or group is, as plain data built before the
 //! terminal opens, so drawing never touches the filesystem.
 
-use crate::harness::model::{Installed, Installer};
+use skillz_harness::model::{Installed, Installer};
 
 /// Last use of an item, as far as the agents record it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,14 +13,12 @@ pub enum Used {
     At(u64),
 }
 
-impl Installer {
-    pub fn describe(self) -> &'static str {
-        match self {
-            Installer::Npx => "npx skills",
-            Installer::ClaudeCli => "claude plugin",
-            Installer::CodexCli => "codex plugin",
-            Installer::Local => "by hand (no tool recorded it)",
-        }
+fn describe_installer(installer: Installer) -> &'static str {
+    match installer {
+        Installer::Npx => "npx skills",
+        Installer::ClaudeCli => "claude plugin",
+        Installer::CodexCli => "codex plugin",
+        Installer::Local => "by hand (no tool recorded it)",
     }
 }
 
@@ -47,7 +45,7 @@ fn fact_lines(item: &Installed) -> Vec<String> {
         format!("group      {}", item.group),
     ];
     lines.extend(item.source.iter().map(|s| format!("source     {s}")));
-    lines.push(format!("installed  {}", item.installer.describe()));
+    lines.push(format!("installed  {}", describe_installer(item.installer)));
     lines
 }
 
@@ -63,7 +61,7 @@ fn use_line(used: Used, now_ms: u64) -> Option<String> {
 }
 
 fn contents(item: &Installed) -> Vec<String> {
-    let children = crate::harness::mcp::shown_children(item);
+    let children = skillz_harness::mcp::shown_children(item);
     if children.is_empty() {
         return vec![];
     }
@@ -96,8 +94,8 @@ fn section(lines: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::harness::action::Action;
-    use crate::harness::model::{Agent, Kind, Scope};
+    use skillz_harness::action::Action;
+    use skillz_harness::model::{Agent, Kind, Scope};
 
     fn item() -> Installed {
         Installed {

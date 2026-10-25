@@ -3,11 +3,11 @@ use std::path::Path;
 
 use super::*;
 use crate::cli::scope::installed;
-use crate::harness::Spec;
-use crate::harness::agents::registry;
-use crate::harness::model::Agent;
 use crate::install::test_support::{FakeRunner, ScriptedPrompter};
 use crate::profile::Profile;
+use skillz_harness::Spec;
+use skillz_harness::agents::registry;
+use skillz_harness::model::Agent;
 
 /// A project with one skill installed the way `npx skills` leaves it.
 pub(super) fn project_with_skill(dir: &Path, name: &str) {

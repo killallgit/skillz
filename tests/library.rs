@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use skillz::harness::Spec;
+use skillz_harness::Spec;
 
 const SAY_HI: &str = "hook Stop say hi";
 

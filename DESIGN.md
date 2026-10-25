@@ -73,8 +73,9 @@ so an isolated command launches only after its profile is ready.
 ## Module ownership
 
 Layers, lowest first: **harness < app < tui < cli**. A module imports its own layer and the
-ones below, never above; `tests/architecture.rs` fails the build otherwise. The harness layer
-(`src/harness`) is meant to become its own crate.
+ones below, never above. The harness layer is its own
+crate, `crates/skillz-harness`, so cargo itself stops it importing anything above it;
+`tests/architecture.rs` guards app < tui < cli inside the `skillz` crate.
 
 | Layer | Module | Responsibility |
 | --- | --- | --- |

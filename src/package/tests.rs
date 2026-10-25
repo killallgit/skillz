@@ -1,5 +1,5 @@
 use super::*;
-use crate::harness::model::{Agent, Installer, Scope};
+use skillz_harness::model::{Agent, Installer, Scope};
 
 fn item(kind: Kind, name: &str, source: Option<&str>, group: &str) -> Installed {
     Installed {

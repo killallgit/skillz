@@ -1,7 +1,7 @@
 use std::fmt;
 
-use crate::harness::Spec;
 use crate::stale::{Probe, missing_source};
+use skillz_harness::Spec;
 
 /// An entry cannot be installed because the local folder it names is gone, most likely moved.
 #[derive(Debug, PartialEq, Eq)]

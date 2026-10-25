@@ -4,9 +4,9 @@ use super::Session;
 use super::change::{Change, change};
 use super::notice::Notice;
 use super::selection::Selection;
-use crate::harness::model::Scope;
 use crate::install::{InstallRequest, SkillSelection};
 use crate::workspace::Act;
+use skillz_harness::model::Scope;
 
 impl Session<'_, '_> {
     /// What the toast should say, if anything.

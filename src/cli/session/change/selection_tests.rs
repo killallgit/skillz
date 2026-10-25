@@ -2,10 +2,10 @@ use std::path::Path;
 
 use super::tests::{project_with_skill, run_change, session, skill_entry, skill_id};
 use super::*;
-use crate::harness::Spec;
-use crate::harness::agents::registry;
-use crate::harness::runner::{CommandRunner, Output};
 use crate::install::test_support::ScriptedPrompter;
+use skillz_harness::Spec;
+use skillz_harness::agents::registry;
+use skillz_harness::runner::{CommandRunner, Output};
 
 /// Fails every command that mentions `word`, and notes the arguments of all of them.
 struct FailsOn {
@@ -155,7 +155,7 @@ fn an_unsupported_install_is_skipped_without_counting_as_installed() {
         args: vec![],
         url: None,
         transport: None,
-        agents: vec![crate::harness::model::Agent::Codex],
+        agents: vec![skillz_harness::model::Agent::Codex],
     }];
     let runner = crate::install::test_support::FakeRunner::new(|_| {});
     let prompter = super::tests::Outcomes::default();

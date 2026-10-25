@@ -11,14 +11,14 @@ use crate::apply::{self, Switch, Watch};
 use crate::cli::deps::Deps;
 use crate::cli::recording::record_since;
 use crate::cli::scope::{complete_installed, project_env};
-use crate::harness::action::Action;
-use crate::harness::env::Env;
-use crate::harness::model::{Agent, Scope};
 use crate::profile;
 use crate::remove;
 use crate::review::{ItemEvent, Next, Outcome, Phase, Target, Targets, Verdict};
 use crate::stale::Disk;
 use crate::store::Store;
+use skillz_harness::action::Action;
+use skillz_harness::env::Env;
+use skillz_harness::model::{Agent, Scope};
 
 /// What the user asked to change.
 pub(in crate::cli) enum Change<'a> {

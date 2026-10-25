@@ -2,7 +2,7 @@ use ratatui::crossterm::event::KeyCode;
 
 use super::tests::{PACKAGE, TDD, loaded, on_item, press};
 use super::*;
-use crate::harness::model::Scope;
+use skillz_harness::model::Scope;
 
 fn u() -> KeyCode {
     KeyCode::Char('u')
@@ -49,7 +49,7 @@ fn u_on_a_package_updates_its_items_whether_expanded_or_collapsed() {
 #[test]
 fn u_on_an_item_without_an_update_does_nothing() {
     let mut model = super::tests::model();
-    model.installed[1].installer = crate::harness::model::Installer::Local;
+    model.installed[1].installer = skillz_harness::model::Installer::Local;
     let mut tab = InstalledTab::project();
     tab.load(&model);
     on_item(&mut tab, TDD);
@@ -89,7 +89,7 @@ fn an_outdated_item_is_marked_bold_with_a_star() {
 #[test]
 fn updating_a_merged_package_selects_each_installed_copy() {
     use super::rows::tests::installed;
-    use crate::harness::model::{Agent, Kind};
+    use skillz_harness::model::{Agent, Kind};
 
     let copies: Vec<_> = [Agent::Claude, Agent::Codex]
         .into_iter()
