@@ -83,7 +83,7 @@ fn write_skill(root: &Path, name: &str) {
 struct Fx {
     _dirs: (tempfile::TempDir, tempfile::TempDir),
     env: Env,
-    adapters: Vec<Box<dyn AgentAdapter>>,
+    adapters: Vec<Box<dyn Harness>>,
 }
 
 impl Fx {

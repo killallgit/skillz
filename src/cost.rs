@@ -1,13 +1,13 @@
 //! What each skill and plugin costs in context: tokens loaded into every session.
 //!
-//! Each adapter reports `(key, tokens)` rows (`AgentAdapter::context_costs`), keyed
+//! Each adapter reports `(key, tokens)` rows (`Harness::context_costs`), keyed
 //! `skill:<name>` or `plugin:<name>` (no `@marketplace`); this module merges them per agent.
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::agents::AgentAdapter;
+use crate::agents::Harness;
 use crate::env::Env;
 use crate::harness::runner::CommandRunner;
 use crate::model::{Agent, Installed, Kind};
@@ -34,7 +34,7 @@ impl Costs {
 }
 
 /// Every adapter's rows. An adapter that cannot report (tool missing, bad output) is skipped.
-pub fn read(adapters: &[Box<dyn AgentAdapter>], env: &Env, runner: &dyn CommandRunner) -> Costs {
+pub fn read(adapters: &[Box<dyn Harness>], env: &Env, runner: &dyn CommandRunner) -> Costs {
     let mut costs = Costs::default();
     for a in adapters {
         for (key, tokens) in a.context_costs(env, runner).unwrap_or_default() {

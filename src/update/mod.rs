@@ -5,20 +5,20 @@ pub mod check;
 
 use std::path::Path;
 
-use crate::agents::{AgentAdapter, adapter_for};
+use crate::agents::{Harness, adapter_for};
 use crate::harness::action::Action;
 use crate::model::{Details, Installed, Installer, Kind, Scope};
 
 /// The steps that bring `item` to the latest version, run from `cwd`; none when it cannot be
 /// updated. An item seen through several agents is updated through each of them.
-pub fn steps(adapters: &[Box<dyn AgentAdapter>], item: &Installed, cwd: &Path) -> Vec<Action> {
+pub fn steps(adapters: &[Box<dyn Harness>], item: &Installed, cwd: &Path) -> Vec<Action> {
     item.parts()
         .iter()
         .flat_map(|part| part_steps(adapters, part, cwd))
         .collect()
 }
 
-fn part_steps(adapters: &[Box<dyn AgentAdapter>], item: &Installed, cwd: &Path) -> Vec<Action> {
+fn part_steps(adapters: &[Box<dyn Harness>], item: &Installed, cwd: &Path) -> Vec<Action> {
     let name = match &item.details {
         Details::Skill { install_name, .. } => install_name.as_str(),
         _ => item.name.as_str(),
@@ -37,7 +37,7 @@ fn part_steps(adapters: &[Box<dyn AgentAdapter>], item: &Installed, cwd: &Path) 
             .agents
             .iter()
             .filter_map(|&agent| adapter_for(adapters, agent))
-            .flat_map(|adapter| adapter.update_steps(item, cwd))
+            .flat_map(|adapter| adapter.plan_update(item, cwd))
             .collect(),
     }
 }

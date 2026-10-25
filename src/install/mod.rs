@@ -7,7 +7,7 @@ pub(crate) mod test_support;
 
 use std::path::{Path, PathBuf};
 
-use crate::agents::{AgentAdapter, adapter_for};
+use crate::agents::{Harness, adapter_for};
 use crate::env::Env;
 use crate::harness::action::{self, Action};
 use crate::harness::runner::CommandRunner;
@@ -39,7 +39,7 @@ pub struct InstallRequest {
 
 /// What an install talks to: the registered agents and the outside world.
 pub struct Ctx<'a> {
-    pub adapters: &'a [Box<dyn AgentAdapter>],
+    pub adapters: &'a [Box<dyn Harness>],
     pub env: &'a Env,
     pub runner: &'a dyn CommandRunner,
     pub prompter: &'a dyn Prompter,
@@ -140,7 +140,7 @@ fn agent_plugins(
     let chosen: Vec<String> = picked.iter().map(|&i| offer.plugins[i].clone()).collect();
     Ok(AgentPlugins::Install {
         line: format!("{agent}: {} from {}", chosen.join(", "), offer.marketplace),
-        steps: adapter.plugin_steps(&offer, &chosen, tree.source, req.scope, ctx.env),
+        steps: adapter.plan_add_source(&offer, &chosen, tree.source, req.scope, ctx.env),
     })
 }
 

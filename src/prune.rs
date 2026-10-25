@@ -1,7 +1,7 @@
 //! `skillz prune`: which installed items look redundant. Pure: callers pass the inventory,
 //! the usage data and the current time.
 
-use crate::agents::AgentAdapter;
+use crate::agents::Harness;
 use crate::model::{Agent, Installed, Kind, Scope};
 use crate::usage::Usage;
 
@@ -20,7 +20,7 @@ pub struct Findings<'a> {
 
 pub fn check<'a>(
     items: &'a [Installed],
-    adapters: &[Box<dyn AgentAdapter>],
+    adapters: &[Box<dyn Harness>],
     usage: &Usage,
     now_ms: u64,
 ) -> Findings<'a> {
@@ -57,7 +57,7 @@ fn is_duplicate(skill: &Installed, items: &[Installed]) -> bool {
 }
 
 /// Items some adapter can see a use of (hooks and marketplaces never are).
-pub fn tracked(item: &Installed, adapters: &[Box<dyn AgentAdapter>]) -> bool {
+pub fn tracked(item: &Installed, adapters: &[Box<dyn Harness>]) -> bool {
     matches!(item.kind, Kind::Skill | Kind::Plugin)
         && adapters
             .iter()

@@ -1,4 +1,4 @@
-//! A fake agent, registered with nothing but its `AgentAdapter` impl, flows through discovery,
+//! A fake agent, registered with nothing but its `Harness` impl, flows through discovery,
 //! usage, prune, uninstall and install. If one of these needs an edit outside the adapter, an
 //! agent's knowledge has leaked out of `src/agents/`; loose skills are the one deliberate
 //! exception, owned by `harness::npx`.
@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use skillz::agents::{self, AgentAdapter, PluginOffer};
+use skillz::agents::{self, Harness, PluginOffer};
 use skillz::cli::{Command, Deps, Filter, UninstallArgs, run};
 use skillz::env::Env;
 use skillz::harness::action::{Action, RemovalTarget};
@@ -28,7 +28,7 @@ struct Fake {
     installs: Rc<Cell<u32>>,
 }
 
-impl AgentAdapter for Fake {
+impl Harness for Fake {
     fn agent(&self) -> Agent {
         Agent::Codex
     }
@@ -38,7 +38,7 @@ impl AgentAdapter for Fake {
     fn hook_files(&self, _env: &Env, _scope: Scope) -> Vec<PathBuf> {
         vec![]
     }
-    fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
+    fn installed(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
         let root = env.home.join(".fake/plugins");
         if scope != Scope::Global || !root.join(PLUGIN).exists() {
             return Ok(vec![]);
@@ -71,7 +71,7 @@ impl AgentAdapter for Fake {
     fn tracks(&self, item: &Installed) -> bool {
         matches!(item.kind, Kind::Skill | Kind::Plugin)
     }
-    fn update_steps(&self, item: &Installed, cwd: &Path) -> Vec<Action> {
+    fn plan_update(&self, item: &Installed, cwd: &Path) -> Vec<Action> {
         if item.kind != Kind::Plugin {
             return vec![];
         }
@@ -87,7 +87,7 @@ impl AgentAdapter for Fake {
             plugins: vec![PLUGIN.into()],
         }))
     }
-    fn plugin_steps(
+    fn plan_add_source(
         &self,
         _offer: &PluginOffer,
         picked: &[String],
@@ -143,7 +143,7 @@ struct World {
 }
 
 impl World {
-    fn adapters(&self) -> Vec<Box<dyn AgentAdapter>> {
+    fn adapters(&self) -> Vec<Box<dyn Harness>> {
         vec![Box::new(Fake {
             installs: self.installs.clone(),
         })]

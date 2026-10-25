@@ -188,7 +188,7 @@ fn render_listing(listing: &Listing, out: &mut dyn Write) -> anyhow::Result<()> 
 mod tests {
     use super::super::scope::project_env;
     use super::*;
-    use crate::agents::AgentAdapter;
+    use crate::agents::Harness;
     use crate::install::test_support::{FakeRunner, ScriptedPrompter};
     use crate::model::{Agent, Installer, Scope};
 
@@ -213,14 +213,14 @@ mod tests {
 
     struct BrokenUsage;
 
-    impl AgentAdapter for BrokenUsage {
+    impl Harness for BrokenUsage {
         fn agent(&self) -> Agent {
             Agent::Claude
         }
         fn hook_files(&self, _: &Env, _: Scope) -> Vec<std::path::PathBuf> {
             vec![]
         }
-        fn discover(&self, _: &Env, _: Scope) -> anyhow::Result<Vec<Installed>> {
+        fn installed(&self, _: &Env, _: Scope) -> anyhow::Result<Vec<Installed>> {
             Ok(vec![])
         }
         fn home_dir_names(&self) -> &'static [&'static str] {

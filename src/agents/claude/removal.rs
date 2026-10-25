@@ -164,7 +164,7 @@ mod tests {
     use super::super::records::installs_from;
     use super::super::testutil::*;
     use super::*;
-    use crate::agents::AgentAdapter;
+    use crate::agents::Harness;
     use crate::harness::action::apply_edit;
     use crate::model::{Kind, Scope};
     use serde_json::json;
@@ -179,7 +179,7 @@ mod tests {
             fs::create_dir_all(&data).unwrap();
             let plan: Vec<Action> = scopes
                 .iter()
-                .flat_map(|&s| Claude.discover(&f.env, s).unwrap())
+                .flat_map(|&s| Claude.installed(&f.env, s).unwrap())
                 .filter(|a| a.kind == Kind::Plugin && a.name == "tools@acme")
                 .flat_map(|a| a.removal)
                 .collect();

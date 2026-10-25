@@ -3,7 +3,7 @@
 
 use anyhow::bail;
 
-use crate::agents::{self, AgentAdapter};
+use crate::agents::{self, Harness};
 use crate::env::Env;
 use crate::harness::action::{self, Action, Report};
 use crate::harness::runner::CommandRunner;
@@ -151,7 +151,7 @@ impl Outcome {
 
 /// What a removal runs against and re-reads the inventory from.
 pub struct Removal<'a> {
-    pub adapters: &'a [Box<dyn AgentAdapter>],
+    pub adapters: &'a [Box<dyn Harness>],
     pub env: &'a Env,
     pub scopes: &'a [Scope],
     pub runner: &'a dyn CommandRunner,
