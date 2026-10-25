@@ -25,7 +25,7 @@ pub(super) struct Ctx<'a> {
 pub fn discover(env: &Env, dirs: &[SkillDir]) -> anyhow::Result<Vec<Installed>> {
     let groups = group_by_canonical(dirs)?;
     let global: BTreeSet<&PathBuf> = global_targets(&groups);
-    let locks = read_locks(env);
+    let locks = read_locks(env)?;
 
     let mut out: Vec<Installed> = groups
         .iter()
@@ -66,10 +66,10 @@ fn global_targets(groups: &Groups) -> BTreeSet<&PathBuf> {
         .collect()
 }
 
-fn read_locks(env: &Env) -> BTreeMap<Scope, BTreeMap<String, LockEntry>> {
+fn read_locks(env: &Env) -> anyhow::Result<BTreeMap<Scope, BTreeMap<String, LockEntry>>> {
     [Scope::Global, Scope::Project]
         .into_iter()
-        .map(|s| (s, commands::read_lock(env, s)))
+        .map(|s| Ok((s, commands::read_lock(env, s)?)))
         .collect()
 }
 

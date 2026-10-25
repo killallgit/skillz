@@ -21,7 +21,7 @@ impl Costs {
     pub fn tokens(&self, item: &Installed) -> Option<u32> {
         let key = match item.kind {
             Kind::Skill => format!("skill:{}", item.name),
-            Kind::Plugin => format!("plugin:{}", item.name.split('@').next()?),
+            Kind::Plugin => format!("plugin:{}", crate::model::split_plugin_id(&item.name).0),
             Kind::Marketplace | Kind::Hook | Kind::Mcp | Kind::Subagent => return None,
         };
         let found: Vec<u32> = item

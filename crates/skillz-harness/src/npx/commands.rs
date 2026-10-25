@@ -2,13 +2,14 @@
 //! command line. Discovery (`skills`), install and the Codex adapter all go through here.
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::PathBuf;
 
+use anyhow::Context;
 use serde_json::Value;
 
 use crate::env::Env;
 use crate::model::{Agent, Scope};
+use crate::read_optional::read_optional;
 
 /// The canonical store agent skill dirs symlink into: `<root>/.agents/skills`.
 pub fn store_dir(env: &Env, scope: Scope) -> PathBuf {
@@ -33,18 +34,21 @@ pub struct LockEntry {
 }
 
 /// Skill name -> lock entry from `{"skills": {"<name>": {"source": "org/repo", ...}}}`.
-/// Missing or corrupt lock files read as empty so skills are still discovered.
-pub fn read_lock(env: &Env, scope: Scope) -> BTreeMap<String, LockEntry> {
-    let json: Value = fs::read_to_string(lock_path(env, scope))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or(Value::Null);
-    json.get("skills")
+/// A missing lock reads as empty; a corrupt one is an error so it is never skipped silently.
+pub fn read_lock(env: &Env, scope: Scope) -> anyhow::Result<BTreeMap<String, LockEntry>> {
+    let path = lock_path(env, scope);
+    let Some(text) = read_optional(&path)? else {
+        return Ok(BTreeMap::new());
+    };
+    let json: Value = serde_json::from_str(&text)
+        .with_context(|| format!("malformed skills lock {}", path.display()))?;
+    Ok(json
+        .get("skills")
         .and_then(Value::as_object)
         .into_iter()
         .flatten()
         .filter_map(|(name, v)| Some((name.clone(), lock_entry(v)?)))
-        .collect()
+        .collect())
 }
 
 fn lock_entry(value: &Value) -> Option<LockEntry> {
@@ -104,6 +108,7 @@ fn finish(mut args: Vec<String>, agents: &[Agent], scope: Scope) -> (String, Vec
 mod tests {
     use super::*;
     use crate::test_support::s;
+    use std::fs;
 
     #[test]
     fn remove_command_names_skill_agents_and_scope() {
@@ -184,14 +189,14 @@ mod tests {
             claude_config: None,
             codex_home: None,
         };
-        assert!(read_lock(&env, Scope::Project).is_empty());
+        assert!(read_lock(&env, Scope::Project).unwrap().is_empty());
         fs::create_dir_all(&env.project).unwrap();
         fs::write(
             lock_path(&env, Scope::Project),
             r#"{"skills":{"a":{"source":"o/r"},"b":{"source":1},"c":{}}}"#,
         )
         .unwrap();
-        let lock = read_lock(&env, Scope::Project);
+        let lock = read_lock(&env, Scope::Project).unwrap();
         assert_eq!(lock.keys().collect::<Vec<_>>(), ["a"]);
         assert_eq!(lock["a"].source, "o/r");
     }
