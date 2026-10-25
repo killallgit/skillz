@@ -15,7 +15,7 @@ Issues live in `.beads/dolt/`. The JSONL export is passive; normal sync uses
   forms. Use `ssh`/`scp -o BatchMode=yes` and `HOMEBREW_NO_AUTO_UPDATE=1` for brew.
 - Keep decisions pure and effects explicit. Inject `Env`, `CommandRunner`,
   `Prompter`, and adapters into flows that need them.
-- Keep agent-specific paths, formats, and commands in `src/harness/agents/`.
+- Keep agent-specific paths, formats, and commands in `crates/skillz-harness/src/agents/`.
 - Discovery reads native configuration and produces typed installed items with
   removal plans. File transformations are pure; execution applies the plans.
 - Tests assert on typed behavior, actions, parsed contents, or tree structure.
