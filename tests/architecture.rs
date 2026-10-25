@@ -43,8 +43,25 @@ const HARNESS: &[&str] = &[
 ];
 
 const APP: &[&str] = &[
-    "apply", "info", "library", "location", "matcher", "merge", "package", "profile", "prompt",
-    "prune", "remove", "review", "snapshot", "spinner", "stale", "store", "sync", "tree",
+    "app_paths",
+    "apply",
+    "info",
+    "library",
+    "location",
+    "matcher",
+    "merge",
+    "package",
+    "profile",
+    "prompt",
+    "prune",
+    "remove",
+    "review",
+    "snapshot",
+    "spinner",
+    "stale",
+    "store",
+    "sync",
+    "tree",
 ];
 
 fn layer(module: &str) -> Option<Layer> {

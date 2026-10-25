@@ -5,6 +5,7 @@
 
 pub mod action;
 pub mod agents;
+pub mod app_paths;
 pub mod apply;
 pub mod cli;
 pub(crate) mod clone;

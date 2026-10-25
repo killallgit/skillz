@@ -45,7 +45,7 @@ pub(super) fn run_isolated(deps: &Deps, args: RunArgs, out: &mut dyn Write) -> a
 
 /// The environment whose global config is the profile's own dirs; the project stays the real one.
 fn isolated_env(env: &Env, profile: &str) -> Env {
-    let root = env.skillz_dir().join("envs").join(profile);
+    let root = crate::app_paths::skillz_dir(env).join("envs").join(profile);
     Env {
         claude_config: Some(root.join("claude")),
         codex_home: Some(root.join("codex")),
@@ -54,7 +54,10 @@ fn isolated_env(env: &Env, profile: &str) -> Env {
 }
 
 fn create_dirs(env: &Env) -> anyhow::Result<()> {
-    for dir in [env.claude_dir(), env.codex_dir()] {
+    for dir in [
+        crate::agents::claude::dir(env),
+        crate::agents::codex::dir(env),
+    ] {
         fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     }
     Ok(())
@@ -62,8 +65,8 @@ fn create_dirs(env: &Env) -> anyhow::Result<()> {
 
 fn redirects(env: &Env) -> Vec<(&'static str, PathBuf)> {
     vec![
-        ("CLAUDE_CONFIG_DIR", env.claude_dir()),
-        ("CODEX_HOME", env.codex_dir()),
+        ("CLAUDE_CONFIG_DIR", crate::agents::claude::dir(env)),
+        ("CODEX_HOME", crate::agents::codex::dir(env)),
     ]
 }
 
@@ -120,11 +123,11 @@ mod tests {
         let web = isolated_env(&env, "web");
 
         assert_eq!(
-            web.claude_dir(),
+            crate::agents::claude::dir(&web),
             PathBuf::from("/h/.config/skillz/envs/web/claude")
         );
         assert_eq!(
-            web.codex_dir(),
+            crate::agents::codex::dir(&web),
             PathBuf::from("/h/.config/skillz/envs/web/codex")
         );
         assert_eq!(web.project, env.project);
@@ -136,8 +139,14 @@ mod tests {
         let after = isolated_env(&Env::new("/h".into(), "/app".into()), "web");
 
         assert_eq!(
-            (before.claude_dir(), before.codex_dir()),
-            (after.claude_dir(), after.codex_dir())
+            (
+                crate::agents::claude::dir(&before),
+                crate::agents::codex::dir(&before)
+            ),
+            (
+                crate::agents::claude::dir(&after),
+                crate::agents::codex::dir(&after)
+            )
         );
     }
 

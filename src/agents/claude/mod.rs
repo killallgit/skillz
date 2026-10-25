@@ -26,6 +26,21 @@ use files::{
 };
 use records::{installs_from, marketplaces_from};
 
+/// Claude's global config dir: `CLAUDE_CONFIG_DIR` when set, else `~/.claude`.
+pub(crate) fn dir(env: &Env) -> PathBuf {
+    env.claude_config
+        .clone()
+        .unwrap_or_else(|| env.home.join(".claude"))
+}
+
+/// Claude's global state file: inside `CLAUDE_CONFIG_DIR` when set, else `~/.claude.json`.
+pub(crate) fn json(env: &Env) -> PathBuf {
+    match &env.claude_config {
+        Some(dir) => dir.join(".claude.json"),
+        None => env.home.join(".claude.json"),
+    }
+}
+
 pub struct Claude;
 
 impl AgentAdapter for Claude {
@@ -47,7 +62,7 @@ impl AgentAdapter for Claude {
 
     fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
         vec![match scope {
-            Scope::Global => env.claude_dir().join("skills"),
+            Scope::Global => dir(env).join("skills"),
             Scope::Project => env.project.join(".claude/skills"),
         }]
     }
@@ -57,8 +72,8 @@ impl AgentAdapter for Claude {
     }
 
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
-        let installs = installs_from(&read_json(&installed_file(&env.claude_dir()))?);
-        let markets = marketplaces_from(&read_json(&marketplaces_file(&env.claude_dir()))?);
+        let installs = installs_from(&read_json(&installed_file(&dir(env)))?);
+        let markets = marketplaces_from(&read_json(&marketplaces_file(&dir(env)))?);
         let mut out = plugins::plugins(env, scope, &installs, &markets)?;
         out.extend(mcp::discover(env, scope)?);
         let agents = agents_dir(env, scope);
@@ -71,7 +86,7 @@ impl AgentAdapter for Claude {
             out.extend(
                 markets
                     .iter()
-                    .map(|m| marketplace::discover(&env.claude_dir(), m, &installs)),
+                    .map(|m| marketplace::discover(&dir(env), m, &installs)),
             );
         }
         Ok(out)
@@ -128,7 +143,7 @@ impl AgentAdapter for Claude {
     /// skills, counted through `pluginUsage`) and `pluginUsage` (`name@mp`, only when
     /// `usageCount > 0`), both with `lastUsedAt` in ms.
     fn usage(&self, env: &Env) -> anyhow::Result<Vec<(String, u64)>> {
-        Ok(usage::claude_uses(&read_json(&env.claude_json())?))
+        Ok(usage::claude_uses(&read_json(&json(env))?))
     }
 
     fn tracks(&self, item: &Installed) -> bool {
@@ -194,7 +209,7 @@ mod tests {
     fn malformed_json_is_err() {
         for file in [installed_file, marketplaces_file] {
             let f = fixture();
-            write(&file(&f.env.claude_dir()), "{not json");
+            write(&file(&dir(&f.env)), "{not json");
 
             let global = Claude.discover(&f.env, Scope::Global);
             let project = Claude.discover(&f.env, Scope::Project);
@@ -247,7 +262,7 @@ mod tests {
         );
         // Nothing is read from the default dir, so its plugins stay invisible.
         assert!(Claude.discover(&env, Scope::Global).unwrap().is_empty());
-        assert_eq!(env.claude_json(), custom.join(".claude.json"));
-        assert_eq!(f.env.claude_json(), f.env.home.join(".claude.json"));
+        assert_eq!(json(&env), custom.join(".claude.json"));
+        assert_eq!(json(&f.env), f.env.home.join(".claude.json"));
     }
 }

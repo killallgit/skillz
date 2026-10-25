@@ -172,6 +172,6 @@ mod tests {
         });
 
         assert!(rx.recv().unwrap().is_err());
-        assert!(!env.store_path().exists());
+        assert!(!crate::app_paths::store_path(&env).exists());
     }
 }

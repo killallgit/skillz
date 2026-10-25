@@ -14,7 +14,7 @@ use crate::model::{Agent, Installed, Installer, Kind, Scope};
 use crate::profile::Spec;
 
 pub(super) fn discover(env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
-    let state = env.claude_json();
+    let state = super::json(env);
     let json = read_json(&state)?;
     let project = env.project.display().to_string();
     let mut out = vec![];

@@ -22,6 +22,27 @@ use crate::subagents::{self, AgentDir};
 use config::{project_plugin_ids, read_config};
 use plugins::{Cx, marketplaces, marketplaces_from, plugins_from};
 
+/// Codex's global config dir: `CODEX_HOME` when set, else `~/.codex`.
+pub(crate) fn dir(env: &Env) -> PathBuf {
+    env.codex_home
+        .clone()
+        .unwrap_or_else(|| env.home.join(".codex"))
+}
+
+/// Where `codex` commands that act on the user config run: the config dir's parent.
+pub(crate) fn cwd(env: &Env) -> PathBuf {
+    let dir = dir(env);
+    dir.parent().unwrap_or(&env.home).to_path_buf()
+}
+
+/// Codex config dir for a scope: the global one, or the project's `.codex`.
+pub(crate) fn scope_dir(env: &Env, scope: Scope) -> PathBuf {
+    match scope {
+        Scope::Global => dir(env),
+        Scope::Project => env.project.join(".codex"),
+    }
+}
+
 pub struct Codex;
 
 impl AgentAdapter for Codex {
@@ -39,10 +60,7 @@ impl AgentAdapter for Codex {
 
     fn skill_dirs(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
         match scope {
-            Scope::Global => vec![
-                env.codex_dir().join("skills"),
-                npx_skills::store_dir(env, scope),
-            ],
+            Scope::Global => vec![dir(env).join("skills"), npx_skills::store_dir(env, scope)],
             Scope::Project => vec![
                 npx_skills::store_dir(env, scope),
                 env.project.join(".codex/skills"),
@@ -51,19 +69,19 @@ impl AgentAdapter for Codex {
     }
 
     fn hook_files(&self, env: &Env, scope: Scope) -> Vec<PathBuf> {
-        let dir = env.codex_scope_dir(scope);
+        let dir = scope_dir(env, scope);
         vec![dir.join("hooks.json"), dir.join("config.toml")]
     }
 
     fn discover(&self, env: &Env, scope: Scope) -> anyhow::Result<Vec<Installed>> {
-        let config = env.codex_scope_dir(scope).join("config.toml");
-        let agents_dir = env.codex_scope_dir(scope).join("agents");
+        let config = scope_dir(env, scope).join("config.toml");
+        let agents_dir = scope_dir(env, scope).join("agents");
         let agents = subagents::discover(&AgentDir::new(&agents_dir, "toml"), Agent::Codex, scope)?;
         let Some(doc) = read_config(&config)? else {
             return Ok(agents);
         };
         let in_project = project_plugin_ids(env, &config);
-        let cache = env.codex_dir().join("plugins/cache");
+        let cache = dir(env).join("plugins/cache");
         let marketplaces = marketplaces(&doc);
         let cx = Cx {
             scope,
@@ -87,12 +105,10 @@ impl AgentAdapter for Codex {
     /// way in for those.
     fn provision(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
         match entry {
-            Spec::Hook { .. } => {
-                hooks::provision(entry, env.codex_scope_dir(scope).join("hooks.json"))
-            }
+            Spec::Hook { .. } => hooks::provision(entry, scope_dir(env, scope).join("hooks.json")),
             Spec::Mcp { .. } => mcp::provision(entry, scope, env),
             Spec::Subagent { .. } => {
-                let to = env.codex_scope_dir(scope).join("agents");
+                let to = scope_dir(env, scope).join("agents");
                 subagents::provision(entry, &AgentDir::new(&to, "toml"), env)
             }
             Spec::Plugin { .. } => plugins::provision(entry, scope, env),
@@ -491,13 +507,13 @@ enabled = true
             Codex.hook_files(&env, Scope::Project)[0],
             PathBuf::from("/p/.codex/hooks.json")
         );
-        assert_eq!(env.codex_dir(), PathBuf::from("/iso"));
+        assert_eq!(dir(&env), PathBuf::from("/iso"));
     }
     #[test]
     fn one_recent_cache_revision_supplies_skills_hooks_and_version() {
         use std::time::{Duration, SystemTime};
         let (_temp, env) = setup();
-        let cache = env.codex_dir().join("plugins/cache/killall/review");
+        let cache = dir(&env).join("plugins/cache/killall/review");
         write(&cache.join("a-current/skills/current/SKILL.md"), "current");
         write(&cache.join("z-old/skills/obsolete/SKILL.md"), "obsolete");
         write(

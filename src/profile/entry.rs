@@ -69,7 +69,7 @@ impl Spec {
     pub fn in_env(mut self, env: &crate::env::Env) -> Self {
         match &mut self {
             Spec::Skill { source, .. } | Spec::Subagent { source, .. } => {
-                *source = env.resolve_source(source)
+                *source = crate::app_paths::resolve_source(env, source)
             }
             _ => {}
         }
