@@ -92,7 +92,8 @@ Reconciling is: compare `Spec`s with `Installed`, plan `Action`s, execute.
 Layers, lowest first: **harness < app < tui < cli**. A module imports its own layer and the
 ones below, never above. The harness layer is its own
 crate, `crates/skillz-harness`, so cargo itself stops it importing anything above it;
-`tests/architecture.rs` guards app < tui < cli inside the `skillz` crate.
+`tests/architecture.rs` guards app < tui < cli (`src/app`, `src/tui`, `src/cli`) inside the
+`skillz` crate.
 
 | Layer | Module | Responsibility |
 | --- | --- | --- |
@@ -108,8 +109,8 @@ crate, `crates/skillz-harness`, so cargo itself stops it importing anything abov
 | app | `merge`, `package`, `location`, `info`, `matcher` | Logical copies, source-package grouping, display facts |
 | app | `install`, `remove`, `prune` | Source resolution, selection, and the install, removal and prune flows |
 | app | `review`, `prompt`, `workspace` | Typed plans, verdicts, outcomes, the `Prompter` and `Screen` interfaces, workspace acts and model |
-| tui | `tui` | Reusable list/outline widgets and interactive presentation |
 | app | `tree`, `spinner` | Plain tables and progress text |
+| tui | `tui` | Reusable list/outline widgets and interactive presentation |
 | cli | `cli` | Command parsing, scope selection, sessions, and real dependency wiring |
 
 ## Interaction
