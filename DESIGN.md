@@ -79,9 +79,9 @@ so an isolated command launches only after its profile is ready.
 - **`Action`**: one side effect (run a command, remove a path, edit a file). Planning is pure;
   `harness::action` executes plans with staging.
 - **`Harness`**: one coding tool (Claude, Codex). It reports `installed` and plans
-  `plan_install`, `plan_update` and `plan_add_source`. The `npx` module (free functions with the same
-  shapes, `installed`, `plan_install` and `plan_update`, but not a `Harness` since it is not
-  keyed by one `Agent`) owns loose skills and the `npx skills` commands.
+  `plan_install`, `plan_update` and `plan_add_source`. The `npx` module (free functions named like the
+  trait methods, `installed`, `plan_install` and `plan_update`, with their own parameters; not a
+  `Harness` since it is not keyed by one `Agent`) owns loose skills and the `npx skills` commands.
 - **`agent_skills`**: the open Agent Skills format that every harness shares. The frontmatter
   parser keeps the extra keys each harness adds, and reads blocks that are not valid YAML,
   or that use aliases, line by line.

@@ -30,8 +30,8 @@ pub fn plan_entries(
     env: &Env,
 ) -> Provision {
     let mut out = Provision::default();
+    let known: Vec<Agent> = adapters.iter().map(|a| a.agent()).collect();
     for entry in entries {
-        let known: Vec<Agent> = adapters.iter().map(|a| a.agent()).collect();
         match npx::plan_install(entry, &known, scope, env) {
             Some(step) => out.steps.push(step),
             None => {
