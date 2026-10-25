@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use super::InstalledTab;
 use super::draw::INDENT;
 use super::rows::{Group, items_of};
-use crate::library::ItemKind;
+use crate::app::library::ItemKind;
 use crate::tui::theme::Theme;
 
 impl InstalledTab {

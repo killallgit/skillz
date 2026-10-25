@@ -2,10 +2,10 @@ use std::fs;
 use std::path::Path;
 
 use super::*;
+use crate::app::install::test_support::{FakeRunner, ScriptedPrompter};
+use crate::app::profile::{self, StillExtended};
+use crate::app::store;
 use crate::cli::deps::Deps;
-use crate::install::test_support::{FakeRunner, ScriptedPrompter};
-use crate::profile::{self, StillExtended};
-use crate::store;
 use skillz_harness::agents::registry;
 use skillz_harness::model::Agent;
 

@@ -4,8 +4,8 @@ use super::Session;
 use super::change::{Change, change};
 use super::notice::Notice;
 use super::selection::Selection;
-use crate::install::{InstallRequest, SkillSelection};
-use crate::workspace::Act;
+use crate::app::install::{InstallRequest, SkillSelection};
+use crate::app::workspace::Act;
 use skillz_harness::model::Scope;
 
 impl Session<'_, '_> {

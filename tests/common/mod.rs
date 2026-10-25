@@ -11,9 +11,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
+use skillz::app::profile::{Profile, Store};
+use skillz::app::prompt::Prompter;
 use skillz::cli::{Command, Deps, Filter, ListArgs, ResetArgs, UninstallArgs, UseArgs, run};
-use skillz::profile::{Profile, Store};
-use skillz::prompt::Prompter;
 use skillz_harness::agents;
 use skillz_harness::env::Env;
 use skillz_harness::runner::{CommandRunner, Output};

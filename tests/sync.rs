@@ -6,9 +6,9 @@ use std::fs;
 
 use common::*;
 use serde_json::Value;
+use skillz::app::library::Catalog;
+use skillz::app::store::Store;
 use skillz::cli::{Command, SyncArgs};
-use skillz::library::Catalog;
-use skillz::store::Store;
 
 fn sync_command(dry_run: bool) -> Command {
     Command::Sync(SyncArgs {

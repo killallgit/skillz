@@ -9,7 +9,7 @@ use serde_json::json;
 use super::removal::{Pick, choose};
 use super::scope::Scene;
 use super::session::{Change, change, with_session};
-use crate::remove;
+use crate::app::remove;
 use skillz_harness::model::{Installed, Scope};
 use skillz_harness::update;
 use skillz_harness::update::check::any_available;

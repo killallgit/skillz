@@ -15,10 +15,10 @@ use super::theme::Theme;
 use super::tree_view;
 use super::widgets::confirm::ConfirmDialog;
 use super::workspace::{self, Shared, Workspace};
-use crate::prompt::{Choice, Hold, Picked, Prompter};
-use crate::review::{ItemEvent, Next, Outcome, PlanView, Progress, Verdict};
-use crate::tree::{self, Node};
-use crate::workspace::{Act, SharedScreen};
+use crate::app::prompt::{Choice, Hold, Picked, Prompter};
+use crate::app::review::{ItemEvent, Next, Outcome, PlanView, Progress, Verdict};
+use crate::app::tree::{self, Node};
+use crate::app::workspace::{Act, SharedScreen};
 
 /// Terminal prompter. The theme is chosen once by the caller and handed to every screen; the
 /// terminal is entered by the first screen and left again once nothing holds it.

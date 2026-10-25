@@ -3,9 +3,9 @@
 use std::path::Path;
 
 use super::super::session::{Notice, Session};
+use crate::app::library::Catalog;
+use crate::app::workspace::Model;
 use crate::cli::scope::{installed, project_env};
-use crate::library::Catalog;
-use crate::workspace::Model;
 use skillz_harness::model::Scope;
 
 /// The snapshot to show next, with `notice` to toast; an unreadable library is shown empty and
@@ -56,10 +56,10 @@ mod tests {
     }
     #[test]
     fn local_sources_match_in_workspace_views_without_rewriting_stored_entries() {
+        use crate::app::library::{Catalog, Held, LibraryItem};
+        use crate::app::profile::Profile;
+        use crate::app::store::Store;
         use crate::cli::deps::Deps;
-        use crate::library::{Catalog, Held, LibraryItem};
-        use crate::profile::Profile;
-        use crate::store::Store;
         use skillz_harness::Spec;
         use skillz_harness::env::Env;
         use skillz_harness::model::Agent;
@@ -100,8 +100,8 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let before = fs::read(crate::app_paths::store_path(&env)).unwrap();
-        let prompter = crate::prompt::AssumeYes;
+        let before = fs::read(crate::app::app_paths::store_path(&env)).unwrap();
+        let prompter = crate::app::prompt::AssumeYes;
         let mut deps = Deps::for_test(
             dir.path(),
             skillz_harness::agents::registry(),
@@ -111,14 +111,14 @@ mod tests {
 
         let model = snapshot(&Session::open(&deps, &env), None).unwrap();
 
-        assert!(crate::apply::drift(&model.profiles[0], &model.installed).matches());
-        assert!(crate::apply::loaded(&model.profiles, &model.installed).is_some());
+        assert!(crate::app::apply::drift(&model.profiles[0], &model.installed).matches());
+        assert!(crate::app::apply::loaded(&model.profiles, &model.installed).is_some());
         assert!(
             Held::of(&model.installed, &model.global)
                 .presence(&model.library.items()[0].entry)
                 .project
         );
-        let resolved = |entry| crate::stale::with_source(entry, canonical.to_str().unwrap());
+        let resolved = |entry| crate::app::stale::with_source(entry, canonical.to_str().unwrap());
         assert_eq!(
             model.library.items()[0],
             LibraryItem::from_entry(resolved(default.entry))
@@ -131,17 +131,17 @@ mod tests {
             }
         );
         assert_eq!(
-            fs::read(crate::app_paths::store_path(&env)).unwrap(),
+            fs::read(crate::app::app_paths::store_path(&env)).unwrap(),
             before
         );
     }
 
     #[test]
     fn explicit_missing_sources_stay_local_and_repository_references_stay_portable() {
+        use crate::app::profile::Profile;
+        use crate::app::stale::{Disk, missing_source};
+        use crate::app::store::Store;
         use crate::cli::deps::Deps;
-        use crate::profile::Profile;
-        use crate::stale::{Disk, missing_source};
-        use crate::store::Store;
         use skillz_harness::Spec;
         use skillz_harness::env::Env;
         let dir = tempfile::tempdir().unwrap();
@@ -168,7 +168,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let prompter = crate::prompt::AssumeYes;
+        let prompter = crate::app::prompt::AssumeYes;
         let deps = Deps::for_test(
             dir.path(),
             vec![],

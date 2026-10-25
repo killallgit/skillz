@@ -2,7 +2,7 @@
 //! next snapshot or key, so a finished change is never shown for longer than the screen it
 //! belongs to.
 
-use crate::review::{ItemEvent, Phase, Target};
+use crate::app::review::{ItemEvent, Phase, Target};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Status {

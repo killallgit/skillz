@@ -5,11 +5,11 @@ use std::io::Write;
 use serde_json::{Value, json};
 
 use super::scope::Scene;
-use crate::library::{LibraryItem, Moved, Synced};
-use crate::snapshot::Skipped;
-use crate::stale::Disk;
-use crate::store::Store;
-use crate::sync::sync_library;
+use crate::app::library::{LibraryItem, Moved, Synced};
+use crate::app::snapshot::Skipped;
+use crate::app::stale::Disk;
+use crate::app::store::Store;
+use crate::app::sync::sync_library;
 
 pub(super) struct SyncRequest {
     pub dry_run: bool,

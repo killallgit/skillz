@@ -2,7 +2,7 @@ use ratatui::crossterm::event::KeyCode;
 
 use super::tests::{loaded, press};
 use super::*;
-use crate::review::{Phase, Target};
+use crate::app::review::{Phase, Target};
 use crate::tui::glyphs::Glyphs;
 use crate::tui::widgets::testing::render_to_buffer;
 

@@ -7,7 +7,7 @@ use ratatui::widgets::Paragraph;
 
 use super::rows::{Item, Row};
 use super::{LibraryTab, Popup};
-use crate::library::{Cue, Presence, Provenance};
+use crate::app::library::{Cue, Presence, Provenance};
 use crate::tui::filter;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;

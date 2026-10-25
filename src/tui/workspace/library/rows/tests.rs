@@ -1,5 +1,5 @@
 use super::*;
-use crate::stale::Disk;
+use crate::app::stale::Disk;
 use skillz_harness::Spec;
 
 fn build(catalog: &Catalog) -> Vec<Row> {

@@ -2,7 +2,7 @@
 
 use std::sync::mpsc::Receiver;
 
-use crate::workspace::Synced;
+use crate::app::workspace::Synced;
 
 #[derive(Default)]
 pub(super) struct Syncs {

@@ -1,6 +1,6 @@
 use super::*;
-use crate::location::detail;
-use crate::merge::tag;
+use crate::app::location::detail;
+use crate::app::merge::tag;
 use skillz_harness::model::{Agent, Installer, Kind, Scope};
 
 pub fn installed(name: &str, kind: Kind, source: Option<&str>) -> Installed {
@@ -205,7 +205,7 @@ fn subagent_in(agent: Agent) -> Installed {
 }
 
 fn merged_subagent() -> Installed {
-    crate::merge::merge(vec![subagent_in(Agent::Claude), subagent_in(Agent::Codex)]).remove(0)
+    crate::app::merge::merge(vec![subagent_in(Agent::Claude), subagent_in(Agent::Codex)]).remove(0)
 }
 
 #[test]

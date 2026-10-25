@@ -1,8 +1,8 @@
 //! A switch as the typed plan and step labels the screens show.
 
-use crate::apply::Switch;
-use crate::remove::Plan;
-use crate::review::{Group, PlanView};
+use crate::app::apply::Switch;
+use crate::app::remove::Plan;
+use crate::app::review::{Group, PlanView};
 use skillz_harness::action::Action;
 use skillz_harness::model::Scope;
 

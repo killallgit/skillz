@@ -4,7 +4,7 @@ mod install;
 mod listing;
 mod rows;
 
-use crate::profile::SpecParse;
+use crate::app::profile::SpecParse;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -15,7 +15,7 @@ use super::library_args::{AddArgs, LibraryCommand, LibraryRemoveArgs};
 use super::pick::{Choosing, pick};
 use super::scope::resolve_project;
 use super::session::{Console, Session, with_session};
-use crate::library::{Catalog, LibraryItem};
+use crate::app::library::{Catalog, LibraryItem};
 pub(super) use listing::available;
 use skillz_harness::Spec;
 

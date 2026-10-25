@@ -4,7 +4,7 @@ use ratatui::crossterm::event::KeyEvent;
 
 use super::menu::{Menu, Pick};
 use super::model::{Overlay, TreeState};
-use crate::prompt::{Choice, Picked};
+use crate::app::prompt::{Choice, Picked};
 use crate::tui::help::{Help, Verdict};
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::input::Outcome as Edit;

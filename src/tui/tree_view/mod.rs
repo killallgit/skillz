@@ -14,8 +14,8 @@ pub use model::TreeState;
 
 use super::closure::event_loop;
 use super::shell::Ui;
-use crate::prompt::{Choice, Picked};
-use crate::tree::Node;
+use crate::app::prompt::{Choice, Picked};
+use crate::app::tree::Node;
 
 /// Browse `nodes`, mark groups or items, and pick an action; `None` when the user quits.
 pub fn browse(title: &str, nodes: &[Node], ui: &Ui) -> anyhow::Result<Option<(Choice, Picked)>> {

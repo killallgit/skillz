@@ -48,8 +48,8 @@ impl Sandbox {
     }
 
     pub fn write_profile(&self, name: &str, text: &str) {
-        let profile = skillz::profile::Profile::parse(name, text).unwrap();
-        skillz::profile::Store::new(self.skillz_dir().join("store.json"))
+        let profile = skillz::app::profile::Profile::parse(name, text).unwrap();
+        skillz::app::profile::Store::new(self.skillz_dir().join("store.json"))
             .save(&profile)
             .unwrap();
     }
@@ -69,16 +69,16 @@ impl Sandbox {
     }
 
     /// The library kept in the sandbox's store.
-    pub fn library(&self) -> skillz::library::Catalog {
-        skillz::store::Store::new(self.skillz_dir().join("store.json"))
+    pub fn library(&self) -> skillz::app::library::Catalog {
+        skillz::app::store::Store::new(self.skillz_dir().join("store.json"))
             .read()
             .unwrap()
             .items
     }
 
     /// The profile `name` as stored.
-    pub fn profile(&self, name: &str) -> skillz::profile::Profile {
-        skillz::profile::Store::new(self.skillz_dir().join("store.json"))
+    pub fn profile(&self, name: &str) -> skillz::app::profile::Profile {
+        skillz::app::profile::Store::new(self.skillz_dir().join("store.json"))
             .load(name)
             .unwrap()
     }

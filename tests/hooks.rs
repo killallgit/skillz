@@ -262,7 +262,7 @@ fn saving_a_profile_keeps_the_hooks_in_the_config() {
     let out = sb.skillz(&["profile", "save", "mine"]);
 
     // Assert: the profile holds the skill and the hook
-    let saved = skillz::profile::Store::new(sb.skillz_dir().join("store.json"))
+    let saved = skillz::app::profile::Store::new(sb.skillz_dir().join("store.json"))
         .load("mine")
         .unwrap();
     assert!(out.status.success());

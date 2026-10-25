@@ -6,10 +6,10 @@ use super::super::deps::Deps;
 use super::super::library_args::LibraryListArgs;
 use super::super::scope::installed;
 use super::rows::{Row, rows};
-use crate::apply::holds;
-use crate::library::{Held, LibraryItem};
-use crate::stale::Disk;
-use crate::store::Store;
+use crate::app::apply::holds;
+use crate::app::library::{Held, LibraryItem};
+use crate::app::stale::Disk;
+use crate::app::store::Store;
 use skillz_harness::env::Env;
 use skillz_harness::model::Scope;
 

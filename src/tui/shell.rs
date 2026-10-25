@@ -11,7 +11,7 @@ use ratatui::{DefaultTerminal, Frame};
 use super::app::{App, Exit};
 use super::hygiene::{self, Signals};
 use super::theme::Theme;
-use crate::prompt::Hold;
+use crate::app::prompt::Hold;
 
 /// How long to wait for an event before looking at the signal flags again.
 const TICK: Duration = Duration::from_millis(200);
