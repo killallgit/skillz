@@ -20,7 +20,7 @@ impl Catalog {
     }
 
     /// A temporary catalog whose local entries refer to this project's physical sources.
-    pub fn in_env(mut self, env: &crate::env::Env) -> Self {
+    pub fn in_env(mut self, env: &crate::harness::env::Env) -> Self {
         for item in &mut self.items {
             let default_label = item.label == item.entry.to_string();
             item.entry = crate::app_paths::spec_in_env(env, item.entry.clone());

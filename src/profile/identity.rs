@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 
 use crate::harness::Spec;
-use crate::model::{Agent, Details, Installed, Installer, Kind, split_plugin_id};
+use crate::harness::model::{Agent, Details, Installed, Installer, Kind, split_plugin_id};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Key {
@@ -154,7 +154,7 @@ fn without(mut entry: Spec, taken: &HashSet<Key>) -> Option<Spec> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Agent;
+    use crate::harness::model::Agent;
 
     fn skills(source: &str, names: &[&str]) -> Spec {
         Spec::Skill {

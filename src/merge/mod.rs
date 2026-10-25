@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use self::key::Key;
 pub use self::tag::tag;
-use crate::model::{Details, Installed};
+use crate::harness::model::{Details, Installed};
 
 /// `items` with every set of copies of one thing folded into its first copy's place.
 pub fn merge(items: Vec<Installed>) -> Vec<Installed> {

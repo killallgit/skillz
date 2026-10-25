@@ -1,4 +1,4 @@
-use crate::model::Agent;
+use crate::harness::model::Agent;
 
 /// Agents listed by name up to this many; more are abbreviated to the first two and a count.
 const SHOWN_IN_FULL: usize = 3;

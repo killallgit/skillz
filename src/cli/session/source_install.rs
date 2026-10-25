@@ -35,11 +35,11 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::agents::registry;
     use crate::cli::deps::Deps;
+    use crate::harness::agents::registry;
+    use crate::harness::model::{Agent, Scope};
     use crate::install::SkillSelection;
     use crate::install::test_support::{FakeRunner, ScriptedPrompter, marketplace_fixture};
-    use crate::model::{Agent, Scope};
     use crate::{profile, store};
 
     fn request(dir: &Path) -> InstallRequest {

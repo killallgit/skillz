@@ -5,10 +5,10 @@ use std::fs;
 use std::path::Path;
 
 use super::*;
-use crate::agents::registry;
 use crate::harness::Spec;
+use crate::harness::agents::registry;
+use crate::harness::model::Agent;
 use crate::harness::runner::{CommandRunner, Output};
-use crate::model::Agent;
 use crate::profile::Profile;
 use crate::stale::Disk;
 

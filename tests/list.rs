@@ -4,8 +4,8 @@ mod common;
 
 use common::*;
 use serde_json::Value;
-use skillz::agents;
-use skillz::model::Scope;
+use skillz::harness::agents;
+use skillz::harness::model::Scope;
 
 const NO_SUCH_ITEM: &str = "zzzz-no-such-thing";
 

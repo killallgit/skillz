@@ -8,8 +8,8 @@ mod tests;
 use std::path::Path;
 
 use crate::harness::Spec;
-use crate::hooks::UNOWNED_HOOKS;
-use crate::model::{Installed, Kind};
+use crate::harness::hooks::UNOWNED_HOOKS;
+use crate::harness::model::{Installed, Kind};
 use crate::stale::local_source;
 
 const LOCAL_FILES: &str = "local files";

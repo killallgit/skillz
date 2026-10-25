@@ -3,7 +3,7 @@ use ratatui::crossterm::event::KeyCode;
 use super::rows::tests::{global, installed};
 use super::tests::{on_item, press};
 use super::*;
-use crate::model::Kind;
+use crate::harness::model::Kind;
 use crate::tui::widgets::testing::render_to_buffer;
 
 /// `tdd` installed in the project and `grill` globally.

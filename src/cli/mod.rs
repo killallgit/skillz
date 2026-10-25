@@ -41,13 +41,13 @@ pub use profile_args::{ProfileAddArgs, ProfileCommand, ProfileRemoveArgs};
 pub use run::run;
 pub use workspace::workspace;
 
-use crate::agents;
+use crate::harness::agents;
 use crate::harness::runner::SystemRunner;
+use crate::harness::update::check::{NoCheck, UpdateCheck};
 use crate::prompt::{AssumeYes, Prompter};
 use crate::sync::{InstalledScanner, Scanner};
 use crate::tui::prompter::TuiPrompter;
 use crate::tui::theme::Theme;
-use crate::update::check::{NoCheck, UpdateCheck};
 
 pub fn main() -> anyhow::Result<i32> {
     let cli = Cli::parse();
@@ -94,9 +94,9 @@ fn update_checker(home: &Path, claude_config: &Option<PathBuf>) -> Arc<dyn Updat
     if std::env::var_os("SKILLZ_NO_UPDATE_CHECK").is_some() {
         return Arc::new(NoCheck);
     }
-    let env = crate::env::Env {
+    let env = crate::harness::env::Env {
         claude_config: claude_config.clone(),
-        ..crate::env::Env::new(home.to_path_buf(), home.to_path_buf())
+        ..crate::harness::env::Env::new(home.to_path_buf(), home.to_path_buf())
     };
     agents::update_checker(
         &env,

@@ -7,11 +7,11 @@ pub(crate) mod test_support;
 
 use std::path::{Path, PathBuf};
 
-use crate::agents::{Harness, adapter_for};
-use crate::env::Env;
 use crate::harness::action::{self, Action};
+use crate::harness::agents::{Harness, adapter_for};
+use crate::harness::env::Env;
+use crate::harness::model::{Agent, Scope};
 use crate::harness::runner::CommandRunner;
-use crate::model::{Agent, Scope};
 use crate::prompt::Prompter;
 use crate::review::{Group, PlanView, Verdict};
 
@@ -157,7 +157,7 @@ fn run(ctx: &Ctx, steps: &[Action]) -> anyhow::Result<()> {
 mod tests {
     use super::test_support::*;
     use super::*;
-    use crate::agents::registry;
+    use crate::harness::agents::registry;
 
     fn run_install(
         fx: &Fixture,

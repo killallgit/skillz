@@ -13,7 +13,7 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
 use crate::harness::Spec;
-use crate::model::Agent;
+use crate::harness::model::Agent;
 
 pub use edit::with_added;
 
@@ -53,7 +53,7 @@ impl Profile {
     }
 
     /// A temporary profile for comparison and installation; the stored definition stays portable.
-    pub fn in_env(mut self, env: &crate::env::Env) -> Self {
+    pub fn in_env(mut self, env: &crate::harness::env::Env) -> Self {
         self.entries = self
             .entries
             .into_iter()

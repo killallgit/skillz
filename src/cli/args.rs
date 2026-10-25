@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand};
 
 use super::library_args::LibraryCommand;
 use super::profile_args::ProfileCommand;
-use crate::model::{Agent, Installed, Kind};
+use crate::harness::model::{Agent, Installed, Kind};
 
 #[derive(Debug, Parser)]
 #[command(

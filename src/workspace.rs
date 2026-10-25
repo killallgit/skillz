@@ -7,8 +7,8 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
 use crate::harness::Spec;
+use crate::harness::model::{Installed, Scope};
 use crate::library::Catalog;
-use crate::model::{Installed, Scope};
 use crate::profile::Profile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

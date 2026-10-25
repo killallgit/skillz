@@ -4,7 +4,7 @@ use std::sync::mpsc::Sender;
 
 use crate::cli::deps::Deps;
 use crate::cli::session::Notice;
-use crate::env::Env;
+use crate::harness::env::Env;
 use crate::sync::{self, Report};
 use crate::workspace::Synced;
 

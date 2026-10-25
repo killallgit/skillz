@@ -9,7 +9,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::apply::{holds, only_wanted_by};
 use crate::harness::Spec;
-use crate::model::Installed;
+use crate::harness::model::Installed;
 use crate::profile::Profile;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
@@ -129,7 +129,7 @@ mod tests {
     use ratatui::crossterm::event::KeyCode;
 
     use super::*;
-    use crate::model::Kind;
+    use crate::harness::model::Kind;
     use crate::tui::widgets::testing::key;
     use crate::tui::workspace::installed::rows::tests::installed;
 

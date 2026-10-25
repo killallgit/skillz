@@ -3,9 +3,9 @@ use std::path::Path;
 use crate::harness::action::Action;
 use crate::harness::agent_skills::skill_name;
 use crate::harness::fswalk;
+use crate::harness::model::Agent;
 use crate::harness::npx::commands;
 use crate::matcher::pattern_matches;
-use crate::model::Agent;
 use crate::prompt::Prompter;
 
 use super::global::confirm_duplicates;

@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::harness::Spec;
-use crate::mcp::Launch;
-use crate::model::{Agent, Installed};
+use crate::harness::mcp::Launch;
+use crate::harness::model::{Agent, Installed};
 use crate::profile::Profile;
 
 pub use extract::entries;
@@ -236,8 +236,8 @@ pub fn snapshot(name: &str, items: &[Installed]) -> Snapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mcp::Server;
-    use crate::model::{Details, Installer, Kind, Origin, Scope};
+    use crate::harness::mcp::Server;
+    use crate::harness::model::{Details, Installer, Kind, Origin, Scope};
 
     pub(super) fn item(
         name: &str,
@@ -392,12 +392,13 @@ mod tests {
 
     #[test]
     fn hooks_are_read_from_typed_data_and_merged_across_agents() {
-        let handler =
-            |event: &str, matcher: Option<&str>, command: &str| crate::hook_text::HookEntry {
+        let handler = |event: &str, matcher: Option<&str>, command: &str| {
+            crate::harness::hook_text::HookEntry {
                 event: event.into(),
                 matcher: matcher.map(String::from),
                 command: command.into(),
-            };
+            }
+        };
         let hook = |agent: Agent| {
             let mut i = in_group(
                 item("fmt", Kind::Hook, Installer::Local, &[agent]),
@@ -439,7 +440,7 @@ mod tests {
             "hooks",
             None,
         );
-        i.hooks = vec![crate::hook_text::HookEntry {
+        i.hooks = vec![crate::harness::hook_text::HookEntry {
             event: "PreToolUse".into(),
             matcher: Some("mcp__a: b".into()),
             command: "run".into(),

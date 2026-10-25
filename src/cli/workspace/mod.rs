@@ -11,7 +11,7 @@ use std::sync::{MutexGuard, PoisonError};
 use super::deps::Deps;
 use super::scope::resolve_project;
 use super::session::{Notice, Session};
-use crate::update::check;
+use crate::harness::update::check;
 use crate::workspace::{Act, Screen, SharedScreen};
 use model::snapshot;
 

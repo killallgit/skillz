@@ -7,8 +7,8 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
-use crate::env::Env;
-use crate::model::{Agent, Scope};
+use crate::harness::env::Env;
+use crate::harness::model::{Agent, Scope};
 
 /// The canonical store agent skill dirs symlink into: `<root>/.agents/skills`.
 pub fn store_dir(env: &Env, scope: Scope) -> PathBuf {

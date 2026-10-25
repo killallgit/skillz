@@ -1,7 +1,7 @@
 use crate::harness::Spec;
 use crate::harness::action::Action;
+use crate::harness::provision::{self, Unsupported};
 use crate::profile::Profile;
-use crate::provision::{self, Unsupported};
 
 use super::Applier;
 use super::standing::compare;

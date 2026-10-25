@@ -2,10 +2,10 @@ use std::path::{Path, PathBuf};
 
 use super::SkillDir;
 use super::entry::{Entry, canonical_or};
-use crate::env::Env;
 use crate::harness::action::{Action, Edit, RemovalTarget};
+use crate::harness::env::Env;
+use crate::harness::model::Scope;
 use crate::harness::npx::commands;
-use crate::model::Scope;
 
 /// Links first, then the canonical dir if we own it, then the lock entry. No duplicates.
 /// Every `RemovePath` is under an `owned` root.
@@ -64,7 +64,7 @@ pub(super) fn owned_roots(env: &Env, dirs: &[SkillDir], scope: Scope) -> Vec<Pat
 mod tests {
     use super::super::discover;
     use super::super::testutil::*;
-    use crate::model::{Agent, Scope};
+    use crate::harness::model::{Agent, Scope};
 
     #[test]
     fn outside_target_is_never_removed() {

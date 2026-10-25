@@ -17,24 +17,10 @@ enum Layer {
     Cli,
 }
 
-const HARNESS: &[&str] = &[
-    "harness",
-    "agents",
-    "cost",
-    "env",
-    "hook_text",
-    "hooks",
-    "install",
-    "mcp",
-    "model",
-    "provision",
-    "subagent_store",
-    "subagents",
-    "update",
-    "usage",
-];
+const HARNESS: &[&str] = &["harness"];
 
 const APP: &[&str] = &[
+    "install",
     "app_paths",
     "apply",
     "info",
@@ -68,13 +54,7 @@ fn layer(module: &str) -> Option<Layer> {
 }
 
 /// Imports from a higher layer that exist today. Delete a line when its import is fixed.
-const ALLOWED: &[(&str, &str)] = &[
-    ("install/global.rs", "apply"),
-    ("install/mod.rs", "prompt"),
-    ("install/mod.rs", "review"),
-    ("install/skills.rs", "matcher"),
-    ("install/skills.rs", "prompt"),
-];
+const ALLOWED: &[(&str, &str)] = &[];
 
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).unwrap() {

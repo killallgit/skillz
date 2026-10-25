@@ -1,7 +1,7 @@
 use super::catalog::Catalog;
 use super::item::LibraryItem;
 use super::provenance::Provenance;
-use crate::model::Installed;
+use crate::harness::model::Installed;
 use crate::snapshot::{Skipped, collect};
 
 /// Reinstallable entries from the installed `items`, each with the provenance its
@@ -49,7 +49,7 @@ pub fn record_installed(
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-    use crate::model::{Agent, Installer, Kind, Origin, Scope};
+    use crate::harness::model::{Agent, Installer, Kind, Origin, Scope};
 
     pub fn installed_skill(name: &str, source: Option<&str>) -> Installed {
         Installed {

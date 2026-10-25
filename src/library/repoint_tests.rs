@@ -4,8 +4,8 @@ use super::catalog::Catalog;
 use super::item::LibraryItem;
 use super::repoint::repoint;
 use crate::harness::Spec;
+use crate::harness::model::Installer;
 use crate::library::Provenance;
-use crate::model::Installer;
 use crate::stale::tests::{Existing, skill};
 
 fn item(source: &str, name: &str) -> LibraryItem {

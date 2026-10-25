@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::SkillDir;
-use crate::model::Agent;
+use crate::harness::model::Agent;
 
 /// One skill entry as seen from one agent dir.
 #[derive(Debug, Clone)]

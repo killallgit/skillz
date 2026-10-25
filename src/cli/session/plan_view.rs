@@ -2,7 +2,7 @@
 
 use crate::apply::Switch;
 use crate::harness::action::Action;
-use crate::model::Scope;
+use crate::harness::model::Scope;
 use crate::remove::Plan;
 use crate::review::{Group, PlanView};
 
@@ -78,7 +78,7 @@ fn purpose(switch: &Switch, removal: &Plan, step: &Action) -> String {
 mod tests {
     use super::*;
     use crate::harness::Spec;
-    use crate::model::{Agent, Installed, Installer, Kind};
+    use crate::harness::model::{Agent, Installed, Installer, Kind};
 
     fn skill(name: &str) -> Spec {
         Spec::Skill {

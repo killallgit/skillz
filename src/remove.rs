@@ -3,12 +3,12 @@
 
 use anyhow::bail;
 
-use crate::agents::{self, Harness};
-use crate::env::Env;
 use crate::harness::action::{self, Action, Report};
+use crate::harness::agents::{self, Harness};
+use crate::harness::env::Env;
+use crate::harness::model::{Agent, Installed, Scope};
 use crate::harness::runner::CommandRunner;
 use crate::matcher;
-use crate::model::{Agent, Installed, Scope};
 
 /// Items named exactly `query` (case-insensitive, surrounding whitespace ignored).
 pub fn named<'a>(items: &'a [Installed], query: &str) -> Vec<&'a Installed> {
@@ -181,7 +181,7 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Installer, Kind};
+    use crate::harness::model::{Installer, Kind};
 
     fn item(name: &str, agents: &[Agent], removal: Vec<Action>) -> Installed {
         Installed {

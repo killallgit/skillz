@@ -3,12 +3,12 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
-use crate::agents::registry;
-use crate::env::Env;
 use crate::harness::Spec;
 use crate::harness::action::Action;
+use crate::harness::agents::registry;
+use crate::harness::env::Env;
+use crate::harness::model::{Agent, Installer, Kind, Scope};
 use crate::harness::runner::{CommandRunner, Output};
-use crate::model::{Agent, Installer, Kind, Scope};
 use crate::review::{ItemEvent, Phase, Target};
 use crate::stale::{Disk, Probe};
 

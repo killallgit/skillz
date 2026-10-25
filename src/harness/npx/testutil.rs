@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 use super::SkillDir;
-use crate::env::Env;
 use crate::harness::action::{Action, Edit, RemovalTarget};
-use crate::model::{Agent, Installed, Scope};
+use crate::harness::env::Env;
+use crate::harness::model::{Agent, Installed, Scope};
 
 pub(super) struct Fixture {
     _tmp: TempDir,

@@ -3,9 +3,9 @@
 use crate::apply::Switch;
 use crate::cli::deps::Deps;
 use crate::cli::scope::complete_installed;
-use crate::env::Env;
-use crate::model::Scope;
-use crate::update;
+use crate::harness::env::Env;
+use crate::harness::model::Scope;
+use crate::harness::update;
 
 /// An update step list for each picked item that can be updated; the rest drop out.
 pub(super) fn update_plan(

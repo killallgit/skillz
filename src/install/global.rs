@@ -1,10 +1,10 @@
 //! Skills about to be installed into a project that the user already has installed globally.
 
 use super::{Ctx, InstallRequest};
-use crate::agents::inventory;
 use crate::apply::holds;
 use crate::harness::Spec;
-use crate::model::{Installed, Scope};
+use crate::harness::agents::inventory;
+use crate::harness::model::{Installed, Scope};
 
 /// Ask before installing `names` into the project when some are installed globally already.
 /// Says which, then asks; `false` when the user would rather not.
@@ -30,7 +30,7 @@ pub(super) fn confirm_duplicates(
 
 /// The names that are installed globally but not in the project.
 fn only_global(
-    (source, agents): &(&str, &[crate::model::Agent]),
+    (source, agents): &(&str, &[crate::harness::model::Agent]),
     names: &[String],
     (global, project): (&[Installed], &[Installed]),
 ) -> Vec<String> {
@@ -51,7 +51,7 @@ fn only_global(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Agent, Installer, Kind};
+    use crate::harness::model::{Agent, Installer, Kind};
 
     fn skill(name: &str, scope: Scope) -> Installed {
         Installed {
@@ -98,14 +98,14 @@ mod tests {
     #[test]
     fn global_install_neither_reads_project_inventory_nor_asks_about_it() {
         let temporary = tempfile::tempdir().unwrap();
-        let env = crate::env::Env::new(
+        let env = crate::harness::env::Env::new(
             temporary.path().to_path_buf(),
             temporary.path().join("project"),
         );
-        let invalid = crate::agents::claude::dir(&env).join("skills");
+        let invalid = crate::harness::agents::claude::dir(&env).join("skills");
         std::fs::create_dir_all(invalid.parent().unwrap()).unwrap();
         std::fs::write(invalid, "not a directory").unwrap();
-        let adapters = crate::agents::registry();
+        let adapters = crate::harness::agents::registry();
         let prompter = crate::install::test_support::ScriptedPrompter::new(&[], false);
         let request = InstallRequest {
             source: "o/r".into(),

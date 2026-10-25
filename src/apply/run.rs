@@ -1,6 +1,6 @@
 use crate::harness::action::{self, Action};
+use crate::harness::model::Installed;
 use crate::harness::runner::CommandRunner;
-use crate::model::Installed;
 use crate::remove::{self, Outcome, Plan, Removal};
 use crate::review::{ItemEvent, Target};
 

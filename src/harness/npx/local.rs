@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use super::entry::canonical_or;
-use crate::env::Env;
 use crate::harness::agent_skills::skill_name;
-use crate::model::Origin;
+use crate::harness::env::Env;
+use crate::harness::model::Origin;
 
 /// What a hand-made skill can be installed again from: the directory holding it, and the
 /// name npx finds it by when that is not its directory name.
@@ -35,8 +35,8 @@ fn inside_home_or_project(env: &Env, path: &Path) -> bool {
     let roots = [
         &env.home,
         &env.project,
-        &crate::agents::claude::dir(env),
-        &crate::agents::codex::dir(env),
+        &crate::harness::agents::claude::dir(env),
+        &crate::harness::agents::codex::dir(env),
     ];
     roots
         .into_iter()

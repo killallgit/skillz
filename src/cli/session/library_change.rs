@@ -4,8 +4,8 @@ use super::Session;
 use super::notice::Notice;
 use crate::cli::scope::{complete_installed, project_env};
 use crate::harness::Spec;
+use crate::harness::model::Scope;
 use crate::library::LibraryItem;
-use crate::model::Scope;
 use crate::stale::Disk;
 use crate::sync::sync_library;
 
@@ -67,8 +67,8 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::agents::registry;
     use crate::cli::deps::Deps;
+    use crate::harness::agents::registry;
     use crate::install::test_support::{FakeRunner, ScriptedPrompter};
     use crate::{profile, store};
 

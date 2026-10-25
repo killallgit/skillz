@@ -5,11 +5,11 @@ use anyhow::Context;
 use crate::apply::{Applier, Report, Switch};
 use crate::cli::deps::Deps;
 use crate::cli::scope::complete_installed;
-use crate::env::Env;
 use crate::harness::Spec;
+use crate::harness::env::Env;
+use crate::harness::model::{Agent, Installed};
 use crate::library::Catalog;
 use crate::merge::merge;
-use crate::model::{Agent, Installed};
 use crate::profile::Profile;
 use crate::review::Outcome;
 
@@ -88,7 +88,7 @@ pub(super) fn outcome_of(switch: &Switch, each: Report) -> Outcome {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Installer, Kind, Scope};
+    use crate::harness::model::{Installer, Kind, Scope};
 
     fn subagent(agent: Agent) -> Installed {
         Installed {

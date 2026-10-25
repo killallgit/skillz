@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Installed, Installer};
+use crate::harness::model::{Installed, Installer};
 
 /// How a library item got onto this machine, recorded when it was installed or imported.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

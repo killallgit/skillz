@@ -2,7 +2,7 @@
 //! how to draw it; flows decide how to build it.
 
 use crate::harness::Spec;
-use crate::model::Agent;
+use crate::harness::model::Agent;
 
 /// The kinds of line in a plan, in the order they are shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

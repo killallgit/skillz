@@ -5,8 +5,8 @@
 
 mod installed;
 
+use crate::harness::model::Installed;
 use crate::library::ItemKind;
-use crate::model::Installed;
 use crate::package::{Package, group_by};
 use crate::tui::widgets::outline::Shape;
 

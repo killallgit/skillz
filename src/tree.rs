@@ -1,5 +1,5 @@
+use crate::harness::model::{Installed, Kind, Scope};
 use crate::merge::tag;
-use crate::model::{Installed, Kind, Scope};
 use crate::package::{Package, group_by};
 
 mod table;
@@ -174,7 +174,7 @@ fn item_node(index: usize, item: &Installed) -> Node {
             item.scope.to_string(),
             String::new(),
         ],
-        children: crate::mcp::shown_children(item)
+        children: crate::harness::mcp::shown_children(item)
             .iter()
             .map(Node::leaf)
             .collect(),
