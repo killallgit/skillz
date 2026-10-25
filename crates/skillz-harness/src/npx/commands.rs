@@ -34,7 +34,7 @@ pub struct LockEntry {
 }
 
 /// Skill name -> lock entry from `{"skills": {"<name>": {"source": "org/repo", ...}}}`.
-/// A missing lock reads as empty; a corrupt one is an error so it is never skipped silently.
+/// A missing lock, or one without `skills`, reads as empty; a corrupt one is an error so it is never skipped silently.
 pub fn read_lock(env: &Env, scope: Scope) -> anyhow::Result<BTreeMap<String, LockEntry>> {
     let path = lock_path(env, scope);
     let Some(text) = read_optional(&path)? else {
@@ -42,11 +42,19 @@ pub fn read_lock(env: &Env, scope: Scope) -> anyhow::Result<BTreeMap<String, Loc
     };
     let json: Value = serde_json::from_str(&text)
         .with_context(|| format!("malformed skills lock {}", path.display()))?;
-    Ok(json
-        .get("skills")
-        .and_then(Value::as_object)
-        .into_iter()
-        .flatten()
+    let Value::Object(root) = json else {
+        anyhow::bail!("malformed skills lock {}: not an object", path.display());
+    };
+    let skills = match root.get("skills") {
+        None => return Ok(BTreeMap::new()),
+        Some(Value::Object(skills)) => skills,
+        Some(_) => anyhow::bail!(
+            "malformed skills lock {}: `skills` is not an object",
+            path.display()
+        ),
+    };
+    Ok(skills
+        .iter()
         .filter_map(|(name, v)| Some((name.clone(), lock_entry(v)?)))
         .collect())
 }
@@ -178,6 +186,26 @@ mod tests {
             })
         );
         assert_eq!(lock_entry(&project).unwrap().hash.as_deref(), Some("def"));
+    }
+
+    #[test]
+    fn read_lock_rejects_a_skills_field_that_is_not_an_object() {
+        let tmp = tempfile::tempdir().unwrap();
+        let env = Env {
+            home: tmp.path().join("h"),
+            project: tmp.path().join("p"),
+            claude_config: None,
+            codex_home: None,
+        };
+        fs::create_dir_all(&env.project).unwrap();
+        let write = |text: &str| fs::write(lock_path(&env, Scope::Project), text).unwrap();
+
+        write(r#"{"version":3}"#);
+        assert!(read_lock(&env, Scope::Project).unwrap().is_empty());
+        for corrupt in [r#"{"skills":[]}"#, r#"{"skills":null}"#, "[]"] {
+            write(corrupt);
+            assert!(read_lock(&env, Scope::Project).is_err(), "{corrupt}");
+        }
     }
 
     #[test]

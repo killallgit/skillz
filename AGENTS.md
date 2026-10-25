@@ -36,6 +36,22 @@ rtk cargo clippy --workspace --all-targets -- -D warnings
 rtk cargo llvm-cov --workspace --summary-only
 ```
 
+## Review before merge
+
+After finishing work and opening a PR, decide whether it needs an independent review.
+Documentation-only and small, mechanical changes do not. Anything that changes behavior,
+safety, or module boundaries does, and it is not merged before one is done and its
+findings are resolved.
+
+1. Prefer CodeRabbit: confirm it reviewed the PR's current HEAD commit
+   (`wait-for-action --coderabbit`).
+2. If CodeRabbit is unavailable or rate-limited, run a local review in a fresh
+   context: a reviewer agent that did not write the change, given the diff, this file,
+   `DESIGN.md`, `GLOSSARY.md`, and the originating bead. The author's own pass does not
+   count.
+
+Verify each finding against the code; fix what is valid and say why the rest were skipped.
+
 Keep line coverage above 75%. The test task enforces a five-minute process-tree
 limit. Smoke-test removal against a copied home, never the real home.
 
