@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use super::entry::canonical_or;
-use super::frontmatter::skill_name;
 use crate::env::Env;
+use crate::harness::agent_skills::skill_name;
 use crate::model::Origin;
 
 /// What a hand-made skill can be installed again from: the directory holding it, and the

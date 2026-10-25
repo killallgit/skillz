@@ -2,6 +2,7 @@
 //! change them. Nothing here may import `app`, `tui` or `cli` code; see `tests/architecture.rs`.
 
 pub mod action;
+pub mod agent_skills;
 pub(crate) mod clone;
 pub(crate) mod fswalk;
 pub(crate) mod json_edit;

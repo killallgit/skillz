@@ -57,9 +57,7 @@ pub(crate) fn definition_name(text: &str, ext: &str) -> Option<String> {
             .get("name")?
             .as_str()
             .map(String::from),
-        _ => crate::skills::frontmatter::parse(text)?
-            .name
-            .map(String::from),
+        _ => crate::harness::agent_skills::parse(text)?.name,
     }
 }
 
