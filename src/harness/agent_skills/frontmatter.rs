@@ -35,9 +35,13 @@ const SPEC_KEYS: [&str; 6] = [
 /// A complete, leading block is required for every consumer.
 pub fn parse(text: &str) -> Option<Frontmatter> {
     let raw = block(text)?;
+    let plain = lenient(raw);
+    if !safe_for_yaml(raw) {
+        return Some(plain);
+    }
     Some(match as_map(raw) {
-        Some(map) => from_map(&map, raw),
-        None => lenient(raw),
+        Some(map) => from_map(&map, raw, &plain),
+        None => plain,
     })
 }
 
@@ -47,6 +51,26 @@ pub fn skill_name(dir: &Path) -> Option<String> {
     let front = parse(&text)?;
     front.description?;
     front.name.filter(|name| !name.starts_with('-'))
+}
+
+/// Blocks come from repositories nobody vetted. The YAML parser expands aliases by copying, so
+/// a block with anchors or aliases (a "billion laughs") could take unbounded time and memory,
+/// and a huge block could nest deeply: those are read by the line reader instead.
+fn safe_for_yaml(raw: &str) -> bool {
+    const LIMIT: usize = 64 * 1024;
+    if raw.len() > LIMIT {
+        return false;
+    }
+    let mut before = ' ';
+    for (i, c) in raw.char_indices() {
+        let starts_token = before.is_whitespace() || matches!(before, '[' | '{' | ',');
+        let next = raw[i + c.len_utf8()..].chars().next();
+        if starts_token && matches!(c, '&' | '*') && next.is_some_and(|n| !n.is_whitespace()) {
+            return false;
+        }
+        before = c;
+    }
+    true
 }
 
 fn block(text: &str) -> Option<&str> {
@@ -88,8 +112,15 @@ fn text(value: &Yaml) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-fn from_map(map: &BTreeMap<String, Yaml>, raw: &str) -> Frontmatter {
+/// `name` and `description` are the text as written, also when YAML would read them as a number,
+/// a null or a list: those come from the line reader, which keeps the literal text.
+fn from_map(map: &BTreeMap<String, Yaml>, raw: &str, plain: &Frontmatter) -> Frontmatter {
     let field = |key: &str| map.get(key).and_then(text);
+    let written = |key: &str, line_read: &Option<String>| match map.get(key) {
+        Some(Yaml::String(_) | Yaml::Real(_) | Yaml::Boolean(_)) => field(key),
+        Some(_) => line_read.clone(),
+        None => None,
+    };
     let metadata = map
         .get("metadata")
         .and_then(Yaml::as_hash)
@@ -100,8 +131,8 @@ fn from_map(map: &BTreeMap<String, Yaml>, raw: &str) -> Frontmatter {
         })
         .unwrap_or_default();
     Frontmatter {
-        name: field("name"),
-        description: field("description"),
+        name: written("name", &plain.name),
+        description: written("description", &plain.description),
         license: field("license"),
         compatibility: field("compatibility"),
         metadata,
@@ -216,10 +247,34 @@ mod tests {
     }
 
     #[test]
-    fn a_numeric_name_is_read_as_the_text_written() {
-        let front = parse("---\nname: 123\ndescription: d\n---\n").unwrap();
+    fn a_name_or_description_yaml_reads_as_a_number_or_null_keeps_its_written_text() {
+        let front = parse("---\nname: 007\ndescription: ~\n---\n").unwrap();
 
-        assert_eq!(front.name.as_deref(), Some("123"));
+        assert_eq!(front.name.as_deref(), Some("007"));
+        assert_eq!(front.description.as_deref(), Some("~"));
+    }
+
+    #[test]
+    fn aliases_and_oversized_blocks_are_read_by_line_not_expanded() {
+        let bomb = "---\nname: x\ndescription: d\na: &a [x, x, x, x, x, x, x, x, x]\n\
+                    b: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a]\nc: &c [*b, *b, *b, *b, *b, *b, *b, *b, *b]\n---\n";
+        let huge = format!(
+            "---\nname: x\ndescription: d\nbig: {}\n---\n",
+            "y".repeat(70_000)
+        );
+
+        for text in [bomb.to_string(), huge] {
+            let front = parse(&text).unwrap();
+            assert_eq!(front.name.as_deref(), Some("x"));
+            assert!(front.extra.is_empty());
+        }
+    }
+
+    #[test]
+    fn an_ampersand_inside_a_word_is_not_an_anchor() {
+        let front = parse("---\nname: x\ndescription: R&D and a*b\nlicense: MIT\n---\n").unwrap();
+
+        assert_eq!(front.license.as_deref(), Some("MIT"));
     }
 
     #[test]
