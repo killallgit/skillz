@@ -37,31 +37,31 @@ The shared directory that each agent's skill directory links into.
 _Avoid_: Skill cache, skills folder
 
 **Skill lock**:
-The file recording where each loose skill came from and the content it was installed at. A missing lock means no skill is claimed; a corrupt lock is a reported failure, never an empty lock.
+The file recording where each loose skill came from and the content it was installed at.
 _Avoid_: Lockfile, manifest
 
 **Lock ownership**:
-The rule that decides whether a skill belongs to the skill lock: the store copy always does; a copy in an agent directory does only when the store holds no such skill.
+The rule that decides whether a skill belongs to the skill lock: the store copy is eligible; a copy in an agent directory is eligible only when the store holds no such skill.
 _Avoid_: Provenance
 
 ### Hooks
 
 **Hook format**:
-One of the layouts a tool stores hooks in: nested JSON, flat JSON, TOML arrays, or inline TOML. Reading and removing a hook go through the same format.
+One of the layouts a tool stores hooks in. Reading and removing a hook go through the same format.
 _Avoid_: Hook syntax, hook schema
 
 **Install record**:
-The line in a Claude plugin registry that says a plugin was installed at a scope; removed together with the plugin so the tool no longer lists it.
+The line in a tool's plugin registry that says a plugin was installed at a scope; removed together with the plugin so the tool no longer lists it.
 _Avoid_: Registry entry, install entry
 
 ### Removal
 
 **Removal plan**:
-The ordered steps that uninstall one Installed item: native commands, file edits, then path deletions.
+The steps that uninstall one Installed item.
 _Avoid_: Uninstall script, cleanup
 
 **RemovalTarget**:
-A path that is safe to delete: plain segments below a root skillz owns, with no symlinked ancestor. It is the only way to name a path for deletion.
+A path that is safe to delete because it lies inside a root skillz owns. It is the only way to name a path for deletion.
 _Avoid_: Delete path, removal path
 
 **Uninstall flow**:

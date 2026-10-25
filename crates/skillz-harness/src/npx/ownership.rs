@@ -132,6 +132,18 @@ mod tests {
     }
 
     #[test]
+    fn a_corrupt_lock_in_a_scope_not_discovered_is_ignored() {
+        let f = fixture();
+        skill(&f.env.home.join(".agents/skills/x"));
+        std::fs::create_dir_all(&f.env.project).unwrap();
+        write_lock(&f.env.project.join("skills-lock.json"), "{not json");
+
+        let augs = discover(&f.env, &global_dirs(&f.env)).unwrap();
+
+        assert_eq!(augs.len(), 1);
+    }
+
+    #[test]
     fn lock_entry_without_source_string_is_local() {
         let f = fixture();
         skill(&f.env.home.join(".agents/skills/x"));
