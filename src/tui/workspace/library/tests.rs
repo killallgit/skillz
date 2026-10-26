@@ -1,6 +1,6 @@
 use ratatui::crossterm::event::KeyCode;
 
-use super::rows::tests::{hook, skill};
+use super::rows::tests::{agent, hook, skill};
 use super::*;
 use crate::app::library::Catalog;
 use crate::tui::widgets::testing::key;
@@ -133,4 +133,34 @@ fn a_filter_narrows_the_rows_to_what_matches() {
 
     assert!(tab.outline.is_filtered());
     assert_eq!(tab.outline.visible(), [2, 3]);
+}
+
+#[test]
+fn grouped_agents_can_be_folded_filtered_and_removed_individually() {
+    let reviewer = agent("/src/team", "reviewer");
+    let mut tab = LibraryTab::new();
+    tab.load(&Model {
+        library: Catalog::from_items(vec![reviewer.clone(), agent("/src/team", "architect")]),
+        ..Model::default()
+    });
+    open_all(&mut tab.outline);
+
+    press(&mut tab, KeyCode::Char(' '));
+    assert_eq!(tab.outline.visible(), [0]);
+    press(&mut tab, KeyCode::Enter);
+    assert_eq!(tab.outline.visible(), [0, 1]);
+    press(&mut tab, KeyCode::Down);
+    press(&mut tab, KeyCode::Right);
+    assert_eq!(tab.outline.visible(), [0, 1, 2, 3]);
+
+    press(&mut tab, KeyCode::Char('/'));
+    type_text(&mut tab, "reviewer");
+    press(&mut tab, KeyCode::Enter);
+    assert_eq!(tab.outline.visible(), [0, 1, 3]);
+    tab.outline.select_row(3);
+    press(&mut tab, KeyCode::Char('x'));
+    assert_eq!(
+        press(&mut tab, KeyCode::Char('y')),
+        Some(Act::LibraryRemove(reviewer.entry))
+    );
 }

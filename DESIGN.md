@@ -122,7 +122,7 @@ Project and Global share `InstalledTab`. Rows resolve into actionable items once
 so installing, removing, and updating a package do not depend on expansion state.
 Plugin contents are display-only children of the owning plugin. The Project tab includes
 global plugins and skills under a separate read-only branch; its actions and clear flow
-exclude that branch.
+exclude that branch. The Library groups agents by source within their own section.
 Library and profile row values carry the facts their presentation needs.
 
 `Outline` owns navigation and filtering. Screens resolve actions through

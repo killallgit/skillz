@@ -14,7 +14,7 @@ use crate::tui::widgets::empty;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
 
-const ITEM_INDENT: &str = "    ";
+const INDENT: &str = "  ";
 const ADD_WIDTH: u16 = 72;
 
 impl LibraryTab {
@@ -58,15 +58,28 @@ impl LibraryTab {
 
     fn row_line(&self, id: usize, theme: &Theme) -> Line<'static> {
         match &self.rows[id] {
+            Row::Agents => {
+                let caret = self.outline.caret(id, &theme.glyphs);
+                let count = self.rows[id + 1..]
+                    .iter()
+                    .filter(|row| matches!(row, Row::Item(_)))
+                    .count();
+                Line::from(vec![
+                    Span::styled(format!("{caret} Agents"), theme.title),
+                    Span::styled(format!(" ({count})"), theme.muted),
+                ])
+            }
             Row::Package { package } => {
                 let caret = self.outline.caret(id, &theme.glyphs);
+                let indent = INDENT.repeat(self.outline.depth(id));
                 Line::from(vec![
-                    Span::styled(format!("{caret} {}", package.title()), theme.title),
+                    Span::styled(format!("{indent}{caret} {}", package.title()), theme.title),
                     Span::styled(format!(" ({})", self.outline.child_count(id)), theme.muted),
                 ])
             }
             Row::Item(item) => {
-                let mut spans = vec![Span::styled(ITEM_INDENT, theme.text)];
+                let indent = INDENT.repeat(self.outline.depth(id) + 1);
+                let mut spans = vec![Span::styled(indent, theme.text)];
                 spans.extend(filter::highlight(
                     &item.library.short_label(),
                     &self.outline.matched(id),
@@ -93,7 +106,7 @@ impl LibraryTab {
         };
         match &self.rows[id] {
             Row::Item(item) => detail_text(item, theme),
-            Row::Package { .. } => Line::default(),
+            Row::Agents | Row::Package { .. } => Line::default(),
         }
     }
 
