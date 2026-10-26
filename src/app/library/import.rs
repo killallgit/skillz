@@ -1,24 +1,31 @@
 use super::catalog::Catalog;
 use super::item::LibraryItem;
 use super::provenance::Provenance;
+use crate::app::merge::merge;
 use crate::app::snapshot::{Skipped, collect};
 use skillz_harness::model::Installed;
 
 /// Reinstallable entries from the installed `items`, each with the provenance its
 /// installer left; what they leave out (needing secrets, or with nothing to reinstall from) is
-/// returned apart.
+/// returned apart. Copies of one thing seen through several agents give one entry, taken from
+/// the first copy.
 pub(super) fn collect_installed(
     items: &[Installed],
     recorded_at: u64,
 ) -> (Vec<LibraryItem>, Vec<Skipped>) {
     let mut kept = vec![];
     let mut skipped = vec![];
-    for item in items {
-        let (entries, left_out) = collect(std::slice::from_ref(item));
+    for item in merge(items.to_vec()) {
+        // One entry for the logical item: `collect` would split it back into its copies.
+        let item = Installed {
+            members: Vec::new(),
+            ..item
+        };
+        let (entries, left_out) = collect(std::slice::from_ref(&item));
         skipped.extend(left_out);
         for entry in entries {
             for each in LibraryItem::each_of(entry) {
-                kept.push(each.with_provenance(Provenance::of(item, recorded_at)));
+                kept.push(each.with_provenance(Provenance::of(&item, recorded_at)));
             }
         }
     }
