@@ -1,11 +1,13 @@
-//! A rounded, bordered pane with a title and an optional right-aligned badge such as `3/12`.
+//! A pane with a title and an optional right-aligned badge such as `3/12`: a rounded border for
+//! dialogs and screens that must stand out, or `bare`, a single header line for the lists that
+//! fill a tab.
 
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::symbols::border::ROUNDED;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders};
+use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::tui::theme::Theme;
 
@@ -15,6 +17,7 @@ pub struct Panel {
     badge: Option<String>,
     focused: bool,
     danger: bool,
+    bare: bool,
 }
 
 impl Panel {
@@ -24,6 +27,7 @@ impl Panel {
             badge: None,
             focused: false,
             danger: false,
+            bare: false,
         }
     }
 
@@ -43,6 +47,12 @@ impl Panel {
         self
     }
 
+    /// No border: the title and badge sit on one line above the content.
+    pub fn bare(mut self) -> Self {
+        self.bare = true;
+        self
+    }
+
     pub fn block(&self, theme: &Theme) -> Block<'static> {
         let mut block = Block::new()
             .borders(Borders::ALL)
@@ -55,12 +65,25 @@ impl Panel {
         block
     }
 
-    /// Draw the frame and return the area inside it.
+    /// Draw the frame, or the header line of a bare pane, and return the area for the content.
     pub fn render(&self, frame: &mut Frame, area: Rect, theme: &Theme) -> Rect {
+        if self.bare {
+            return self.render_header(frame, area, theme);
+        }
         let block = self.block(theme);
         let inner = block.inner(area);
         frame.render_widget(block, area);
         inner
+    }
+
+    fn render_header(&self, frame: &mut Frame, area: Rect, theme: &Theme) -> Rect {
+        let [header, rest] =
+            Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+        frame.render_widget(Paragraph::new(self.title_line(theme)), header);
+        if let Some(badge) = &self.badge {
+            frame.render_widget(Paragraph::new(self.badge_line(badge, theme)), header);
+        }
+        rest
     }
 
     fn border_style(&self, theme: &Theme) -> Style {
@@ -140,5 +163,28 @@ mod tests {
             inner = Panel::new("t").render(f, f.area(), &theme)
         });
         assert_eq!(inner, Rect::new(1, 1, 8, 3));
+    }
+
+    #[test]
+    fn a_bare_pane_has_a_header_line_and_no_border() {
+        let theme = Theme::dark();
+        let mut inner = Rect::default();
+        let buffer = render_to_buffer(20, 4, |f| {
+            inner = Panel::new("t")
+                .bare()
+                .badge("3/12")
+                .render(f, f.area(), &theme)
+        });
+
+        assert_eq!(inner, Rect::new(0, 1, 20, 3));
+        let borders = ["╭", "╮", "╰", "╯", "│", "─"];
+        assert!(
+            buffer
+                .content()
+                .iter()
+                .all(|cell| !borders.contains(&cell.symbol()))
+        );
+        assert_eq!(buffer[(1, 0)].symbol(), "t");
+        assert_eq!(buffer[(18, 0)].symbol(), "2");
     }
 }

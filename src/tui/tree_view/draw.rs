@@ -1,7 +1,7 @@
 //! Drawing the tree: a focused panel around the list, a key bar or filter line, and overlays.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, Layout, Margin, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
@@ -60,8 +60,9 @@ impl TreeState {
     fn draw_list(&mut self, title: &str, frame: &mut Frame, area: Rect, theme: &Theme) {
         let panel = Panel::new(filter::title(title, self.outline.query()))
             .focused(true)
+            .bare()
             .badge(self.badge());
-        let inner = panel.render(frame, area, theme);
+        let inner = panel.render(frame, area, theme).inner(Margin::new(1, 0));
         if self.outline.visible().is_empty() {
             return empty::render(frame, inner, self.empty_message(theme));
         }
