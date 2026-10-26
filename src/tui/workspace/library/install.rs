@@ -36,15 +36,11 @@ pub(super) struct InstallDialog {
 
 impl InstallDialog {
     /// A dialog for `entry` offering `available` tools; the entry's own tools start checked,
-    /// or every tool when it names none.
+    /// or every tool when it names none. An entry that names only tools that are not available
+    /// starts with none checked rather than being widened to every tool.
     pub(super) fn new(label: &str, entry: &Spec, available: &[Agent]) -> Self {
-        let wanted: Vec<Agent> = entry
-            .agents()
-            .iter()
-            .copied()
-            .filter(|agent| available.contains(agent))
-            .collect();
-        let checked = |agent: &Agent| wanted.is_empty() || wanted.contains(agent);
+        let named = entry.agents();
+        let checked = |agent: &Agent| named.is_empty() || named.contains(agent);
         InstallDialog {
             title: format!("Install {label}"),
             scope: Scope::Project,
@@ -102,14 +98,25 @@ impl InstallDialog {
         };
         let inner = modal::open(frame, size, Panel::new(self.title.clone()), theme);
         let mut lines = vec![Line::styled("Where", theme.muted)];
+        let mut cursor_line = 0;
         for (at, (scope, label)) in SCOPES.iter().enumerate() {
             let mark = if *scope == self.scope { "(*)" } else { "( )" };
+            cursor_line = if at == self.cursor {
+                lines.len()
+            } else {
+                cursor_line
+            };
             lines.push(self.row(at, format!("{mark} {label}"), theme));
         }
         lines.push(Line::default());
         lines.push(Line::styled("For", theme.muted));
         for (at, (agent, on)) in self.tools.iter().enumerate() {
             let mark = if *on { "[x]" } else { "[ ]" };
+            cursor_line = if SCOPES.len() + at == self.cursor {
+                lines.len()
+            } else {
+                cursor_line
+            };
             lines.push(self.row(SCOPES.len() + at, format!("{mark} {agent}"), theme));
         }
         lines.push(Line::default());
@@ -117,7 +124,8 @@ impl InstallDialog {
             "space choose · enter install · esc cancel",
             theme.muted,
         ));
-        frame.render_widget(Paragraph::new(lines), inner);
+        let skip = first_visible(cursor_line, usize::from(inner.height));
+        frame.render_widget(Paragraph::new(lines.split_off(skip)), inner);
     }
 
     fn row(&self, at: usize, text: String, theme: &Theme) -> Line<'static> {
@@ -126,5 +134,46 @@ impl InstallDialog {
             false => theme.text,
         };
         Line::styled(format!(" {text}"), style)
+    }
+}
+
+/// The first line to draw so that line `cursor` is inside `room` lines.
+fn first_visible(cursor: usize, room: usize) -> usize {
+    (cursor + 1).saturating_sub(room)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_cursor_line_is_always_inside_the_window() {
+        for room in 1..12 {
+            for cursor in 0..12 {
+                let first = first_visible(cursor, room);
+                assert!(
+                    (first..first + room).contains(&cursor),
+                    "{cursor} in {room}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn nothing_scrolls_when_everything_fits() {
+        assert_eq!(first_visible(4, 20), 0);
+    }
+
+    #[test]
+    fn an_entry_naming_only_tools_that_are_not_available_starts_with_none_checked() {
+        let entry = Spec::Skill {
+            source: "o/r".into(),
+            names: vec!["tdd".into()],
+            agents: vec![Agent::Codex],
+        };
+
+        let dialog = InstallDialog::new("tdd", &entry, &[Agent::Claude]);
+
+        assert_eq!(dialog.install(), None);
     }
 }
