@@ -154,7 +154,7 @@ impl ListView {
                 false => Line::from(Span::styled("│", theme.border)),
             })
             .collect();
-        let track = Rect::new(area.right() - 1, area.y, 1, area.height);
+        let track = Rect::new(area.right().saturating_sub(1), area.y, 1, area.height);
         frame.render_widget(Paragraph::new(cells), track);
     }
 
@@ -165,7 +165,13 @@ impl ListView {
         }
         if self.hidden_below() > 0 {
             let text = format!("↓ {} more", self.hidden_below());
-            hint(frame, content, content.bottom() - 1, &text, theme);
+            hint(
+                frame,
+                content,
+                content.bottom().saturating_sub(1),
+                &text,
+                theme,
+            );
         }
     }
 }
@@ -376,5 +382,19 @@ mod tests {
         let buffer = render_to_buffer(20, 5, |f| view.render(f, f.area(), &rows(20), &theme));
         assert!(row_text(&buffer, 4).contains("15"));
         assert!(!row_text(&buffer, 0).contains('↑'));
+    }
+
+    #[test]
+    fn a_list_in_an_empty_width_draws_nothing_instead_of_panicking() {
+        let theme = Theme::dark();
+        let rows: Vec<Line<'static>> = (0..30).map(|n| Line::from(format!("row {n}"))).collect();
+        let mut list = ListView::new(rows.len());
+
+        render_to_buffer(10, 5, |frame| {
+            list.render(frame, Rect::ZERO, &rows, &theme);
+            list.render(frame, Rect::new(3, 0, 1, 4), &rows, &theme);
+        });
+
+        assert_eq!(list.selected(), Some(0));
     }
 }
