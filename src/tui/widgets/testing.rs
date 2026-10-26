@@ -5,6 +5,8 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use super::outline::Outline;
+
 /// Draw one frame on an in-memory terminal and hand back its cells.
 pub fn render_to_buffer(width: u16, height: u16, draw: impl FnOnce(&mut ratatui::Frame)) -> Buffer {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -29,4 +31,16 @@ pub fn ctrl(c: char) -> KeyEvent {
 /// One key press per character of `s`.
 pub fn keys(s: &str) -> Vec<KeyEvent> {
     s.chars().map(|c| key(KeyCode::Char(c))).collect()
+}
+
+/// Open every group of `outline`, outermost first.
+pub fn open_all(outline: &mut Outline) {
+    while let Some(id) = outline
+        .visible()
+        .iter()
+        .copied()
+        .find(|&id| outline.child_count(id) > 0 && !outline.is_open(id))
+    {
+        outline.toggle_open(id);
+    }
 }

@@ -3,6 +3,7 @@ use ratatui::crossterm::event::KeyCode;
 use super::rows::tests::skill;
 use super::*;
 use crate::app::library::LibraryItem;
+use crate::tui::widgets::testing::open_all;
 use crate::tui::widgets::testing::{key, keys, render_to_buffer};
 use skillz_harness::model::{Agent, Installed, Installer, Kind, Scope as Level};
 
@@ -49,7 +50,7 @@ fn model() -> Model {
 fn loaded() -> ProfilesTab {
     let mut tab = ProfilesTab::new();
     tab.load(&model());
-    tab.list.open_all();
+    open_all(&mut tab.list);
     tab
 }
 
@@ -121,7 +122,7 @@ fn n_opens_one_modal_that_names_and_fills_the_new_profile() {
     type_in(&mut tab, "docs");
     // Move to the list, open past the section, check the first library skill, save.
     press(&mut tab, KeyCode::Tab);
-    [KeyCode::Down, KeyCode::Char(' ')]
+    [KeyCode::Right, KeyCode::Down, KeyCode::Char(' ')]
         .into_iter()
         .for_each(|code| {
             press(&mut tab, code);
@@ -173,11 +174,16 @@ fn editing_writes_the_checked_library_items_into_the_profile() {
 
     char_key(&mut tab, 'e');
     // The section, a (checked), b: check b.
-    [KeyCode::Down, KeyCode::Down, KeyCode::Char(' ')]
-        .into_iter()
-        .for_each(|code| {
-            press(&mut tab, code);
-        });
+    [
+        KeyCode::Right,
+        KeyCode::Down,
+        KeyCode::Down,
+        KeyCode::Char(' '),
+    ]
+    .into_iter()
+    .for_each(|code| {
+        press(&mut tab, code);
+    });
     let act = press(&mut tab, KeyCode::Enter);
 
     assert_eq!(

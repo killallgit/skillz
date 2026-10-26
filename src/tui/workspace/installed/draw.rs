@@ -98,11 +98,34 @@ impl InstalledTab {
     }
 
     fn row_line(&self, id: usize, theme: &Theme) -> Line<'static> {
-        match &self.rows[id] {
+        let mut line = match &self.rows[id] {
+            Row::Inherited => {
+                let count = self.rows[id + 1..]
+                    .iter()
+                    .filter(|row| matches!(row, Row::Item(_)))
+                    .count();
+                let rule = theme.glyphs.rule.repeat(2);
+                Line::from(format!(
+                    "{rule} {} Global installs · read only ({count}) {rule}",
+                    self.outline.caret(id, &theme.glyphs)
+                ))
+            }
             Row::Section(kind) => self.section_line(id, *kind, theme),
             Row::Package(group) => self.group_line(id, group, theme),
             Row::Item(item) => self.item_line(id, item, theme),
+            Row::Detail(label) => Line::styled(
+                format!("{}{label}", INDENT.repeat(self.outline.depth(id) + 2)),
+                theme.muted,
+            ),
+        };
+        if self.read_only(id) {
+            let dim = theme.muted.add_modifier(Modifier::DIM);
+            line.style = dim;
+            for span in &mut line.spans {
+                span.style = dim;
+            }
         }
+        line
     }
 
     /// The spinner, tick or cross of a change under way on the row; a space otherwise.
@@ -120,7 +143,10 @@ impl InstalledTab {
 
     fn item_line(&self, row: usize, item: &Item, theme: &Theme) -> Line<'static> {
         let glyphs = &theme.glyphs;
-        let picked = self.pending.contains(&item.id);
+        // Picks, change progress and update marks are keyed by id; a read-only row shows none
+        // of them, whatever id a project row shares with it.
+        let live = !self.read_only(row);
+        let picked = live && self.pending.contains(&item.id);
         let (box_glyph, box_style, text_style) = match picked {
             false => (
                 glyphs.checked,
@@ -129,12 +155,19 @@ impl InstalledTab {
             ),
             true => (glyphs.to_remove, theme.warn, theme.warn),
         };
-        let mut spans = vec![
-            Span::raw(INDENT.repeat(self.outline.depth(row))),
-            self.status_mark(&item.id, theme),
-            Span::styled(format!(" {box_glyph} "), box_style),
-        ];
-        let outdated = self.is_outdated(&item.id);
+        let mut spans = vec![Span::raw(INDENT.repeat(self.outline.depth(row)))];
+        if !item.children.is_empty() {
+            spans.push(Span::styled(
+                format!("{} ", self.outline.caret(row, glyphs)),
+                theme.muted,
+            ));
+        }
+        let status = match live {
+            true => self.status_mark(&item.id, theme),
+            false => Span::raw(" "),
+        };
+        spans.extend([status, Span::styled(format!(" {box_glyph} "), box_style)]);
+        let outdated = live && self.is_outdated(&item.id);
         let text_style = match outdated {
             true => text_style.add_modifier(Modifier::BOLD),
             false => text_style,

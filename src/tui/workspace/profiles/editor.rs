@@ -77,8 +77,7 @@ impl Editor {
             .filter(|&id| matches!(&rows[id], Row::Item(item) if has(&item.entry)))
             .collect();
         let offered = |entry: &Spec| library.items().iter().any(|i| same_thing(&i.entry, entry));
-        let mut outline = Outline::new(rows::shape(&rows));
-        outline.open_all();
+        let outline = Outline::new(rows::shape(&rows));
         Editor {
             name: None,
             profile: profile.name.clone(),
@@ -274,6 +273,7 @@ mod tests {
     use super::*;
     use crate::app::library::LibraryItem;
     use crate::tui::widgets::testing::key;
+    use crate::tui::widgets::testing::open_all;
 
     fn library() -> Catalog {
         Catalog::from_items(vec![
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn items_the_profile_has_start_checked_and_saving_keeps_them() {
         let mut chooser = Editor::editing(&profile_with(vec![skill("a")]), &library());
-        chooser.outline.open_all();
+        open_all(&mut chooser.outline);
 
         let choice = press(&mut chooser, &[KeyCode::Enter]);
 
@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn space_checks_and_unchecks_the_item_under_the_cursor() {
         let mut chooser = Editor::editing(&profile_with(vec![skill("a")]), &library());
-        chooser.outline.open_all();
+        open_all(&mut chooser.outline);
 
         // Section, a, b: check b, then uncheck a.
         press(&mut chooser, &[KeyCode::Down, KeyCode::Down, SPACE]);
@@ -331,7 +331,7 @@ mod tests {
     fn entries_the_library_does_not_offer_are_kept() {
         let mine = skill("mine");
         let mut chooser = Editor::editing(&profile_with(vec![mine.clone()]), &library());
-        chooser.outline.open_all();
+        open_all(&mut chooser.outline);
 
         press(&mut chooser, &[KeyCode::Down, SPACE]);
         let choice = press(&mut chooser, &[KeyCode::Enter]);
@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn space_on_a_section_collapses_it_without_checking_anything() {
         let mut chooser = Editor::editing(&profile_with(vec![]), &library());
-        chooser.outline.open_all();
+        open_all(&mut chooser.outline);
 
         press(&mut chooser, &[SPACE]);
 
@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn escape_closes_without_a_result() {
         let mut chooser = Editor::editing(&profile_with(vec![]), &library());
-        chooser.outline.open_all();
+        open_all(&mut chooser.outline);
 
         assert_eq!(press(&mut chooser, &[KeyCode::Esc]), Choice::Closed);
     }

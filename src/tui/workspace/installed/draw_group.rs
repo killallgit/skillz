@@ -5,18 +5,22 @@ use ratatui::text::{Line, Span};
 
 use super::InstalledTab;
 use super::draw::INDENT;
-use super::rows::{Group, items_of};
+use super::rows::{Group, items_of, plural};
 use crate::app::library::ItemKind;
 use crate::tui::theme::Theme;
+use skillz_harness::model::Kind;
 
 impl InstalledTab {
-    pub(super) fn section_line(&self, id: usize, kind: ItemKind, theme: &Theme) -> Line<'static> {
+    pub(super) fn section_line(&self, id: usize, kind: Kind, theme: &Theme) -> Line<'static> {
         let caret = self.outline.caret(id, &theme.glyphs);
+        let indent = INDENT.repeat(self.outline.depth(id));
         let count = items_of(&self.rows, id).count();
         let mut spans = vec![
             Span::styled(
-                format!("{caret} {}", kind.plural()),
-                theme.kind_style(kind).add_modifier(Modifier::BOLD),
+                format!("{indent}{caret} {}", plural(kind)),
+                ItemKind::of(kind)
+                    .map_or(theme.title, |kind| theme.kind_style(kind))
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(format!(" ({count})"), theme.muted),
         ];

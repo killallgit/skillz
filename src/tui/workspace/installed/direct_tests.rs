@@ -32,6 +32,30 @@ fn r_on_a_plugin_removes_the_whole_plugin() {
 }
 
 #[test]
+fn a_plugin_expands_but_its_contents_cannot_be_removed_separately() {
+    let mut tab = loaded();
+    on_item(&mut tab, PLUGIN);
+    let before = tab.outline.visible().len();
+    press(&mut tab, KeyCode::Right);
+    assert_eq!(tab.outline.visible().len(), before + 2);
+    let child = tab
+        .rows
+        .iter()
+        .position(|row| matches!(row, Row::Detail(_)))
+        .unwrap();
+    on_item(&mut tab, child);
+    assert_eq!(press(&mut tab, KeyCode::Char('r')), None);
+    assert_eq!(press(&mut tab, KeyCode::Char('u')), None);
+    press(&mut tab, KeyCode::Char(' '));
+    assert!(tab.pending.is_empty());
+    on_item(&mut tab, PLUGIN);
+    assert_eq!(
+        press(&mut tab, KeyCode::Char('r')),
+        remove(&["plugin:p@mp"])
+    );
+}
+
+#[test]
 fn r_on_a_package_removes_everything_installed_from_it() {
     let mut tab = InstalledTab::project();
     tab.load_open(&Model {
