@@ -3,6 +3,7 @@
 //! from the library each time the workspace loads a new snapshot.
 
 mod draw;
+mod install;
 mod keys;
 mod rows;
 #[cfg(test)]
@@ -12,6 +13,7 @@ use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 
+use self::install::InstallDialog;
 use self::rows::{Row, build, shape};
 use super::tab::Tab;
 use crate::app::library::Held;
@@ -24,6 +26,7 @@ use crate::tui::widgets::confirm::ConfirmDialog;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
 use skillz_harness::Spec;
+use skillz_harness::model::Agent;
 
 /// Which popup, if any, has the keys.
 #[derive(Debug, Clone, Default)]
@@ -34,12 +37,16 @@ enum Popup {
     Add(InputField),
     /// Asking whether to remove this entry from the library.
     Remove(ConfirmDialog, Spec),
+    /// Choosing where and for which tools to install this entry.
+    Install(InstallDialog, Spec),
 }
 
 pub struct LibraryTab {
     rows: Vec<Row>,
     outline: Outline,
     popup: Popup,
+    /// The tools an install can be made for.
+    agents: Vec<Agent>,
 }
 
 impl LibraryTab {
@@ -48,6 +55,7 @@ impl LibraryTab {
             rows: vec![],
             outline: Outline::new(vec![]),
             popup: Popup::None,
+            agents: vec![],
         }
     }
 }
@@ -62,6 +70,7 @@ impl Tab for LibraryTab {
     }
 
     fn load(&mut self, model: &Model) {
+        self.agents.clone_from(&model.agents);
         self.rows = build(
             &model.library,
             &Held::of(&model.installed, &model.global),

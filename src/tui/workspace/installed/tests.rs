@@ -21,6 +21,7 @@ pub(super) fn model() -> Model {
             installed("tdd", Kind::Skill, Some("o/r")),
         ],
         global: vec![],
+        agents: vec![],
         library: Default::default(),
         profiles: vec![web],
         applied: None,

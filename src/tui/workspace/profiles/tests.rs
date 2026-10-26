@@ -37,6 +37,7 @@ fn model() -> Model {
         dir: "~/app".into(),
         installed: vec![installed("a")],
         global: vec![],
+        agents: vec![],
         library: Catalog::from_items(vec![
             LibraryItem::from_entry(skill("a")),
             LibraryItem::from_entry(skill("b")),

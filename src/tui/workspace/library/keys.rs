@@ -2,6 +2,7 @@
 
 use ratatui::crossterm::event::KeyEvent;
 
+use super::install::{InstallDialog, Verdict};
 use super::rows::Row;
 use super::{LibraryTab, Popup};
 use crate::app::workspace::Act;
@@ -20,6 +21,7 @@ impl LibraryTab {
             Popup::Filter => self.handle_filter(key),
             Popup::Add(field) => self.handle_add(field, key),
             Popup::Remove(dialog, entry) => self.handle_remove(dialog, entry, key),
+            Popup::Install(dialog, entry) => self.handle_install(dialog, entry, key),
         }
     }
 
@@ -28,7 +30,7 @@ impl LibraryTab {
             Action::Filter => self.popup = Popup::Filter,
             Action::Back if self.outline.is_filtered() => self.outline.clear_filter(),
             Action::Add => self.popup = Popup::Add(InputField::new(ADD_PLACEHOLDER)),
-            Action::Import => return Some(Act::LibraryImport),
+            Action::Install => self.ask_to_install(),
             Action::Delete => self.ask_to_remove(),
             Action::Toggle | Action::Select => self.toggle_group(),
             movement => self.outline.navigate(movement),
@@ -48,6 +50,38 @@ impl LibraryTab {
             let dialog = ConfirmDialog::new("Remove from library", format!("Remove {entry}?"));
             self.popup = Popup::Remove(dialog, entry);
         }
+    }
+
+    fn ask_to_install(&mut self) {
+        let item = self.outline.current().and_then(|id| match &self.rows[id] {
+            Row::Item(item) => Some(item),
+            Row::Agents | Row::Package { .. } => None,
+        });
+        if let Some(item) = item {
+            let dialog = InstallDialog::new(
+                &item.library.short_label(),
+                &item.library.entry,
+                &self.agents,
+            );
+            self.popup = Popup::Install(dialog, item.library.entry.clone());
+        }
+    }
+
+    fn handle_install(
+        &mut self,
+        mut dialog: InstallDialog,
+        entry: Spec,
+        key: KeyEvent,
+    ) -> Option<Act> {
+        match dialog.handle(key) {
+            Verdict::Open => self.popup = Popup::Install(dialog, entry),
+            Verdict::Cancel => {}
+            Verdict::Install { scope, agents } => {
+                let entry = entry.with_agents(agents);
+                return Some(Act::LibraryInstall { scope, entry });
+            }
+        }
+        None
     }
 
     fn toggle_group(&mut self) {

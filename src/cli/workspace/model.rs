@@ -21,6 +21,11 @@ pub(super) fn snapshot(session: &Session, notice: Option<Notice>) -> anyhow::Res
         dir: short_path(session.project(), &deps.home),
         installed: installed(deps, &env, Scope::Project),
         global: installed(deps, &env, Scope::Global),
+        agents: deps
+            .adapters
+            .iter()
+            .map(|adapter| adapter.agent())
+            .collect(),
         library,
         profiles: session
             .profiles()

@@ -92,7 +92,7 @@ then the same install and removal steps):
 | `A` add from a repo: type `owner/repo`, a git URL or a path | `install SOURCE` |
 | The Project header: the applied profile, matches / N missing / N extra | `profile status [NAME] [--json]`, `profile list [--json]` |
 | Project: `a` apply a profile (`m` switches replace / add what is missing), `p` keep some of its entries, `c` clear | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`), `uninstall` |
-| Library: `a` add a typed line, `x` remove, `i` sync installed | `library add "skill o/r tdd"`, `library remove QUERY`, `sync` |
+| Library: `a` add a typed line, `x` remove, `i` install the highlighted item | `library add "skill o/r tdd"`, `library remove QUERY`, `library install QUERY [-g]`, `sync` |
 | Library: origin, link, version, installed in project / global | `library list [--json]` |
 | Profiles: `n` new, `enter` / `e` edit, `x` delete; Project: `s` save the project as a profile | `profile new`, `profile add` / `profile remove`, `profile save`, `profile delete` |
 | `/` filter, `space` fold, `?` help, `tab`, movement keys | on screen only: `list QUERY` and `list --all` do the same for the command line |
@@ -213,7 +213,7 @@ for every agent (skills, plugins, MCP servers, hooks, subagents), and adds what 
 not have yet, marked as *detected* in its provenance. The workspace is shown at once; when the scan
 ends the Library tab fills and a toast says how many were new (and how many MCP servers were left
 out for needing secrets). The same scan runs as `skillz sync`, after every install, update or
-change, and on `i` in the Library tab. It only ever adds: a second run adds nothing, labels you
+change. It only ever adds: a second run adds nothing, labels you
 gave are kept, and items that are no longer installed stay. The only way out of the library is its
 remove key (`x`) or removing it by hand in `store.json`. `SKILLZ_NO_SYNC=1` turns the startup scan
 off. A hand-made skill or subagent is recorded by the directory that holds it (engine `local`,
@@ -303,7 +303,9 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   starts with how it got there (*detected*, *added by skillz* or *added by hand*), then shows the
   link, how it was installed (`npx skills`, `claude plugin`, `codex plugin`, `manual`) and the
   version or hash recorded. A `project` or `global` tag after a name says where the item is
-  installed right now; no tag means it is only in the library.
+  installed right now; no tag means it is only in the library. `i` on an item opens a dialog
+  to install it: pick *This project* or *Global* and check the coding tools to install it for
+  (`space` chooses, `enter` installs, `esc` cancels). The tools the item names start checked.
 - **Profiles**: your saved combinations, kept apart from any project: make, edit and delete
   them here, and apply them from the Project tab. It is one list, each profile with its entries
   under it. `n` opens a single modal: type the name, `tab` to the library items, `space` to

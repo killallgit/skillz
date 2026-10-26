@@ -23,6 +23,8 @@ pub enum Scope {
     Plan,
     Result,
     Confirm,
+    /// Choosing where and for which tools to install a library item.
+    Install,
 }
 
 impl Scope {
@@ -40,6 +42,7 @@ impl Scope {
             Scope::Plan => "Plan",
             Scope::Result => "Result",
             Scope::Confirm => "Confirm",
+            Scope::Install => "Install",
         }
     }
 }
@@ -74,7 +77,8 @@ pub enum Action {
     /// Remove everything the project has.
     Clear,
     Add,
-    Import,
+    /// Install the highlighted library item.
+    Install,
     Delete,
     NewProfile,
     SaveCurrent,
@@ -139,8 +143,8 @@ const fn bind(
 
 use Action as A;
 use Scope::{
-    Common, Confirm, Filter, Installed, Library, Picker, Plan, Profiles, Project, Result, Tree,
-    Workspace,
+    Common, Confirm, Filter, Install, Installed, Library, Picker, Plan, Profiles, Project, Result,
+    Tree, Workspace,
 };
 
 #[rustfmt::skip]
@@ -177,7 +181,7 @@ pub const BINDINGS: &[Binding] = &[
     bind(Installed, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
     bind(Installed, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
     bind(Library, A::Add, &[ch('a')], "a", "add", 1),
-    bind(Library, A::Import, &[ch('i')], "i", "sync installed", 2),
+    bind(Library, A::Install, &[ch('i')], "i", "install", 2),
     bind(Library, A::Delete, &[ch('x')], "x", "remove", 3),
     bind(Library, A::Filter, &[ch('/')], "/", "filter", 4),
     bind(Library, A::Toggle, &[ch(' ')], "space", "expand", 0),
@@ -191,6 +195,8 @@ pub const BINDINGS: &[Binding] = &[
     bind(Profiles, A::Toggle, &[ch(' ')], "space", "expand", 0),
     bind(Profiles, A::Left, &[plain(KeyCode::Left), ch('h')], "", "", 0),
     bind(Profiles, A::Right, &[plain(KeyCode::Right), ch('l')], "", "", 0),
+    bind(Install, A::Toggle, &[ch(' ')], "space", "choose", 1),
+    bind(Install, A::Select, &[plain(KeyCode::Enter)], "enter", "install", 2),
     bind(Picker, A::Toggle, &[ch(' ')], "space", "check", 0),
     bind(Picker, A::Select, &[plain(KeyCode::Enter)], "enter", "save selection", 0),
     bind(Picker, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),

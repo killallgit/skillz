@@ -4,11 +4,8 @@ use super::Session;
 use super::notice::Notice;
 use crate::app::library::LibraryItem;
 use crate::app::profile::SpecParse;
-use crate::app::stale::Disk;
-use crate::app::sync::sync_library;
-use crate::cli::scope::{complete_installed, project_env};
+use crate::cli::scope::project_env;
 use skillz_harness::Spec;
-use skillz_harness::model::Scope;
 
 impl Session<'_, '_> {
     /// Items typed in carry no provenance; one the library already knows keeps its own.
@@ -20,22 +17,6 @@ impl Session<'_, '_> {
             Ok(())
         })?;
         Ok(Some(Notice::LibraryAdded(label)))
-    }
-
-    /// Sync the library with everything installed in the project and at user level.
-    pub(in crate::cli) fn library_import(&self) -> anyhow::Result<Option<Notice>> {
-        let env = project_env(self.deps, &self.project);
-        let items = [
-            complete_installed(self.deps, &env, Scope::Project)?,
-            complete_installed(self.deps, &env, Scope::Global)?,
-        ]
-        .concat();
-        let report = sync_library(&self.store, &items, (false, &Disk))?;
-        Ok(Some(Notice::Synced {
-            added: report.synced.added.len(),
-            moved: report.synced.repointed.len(),
-            secrets: report.synced.secrets_skipped(),
-        }))
     }
 
     pub(in crate::cli) fn library_remove(&self, entry: &Spec) -> anyhow::Result<Option<Notice>> {
@@ -113,22 +94,6 @@ mod tests {
         });
 
         assert_eq!(saved, 0);
-    }
-
-    #[test]
-    fn importing_an_empty_project_adds_nothing() {
-        let dir = tempfile::tempdir().unwrap();
-
-        let notice = with_session(dir.path(), |session| session.library_import().unwrap());
-
-        assert!(matches!(
-            notice,
-            Some(Notice::Synced {
-                added: 0,
-                moved: 0,
-                secrets: 0
-            })
-        ));
     }
     #[test]
     fn a_normalized_workspace_entry_removes_its_original_library_record() {
