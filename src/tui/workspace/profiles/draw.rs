@@ -26,8 +26,9 @@ impl ProfilesTab {
     fn draw_list(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let panel = Panel::new(filter::title("Profiles", self.list.query()))
             .focused(true)
+            .bare()
             .badge(self.list.badge());
-        let inner = panel.render(frame, area, theme).inner(Margin::new(1, 1));
+        let inner = panel.render(frame, area, theme).inner(Margin::new(1, 0));
         if self.list.visible().is_empty() {
             return empty::render(frame, inner, self.empty_list(theme));
         }

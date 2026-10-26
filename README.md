@@ -274,7 +274,7 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   removing the plugin removes them. Skills hang under the package they came from, as
   `npx skills list` does: an `owner/repo` or `local files`. `hooks` are only the hooks no plugin
   declares. Every row shows its agents and where it lives on disk (the skill's directory, or the
-  config file). The panel title is the directory, or `User-level, all projects`; on Project a
+  config file). The header line is the directory, or `User-level, all projects`; on Project a
   line above it names the profile last applied to the directory and how the directory compares
   with it: matching, or `N missing` / `N extra` (`no profile applied` before the first apply). Picked rows get their own marker and a `to remove` note, and each
   section or package shows its count of picks. `space`, `r` and `u` on a package row act on

@@ -73,8 +73,9 @@ impl InstalledTab {
     fn draw_outline(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let panel = Panel::new(filter::title(self.panel_title(), self.outline.query()))
             .focused(true)
+            .bare()
             .badge(self.outline.badge());
-        let inner = panel.render(frame, area, theme).inner(Margin::new(1, 1));
+        let inner = panel.render(frame, area, theme).inner(Margin::new(1, 0));
         if self.outline.visible().is_empty() {
             return empty::render(frame, inner, self.empty_message(theme));
         }

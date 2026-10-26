@@ -1,7 +1,7 @@
 //! Drawing the Library tab: the outline in a panel, and a line about the highlighted item.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, Layout, Margin, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -29,8 +29,9 @@ impl LibraryTab {
     fn draw_outline(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let panel = Panel::new(filter::title("Library", self.outline.query()))
             .focused(true)
+            .bare()
             .badge(self.outline.badge());
-        let inner = panel.render(frame, area, theme);
+        let inner = panel.render(frame, area, theme).inner(Margin::new(1, 0));
         if self.outline.visible().is_empty() {
             return empty::render(frame, inner, self.empty_message(theme));
         }
