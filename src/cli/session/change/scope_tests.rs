@@ -122,3 +122,41 @@ fn removing_at_global_scope_removes_only_the_global_item() {
         Some(Notice::Changed { removed: 1, .. })
     ));
 }
+
+#[test]
+fn applying_a_plugin_profile_scopes_both_marketplace_and_plugin_commands() {
+    let (home, project) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let env = Env::new(home.path().into(), project.path().into());
+    let mut profile = profile::Profile::new("plugins");
+    profile.entries = vec![skillz_harness::Spec::Plugin {
+        source: "o/r".into(),
+        marketplace: "mp".into(),
+        name: "p".into(),
+        agents: vec![skillz_harness::model::Agent::Claude],
+    }];
+    profile::Store::in_env(&env).save(&profile).unwrap();
+    for (scope, native_scope) in [(Scope::Project, "local"), (Scope::Global, "user")] {
+        let calls = run_in(
+            home.path(),
+            project.path(),
+            scope,
+            &Change::Apply("plugins"),
+        );
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            calls[0],
+            [
+                "plugin",
+                "marketplace",
+                "add",
+                "o/r",
+                "--scope",
+                native_scope
+            ]
+        );
+        assert_eq!(
+            calls[1],
+            ["plugin", "install", "p@mp", "--scope", native_scope]
+        );
+    }
+}
