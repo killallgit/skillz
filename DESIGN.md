@@ -17,7 +17,7 @@ launch information. Display children are presentation only. Hooks retain typed
 handlers. Merging logical items preserves their per-agent members and removal
 plans. Claude marketplace scope comes from settings declarations; its download registry
 is shared metadata. Marketplace removal is limited to the selected scope and preserves
-metadata and clones used by other scopes or projects.
+metadata and clones that another scope, or an install record of another project, still uses.
 
 Profiles contain typed `Spec` values. `profile::Store` reads the store once per
 resolution, then resolves inheritance in memory with cycle detection and cached

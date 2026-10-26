@@ -324,7 +324,8 @@ Project profile applies declare Claude marketplaces and install plugins in the p
 `.claude/settings.local.json`. Claude keeps downloaded marketplaces and plugin caches under
 its user configuration directory; that shared storage does not make them global installs.
 Marketplace scope comes from `extraKnownMarketplaces` in settings, not from the shared
-`known_marketplaces.json` download registry.
+`known_marketplaces.json` download registry. Adding a plugin from the Project tab declares its
+marketplace in the project's `.claude/settings.json`, the same scope the plugin is enabled in.
 
 Installing, removing, updating and applying show a plan first: `=` kept, `-` removed, `+`
 installed, `^` updated, `~` skipped, framed in red when it removes something. `enter` or `y` goes ahead, `d` turns on dry run,
