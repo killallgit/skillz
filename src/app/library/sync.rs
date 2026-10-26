@@ -146,6 +146,37 @@ mod tests {
     }
 
     #[test]
+    fn a_hand_made_skill_copied_for_two_agents_is_one_library_item() {
+        use skillz_harness::model::Agent;
+        let copy = |agent: Agent, dir: &str| Installed {
+            id: format!("skill:{dir}/mine"),
+            agents: vec![agent],
+            installer: Installer::Local,
+            origin: Origin {
+                link: Some(dir.into()),
+                version: None,
+            },
+            ..installed_skill("mine", None)
+        };
+        let mut catalog = Catalog::default();
+
+        let synced = sync_installed(
+            &mut catalog,
+            &[
+                copy(Agent::Claude, "/h/.claude/skills"),
+                copy(Agent::Codex, "/h/.codex/skills"),
+            ],
+            at(7),
+        );
+
+        assert_eq!((synced.added.len(), catalog.items().len()), (1, 1));
+        assert_eq!(
+            catalog.items()[0].entry.agents(),
+            [Agent::Claude, Agent::Codex]
+        );
+    }
+
+    #[test]
     fn what_cannot_be_kept_is_reported_and_not_stored() {
         let mut catalog = Catalog::default();
 
