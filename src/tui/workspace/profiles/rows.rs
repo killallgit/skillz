@@ -51,7 +51,7 @@ pub(super) fn of_profiles<'a>(profiles: impl Iterator<Item = &'a Profile>) -> Ve
         .flat_map(|(at, profile)| {
             let entries = profile.entries.iter().map(move |entry| ListRow::Entry {
                 profile: at,
-                label: entry_label(entry),
+                label: entry.to_string(),
             });
             std::iter::once(ListRow::Profile(at)).chain(entries)
         })
@@ -84,7 +84,8 @@ pub(super) fn of_library(library: &Catalog) -> Vec<Row> {
     grouped(items.collect())
 }
 
-/// The full Spec display starts with its kind; these outlines supply that context.
+/// The full Spec display starts with its kind; the library chooser's sections supply that
+/// context. The profile list has no such sections and keeps the full display.
 fn entry_label(entry: &Spec) -> String {
     let display = entry.to_string();
     display
@@ -151,6 +152,69 @@ pub(super) mod tests {
         let names = ["web".to_string(), "api".to_string()];
         let parents: Vec<_> = list_shape(&rows, &names).into_iter().map(|s| s.0).collect();
         assert_eq!(parents, [None, Some(0), Some(0), None]);
+    }
+
+    #[test]
+    fn profile_entries_of_different_kinds_are_told_apart_in_the_list() {
+        let subagent = Spec::Subagent {
+            source: "o/r".into(),
+            names: vec!["a".into()],
+            agents: vec![],
+        };
+        let mut web = Profile::new("web");
+        web.entries = vec![skill("a"), subagent];
+
+        let labels: Vec<_> = of_profiles([&web].into_iter())
+            .into_iter()
+            .filter_map(|row| match row {
+                ListRow::Entry { label, .. } => Some(label),
+                _ => None,
+            })
+            .collect();
+
+        assert_ne!(labels[0], labels[1]);
+    }
+
+    #[test]
+    fn a_chooser_label_is_the_display_without_its_kind_word_for_every_kind() {
+        let entries = [
+            skill("a"),
+            Spec::Subagent {
+                source: "o/r".into(),
+                names: vec!["a".into()],
+                agents: vec![],
+            },
+            Spec::Plugin {
+                source: "o/r".into(),
+                marketplace: "mp".into(),
+                name: "p".into(),
+                agents: vec![],
+            },
+            Spec::Mcp {
+                name: "m".into(),
+                command: Some("run".into()),
+                args: vec![],
+                url: None,
+                transport: None,
+                agents: vec![],
+            },
+            Spec::Hook {
+                event: "Stop".into(),
+                matcher: None,
+                command: "notify".into(),
+                agents: vec![],
+            },
+        ];
+
+        for entry in entries {
+            let label = entry_label(&entry);
+            let display = entry.to_string();
+            assert!(
+                !label.is_empty() && label.len() < display.len(),
+                "{display}"
+            );
+            assert!(display.ends_with(&label), "{display}");
+        }
     }
 
     #[test]

@@ -311,8 +311,8 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   cursor in the same modal; `x` deletes it.
 
 Expanding a group reveals its immediate children. Nested groups stay closed until opened
-individually, including after their parent is closed and reopened. Profile item names omit
-the repeated kind prefix; source and marketplace details remain visible.
+individually, including after their parent is closed and reopened. In the profile editor, library
+item names omit the kind their section already shows; source and marketplace details remain visible.
 
 | Key | Does |
 | --- | --- |
