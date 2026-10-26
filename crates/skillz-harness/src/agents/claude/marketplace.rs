@@ -1,20 +1,148 @@
 //! Claude marketplaces: discovering the ones installed, and installing a source's plugins.
 
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use super::files::{EXTRA_KNOWN_MARKETPLACES, marketplaces_file};
-use super::records::{Install, Marketplace};
+use super::files::{EXTRA_KNOWN_MARKETPLACES, marketplaces_file, read_json, settings_files};
+use super::records::{Install, Marketplace, marketplaces_from, same_path};
 use super::removal::{plugin_removal, unique_in_order};
 use crate::Spec;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::agents::PluginOffer;
 use crate::agents::plugin::read_marketplace;
+use crate::env::Env;
 use crate::model::{Agent, Installed, Installer, Kind, Scope, split_plugin_id};
 use crate::runner::Cmd;
 
-/// One installed item for a marketplace, removing it with all its plugins.
-pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> Installed {
+/// Marketplace declarations belong to settings scopes; the registry is shared download metadata.
+pub(super) fn installed(
+    env: &Env,
+    scope: Scope,
+    markets: &[Marketplace],
+    installs: &[Install],
+) -> anyhow::Result<Vec<Installed>> {
+    let mut declarations = Vec::new();
+    for declared_scope in [Scope::Global, Scope::Project] {
+        for file in settings_files(env, declared_scope) {
+            // A malformed settings file declares nothing here; hook discovery reports it, and
+            // one broken project file must not hide the user's own plugins.
+            let Ok(settings) = read_json(&file) else {
+                continue;
+            };
+            for market in marketplaces_from(&settings[EXTRA_KNOWN_MARKETPLACES]) {
+                declarations.push((declared_scope, file.clone(), market));
+            }
+        }
+    }
+    let mut names = BTreeSet::new();
+    names.extend(declarations.iter().map(|(_, _, m)| m.name.clone()));
+    let mut out = Vec::new();
+    for name in names {
+        let declared: Vec<_> = declarations
+            .iter()
+            .filter(|(_, _, m)| m.name == name)
+            .collect();
+        let own: Vec<_> = installs
+            .iter()
+            .filter(|i| split_plugin_id(&i.id).1 == name)
+            .collect();
+        let Some((_, _, definition)) = declared.iter().find(|(s, _, _)| *s == scope) else {
+            continue;
+        };
+        // Where the clone lives is Claude's record, never a repo's settings file: removal
+        // deletes that directory.
+        let mut market = definition.clone();
+        market.install_location = markets
+            .iter()
+            .find(|m| m.name == name)
+            .map(|cached| cached.install_location.clone())
+            .unwrap_or_default();
+        let shared = declared.iter().any(|(s, _, _)| *s != scope)
+            || own.iter().any(|i| !in_scope(env, scope, i));
+        let own: Vec<Install> = own
+            .into_iter()
+            .filter(|i| in_scope(env, scope, i))
+            .cloned()
+            .collect();
+        let files: Vec<PathBuf> = declared
+            .iter()
+            .filter(|(s, _, _)| *s == scope)
+            .map(|(_, file, _)| file.clone())
+            .collect();
+        let removal = scoped_removal(env, &market, (&files, scope), &own, shared);
+        out.push(installed_item(scope, &market, &own, removal));
+    }
+    Ok(out)
+}
+
+fn in_scope(env: &Env, scope: Scope, install: &Install) -> bool {
+    match (scope, &install.project) {
+        (Scope::Global, None) => true,
+        (Scope::Project, Some(project)) => same_path(project, &env.project),
+        _ => false,
+    }
+}
+
+/// `declared` are the settings files of `scope` that declare `market`: the CLI fails on a
+/// scope that does not, so only these get a removal step.
+fn scoped_removal(
+    env: &Env,
+    market: &Marketplace,
+    (declared, scope): (&[PathBuf], Scope),
+    installs: &[Install],
+    shared: bool,
+) -> Vec<Action> {
+    let claude = super::dir(env);
+    let mut steps = unique_in_order(installs.iter().flat_map(|i| plugin_removal(&claude, i)));
+    for file in declared.iter().cloned() {
+        // A shared registry and clone can still serve other projects. Only the selected
+        // declarations and plugin records are ours to remove in that case.
+        if !shared {
+            let native_scope = match scope {
+                Scope::Global => "user",
+                Scope::Project if file.ends_with("settings.local.json") => "local",
+                Scope::Project => "project",
+            };
+            steps.extend(Action::native(
+                "claude",
+                &[
+                    "plugin",
+                    "marketplace",
+                    "remove",
+                    &market.name,
+                    "--scope",
+                    native_scope,
+                ],
+                &[&market.name],
+                &env.project,
+            ));
+        }
+        steps.push(Action::Edit {
+            file,
+            edit: Edit::JsonRemoveKey {
+                path: vec![EXTRA_KNOWN_MARKETPLACES.into(), market.name.clone()],
+            },
+        });
+    }
+    if !shared {
+        steps.push(Action::Edit {
+            file: marketplaces_file(&claude),
+            edit: Edit::JsonRemoveKey {
+                path: vec![market.name.clone()],
+            },
+        });
+        steps.extend(owned_clone(&claude, market).map(Action::RemovePath));
+    }
+    steps
+}
+
+/// One declaration with its scope and the plugins installed there.
+fn installed_item(
+    scope: Scope,
+    m: &Marketplace,
+    installs: &[Install],
+    removal: Vec<Action>,
+) -> Installed {
     let own: Vec<&Install> = installs
         .iter()
         .filter(|i| split_plugin_id(&i.id).1 == m.name)
@@ -25,17 +153,20 @@ pub(super) fn discover(claude: &Path, m: &Marketplace, installs: &[Install]) -> 
         },
         hooks: Vec::new(),
         members: Vec::new(),
-        id: format!("marketplace:claude:{}", m.name),
+        id: match scope {
+            Scope::Global => format!("marketplace:claude:{}", m.name),
+            Scope::Project => format!("marketplace:claude:project:{}", m.name),
+        },
         name: m.name.clone(),
         kind: Kind::Marketplace,
         agents: vec![Agent::Claude],
-        scope: Scope::Global,
+        scope,
         group: m.name.clone(),
         source: m.source.clone(),
         installer: Installer::ClaudeCli,
         origin: Default::default(),
         children: plugin_names(&own),
-        removal: marketplace_removal(claude, m, &own),
+        removal,
     }
 }
 
@@ -45,26 +176,6 @@ fn plugin_names(installs: &[&Install]) -> Vec<String> {
         .map(|i| split_plugin_id(&i.id).0.to_string())
         .collect();
     names.into_iter().collect()
-}
-
-fn marketplace_removal(claude: &Path, m: &Marketplace, own: &[&Install]) -> Vec<Action> {
-    let mut removal = unique_in_order(own.iter().flat_map(|i| plugin_removal(claude, i)));
-    let args = ["plugin", "marketplace", "remove", &m.name];
-    removal.extend(Action::native("claude", &args, &[&m.name], claude));
-    removal.push(Action::Edit {
-        file: marketplaces_file(claude),
-        edit: Edit::JsonRemoveKey {
-            path: vec![m.name.clone()],
-        },
-    });
-    removal.push(Action::Edit {
-        file: claude.join("settings.json"),
-        edit: Edit::JsonRemoveKey {
-            path: vec![EXTRA_KNOWN_MARKETPLACES.into(), m.name.clone()],
-        },
-    });
-    removal.extend(owned_clone(claude, m).map(Action::RemovePath));
-    removal
 }
 
 /// Only a clone Claude made, as one segment under marketplaces/; a `directory` source's
@@ -107,17 +218,24 @@ fn install_commands(source: &str, marketplace: &str, plugins: &[String], scope: 
             args.iter().map(|s| s.to_string()).collect(),
         )
     };
-    std::iter::once(claude(&["plugin", "marketplace", "add", source]))
-        .chain(plugins.iter().map(|p| {
-            claude(&[
-                "plugin",
-                "install",
-                &format!("{p}@{marketplace}"),
-                "--scope",
-                scope,
-            ])
-        }))
-        .collect()
+    std::iter::once(claude(&[
+        "plugin",
+        "marketplace",
+        "add",
+        source,
+        "--scope",
+        scope,
+    ]))
+    .chain(plugins.iter().map(|p| {
+        claude(&[
+            "plugin",
+            "install",
+            &format!("{p}@{marketplace}"),
+            "--scope",
+            scope,
+        ])
+    }))
+    .collect()
 }
 
 /// A profile's plugin entry for `scope`; `None` for other entries. A project's plugins go in
@@ -149,11 +267,13 @@ pub(super) fn provision(entry: &Spec, scope: Scope, cwd: &Path) -> Option<Vec<Ac
 mod tests {
     use super::super::Claude;
     use super::super::files::installed_file;
-    use super::super::testutil::{by_id, dirs, files, fixture, remove_install, remove_key, rm};
+    use super::super::testutil::{by_id, fixture, write};
     use super::*;
+    use crate::action::execute;
     use crate::agents::Harness;
+    use crate::runner::NoCommands;
     use crate::test_support::{marketplace_fixture, project_with, s};
-    use std::path::PathBuf;
+    use serde_json::json;
 
     fn mp() -> PluginOffer {
         PluginOffer {
@@ -162,149 +282,237 @@ mod tests {
         }
     }
 
-    #[test]
-    fn marketplaces() {
-        let f = fixture();
-        let items = Claude.installed(&f.env, Scope::Global).unwrap();
-        let home = &f.env.home;
-        let installed = installed_file(&home.join(".claude"));
-        let known = marketplaces_file(&home.join(".claude"));
-        let global_settings = home.join(".claude/settings.json");
-
-        let acme = by_id(&items, "marketplace:claude:acme");
-        assert_eq!(acme.kind, Kind::Marketplace);
-        assert_eq!(acme.installer, Installer::ClaudeCli);
-        assert_eq!(acme.name, "acme");
-        assert_eq!(acme.group, "acme");
-        assert_eq!(acme.source.as_deref(), Some("acme/plugins"));
-        assert_eq!(acme.children, ["solo", "tools"]);
-        let p = &f.env.project;
-        let other = f.env.project.parent().unwrap().join("other");
-        assert_eq!(
-            files(&acme.removal),
-            [
-                vec![
-                    remove_key(&global_settings, &["enabledPlugins", "tools@acme"]),
-                    remove_install(&installed, "tools@acme", None),
-                ],
-                dirs(home, "tools", "acme"),
-                vec![
-                    remove_key(
-                        &p.join(".claude/settings.json"),
-                        &["enabledPlugins", "tools@acme"]
-                    ),
-                    remove_key(
-                        &p.join(".claude/settings.local.json"),
-                        &["enabledPlugins", "tools@acme"]
-                    ),
-                    remove_install(&installed, "tools@acme", Some(p)),
-                    remove_key(
-                        &other.join(".claude/settings.json"),
-                        &["enabledPlugins", "solo@acme"]
-                    ),
-                    remove_key(
-                        &other.join(".claude/settings.local.json"),
-                        &["enabledPlugins", "solo@acme"]
-                    ),
-                    remove_install(&installed, "solo@acme", Some(&other)),
-                ],
-                dirs(home, "solo", "acme"),
-                vec![
-                    remove_key(&known, &["acme"]),
-                    remove_key(&global_settings, &["extraKnownMarketplaces", "acme"]),
-                    rm(&home.join(".claude/plugins/marketplaces"), &["acme"]),
-                ],
-            ]
-            .concat()
-        );
-
-        let other_mp = by_id(&items, "marketplace:claude:other");
-        assert_eq!(other_mp.children, ["lint"]);
-        assert_eq!(
-            files(&other_mp.removal),
-            [
-                vec![
-                    remove_key(&global_settings, &["enabledPlugins", "lint@other"]),
-                    remove_install(&installed, "lint@other", None),
-                ],
-                dirs(home, "lint", "other"),
-                vec![
-                    remove_key(&known, &["other"]),
-                    remove_key(&global_settings, &["extraKnownMarketplaces", "other"]),
-                ],
-            ]
-            .concat()
+    fn declare(file: &Path, name: &str) {
+        write(
+            file,
+            &json!({"extraKnownMarketplaces": {name: {
+                "source": {"source": "github", "repo": "o/market"}
+            }}})
+            .to_string(),
         );
     }
 
     #[test]
-    fn marketplace_keeps_locations_outside_its_dir() {
-        let home = Path::new("/h");
-        for loc in [
-            "/Users/x/Code/repo",
+    fn project_declarations_do_not_become_global_installs() {
+        let f = fixture();
+        write(&super::super::dir(&f.env).join("settings.json"), "{}");
+        let local = f.env.project.join(".claude/settings.local.json");
+        declare(&local, "acme");
+        let global = Claude.installed(&f.env, Scope::Global).unwrap();
+        let project = Claude.installed(&f.env, Scope::Project).unwrap();
+        assert!(
+            !global
+                .iter()
+                .any(|i| i.kind == Kind::Marketplace && i.name == "acme")
+        );
+        let market = by_id(&project, "marketplace:claude:project:acme");
+        assert_eq!(market.scope, Scope::Project);
+        assert_eq!(market.children, ["tools"]);
+        assert_eq!(market.source.as_deref(), Some("o/market"));
+    }
+
+    #[test]
+    fn shared_cache_metadata_is_not_a_marketplace_declaration() {
+        let f = fixture();
+        write(&super::super::dir(&f.env).join("settings.json"), "{}");
+        let global = Claude.installed(&f.env, Scope::Global).unwrap();
+        assert!(!global.iter().any(|i| i.kind == Kind::Marketplace));
+    }
+
+    #[test]
+    fn a_marketplace_lists_only_plugins_installed_in_its_scope() {
+        let f = fixture();
+        declare(&super::super::dir(&f.env).join("settings.json"), "acme");
+        let global = Claude.installed(&f.env, Scope::Global).unwrap();
+        let market = by_id(&global, "marketplace:claude:acme");
+        assert_eq!(market.children, ["tools"]);
+    }
+
+    #[test]
+    fn removing_a_global_marketplace_preserves_project_installs_and_shared_metadata() {
+        let f = fixture();
+        let claude = super::super::dir(&f.env);
+        declare(&claude.join("settings.json"), "acme");
+        declare(&f.env.project.join(".claude/settings.local.json"), "acme");
+        let global = Claude.installed(&f.env, Scope::Global).unwrap();
+        let market = by_id(&global, "marketplace:claude:acme");
+        execute(&market.removal, &NoCommands).unwrap();
+        let installs =
+            super::super::records::installs_from(&read_json(&installed_file(&claude)).unwrap());
+        assert!(
+            installs
+                .iter()
+                .any(|i| i.id == "tools@acme" && i.project.as_ref() == Some(&f.env.project))
+        );
+        assert!(
+            !installs
+                .iter()
+                .any(|i| i.id == "tools@acme" && i.project.is_none())
+        );
+        assert!(f.cache.exists());
+        assert!(
+            read_json(&marketplaces_file(&claude))
+                .unwrap()
+                .get("acme")
+                .is_some()
+        );
+        assert!(
+            !Claude
+                .installed(&f.env, Scope::Global)
+                .unwrap()
+                .iter()
+                .any(|i| i.kind == Kind::Marketplace && i.name == "acme")
+        );
+        assert!(
+            Claude
+                .installed(&f.env, Scope::Project)
+                .unwrap()
+                .iter()
+                .any(|i| i.kind == Kind::Marketplace && i.name == "acme")
+        );
+    }
+
+    #[test]
+    fn removing_a_project_marketplace_preserves_other_projects_and_the_user_install() {
+        let f = fixture();
+        let claude = super::super::dir(&f.env);
+        declare(&f.env.project.join(".claude/settings.local.json"), "acme");
+        let project = Claude.installed(&f.env, Scope::Project).unwrap();
+        let market = by_id(&project, "marketplace:claude:project:acme");
+        execute(&market.removal, &NoCommands).unwrap();
+        let installs =
+            super::super::records::installs_from(&read_json(&installed_file(&claude)).unwrap());
+        assert!(
+            installs
+                .iter()
+                .any(|i| i.id == "tools@acme" && i.project.is_none())
+        );
+        assert!(installs.iter().any(|i| i.id == "solo@acme"));
+        assert!(
+            !installs
+                .iter()
+                .any(|i| i.project.as_ref() == Some(&f.env.project))
+        );
+        assert!(f.cache.exists());
+        assert!(
+            !Claude
+                .installed(&f.env, Scope::Project)
+                .unwrap()
+                .iter()
+                .any(|i| i.kind == Kind::Marketplace && i.name == "acme")
+        );
+    }
+
+    #[test]
+    fn a_malformed_settings_file_does_not_hide_the_other_scope() {
+        let f = fixture();
+        declare(&super::super::dir(&f.env).join("settings.json"), "acme");
+        write(&f.env.project.join(".claude/settings.local.json"), "{ nope");
+        let global = Claude.installed(&f.env, Scope::Global).unwrap();
+        assert!(global.iter().any(|i| i.id == "marketplace:claude:acme"));
+    }
+
+    #[test]
+    fn a_settings_file_cannot_pick_the_clone_that_removal_deletes() {
+        let f = fixture();
+        let claude = super::super::dir(&f.env);
+        write(&installed_file(&claude), "{}");
+        write(&marketplaces_file(&claude), "{}");
+        let victim = claude.join("plugins/marketplaces/other");
+        write(
+            &claude.join("settings.json"),
+            &json!({"extraKnownMarketplaces": {"evil": {
+                "source": {"source": "github", "repo": "o/evil"},
+                "installLocation": victim.to_string_lossy(),
+            }}})
+            .to_string(),
+        );
+        let global = Claude.installed(&f.env, Scope::Global).unwrap();
+        let market = by_id(&global, "marketplace:claude:evil");
+        assert!(
+            !market
+                .removal
+                .iter()
+                .any(|action| matches!(action, Action::RemovePath(_)))
+        );
+    }
+
+    #[test]
+    fn a_shared_marketplace_plans_no_native_removal() {
+        let f = fixture();
+        let claude = super::super::dir(&f.env);
+        declare(&claude.join("settings.json"), "acme");
+        declare(&f.env.project.join(".claude/settings.local.json"), "acme");
+        let global = Claude.installed(&f.env, Scope::Global).unwrap();
+        let market = by_id(&global, "marketplace:claude:acme");
+        assert!(
+            !market
+                .removal
+                .iter()
+                .any(|action| matches!(action, Action::Run { args, .. } if args.contains(&"marketplace".to_string())))
+        );
+    }
+
+    #[test]
+    fn a_scope_is_only_asked_to_remove_a_marketplace_it_declares() {
+        let f = fixture();
+        let claude = super::super::dir(&f.env);
+        write(&installed_file(&claude), "{}");
+        write(&claude.join("settings.json"), "{}");
+        declare(&f.env.project.join(".claude/settings.local.json"), "acme");
+        let project = Claude.installed(&f.env, Scope::Project).unwrap();
+        let market = by_id(&project, "marketplace:claude:project:acme");
+        let scopes: Vec<_> = market
+            .removal
+            .iter()
+            .filter_map(|action| match action {
+                Action::Run { args, .. }
+                    if args.starts_with(&s(&["plugin", "marketplace", "remove"])) =>
+                {
+                    args.last().cloned()
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(scopes, ["local"]);
+    }
+
+    #[test]
+    fn removing_an_unused_marketplace_drops_its_registry_and_owned_clone() {
+        let f = fixture();
+        let claude = super::super::dir(&f.env);
+        write(&installed_file(&claude), "{}");
+        declare(&claude.join("settings.json"), "acme");
+        let clone = claude.join("plugins/marketplaces/acme");
+        std::fs::create_dir_all(&clone).unwrap();
+        let global = Claude.installed(&f.env, Scope::Global).unwrap();
+        let market = by_id(&global, "marketplace:claude:acme");
+        execute(&market.removal, &NoCommands).unwrap();
+        assert!(!clone.exists());
+        assert!(
+            read_json(&marketplaces_file(&claude))
+                .unwrap()
+                .get("acme")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn marketplace_keeps_locations_outside_its_owned_clone_root() {
+        for location in [
+            "/src/repo",
             "/h/.claude/plugins/marketplaces",
             "/h/.claude/plugins/marketplaces/../../..",
-            "/h/.claude/plugins/marketplaces/a/../../x",
             "/h/.claude/plugins/marketplaces/a/b",
             "",
         ] {
-            let m = Marketplace {
-                name: "local".into(),
-                source: Some("/Users/x/Code/repo".into()),
-                install_location: loc.into(),
+            let market = Marketplace {
+                name: "mp".into(),
+                source: None,
+                install_location: location.into(),
             };
-
-            let plan = discover(&home.join(".claude"), &m, &[]).removal;
-
-            assert_eq!(
-                files(&plan),
-                [
-                    remove_key(&marketplaces_file(&home.join(".claude")), &["local"]),
-                    remove_key(
-                        &home.join(".claude/settings.json"),
-                        &["extraKnownMarketplaces", "local"]
-                    ),
-                ],
-                "{loc}"
-            );
+            assert!(owned_clone(Path::new("/h/.claude"), &market).is_none());
         }
-    }
-
-    #[test]
-    fn marketplace_removal_runs_claude_first() {
-        let home = Path::new("/h");
-        let user = Install {
-            id: "p@mp".into(),
-            project: None,
-            scope: "user".into(),
-            install_path: None,
-            version: None,
-        };
-        let m = Marketplace {
-            name: "mp".into(),
-            source: None,
-            install_location: String::new(),
-        };
-
-        let plan = discover(&home.join(".claude"), &m, &[user]).removal;
-
-        let runs: Vec<&Action> = plan
-            .iter()
-            .filter(|a| matches!(a, Action::Run { .. }))
-            .collect();
-        assert_eq!(runs.len(), 2);
-        let uninstall = Action::Run {
-            program: "claude".into(),
-            args: ["plugin", "uninstall", "p@mp", "--scope", "user"]
-                .map(String::from)
-                .to_vec(),
-            cwd: PathBuf::from("/h/.claude"),
-            fallback: true,
-        };
-        assert_eq!(*runs[0], uninstall);
-        assert!(
-            matches!(runs[1], Action::Run { args, .. } if args[..3] == ["plugin", "marketplace", "remove"])
-        );
     }
 
     #[test]
@@ -326,7 +534,11 @@ mod tests {
         assert_eq!(
             steps,
             vec![
-                Action::required("claude", s(&["plugin", "marketplace", "add", "o/r"]), cwd),
+                Action::required(
+                    "claude",
+                    s(&["plugin", "marketplace", "add", "o/r", "--scope", "project"]),
+                    cwd
+                ),
                 Action::required(
                     "claude",
                     s(&["plugin", "install", "p1@mp", "--scope", "project"]),

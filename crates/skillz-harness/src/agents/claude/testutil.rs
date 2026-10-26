@@ -126,6 +126,10 @@ pub(super) fn fixture() -> Fixture {
         &marketplaces_file(&home.join(".claude")),
         &known.to_string(),
     );
+    write(
+        &home.join(".claude/settings.json"),
+        &json!({"extraKnownMarketplaces": known}).to_string(),
+    );
     Fixture {
         _tmp: tmp,
         env: Env {

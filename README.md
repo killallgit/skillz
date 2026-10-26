@@ -320,6 +320,13 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 | `?` | all keys for the screen |
 | `q`, `^c` | quit |
 
+Project profile applies declare Claude marketplaces and install plugins in the project's
+`.claude/settings.local.json`. Claude keeps downloaded marketplaces and plugin caches under
+its user configuration directory; that shared storage does not make them global installs.
+Marketplace scope comes from `extraKnownMarketplaces` in settings, not from the shared
+`known_marketplaces.json` download registry. Adding a plugin from the Project tab declares its
+marketplace in the project's `.claude/settings.json`, the same scope the plugin is enabled in.
+
 Installing, removing, updating and applying show a plan first: `=` kept, `-` removed, `+`
 installed, `^` updated, `~` skipped, framed in red when it removes something. `enter` or `y` goes ahead, `d` turns on dry run,
 `s` shows the raw steps, `esc` cancels. A progress screen follows, then a result with counts and
@@ -382,7 +389,7 @@ non-UTF-8 locale). `SKILLZ_NO_MOUSE` (any value) turns mouse capture off.
 | Subagent | the definition file and its `.skillz-sources.json` entry |
 | MCP server | `claude mcp remove` / `codex mcp remove`, then its config entry |
 | Claude plugin | `enabledPlugins` entry, install record, cache + data dirs once no scope uses it |
-| Claude marketplace | its plugins, `known_marketplaces.json` entry, `extraKnownMarketplaces`, its clone (never a local directory source) |
+| Claude marketplace | declarations and plugins in the selected scope; shared installs and metadata stay. An unused registry entry and owned clone are removed (never a local directory source) |
 | Codex plugin / marketplace | `config.toml` tables, hook trust state, plugin cache |
 
 ## Development

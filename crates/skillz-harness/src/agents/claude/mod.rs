@@ -75,13 +75,7 @@ impl Harness for Claude {
             Agent::Claude,
             scope,
         )?);
-        if scope == Scope::Global {
-            out.extend(
-                markets
-                    .iter()
-                    .map(|m| marketplace::discover(&dir(env), m, &installs)),
-            );
-        }
+        out.extend(marketplace::installed(env, scope, &markets, &installs)?);
         Ok(out)
     }
 
