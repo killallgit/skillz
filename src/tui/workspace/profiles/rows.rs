@@ -51,7 +51,7 @@ pub(super) fn of_profiles<'a>(profiles: impl Iterator<Item = &'a Profile>) -> Ve
         .flat_map(|(at, profile)| {
             let entries = profile.entries.iter().map(move |entry| ListRow::Entry {
                 profile: at,
-                label: entry.to_string(),
+                label: entry_label(entry),
             });
             std::iter::once(ListRow::Profile(at)).chain(entries)
         })
@@ -75,10 +75,21 @@ pub(super) fn list_shape(rows: &[ListRow], names: &[String]) -> Vec<Shape> {
 
 pub(super) fn of_library(library: &Catalog) -> Vec<Row> {
     let items = library.items().iter().map(|item| Item {
-        label: item.label.clone(),
+        label: match item.label == item.entry.to_string() {
+            true => entry_label(&item.entry),
+            false => item.label.clone(),
+        },
         entry: item.entry.clone(),
     });
     grouped(items.collect())
+}
+
+/// The full Spec display starts with its kind; these outlines supply that context.
+fn entry_label(entry: &Spec) -> String {
+    let display = entry.to_string();
+    display
+        .split_once(' ')
+        .map_or_else(|| display.clone(), |(_, label)| label.to_string())
 }
 
 /// The outline's shape: items hang under the section before them.

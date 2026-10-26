@@ -1,12 +1,13 @@
 //! The rows of the library outline: a group per source package, holding its items.
 
-use crate::app::library::{Catalog, Held, LibraryItem, Presence};
+use crate::app::library::{Catalog, Held, ItemKind, LibraryItem, Presence};
 use crate::app::package::{Package, group_by};
 use crate::app::stale::{Probe, missing_source};
 use crate::tui::widgets::outline::Shape;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Row {
+    Agents,
     Package { package: Package },
     Item(Box<Item>),
 }
@@ -20,8 +21,27 @@ pub(super) struct Item {
 
 /// Every package that has items, each followed by them, in preorder.
 pub(super) fn build(catalog: &Catalog, held: &Held, probe: &dyn Probe) -> Vec<Row> {
-    let items: Vec<&LibraryItem> = catalog.items().iter().collect();
-    group_by(items, |item| Package::of_entry(&item.entry))
+    let (agents, items): (Vec<_>, Vec<_>) = catalog
+        .items()
+        .iter()
+        .partition(|item| item.kind() == ItemKind::Subagent);
+    let mut rows = package_rows(items, held, probe, |item| Package::of_entry(&item.entry));
+    if !agents.is_empty() {
+        rows.push(Row::Agents);
+        rows.extend(package_rows(agents, held, probe, |item| {
+            Package::Source(item.source())
+        }));
+    }
+    rows
+}
+
+fn package_rows(
+    items: Vec<&LibraryItem>,
+    held: &Held,
+    probe: &dyn Probe,
+    package: impl Fn(&LibraryItem) -> Package,
+) -> Vec<Row> {
+    group_by(items, |item| package(item))
         .into_iter()
         .flat_map(|(package, mut items)| {
             items.sort_by_key(|item| (item.kind(), item.short_label().to_lowercase()));
@@ -38,15 +58,20 @@ pub(super) fn build(catalog: &Catalog, held: &Held, probe: &dyn Probe) -> Vec<Ro
         .collect()
 }
 
-/// The outline's shape: items hang under the package before them.
+/// Agents have their own section; each source package holds its items.
 pub(super) fn shape(rows: &[Row]) -> Vec<Shape> {
-    let mut group = None;
+    let (mut section, mut group) = (None, None);
     rows.iter()
         .enumerate()
         .map(|(id, row)| match row {
+            Row::Agents => {
+                section = Some(id);
+                group = None;
+                (None, "Agents".into())
+            }
             Row::Package { package } => {
                 group = Some(id);
-                (None, package.title())
+                (section, package.title())
             }
             Row::Item(item) => (group, item.library.short_label()),
         })

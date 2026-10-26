@@ -297,7 +297,9 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   no reliable check and are never marked. `SKILLZ_NO_UPDATE_CHECK=1` turns the check off;
   `skillz update --check` runs it from the command line.
 - **Library**: the items skillz knows about, grouped by package like the other tabs, with where
-  each came from. The line under the list
+  each came from. Agents have a separate collapsible section, grouped by source repository or
+  directory; local agent directories stay separate. `space` or `enter` folds a section or source
+  group, and filtering an agent keeps its section and source visible. The line under the list
   starts with how it got there (*detected*, *added by skillz* or *added by hand*), then shows the
   link, how it was installed (`npx skills`, `claude plugin`, `codex plugin`, `manual`) and the
   version or hash recorded. A `project` or `global` tag after a name says where the item is
@@ -309,7 +311,8 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   cursor in the same modal; `x` deletes it.
 
 Expanding a group reveals its immediate children. Nested groups stay closed until opened
-individually, including after their parent is closed and reopened.
+individually, including after their parent is closed and reopened. Profile item names omit
+the repeated kind prefix; source and marketplace details remain visible.
 
 | Key | Does |
 | --- | --- |
