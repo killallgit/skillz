@@ -107,7 +107,9 @@ impl Outline {
     }
 
     pub fn toggle_open(&mut self, id: usize) {
-        if !self.has_children[id] {
+        // A filter shows every match open whatever was open before; keep that state for when
+        // it clears.
+        if !self.has_children[id] || self.is_filtered() {
             return;
         }
         // Reopening a group reveals only its immediate children, even if nested groups
@@ -154,14 +156,6 @@ impl Outline {
     /// Where the filter matched in row `id`'s label, for highlighting.
     pub fn matched(&self, id: usize) -> Vec<usize> {
         match_positions(self.query(), &self.labels[id])
-    }
-
-    #[cfg(test)]
-    pub fn open_all(&mut self) {
-        self.expanded = (0..self.labels.len())
-            .filter(|&id| self.has_children[id])
-            .collect();
-        self.refresh();
     }
 
     /// How many rows sit directly under row `id`.

@@ -3,6 +3,7 @@ use ratatui::crossterm::event::KeyCode;
 use super::*;
 use crate::tui::keymap::Action;
 use crate::tui::widgets::input::Outcome as Edit;
+use crate::tui::widgets::testing::open_all;
 use crate::tui::widgets::testing::{key, keys};
 
 /// 0 fruit { 1 apple, 2 apricot }, 3 veg { 4 leek }
@@ -20,7 +21,7 @@ fn shape() -> Vec<Shape> {
 
 fn expanded() -> Outline {
     let mut outline = Outline::new(shape());
-    outline.open_all();
+    open_all(&mut outline);
     outline
 }
 
@@ -129,7 +130,7 @@ fn reopening_a_parent_reveals_only_its_immediate_children() {
         (Some(1), "nested".into()),
         (Some(2), "item".into()),
     ]);
-    outline.open_all();
+    open_all(&mut outline);
     outline.toggle_open(0);
     outline.toggle_open(0);
     assert_eq!(outline.visible(), [0, 1]);
@@ -169,4 +170,15 @@ fn the_badge_mentions_the_total_only_while_filtered() {
 
     assert!(!plain.contains("of"));
     assert!(outline.badge().contains("of"));
+}
+
+#[test]
+fn toggling_while_filtered_leaves_what_was_open_for_when_the_filter_clears() {
+    let mut outline = Outline::new(shape());
+    type_query(&mut outline, "apple");
+
+    outline.toggle_open(0);
+    outline.clear_filter();
+
+    assert_eq!(outline.visible(), [0, 3]);
 }

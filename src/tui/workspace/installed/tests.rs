@@ -2,6 +2,7 @@ use ratatui::crossterm::event::KeyCode;
 
 use super::rows::tests::{installed, plugin_providing_a_skill_and_a_hook};
 use super::*;
+use crate::tui::widgets::testing::open_all;
 use crate::tui::widgets::testing::{key, keys, render_to_buffer};
 use skillz_harness::Spec;
 use skillz_harness::model::Kind;
@@ -30,7 +31,7 @@ pub(super) fn model() -> Model {
 pub(super) fn loaded() -> InstalledTab {
     let mut tab = InstalledTab::project();
     tab.load(&model());
-    tab.outline.open_all();
+    open_all(&mut tab.outline);
     tab.outline.toggle_open(PLUGIN);
     tab
 }

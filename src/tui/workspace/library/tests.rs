@@ -4,6 +4,7 @@ use super::rows::tests::{hook, skill};
 use super::*;
 use crate::app::library::Catalog;
 use crate::tui::widgets::testing::key;
+use crate::tui::widgets::testing::open_all;
 
 fn loaded() -> LibraryTab {
     let mut tab = LibraryTab::new();
@@ -12,7 +13,7 @@ fn loaded() -> LibraryTab {
         library,
         ..Model::default()
     });
-    tab.outline.open_all();
+    open_all(&mut tab.outline);
     tab
 }
 

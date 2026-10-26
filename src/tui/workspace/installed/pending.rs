@@ -38,10 +38,16 @@ impl Pending {
 
     /// Forget picks whose item is gone.
     pub fn keep_existing(&mut self, rows: &[Row]) {
-        self.picked.retain(|id| {
-            rows.iter()
-                .any(|row| matches!(row, Row::Item(item) if item.id == *id))
-        });
+        // Read-only rows after `Inherited` can share an id with a project row; they never
+        // keep a pick alive.
+        let own = rows.iter().take_while(|row| !matches!(row, Row::Inherited));
+        let ids: Vec<&str> = own
+            .filter_map(|row| match row {
+                Row::Item(item) => Some(item.id.as_str()),
+                _ => None,
+            })
+            .collect();
+        self.picked.retain(|id| ids.contains(&id.as_str()));
     }
 
     /// How many of `items` are picked.

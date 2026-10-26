@@ -86,7 +86,7 @@ impl InstalledTab {
     #[cfg(test)]
     pub(super) fn load_open(&mut self, model: &Model) {
         self.load(model);
-        self.outline.open_all();
+        crate::tui::widgets::testing::open_all(&mut self.outline);
     }
 
     pub fn project() -> Self {

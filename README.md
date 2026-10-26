@@ -285,7 +285,7 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   codex`, or `claude, codex +2` when there are many; removing it removes every copy. A filter
   keeps the section structure and hides rows with no match. Removals and updates on Global act on
   the user's installs (`npx skills -g`, `claude ... --scope user`, the Codex user config).
-  Installed plugins expand with `→` or `enter` to show their skills, agents, commands and hooks.
+  Installed plugins expand with `→` (or `enter`, when nothing is picked) to show their skills, agents, commands and hooks.
   These child rows are for inspection; removal and update apply to the whole plugin.
   The Project tab also shows global plugins and skills below a dimmed `Global installs · read only`
   separator. They can be expanded there; changes belong on the Global tab. Project clear and

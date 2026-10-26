@@ -3,6 +3,7 @@ use ratatui::crossterm::event::KeyCode;
 use super::rows::tests::{global, installed};
 use super::tests::{on_item, press};
 use super::*;
+use crate::tui::widgets::testing::open_all;
 use crate::tui::widgets::testing::render_to_buffer;
 use skillz_harness::model::Kind;
 
@@ -22,7 +23,7 @@ const SKILL: usize = 2;
 fn loaded(scope: Scope) -> InstalledTab {
     let mut tab = InstalledTab::new(scope);
     tab.load(&model());
-    tab.outline.open_all();
+    open_all(&mut tab.outline);
     tab
 }
 
@@ -217,7 +218,7 @@ fn picking_a_project_item_marks_no_inherited_item_that_shares_its_id() {
         }],
         ..Model::default()
     });
-    tab.outline.open_all();
+    open_all(&mut tab.outline);
     let project = tab
         .rows
         .iter()
@@ -240,4 +241,33 @@ fn picking_a_project_item_marks_no_inherited_item_that_shares_its_id() {
         (marked(theme.glyphs.to_remove), marked(theme.glyphs.checked)),
         (1, 1)
     );
+}
+
+#[test]
+fn a_pick_does_not_outlive_its_project_item_because_a_global_one_shares_the_id() {
+    let shared = |build: fn(&str, Kind, Option<&str>) -> Installed| Installed {
+        id: "skill:tdd".into(),
+        ..build("tdd", Kind::Skill, Some("o/r"))
+    };
+    let mut tab = InstalledTab::project();
+    tab.load(&Model {
+        installed: vec![shared(installed)],
+        global: vec![shared(global)],
+        ..Model::default()
+    });
+    open_all(&mut tab.outline);
+    let project = tab
+        .rows
+        .iter()
+        .position(|row| matches!(row, Row::Item(item) if item.id == "skill:tdd"))
+        .unwrap();
+    on_item(&mut tab, project);
+    press(&mut tab, KeyCode::Char(' '));
+
+    tab.load(&Model {
+        global: vec![shared(global)],
+        ..Model::default()
+    });
+
+    assert!(tab.pending.is_empty());
 }

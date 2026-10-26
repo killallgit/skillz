@@ -3,6 +3,7 @@ use ratatui::crossterm::event::KeyCode;
 use super::rows::tests::skill;
 use super::*;
 use crate::app::library::LibraryItem;
+use crate::tui::widgets::testing::open_all;
 use crate::tui::widgets::testing::{key, keys, render_to_buffer};
 use skillz_harness::model::{Agent, Installed, Installer, Kind, Scope as Level};
 
@@ -49,7 +50,7 @@ fn model() -> Model {
 fn loaded() -> ProfilesTab {
     let mut tab = ProfilesTab::new();
     tab.load(&model());
-    tab.list.open_all();
+    open_all(&mut tab.list);
     tab
 }
 
