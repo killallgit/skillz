@@ -47,7 +47,7 @@ use crate::tui::keymap;
 use crate::tui::theme::Theme;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
-use skillz_harness::model::{Installed, Scope};
+use skillz_harness::model::{Installed, Kind, Scope};
 
 /// Which popup, if any, has the keys.
 #[derive(Debug, Clone, Default)]
@@ -121,6 +121,11 @@ impl InstalledTab {
     fn drift(&self) -> Option<Drift> {
         Some(drift(self.applied_profile()?, &self.installed))
     }
+
+    fn read_only(&self, row: usize) -> bool {
+        std::iter::successors(Some(row), |&id| self.outline.parent(id))
+            .any(|id| matches!(self.rows[id], Row::Inherited))
+    }
 }
 
 impl Tab for InstalledTab {
@@ -148,6 +153,18 @@ impl Tab for InstalledTab {
         self.profiles = model.profiles.clone();
         self.applied.clone_from(&model.applied);
         self.rows = build(here);
+        if self.scope == Scope::Project {
+            let inherited: Vec<_> = model
+                .global
+                .iter()
+                .filter(|item| matches!(item.kind, Kind::Plugin | Kind::Skill))
+                .cloned()
+                .collect();
+            if !inherited.is_empty() {
+                self.rows.push(Row::Inherited);
+                self.rows.extend(build(&inherited));
+            }
+        }
         self.pending.keep_existing(&self.rows);
         self.statuses.clear();
         self.outline.reshape(shape(&self.rows));

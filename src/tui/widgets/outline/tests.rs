@@ -122,6 +122,45 @@ fn reshaping_keeps_open_rows_open_by_label_and_starts_new_ones_closed() {
 }
 
 #[test]
+fn reopening_a_parent_reveals_only_its_immediate_children() {
+    let mut outline = Outline::new(vec![
+        (None, "root".into()),
+        (Some(0), "group".into()),
+        (Some(1), "nested".into()),
+        (Some(2), "item".into()),
+    ]);
+    outline.open_all();
+    outline.toggle_open(0);
+    outline.toggle_open(0);
+    assert_eq!(outline.visible(), [0, 1]);
+    outline.select_row(1);
+    outline.navigate(Action::Right);
+    assert_eq!(outline.visible(), [0, 1, 2]);
+    outline.select_row(2);
+    outline.navigate(Action::Right);
+    assert_eq!(outline.visible(), [0, 1, 2, 3]);
+}
+
+#[test]
+fn reshaping_keeps_same_named_groups_in_other_branches_closed() {
+    let tree = vec![
+        (None, "first".into()),
+        (Some(0), "shared".into()),
+        (Some(1), "a".into()),
+        (None, "second".into()),
+        (Some(3), "shared".into()),
+        (Some(4), "b".into()),
+    ];
+    let mut outline = Outline::new(tree.clone());
+    outline.toggle_open(0);
+    outline.toggle_open(1);
+    outline.toggle_open(3);
+    outline.reshape(tree);
+    assert_eq!(outline.visible(), [0, 1, 2, 3, 4]);
+    assert!(!outline.is_open(4));
+}
+
+#[test]
 fn the_badge_mentions_the_total_only_while_filtered() {
     let mut outline = expanded();
     let plain = outline.badge();

@@ -5,30 +5,32 @@
 
 mod installed;
 
-use crate::app::library::ItemKind;
 use crate::app::package::{Package, group_by};
 use crate::tui::widgets::outline::Shape;
-use skillz_harness::model::Installed;
+use skillz_harness::model::{Installed, Kind};
 
 /// The sections in the order they are shown.
-const SECTIONS: [ItemKind; 5] = [
-    ItemKind::Plugin,
-    ItemKind::Skill,
-    ItemKind::Subagent,
-    ItemKind::Mcp,
-    ItemKind::Hook,
+const SECTIONS: [Kind; 6] = [
+    Kind::Marketplace,
+    Kind::Plugin,
+    Kind::Skill,
+    Kind::Subagent,
+    Kind::Mcp,
+    Kind::Hook,
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Item {
     pub label: String,
-    pub kind: ItemKind,
+    pub kind: Kind,
     /// The agents that have the item, shown beside its name.
     pub agents: String,
     /// Where the item lives, or what a plugin provides; shown after its agents.
     pub detail: String,
     /// The id to remove or update it by.
     pub id: String,
+    /// Display-only plugin contents; effects always belong to the whole plugin.
+    pub children: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,11 +40,13 @@ pub(super) struct Group {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Row {
+    Inherited,
     /// Heads the items of one kind.
-    Section(ItemKind),
+    Section(Kind),
     /// The skills of one source, under the skills section.
     Package(Group),
     Item(Item),
+    Detail(String),
 }
 
 pub(super) fn build(here: &[Installed]) -> Vec<Row> {
@@ -56,7 +60,7 @@ pub(super) fn build(here: &[Installed]) -> Vec<Row> {
                 .cloned()
                 .collect();
             let rows = match kind {
-                ItemKind::Skill => grouped(of_kind),
+                Kind::Skill => grouped(of_kind),
                 _ => listed(of_kind),
             };
             (!rows.is_empty())
@@ -70,7 +74,12 @@ pub(super) fn build(here: &[Installed]) -> Vec<Row> {
 fn listed(items: Vec<(Package, Item)>) -> Vec<Row> {
     let mut items: Vec<Item> = items.into_iter().map(|(_, item)| item).collect();
     items.sort_by_key(|item| item.label.to_lowercase());
-    items.into_iter().map(Row::Item).collect()
+    items.into_iter().flat_map(item_rows).collect()
+}
+
+fn item_rows(item: Item) -> impl Iterator<Item = Row> {
+    let children = item.children.clone().into_iter().map(Row::Detail);
+    std::iter::once(Row::Item(item)).chain(children)
 }
 
 fn grouped(items: Vec<(Package, Item)>) -> Vec<Row> {
@@ -79,7 +88,8 @@ fn grouped(items: Vec<(Package, Item)>) -> Vec<Row> {
         .flat_map(|(package, members)| {
             let mut items: Vec<Item> = members.into_iter().map(|(_, item)| item).collect();
             items.sort_by_key(|item| item.label.to_lowercase());
-            std::iter::once(Row::Package(Group { package })).chain(items.into_iter().map(Row::Item))
+            std::iter::once(Row::Package(Group { package }))
+                .chain(items.into_iter().flat_map(item_rows))
         })
         .collect()
 }
@@ -87,20 +97,30 @@ fn grouped(items: Vec<(Package, Item)>) -> Vec<Row> {
 /// The outline's shape: packages hang under the skills section, items under their package or,
 /// where there is none, their section.
 pub(super) fn shape(rows: &[Row]) -> Vec<Shape> {
-    let (mut section, mut group) = (None, None);
+    let (mut inherited, mut section, mut group, mut item) = (None, None, None, None);
     rows.iter()
         .enumerate()
         .map(|(id, row)| match row {
+            Row::Inherited => {
+                inherited = Some(id);
+                section = None;
+                group = None;
+                (None, "Global installs · read only".into())
+            }
             Row::Section(kind) => {
                 section = Some(id);
                 group = None;
-                (None, kind.plural().to_string())
+                (inherited, plural(*kind).to_string())
             }
             Row::Package(Group { package }) => {
                 group = Some(id);
                 (section, package.title())
             }
-            Row::Item(item) => (group.or(section), item.label.clone()),
+            Row::Item(value) => {
+                item = Some(id);
+                (group.or(section), value.label.clone())
+            }
+            Row::Detail(label) => (item, label.clone()),
         })
         .collect()
 }
@@ -111,9 +131,9 @@ pub(super) fn items_of(rows: &[Row], at: usize) -> impl Iterator<Item = &Item> {
     rows[at + 1..]
         .iter()
         .take_while(move |row| match row {
-            Row::Section(_) => false,
+            Row::Inherited | Row::Section(_) => false,
             Row::Package(_) => !ends_at_a_package,
-            Row::Item(_) => true,
+            Row::Item(_) | Row::Detail(_) => true,
         })
         .filter_map(|row| match row {
             Row::Item(item) => Some(item),
@@ -123,3 +143,15 @@ pub(super) fn items_of(rows: &[Row], at: usize) -> impl Iterator<Item = &Item> {
 
 #[cfg(test)]
 pub(super) mod tests;
+
+/// Names for native installed kinds, including marketplace registrations.
+pub(super) fn plural(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Marketplace => "marketplaces",
+        Kind::Plugin => "plugins",
+        Kind::Skill => "skills",
+        Kind::Subagent => "agents",
+        Kind::Mcp => "MCP servers",
+        Kind::Hook => "hooks",
+    }
+}

@@ -71,6 +71,7 @@ impl InstalledTab {
         let ids: Vec<String> = self
             .rows
             .iter()
+            .take_while(|row| !matches!(row, Row::Inherited))
             .filter_map(|row| match row {
                 Row::Item(item) => Some(item.id.clone()),
                 _ => None,
@@ -108,18 +109,24 @@ impl InstalledTab {
         let Some(at) = self.outline.current() else {
             return vec![];
         };
+        if self.read_only(at) {
+            return vec![];
+        }
         match &self.rows[at] {
             Row::Item(item) => vec![item.id.clone()],
             Row::Package(_) => items_of(&self.rows, at)
                 .map(|item| item.id.clone())
                 .collect(),
-            Row::Section(_) => vec![],
+            Row::Inherited | Row::Section(_) | Row::Detail(_) => vec![],
         }
     }
 
     /// The ids of every item in the highlighted section, when a section is highlighted.
     pub(super) fn section_ids(&self) -> Option<Vec<String>> {
         let at = self.outline.current()?;
+        if self.read_only(at) {
+            return None;
+        }
         matches!(self.rows[at], Row::Section(_)).then(|| {
             items_of(&self.rows, at)
                 .map(|item| item.id.clone())

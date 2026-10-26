@@ -42,7 +42,10 @@ pub fn plugin_providing_a_skill_and_a_hook(name: &str) -> Installed {
             matcher: None,
             command: "say done".into(),
         }],
-        children: vec![format!("{}tdd", skillz_harness::model::SKILL_CHILD)],
+        children: vec![
+            format!("{}tdd", skillz_harness::model::SKILL_CHILD),
+            format!("{}Stop: say done", skillz_harness::model::HOOK_CHILD),
+        ],
         ..installed(name, Kind::Plugin, Some("mp"))
     }
 }
@@ -56,7 +59,7 @@ fn items(rows: &[Row]) -> Vec<&Item> {
         .collect()
 }
 
-fn sections(rows: &[Row]) -> Vec<ItemKind> {
+fn sections(rows: &[Row]) -> Vec<Kind> {
     rows.iter()
         .filter_map(|row| match row {
             Row::Section(kind) => Some(*kind),
@@ -93,11 +96,11 @@ fn a_section_is_shown_for_each_kind_the_scope_has_in_a_fixed_order() {
     assert_eq!(
         sections(&rows),
         [
-            ItemKind::Plugin,
-            ItemKind::Skill,
-            ItemKind::Subagent,
-            ItemKind::Mcp,
-            ItemKind::Hook
+            Kind::Plugin,
+            Kind::Skill,
+            Kind::Subagent,
+            Kind::Mcp,
+            Kind::Hook
         ]
     );
 }
@@ -108,7 +111,7 @@ fn a_kind_with_nothing_installed_has_no_section() {
 
     let rows = build(&here);
 
-    assert_eq!(sections(&rows), [ItemKind::Skill]);
+    assert_eq!(sections(&rows), [Kind::Skill]);
     assert!(build(&[]).is_empty());
 }
 
@@ -169,20 +172,27 @@ fn agents_mcp_servers_and_hooks_hang_straight_under_their_section() {
 }
 
 #[test]
-fn a_plugin_is_one_row_that_says_what_it_provides_and_lists_none_of_it() {
+fn a_plugin_has_display_children_but_remains_one_actionable_item() {
     let here = [plugin_providing_a_skill_and_a_hook("p@mp")];
 
     let rows = build(&here);
 
     assert!(matches!(
         rows.as_slice(),
-        [Row::Section(ItemKind::Plugin), Row::Item(_)]
+        [
+            Row::Section(Kind::Plugin),
+            Row::Item(_),
+            Row::Detail(_),
+            Row::Detail(_)
+        ]
     ));
+    assert_eq!(parents(&rows), [None, Some(0), Some(1), Some(1)]);
+    assert_eq!(items(&rows).len(), 1);
     assert_eq!(items(&rows)[0].detail, "1 skill, 1 hook");
 }
 
 #[test]
-fn a_marketplace_has_no_row_of_its_own() {
+fn a_marketplace_has_a_selectable_row_of_its_own() {
     let on_marketplace = |kind, name| Installed {
         group: "mp".into(),
         ..installed(name, kind, Some("o/mp"))
@@ -192,7 +202,8 @@ fn a_marketplace_has_no_row_of_its_own() {
         on_marketplace(Kind::Plugin, "p@mp"),
     ];
 
-    assert_eq!(items(&build(&here)).len(), 1);
+    assert_eq!(items(&build(&here)).len(), 2);
+    assert_eq!(sections(&build(&here)), [Kind::Marketplace, Kind::Plugin]);
 }
 
 fn subagent_in(agent: Agent) -> Installed {

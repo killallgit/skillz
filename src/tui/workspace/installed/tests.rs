@@ -2,7 +2,6 @@ use ratatui::crossterm::event::KeyCode;
 
 use super::rows::tests::{installed, plugin_providing_a_skill_and_a_hook};
 use super::*;
-use crate::app::library::ItemKind;
 use crate::tui::widgets::testing::{key, keys, render_to_buffer};
 use skillz_harness::Spec;
 use skillz_harness::model::Kind;
@@ -32,6 +31,7 @@ pub(super) fn loaded() -> InstalledTab {
     let mut tab = InstalledTab::project();
     tab.load(&model());
     tab.outline.open_all();
+    tab.outline.toggle_open(PLUGIN);
     tab
 }
 
@@ -47,8 +47,8 @@ pub(super) fn space() -> KeyCode {
 /// package and its skill.
 pub(super) const PLUGINS: usize = 0;
 pub(super) const PLUGIN: usize = 1;
-pub(super) const PACKAGE: usize = 3;
-pub(super) const TDD: usize = 4;
+pub(super) const PACKAGE: usize = 5;
+pub(super) const TDD: usize = 6;
 
 pub(super) fn on_item(tab: &mut InstalledTab, row: usize) {
     tab.outline.select_row(row);
@@ -133,7 +133,7 @@ fn the_filter_prompt_is_offered_while_typing_and_narrows_the_rows() {
     press(&mut tab, KeyCode::Enter);
 
     assert!(typing && tab.prompt().is_none());
-    assert_eq!(tab.outline.visible(), [2, PACKAGE, TDD]);
+    assert_eq!(tab.outline.visible(), [PLUGINS, PLUGIN, 2, 4, PACKAGE, TDD]);
 }
 
 #[test]
@@ -155,7 +155,7 @@ fn what_a_plugin_provides_is_not_listed_among_the_skills_or_hooks() {
         .rows
         .iter()
         .filter_map(|row| match row {
-            Row::Item(item) if item.kind == ItemKind::Skill => Some(item.label.as_str()),
+            Row::Item(item) if item.kind == Kind::Skill => Some(item.label.as_str()),
             _ => None,
         })
         .collect();

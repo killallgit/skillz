@@ -285,6 +285,11 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   codex`, or `claude, codex +2` when there are many; removing it removes every copy. A filter
   keeps the section structure and hides rows with no match. Removals and updates on Global act on
   the user's installs (`npx skills -g`, `claude ... --scope user`, the Codex user config).
+  Installed plugins expand with `→` or `enter` to show their skills, agents, commands and hooks.
+  These child rows are for inspection; removal and update apply to the whole plugin.
+  The Project tab also shows global plugins and skills below a dimmed `Global installs · read only`
+  separator. They can be expanded there; changes belong on the Global tab. Project clear and
+  removal picks exclude these global items.
   Profiles apply to a project only, so Global has no `a`, `p`, `c` or `s`. Adding is `A`, or the
   Library tab and profiles.
   In the background the tabs check whether installed Claude marketplaces have a newer version
@@ -303,6 +308,9 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   check them, and `s` (or `enter` in the name) saves. `enter` or `e` edits the profile under the
   cursor in the same modal; `x` deletes it.
 
+Expanding a group reveals its immediate children. Nested groups stay closed until opened
+individually, including after their parent is closed and reopened.
+
 | Key | Does |
 | --- | --- |
 | `space` | pick the item under the cursor for removal; again to unpick (on a package: everything in it; on a section: open or close it) |
@@ -319,6 +327,11 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
 | `/` | filter; keeps matching rows and their section, `esc` clears it |
 | `?` | all keys for the screen |
 | `q`, `^c` | quit |
+
+Marketplaces have their own selectable rows in the Project and Global tabs. `r` removes
+that scope's marketplace declarations and installed plugins; `u` updates the marketplace.
+Skills remain grouped by source, so a source row can remove or update its installed skills
+together. Removing an installation keeps its saved Library entry for later reuse.
 
 Project profile applies declare Claude marketplaces and install plugins in the project's
 `.claude/settings.local.json`. Claude keeps downloaded marketplaces and plugin caches under

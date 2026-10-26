@@ -77,8 +77,7 @@ impl Editor {
             .filter(|&id| matches!(&rows[id], Row::Item(item) if has(&item.entry)))
             .collect();
         let offered = |entry: &Spec| library.items().iter().any(|i| same_thing(&i.entry, entry));
-        let mut outline = Outline::new(rows::shape(&rows));
-        outline.open_all();
+        let outline = Outline::new(rows::shape(&rows));
         Editor {
             name: None,
             profile: profile.name.clone(),

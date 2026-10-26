@@ -120,6 +120,9 @@ crate, `crates/skillz-harness`, so cargo itself stops it importing anything abov
 
 Project and Global share `InstalledTab`. Rows resolve into actionable items once,
 so installing, removing, and updating a package do not depend on expansion state.
+Plugin contents are display-only children of the owning plugin. The Project tab includes
+global plugins and skills under a separate read-only branch; its actions and clear flow
+exclude that branch.
 Library and profile row values carry the facts their presentation needs.
 
 `Outline` owns navigation and filtering. Screens resolve actions through
@@ -127,6 +130,8 @@ Library and profile row values carry the facts their presentation needs.
 screens share a text modal that accounts for wrapped visual lines and viewport
 height. `App` drives one screen; local popup enums describe dialogs within tabs.
 Terminal ownership and restoration remain in the shell and its hold guards.
+Opening a group reveals one level. Closing it resets its descendants; reloads preserve
+open groups by their ancestor paths so matching labels in other branches stay independent.
 
 Plain `list QUERY` prints matching items. Browsing is explicit with `list -i`.
 Background checks examine each installed id once per workspace session, then

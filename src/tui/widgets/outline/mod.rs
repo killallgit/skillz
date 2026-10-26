@@ -57,20 +57,16 @@ impl Outline {
         outline
     }
 
-    /// The same outline over a new shape. A row that was open stays open when a row with the same
-    /// label is still there; every other row with children starts closed. The filter and the
+    /// Open rows keep their state by their full ancestor path; identical labels in other
+    /// branches stay independent. New groups start closed. The filter and the
     /// cursor stay where they were.
     pub fn reshape(&mut self, shape: Vec<Shape>) {
-        let open: Vec<String> = self
-            .expanded
-            .iter()
-            .map(|&id| self.labels[id].clone())
-            .collect();
+        let open: BTreeSet<Vec<String>> = self.expanded.iter().map(|&id| self.path(id)).collect();
         let at = self.list.selected().unwrap_or(0);
         let filter = self.filter.clone();
         *self = Outline::new(shape);
         self.expanded = (0..self.labels.len())
-            .filter(|&id| self.has_children[id] && open.contains(&self.labels[id]))
+            .filter(|&id| self.has_children[id] && open.contains(&self.path(id)))
             .collect();
         self.filter = filter;
         self.refresh();
@@ -111,10 +107,26 @@ impl Outline {
     }
 
     pub fn toggle_open(&mut self, id: usize) {
+        if !self.has_children[id] {
+            return;
+        }
+        // Reopening a group reveals only its immediate children, even if nested groups
+        // were open before the parent was closed.
+        let depth = self.depth(id);
+        let end = (id + 1..self.parents.len())
+            .find(|&row| self.depth(row) <= depth)
+            .unwrap_or(self.parents.len());
+        self.expanded.retain(|&row| row <= id || row >= end);
         if !self.expanded.remove(&id) {
             self.expanded.insert(id);
         }
         self.refresh();
+    }
+
+    fn path(&self, id: usize) -> Vec<String> {
+        std::iter::successors(Some(id), |&row| self.parents[row])
+            .map(|row| self.labels[row].clone())
+            .collect()
     }
 
     pub fn select_row(&mut self, id: usize) {
@@ -144,6 +156,7 @@ impl Outline {
         match_positions(self.query(), &self.labels[id])
     }
 
+    #[cfg(test)]
     pub fn open_all(&mut self) {
         self.expanded = (0..self.labels.len())
             .filter(|&id| self.has_children[id])

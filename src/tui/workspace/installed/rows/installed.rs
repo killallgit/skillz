@@ -9,14 +9,11 @@ use skillz_harness::model::{Installed, Kind};
 
 pub(super) fn items(here: &[Installed]) -> Vec<(Package, Item)> {
     here.iter()
-        .filter_map(|installed| {
-            let kind = ItemKind::of(installed.kind)?;
-            Some((Package::of(installed), item(installed, kind)))
-        })
+        .map(|installed| (Package::of(installed), item(installed, installed.kind)))
         .collect()
 }
 
-fn item(installed: &Installed, kind: ItemKind) -> Item {
+fn item(installed: &Installed, kind: Kind) -> Item {
     Item {
         label: installed.name.clone(),
         kind,
@@ -26,6 +23,14 @@ fn item(installed: &Installed, kind: ItemKind) -> Item {
             _ => detail(installed),
         },
         id: installed.id.clone(),
+        children: match kind {
+            Kind::Plugin => installed
+                .children
+                .iter()
+                .map(|child| skillz_harness::redact::redact_text(child))
+                .collect(),
+            _ => vec![],
+        },
     }
 }
 
