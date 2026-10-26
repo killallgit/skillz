@@ -40,7 +40,14 @@ impl Session<'_, '_> {
                 selection: SkillSelection::Interactive,
             }),
             Act::LibraryAdd { spec } => self.library_add(spec),
-            Act::LibraryImport => self.library_import(),
+            Act::LibraryInstall { scope, entry } => {
+                let picked = Selection {
+                    install: std::slice::from_ref(entry),
+                    remove: &[],
+                    only: None,
+                };
+                change(self, *scope, &Change::Selection(&picked))
+            }
             Act::LibraryRemove(entry) => self.library_remove(entry),
             Act::CreateProfile { name, entries } => self.create_profile(name, entries).map(Some),
             Act::SaveCurrent { name } => {

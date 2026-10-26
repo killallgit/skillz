@@ -2,9 +2,10 @@ use ratatui::crossterm::event::KeyCode;
 
 use super::rows::tests::{agent, hook, skill};
 use super::*;
-use crate::app::library::Catalog;
+use crate::app::library::{Catalog, LibraryItem};
 use crate::tui::widgets::testing::key;
 use crate::tui::widgets::testing::open_all;
+use skillz_harness::model::{Agent, Scope};
 
 fn loaded() -> LibraryTab {
     let mut tab = LibraryTab::new();
@@ -76,13 +77,102 @@ fn the_prompt_takes_every_key_so_letters_are_text() {
     assert!(tab.captures_keys());
 }
 
+/// Rows are the same as in `loaded`; the tools offered are Claude and Codex.
+fn install_with(keys: &[KeyCode], entry: Spec) -> (Option<Act>, bool) {
+    let mut tab = LibraryTab::new();
+    tab.load(&Model {
+        library: Catalog::from_items(vec![LibraryItem::from_entry(entry)]),
+        agents: vec![Agent::Claude, Agent::Codex],
+        ..Model::default()
+    });
+    open_all(&mut tab.outline);
+    on_row(&mut tab, 1);
+    let acts: Vec<_> = keys.iter().map(|code| press(&mut tab, *code)).collect();
+    (acts.into_iter().flatten().last(), tab.captures_keys())
+}
+
+fn tdd(agents: Vec<Agent>) -> Spec {
+    Spec::Skill {
+        source: "o/r".into(),
+        names: vec!["tdd".into()],
+        agents,
+    }
+}
+
+fn install_act(scope: Scope, agents: Vec<Agent>) -> Option<Act> {
+    Some(Act::LibraryInstall {
+        scope,
+        entry: tdd(agents),
+    })
+}
+
 #[test]
-fn i_asks_to_import_what_is_installed() {
+fn i_on_an_item_opens_a_dialog_and_enter_installs_in_the_project_for_every_tool() {
+    let (opened, still_open) = install_with(&[KeyCode::Char('i')], tdd(vec![]));
+    let (act, closed) = install_with(&[KeyCode::Char('i'), KeyCode::Enter], tdd(vec![]));
+
+    assert_eq!((opened, still_open), (None, true));
+    assert_eq!(
+        (act, closed),
+        (
+            install_act(Scope::Project, vec![Agent::Claude, Agent::Codex]),
+            false
+        )
+    );
+}
+
+#[test]
+fn the_dialog_picks_the_scope_and_switches_each_tool() {
+    use KeyCode::{Char, Down, Enter};
+    let keys = [
+        Char('i'),
+        Down,
+        Char(' '), // Global
+        Down,
+        Down,
+        Char(' '), // Codex off
+        Enter,
+    ];
+
+    let (act, _) = install_with(&keys, tdd(vec![]));
+
+    assert_eq!(act, install_act(Scope::Global, vec![Agent::Claude]));
+}
+
+#[test]
+fn an_entry_that_names_a_tool_starts_with_only_that_tool_checked() {
+    let (act, _) = install_with(
+        &[KeyCode::Char('i'), KeyCode::Enter],
+        tdd(vec![Agent::Codex]),
+    );
+
+    assert_eq!(act, install_act(Scope::Project, vec![Agent::Codex]));
+}
+
+#[test]
+fn nothing_is_installed_while_no_tool_is_checked() {
+    use KeyCode::{Char, Down, Enter};
+    let keys = [Char('i'), Down, Down, Char(' '), Down, Char(' '), Enter];
+
+    let (act, still_open) = install_with(&keys, tdd(vec![]));
+
+    assert_eq!((act, still_open), (None, true));
+}
+
+#[test]
+fn escape_closes_the_dialog_without_installing() {
+    let (act, still_open) = install_with(&[KeyCode::Char('i'), KeyCode::Esc], tdd(vec![]));
+
+    assert_eq!((act, still_open), (None, false));
+}
+
+#[test]
+fn i_on_a_package_opens_nothing() {
     let mut tab = loaded();
 
-    let act = press(&mut tab, KeyCode::Char('i'));
+    press(&mut tab, KeyCode::Char('i'));
 
-    assert_eq!(act, Some(Act::LibraryImport));
+    assert!(!tab.captures_keys());
 }
 
 #[test]
@@ -163,4 +253,25 @@ fn grouped_agents_can_be_folded_filtered_and_removed_individually() {
         press(&mut tab, KeyCode::Char('y')),
         Some(Act::LibraryRemove(reviewer.entry))
     );
+}
+
+#[test]
+fn the_install_dialog_draws_at_small_and_large_sizes() {
+    use crate::tui::widgets::testing::render_to_buffer;
+    let theme = Theme::dark();
+    for (width, height) in [(100, 30), (50, 15), (30, 10)] {
+        let mut tab = LibraryTab::new();
+        tab.load(&Model {
+            library: Catalog::from_items(vec![skill("o/r", "tdd")]),
+            agents: vec![Agent::Claude, Agent::Codex],
+            ..Model::default()
+        });
+        open_all(&mut tab.outline);
+        on_row(&mut tab, 1);
+        press(&mut tab, KeyCode::Char('i'));
+
+        render_to_buffer(width, height, |frame| tab.draw(frame, frame.area(), &theme));
+
+        assert!(tab.captures_keys(), "{width}x{height}");
+    }
 }

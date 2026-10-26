@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use crate::app::library::Catalog;
 use crate::app::profile::Profile;
 use skillz_harness::Spec;
-use skillz_harness::model::{Installed, Scope};
+use skillz_harness::model::{Agent, Installed, Scope};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Act {
@@ -37,8 +37,11 @@ pub enum Act {
     LibraryAdd {
         spec: String,
     },
-    /// Add what is installed, in the project and at user level, to the library.
-    LibraryImport,
+    /// Install this library entry in `scope`, for the tools its agents name.
+    LibraryInstall {
+        scope: Scope,
+        entry: Spec,
+    },
     LibraryRemove(Spec),
     /// Make the project hold exactly what the profile has, removing the rest.
     ApplyExact {
@@ -79,6 +82,8 @@ pub struct Model {
     pub installed: Vec<Installed>,
     /// What the user has installed outside any project.
     pub global: Vec<Installed>,
+    /// The coding tools an install can be made for.
+    pub agents: Vec<Agent>,
     pub library: Catalog,
     /// The readable profiles, with what they extend already merged in.
     pub profiles: Vec<Profile>,

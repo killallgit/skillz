@@ -160,3 +160,49 @@ fn applying_a_plugin_profile_scopes_both_marketplace_and_plugin_commands() {
         );
     }
 }
+
+#[test]
+fn installing_a_library_entry_goes_to_the_chosen_scope_and_only_the_chosen_tools() {
+    use skillz_harness::model::Agent;
+    let plugin = |agents: Vec<Agent>| skillz_harness::Spec::Plugin {
+        source: "o/r".into(),
+        marketplace: "mp".into(),
+        name: "p".into(),
+        agents,
+    };
+    let programs = |entry, scope| {
+        let (home, project) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ScriptedPrompter::new(&[], true);
+        let deps = Deps::for_test(home.path(), registry(), (&runner, &prompter));
+        let picked = Selection {
+            install: &[entry],
+            remove: &[],
+            only: None,
+        };
+        change(
+            &session(&deps, project.path()),
+            scope,
+            &Change::Selection(&picked),
+        )
+        .unwrap();
+        runner
+            .calls()
+            .into_iter()
+            .map(|(program, _, _)| program)
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        programs(plugin(vec![Agent::Claude]), Scope::Global),
+        ["claude", "claude"]
+    );
+    assert_eq!(
+        programs(plugin(vec![Agent::Claude, Agent::Codex]), Scope::Global),
+        ["claude", "claude", "codex", "codex"]
+    );
+    assert_eq!(
+        programs(plugin(vec![Agent::Codex]), Scope::Project),
+        Vec::<String>::new()
+    );
+}
