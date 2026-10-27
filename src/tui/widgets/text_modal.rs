@@ -74,9 +74,9 @@ impl TextModal {
     }
 
     pub fn render(&mut self, frame: &mut Frame, theme: &Theme, page: Page) {
-        let before_reveal = page
-            .reveal
-            .map_or_else(Vec::new, |at| page.lines[..at].to_vec());
+        let before_reveal = page.reveal.map_or_else(Vec::new, |at| {
+            page.lines[..at.min(page.lines.len())].to_vec()
+        });
         let paragraph = Paragraph::new(page.lines).wrap(Wrap { trim: false });
         let width = WIDTH.min(frame.area().width.saturating_sub(2 * PAD_X));
         let lines = paragraph.line_count(width.saturating_sub(2));
@@ -152,5 +152,17 @@ mod tests {
         let row = modal.lines - 1;
         assert!(row >= at);
         assert!((modal.offset..modal.offset + modal.page).contains(&row));
+    }
+
+    #[test]
+    fn a_reveal_past_the_last_line_does_not_panic() {
+        let lines: Vec<Line<'static>> = vec![Line::from("one"), Line::from("two")];
+        let mut modal = TextModal::default();
+
+        render_to_buffer(40, 12, |frame| {
+            modal.render(frame, &Theme::dark(), page(lines.clone(), 99));
+        });
+
+        assert!(modal.offset <= modal.lines);
     }
 }

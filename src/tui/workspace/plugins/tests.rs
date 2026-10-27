@@ -788,3 +788,42 @@ fn removing_one_of_two_plugins_of_a_marketplace_keeps_the_marketplace_and_the_ot
         })
     );
 }
+
+#[test]
+fn a_marketplace_whose_plugins_are_listed_in_other_rows_has_no_row_of_its_own() {
+    let model = Model {
+        library: library(vec![plugin_entry("a/one", "p"), plugin_entry("a/two", "q")]),
+        installed: vec![
+            installed("p@mp", Kind::Plugin, "mp", None),
+            installed("q@mp", Kind::Plugin, "mp", None),
+            installed("mp", Kind::Marketplace, "mp", None),
+        ],
+        ..Model::default()
+    };
+
+    let rows = super::rows::build(&model, Scope::Project);
+
+    let marketplace = "marketplace:mp".to_string();
+    let rows_removing_it = rows
+        .iter()
+        .filter(|row| matches!(row, Row::Own(plugin) if plugin.installed.contains(&marketplace)))
+        .count();
+    assert_eq!(rows_removing_it, 0);
+}
+
+#[test]
+fn a_marketplace_left_without_plugins_still_has_a_row_to_remove_it_from() {
+    let model = Model {
+        installed: vec![installed("mp", Kind::Marketplace, "mp", None)],
+        ..Model::default()
+    };
+
+    let rows = super::rows::build(&model, Scope::Project);
+
+    let marketplace = "marketplace:mp".to_string();
+    let rows_removing_it = rows
+        .iter()
+        .filter(|row| matches!(row, Row::Own(plugin) if plugin.installed.contains(&marketplace)))
+        .count();
+    assert_eq!(rows_removing_it, 1);
+}

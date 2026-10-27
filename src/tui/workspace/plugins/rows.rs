@@ -159,9 +159,19 @@ fn packages(items: &[&LibraryItem], installed: &[Installed], now: u64) -> Vec<Pl
         .iter()
         .flat_map(|row| row.installed.iter().map(String::as_str))
         .collect();
+    // A marketplace whose plugins are listed in other rows has no row of its own: flipping it
+    // would remove those plugins with it.
     let rest: Vec<&Installed> = installed
         .iter()
         .filter(|item| !claimed.contains(item.id.as_str()))
+        .filter(|item| {
+            item.kind != Kind::Marketplace
+                || !installed.iter().any(|plugin| {
+                    plugin.kind == Kind::Plugin
+                        && plugin.group == item.group
+                        && claimed.contains(plugin.id.as_str())
+                })
+        })
         .collect();
     for (package, items) in group_by(rest, |item| Package::of(item)) {
         if !listed(&package) {
