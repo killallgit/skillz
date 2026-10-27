@@ -100,7 +100,6 @@ pub(in crate::cli) fn change(
         if switch.is_empty() && targets.as_ref().is_none_or(|t| t.agents.is_empty()) {
             return Ok(Some(Notice::UpToDate));
         }
-        let mut view = plan_view(&switch, job.scope);
         if let Some(chosen) = &mut targets {
             // The plan lists every item with a box; what is unchecked is not done.
             chosen.sync_items(item_lines(&switch));
@@ -109,6 +108,7 @@ pub(in crate::cli) fn change(
                 .retain(|(entry, _)| chosen.includes(&entry.to_string()));
             switch.removals.retain(|item| chosen.includes(&item.id));
         }
+        let mut view = plan_view(&switch, job.scope);
         view.targets.clone_from(&targets);
         view.heading = what.heading(job.scope);
         match deps.prompter.plan(&view)? {

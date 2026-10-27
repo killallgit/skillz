@@ -755,3 +755,36 @@ fn flipping_a_package_installed_in_both_scopes_removes_only_the_projects_copy() 
         })
     );
 }
+
+fn plugin_entry(source: &str, name: &str) -> Spec {
+    Spec::Plugin {
+        source: source.into(),
+        marketplace: "mp".into(),
+        name: name.into(),
+        agents: vec![],
+    }
+}
+
+#[test]
+fn removing_one_of_two_plugins_of_a_marketplace_keeps_the_marketplace_and_the_other_plugin() {
+    let mut tab = tab(Model {
+        library: library(vec![plugin_entry("a/one", "p"), plugin_entry("a/two", "q")]),
+        installed: vec![
+            installed("p@mp", Kind::Plugin, "mp", None),
+            installed("q@mp", Kind::Plugin, "mp", None),
+            installed("mp", Kind::Marketplace, "mp", None),
+        ],
+        ..Model::default()
+    });
+
+    let act = flip_and_apply(&mut tab);
+
+    assert_eq!(
+        act,
+        Some(Act::Change {
+            scope: Scope::Project,
+            install: vec![],
+            remove: vec!["plugin:p@mp".into()],
+        })
+    );
+}

@@ -93,8 +93,8 @@ If a skill you ask for is already installed globally and not in the project, `in
 and asks before installing it into the project too (`-y` goes ahead).
 
 Scope for `list`, `uninstall`, `reset` and `prune`: a `PATH` (or `-p PATH`) means that project only,
-`-g` means global only, neither means both (project = cwd). `install` and `update` act on one
-project, or with `-g` on the user's installs; `use`, `run` and `profile` always act on one project. A project that is your home directory counts as global. A `list` PATH must
+`-g` means global only, neither means both (project = cwd). `install`, `update` and `use` act on one
+project, or with `-g` on the user's installs; `run` and `profile` always act on one project. A project that is your home directory counts as global. A `list` PATH must
 start with `.`, `..` or `/` (`./sub`, not `sub`); any other word is a query.
 
 ## From the list to the command line

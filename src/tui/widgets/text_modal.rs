@@ -74,6 +74,9 @@ impl TextModal {
     }
 
     pub fn render(&mut self, frame: &mut Frame, theme: &Theme, page: Page) {
+        let before_reveal = page
+            .reveal
+            .map_or_else(Vec::new, |at| page.lines[..at].to_vec());
         let paragraph = Paragraph::new(page.lines).wrap(Wrap { trim: false });
         let width = WIDTH.min(frame.area().width.saturating_sub(2 * PAD_X));
         let lines = paragraph.line_count(width.saturating_sub(2));
@@ -97,8 +100,11 @@ impl TextModal {
         .areas(inner);
         self.lines = paragraph.line_count(body.width);
         self.page = usize::from(body.height);
-        if let Some(line) = page.reveal {
-            self.reveal(line);
+        if page.reveal.is_some() {
+            let row = Paragraph::new(before_reveal)
+                .wrap(Wrap { trim: false })
+                .line_count(body.width);
+            self.reveal(row);
         }
         self.clamp();
         let offset = u16::try_from(self.offset).unwrap_or(u16::MAX);
@@ -113,5 +119,38 @@ impl TextModal {
 
     fn clamp(&mut self) {
         self.offset = self.offset.min(self.lines.saturating_sub(self.page.max(1)));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::widgets::testing::render_to_buffer;
+
+    fn page(lines: Vec<Line<'static>>, reveal: usize) -> Page {
+        Page {
+            panel: Panel::new("t"),
+            lines,
+            buttons: None,
+            help: None,
+            reveal: Some(reveal),
+        }
+    }
+
+    #[test]
+    fn revealing_a_line_below_wrapped_ones_scrolls_to_its_wrapped_row() {
+        let long = "word ".repeat(60);
+        let mut lines: Vec<Line<'static>> = (0..4).map(|_| Line::from(long.clone())).collect();
+        lines.push(Line::from("target"));
+        let at = lines.len() - 1;
+        let mut modal = TextModal::default();
+
+        render_to_buffer(40, 12, |frame| {
+            modal.render(frame, &Theme::dark(), page(lines.clone(), at));
+        });
+
+        let row = modal.lines - 1;
+        assert!(row >= at);
+        assert!((modal.offset..modal.offset + modal.page).contains(&row));
     }
 }

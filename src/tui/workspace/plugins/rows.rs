@@ -198,13 +198,21 @@ fn packages(items: &[&LibraryItem], installed: &[Installed], now: u64) -> Vec<Pl
     rows
 }
 
-/// `held` with the marketplaces its plugins came from: a plugin is removed with its marketplace,
-/// which holds no key of its own to match an entry by.
+/// `held` with the marketplaces whose installed plugins `held` has all of: removing a marketplace
+/// removes every plugin installed from it, so it goes only with the last of them. It holds no key of
+/// its own to match an entry by.
 fn with_marketplaces<'a>(mut held: Vec<&'a Installed>, all: &'a [Installed]) -> Vec<&'a Installed> {
+    let held_ids: HashSet<&str> = held.iter().map(|item| item.id.as_str()).collect();
+    let remaining: HashSet<&str> = all
+        .iter()
+        .filter(|item| item.kind == Kind::Plugin && !held_ids.contains(item.id.as_str()))
+        .map(|item| item.group.as_str())
+        .collect();
     let groups: HashSet<&str> = held
         .iter()
         .filter(|item| item.kind == Kind::Plugin)
         .map(|item| item.group.as_str())
+        .filter(|group| !remaining.contains(group))
         .collect();
     held.extend(
         all.iter()

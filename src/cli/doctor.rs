@@ -22,7 +22,7 @@ pub(super) fn doctor(deps: &Deps, args: &DoctorArgs, out: &mut dyn Write) -> any
     if args.json {
         return found.write_json(out);
     }
-    report(&found, &deps.home)
+    report(&found, &env.home)
         .iter()
         .try_for_each(|line| writeln!(out, "{line}"))?;
     Ok(())
@@ -209,5 +209,35 @@ mod tests {
                 .iter()
                 .any(|l| l.contains(&home.path().display().to_string()))
         );
+    }
+
+    #[test]
+    fn a_symlinked_home_is_still_shown_as_tilde() {
+        let real = tempfile::tempdir().unwrap();
+        let linked = tempfile::tempdir().unwrap().keep().join("home");
+        std::os::unix::fs::symlink(real.path(), &linked).unwrap();
+        let skills = real.path().join(".agents/skills");
+        skill(&skills.join("tdd"), "tdd");
+        skill(&skills.join("work/old"), "tdd");
+        let runner = crate::app::install::test_support::FakeRunner::new(|_| {});
+        let prompter = crate::app::install::test_support::ScriptedPrompter::new(&[], true);
+        let deps = Deps::for_test(
+            &linked,
+            skillz_harness::agents::registry(),
+            (&runner, &prompter),
+        );
+        let args = DoctorArgs {
+            project: None,
+            global: true,
+            json: false,
+        };
+        let mut out = Vec::new();
+
+        doctor(&deps, &args, &mut out).unwrap();
+
+        let text = String::from_utf8(out).unwrap();
+        let canonical = real.path().canonicalize().unwrap().display().to_string();
+        assert!(!text.contains(&canonical));
+        assert!(text.contains("~/.agents/skills/work/old"));
     }
 }
