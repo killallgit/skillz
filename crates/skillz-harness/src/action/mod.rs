@@ -32,6 +32,39 @@ fn redacted_text<S: Serializer>(text: &str, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(&redact_text(text))
 }
 
+fn redacted_texts<S: Serializer>(texts: &[String], s: S) -> Result<S::Ok, S::Error> {
+    s.collect_seq(texts.iter().map(|text| redact_text(text).to_string()))
+}
+
+/// A TOML value a config edit sets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum TomlValue {
+    Bool(bool),
+    Text(#[serde(serialize_with = "redacted_text")] String),
+    Texts(#[serde(serialize_with = "redacted_texts")] Vec<String>),
+}
+
+impl std::fmt::Display for TomlValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_toml())
+    }
+}
+
+impl TomlValue {
+    fn to_toml(&self) -> toml_edit::Value {
+        match self {
+            TomlValue::Bool(on) => (*on).into(),
+            TomlValue::Text(text) => text.as_str().into(),
+            TomlValue::Texts(texts) => texts
+                .iter()
+                .map(String::as_str)
+                .collect::<toml_edit::Array>()
+                .into(),
+        }
+    }
+}
+
 /// A single side effect of changing what is installed: removing an installed item, or (from a
 /// profile) installing one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -155,12 +188,8 @@ pub enum Edit {
     },
     /// Remove the TOML key/table at `path` (e.g. `["plugins", "x@y"]`), keeping formatting.
     TomlRemoveKey { path: Vec<String> },
-    /// Set a TOML key to an encoded TOML value, creating missing tables and the file.
-    TomlSetKey {
-        path: Vec<String>,
-        #[serde(serialize_with = "redacted_text")]
-        value: String,
-    },
+    /// Set a TOML key, creating missing tables and the file.
+    TomlSetKey { path: Vec<String>, value: TomlValue },
 }
 
 impl Edit {
@@ -176,7 +205,11 @@ impl Edit {
                 format!("remove {}", path.join("."))
             }
             Edit::TomlSetKey { path, value } => {
-                format!("set {} = {}", path.join("."), redact_text(value))
+                format!(
+                    "set {} = {}",
+                    path.join("."),
+                    redact_text(&value.to_string())
+                )
             }
             Edit::JsonRemoveArrayItems { path, fields } => {
                 let when: Vec<String> = fields.iter().map(|(k, v)| format!("{k}={v}")).collect();
@@ -251,7 +284,7 @@ mod tests {
             file: "/config.toml".into(),
             edit: Edit::TomlSetKey {
                 path: vec!["marketplaces".into(), "mp".into(), "source".into()],
-                value: toml_edit::Value::from("https://u:s3cret@host/repo.git").to_string(),
+                value: TomlValue::Text("https://u:s3cret@host/repo.git".into()),
             },
         };
 

@@ -45,8 +45,12 @@ Library skill installs inspect their source through that flow too. Explicit skil
 use the owning plugins when the marketplace supplies all selected skills; sources without a
 matching plugin use loose skills. Codex recognizes native and legacy Claude marketplaces.
 Its project plugin plans download Git marketplace metadata without registering it globally,
-then stage marketplace declarations and plugin enablement in the project's config. Codex
-materializes the declared plugins in its shared cache when the trusted project is opened.
+then stage marketplace declarations and plugin enablement in the project's config, once per
+marketplace however many of its plugins are picked. Codex materializes the declared plugins in
+its shared cache on a marketplace refresh in a trusted project. `plan_add_source` can refuse: a
+project source with embedded credentials, a marketplace name the user registered from another
+source (the download is one copy per name, shared by every project), or a project config that
+does not parse.
 
 `cli::session::change` owns plan review, execution, inventory recording, result
 presentation, and retry. Plain commands use its `Console` prompter; the workspace

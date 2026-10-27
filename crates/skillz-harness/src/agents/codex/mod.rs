@@ -115,16 +115,16 @@ impl Harness for Codex {
         source: &str,
         scope: Scope,
         env: &Env,
-    ) -> Vec<Action> {
+    ) -> anyhow::Result<Vec<Action>> {
         if scope == Scope::Project {
-            picked
-                .iter()
-                .flat_map(|name| {
-                    plugins::project_install_steps(source, &offer.marketplace, name, env)
-                })
-                .collect()
+            plugins::project_install_steps(source, &offer.marketplace, picked, env)
         } else {
-            plugins::install_steps(source, &offer.marketplace, picked, env)
+            Ok(plugins::install_steps(
+                source,
+                &offer.marketplace,
+                picked,
+                env,
+            ))
         }
     }
 

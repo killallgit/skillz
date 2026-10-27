@@ -122,8 +122,14 @@ impl Harness for Claude {
         source: &str,
         scope: Scope,
         env: &Env,
-    ) -> Vec<Action> {
-        marketplace::plugin_steps(offer, picked, source, scope, &env.project)
+    ) -> anyhow::Result<Vec<Action>> {
+        Ok(marketplace::plugin_steps(
+            offer,
+            picked,
+            source,
+            scope,
+            &env.project,
+        ))
     }
 
     /// `~/.claude.json` `skillUsage` (loose skills by name; `plugin:skill` keys are plugin

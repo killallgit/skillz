@@ -95,13 +95,13 @@ impl Harness for Fake {
         _source: &str,
         _scope: Scope,
         env: &Env,
-    ) -> Vec<Action> {
+    ) -> anyhow::Result<Vec<Action>> {
         self.installs.set(self.installs.get() + 1);
-        vec![Action::required(
+        Ok(vec![Action::required(
             "fake-agent",
             picked.to_vec(),
             &env.project,
-        )]
+        )])
     }
 }
 

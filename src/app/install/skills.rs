@@ -3,8 +3,7 @@ use std::path::Path;
 use crate::app::matcher::pattern_matches;
 use crate::app::prompt::Prompter;
 use skillz_harness::action::Action;
-use skillz_harness::agent_skills::skill_name;
-use skillz_harness::fswalk;
+use skillz_harness::agent_skills::skill_names_under;
 use skillz_harness::model::Agent;
 use skillz_harness::npx::commands;
 
@@ -86,18 +85,9 @@ pub(super) fn select_skills(names: &[String], selection: &SkillSelection) -> Vec
     }
 }
 
-/// Frontmatter names of every skill (dir containing `SKILL.md`) under `root`, recursively,
-/// sorted: the names npx `skills --skill` matches.
+/// The skill names under `root` that npx `skills --skill` matches.
 pub(super) fn scan_available(root: &Path) -> anyhow::Result<Vec<String>> {
-    let mut found = Vec::new();
-    fswalk::walk(root, &mut |path, is_dir| {
-        if is_dir {
-            found.extend(skill_name(path));
-        }
-    })?;
-    found.sort();
-    found.dedup();
-    Ok(found)
+    skill_names_under(root)
 }
 
 #[cfg(test)]

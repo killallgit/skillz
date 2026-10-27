@@ -1,8 +1,14 @@
 use anyhow::Context;
 
-pub(super) fn toml_set_key(contents: &str, path: &[String], value: &str) -> anyhow::Result<String> {
+use super::TomlValue;
+
+pub(super) fn toml_set_key(
+    contents: &str,
+    path: &[String],
+    value: &TomlValue,
+) -> anyhow::Result<String> {
     let mut doc: toml_edit::DocumentMut = contents.parse().context("invalid TOML")?;
-    let mut value: toml_edit::Value = value.parse().context("invalid TOML value")?;
+    let mut value = value.to_toml();
     let (last, parents) = path.split_last().context("empty TOML path")?;
     let mut parent = doc.as_item_mut();
     for key in parents {
@@ -49,14 +55,14 @@ pub(super) fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result
 #[cfg(test)]
 mod tests {
     use crate::action::testutil::*;
-    use crate::action::{Edit, apply_edit};
+    use crate::action::{Edit, TomlValue, apply_edit};
     use std::path::Path;
 
     #[test]
     fn setting_toml_keys_preserves_siblings_and_handles_dotted_and_inline_tables() {
         let edit = Edit::TomlSetKey {
             path: strings(&["plugins", "p@m", "enabled"]),
-            value: "true".into(),
+            value: TomlValue::Bool(true),
         };
         for before in [
             "model = \"o3\"\n",
@@ -78,7 +84,7 @@ mod tests {
     fn setting_toml_keys_preserves_comments_and_rejects_invalid_structure() {
         let edit = Edit::TomlSetKey {
             path: strings(&["plugins", "p@m", "enabled"]),
-            value: "true".into(),
+            value: TomlValue::Bool(true),
         };
         let before = "# comment\n[plugins.\"p@m\"]\nenabled = true # keep\n";
         assert_eq!(apply_edit(Path::new(TOML), &edit, before).unwrap(), before);
@@ -88,18 +94,7 @@ mod tests {
                 Path::new(TOML),
                 &Edit::TomlSetKey {
                     path: vec![],
-                    value: "true".into()
-                },
-                ""
-            )
-            .is_err()
-        );
-        assert!(
-            apply_edit(
-                Path::new(TOML),
-                &Edit::TomlSetKey {
-                    path: strings(&["a"]),
-                    value: "invalid!".into()
+                    value: TomlValue::Bool(true)
                 },
                 ""
             )

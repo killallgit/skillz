@@ -32,8 +32,11 @@ fn cli_arg(v: &serde_json::Value) -> Option<&str> {
     v.as_str().filter(|s| !s.starts_with('-'))
 }
 
-/// The marketplace at `path` reduced to what an install needs. `None` when the file is missing
-/// or names no marketplace; malformed JSON is an error. Option-like (`-x`) names are dropped
+/// The marketplace at `path` reduced to what an install needs: its plugins and, for each plugin
+/// whose source is local to `root`, the skill names it supplies (`skill_paths` says where a
+/// plugin's skills are, which differs per agent; `manifests` are the plugin manifests to read,
+/// in order). `None` when the file is missing or names no marketplace; malformed marketplace JSON
+/// is an error, a malformed plugin manifest is ignored. Option-like (`-x`) names are dropped
 /// since they end up as CLI args.
 pub(super) fn read_marketplace(
     path: &Path,
@@ -119,11 +122,7 @@ fn offered_skills(
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => return Err(error.into()),
         }
-        crate::fswalk::walk(&path, &mut |path, is_dir| {
-            if is_dir {
-                names.extend(crate::agent_skills::skill_name(path));
-            }
-        })?;
+        names.extend(crate::agent_skills::skill_names_under(&path)?);
     }
     names.sort();
     names.dedup();

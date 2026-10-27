@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::app::prompt::Prompter;
 use crate::app::review::{Group, PlanView, Verdict};
 use skillz_harness::action::{self, Action};
-use skillz_harness::agents::{Harness, adapter_for};
+use skillz_harness::agents::{Harness, PluginOffer, adapter_for};
 use skillz_harness::env::Env;
 use skillz_harness::model::{Agent, Scope};
 use skillz_harness::runner::CommandRunner;
@@ -88,8 +88,8 @@ fn plan(ctx: &Ctx, req: &InstallRequest, tree: &Tree) -> anyhow::Result<Option<P
     let mut rest = vec![];
     for &agent in &req.agents {
         match agent_plugins(ctx, req, tree, agent)? {
-            AgentPlugins::Install { line, steps } => {
-                plan.lines.push(line);
+            AgentPlugins::Install { lines, steps } => {
+                plan.lines.extend(lines);
                 plan.steps.extend(steps);
             }
             AgentPlugins::Declined => return Ok(None),
@@ -112,7 +112,7 @@ enum AgentPlugins {
     /// The user picked no plugins.
     Declined,
     Install {
-        line: String,
+        lines: Vec<String>,
         steps: Vec<Action>,
     },
 }
@@ -142,11 +142,7 @@ fn agent_plugins(
         SkillSelection::Patterns(_) => {
             let available = skills::scan_available(tree.src)?;
             let selected = skills::select_skills(&available, &req.selection);
-            if selected.is_empty()
-                || selected
-                    .iter()
-                    .any(|name| !offer.skills.values().any(|names| names.contains(name)))
-            {
+            if selected.is_empty() || !left_out(&offer, &selected).is_empty() {
                 return Ok(AgentPlugins::Unoffered);
             }
             offer
@@ -165,10 +161,53 @@ fn agent_plugins(
     if chosen.is_empty() {
         return Ok(AgentPlugins::Unoffered);
     }
+    let named: Vec<String> = chosen.iter().map(|name| describe(&offer, name)).collect();
+    let mut lines = vec![format!(
+        "{agent}: {} from {}",
+        named.join(", "),
+        offer.marketplace
+    )];
+    if req.selection == SkillSelection::All {
+        let skipped = left_out(&offer, &skills::scan_available(tree.src)?);
+        if !skipped.is_empty() {
+            lines.push(format!(
+                "{agent}: not installed, no plugin supplies them (name them with --skill): {}",
+                skipped.join(", ")
+            ));
+        }
+    }
     Ok(AgentPlugins::Install {
-        line: format!("{agent}: {} from {}", chosen.join(", "), offer.marketplace),
-        steps: adapter.plan_add_source(&offer, &chosen, tree.source, req.scope, ctx.env),
+        lines,
+        steps: adapter.plan_add_source(&offer, &chosen, tree.source, req.scope, ctx.env)?,
     })
+}
+
+/// The skills in `names` that none of the offer's plugins supplies: installing the plugins
+/// leaves them out.
+fn left_out(offer: &PluginOffer, names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .filter(|name| {
+            !offer
+                .skills
+                .values()
+                .any(|supplied| supplied.contains(name))
+        })
+        .cloned()
+        .collect()
+}
+
+/// A plugin's name with how many skills it brings, when the source says.
+fn describe(offer: &PluginOffer, plugin: &str) -> String {
+    match offer.skills.get(plugin).map(Vec::len) {
+        Some(count) if count > 0 => {
+            format!(
+                "{plugin} ({count} skill{})",
+                if count == 1 { "" } else { "s" }
+            )
+        }
+        _ => plugin.to_string(),
+    }
 }
 
 /// Quietly, so a screen the prompter holds is not scribbled over.
@@ -200,6 +239,31 @@ mod tests {
             prompter,
         };
         install(&ctx, req)
+    }
+
+    fn offer(skills: &[(&str, &[&str])]) -> PluginOffer {
+        PluginOffer {
+            marketplace: "mp".into(),
+            plugins: skills
+                .iter()
+                .map(|(plugin, _)| plugin.to_string())
+                .collect(),
+            skills: skills
+                .iter()
+                .map(|(plugin, names)| (plugin.to_string(), s(names)))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn skills_no_plugin_supplies_are_the_ones_installing_plugins_leaves_out() {
+        let offer = offer(&[("p1", &["alpha"]), ("p2", &["beta", "gamma"])]);
+
+        assert_eq!(
+            left_out(&offer, &s(&["alpha", "beta", "loose", "other"])),
+            s(&["loose", "other"])
+        );
+        assert!(left_out(&offer, &s(&["alpha", "gamma"])).is_empty());
     }
 
     #[test]

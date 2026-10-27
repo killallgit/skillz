@@ -133,4 +133,31 @@ mod tests {
             Some(true)
         );
     }
+
+    #[test]
+    fn a_library_skill_that_names_no_skills_installs_as_a_plain_change() {
+        use crate::app::workspace::Act;
+        let home = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ScriptedPrompter::new(&[], true);
+        let deps = Deps::for_test(home.path(), registry(), (&runner, &prompter));
+        let env = skillz_harness::env::Env::new(home.path().into(), project.path().into());
+        let session = Session::open(&deps, &env);
+
+        session
+            .perform(Act::LibraryInstall {
+                scope: Scope::Project,
+                entry: skillz_harness::Spec::Skill {
+                    source: "o/r".into(),
+                    names: vec![],
+                    agents: vec![Agent::Claude],
+                },
+            })
+            .unwrap();
+
+        let programs: Vec<String> = runner.calls().into_iter().map(|call| call.0).collect();
+        assert!(!programs.contains(&"git".to_string()));
+        assert!(programs.contains(&"npx".to_string()));
+    }
 }

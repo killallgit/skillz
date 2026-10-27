@@ -230,6 +230,15 @@ fn plugin_skill_paths(
     paths
 }
 
+/// The `--scope` a plugin installs at: project installs go in the private `local` scope, so
+/// only this project has them and nothing is committed.
+fn install_scope(scope: Scope) -> &'static str {
+    match scope {
+        Scope::Global => "user",
+        Scope::Project => "local",
+    }
+}
+
 /// Add `source` as a marketplace and install the `picked` plugins of `offer`.
 pub(super) fn plugin_steps(
     offer: &PluginOffer,
@@ -238,10 +247,7 @@ pub(super) fn plugin_steps(
     scope: Scope,
     cwd: &Path,
 ) -> Vec<Action> {
-    let scope = match scope {
-        Scope::Global => "user",
-        Scope::Project => "local",
-    };
+    let scope = install_scope(scope);
     install_commands(source, &offer.marketplace, picked, scope)
         .into_iter()
         .map(|(program, args)| Action::required(&program, args, cwd))
@@ -289,10 +295,7 @@ pub(super) fn provision(entry: &Spec, scope: Scope, cwd: &Path) -> Option<Vec<Ac
     else {
         return None;
     };
-    let scope = match scope {
-        Scope::Global => "user",
-        Scope::Project => "local",
-    };
+    let scope = install_scope(scope);
     let commands = install_commands(source, marketplace, std::slice::from_ref(name), scope);
     Some(
         commands

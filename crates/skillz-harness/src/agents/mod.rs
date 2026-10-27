@@ -46,7 +46,8 @@ pub trait Harness {
     fn plugin_offer(&self, _src: &Path, _scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
         Ok(None)
     }
-    /// Steps that add `source`'s marketplace and install the `picked` plugins of `offer`.
+    /// Steps that add `source`'s marketplace and install the `picked` plugins of `offer`. An
+    /// error refuses the install, for a source this agent must not write into its configuration.
     fn plan_add_source(
         &self,
         _offer: &PluginOffer,
@@ -54,8 +55,8 @@ pub trait Harness {
         _source: &str,
         _scope: Scope,
         _env: &Env,
-    ) -> Vec<Action> {
-        vec![]
+    ) -> anyhow::Result<Vec<Action>> {
+        Ok(vec![])
     }
     /// Steps that install a profile `entry` for this agent at `scope`, or `None` when this agent
     /// has no way to take that entry there. Skills are not asked of adapters: `provision::plan`

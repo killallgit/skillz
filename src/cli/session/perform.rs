@@ -6,7 +6,8 @@ use super::notice::Notice;
 use super::selection::Selection;
 use crate::app::install::{InstallRequest, SkillSelection};
 use crate::app::workspace::Act;
-use skillz_harness::model::Scope;
+use skillz_harness::Spec;
+use skillz_harness::model::{Agent, Scope};
 
 impl Session<'_, '_> {
     /// What the toast should say, if anything.
@@ -37,37 +38,12 @@ impl Session<'_, '_> {
             Act::InstallSource { scope, source } => self.install_source(&InstallRequest {
                 source: source.clone(),
                 cwd: self.deps.cwd.clone(),
-                agents: self.deps.adapters.iter().map(|a| a.agent()).collect(),
+                agents: self.agents_or_all(&[]),
                 scope: *scope,
                 selection: SkillSelection::Interactive,
             }),
             Act::LibraryAdd { spec } => self.library_add(spec),
-            Act::LibraryInstall { scope, entry } => {
-                if let skillz_harness::Spec::Skill {
-                    source,
-                    names,
-                    agents,
-                } = entry
-                {
-                    return self.install_source(&InstallRequest {
-                        source: source.clone(),
-                        cwd: self.deps.cwd.clone(),
-                        agents: if agents.is_empty() {
-                            self.deps.adapters.iter().map(|a| a.agent()).collect()
-                        } else {
-                            agents.clone()
-                        },
-                        scope: *scope,
-                        selection: SkillSelection::Patterns(names.clone()),
-                    });
-                }
-                let picked = Selection {
-                    install: std::slice::from_ref(entry),
-                    remove: &[],
-                    only: None,
-                };
-                change(self, *scope, &Change::Selection(&picked))
-            }
+            Act::LibraryInstall { scope, entry } => self.library_install(*scope, entry),
             Act::LibraryRemove(entry) => self.library_remove(entry),
             Act::CreateProfile { name, entries } => self.create_profile(name, entries).map(Some),
             Act::SaveCurrent { name } => {
@@ -77,6 +53,42 @@ impl Session<'_, '_> {
             }
             Act::SetEntries { profile, entries } => self.set_entries(profile, entries).map(Some),
             Act::DeleteProfile { name } => self.delete_profile(name).map(Some),
+        }
+    }
+
+    /// Install a library entry. A skill that names its skills is installed from its source like
+    /// any other source, so a plugin the source offers is used; every other entry is a plain
+    /// change.
+    fn library_install(&self, scope: Scope, entry: &Spec) -> anyhow::Result<Option<Notice>> {
+        if let Spec::Skill {
+            source,
+            names,
+            agents,
+        } = entry
+            && !names.is_empty()
+        {
+            return self.install_source(&InstallRequest {
+                source: source.clone(),
+                cwd: self.deps.cwd.clone(),
+                agents: self.agents_or_all(agents),
+                scope,
+                selection: SkillSelection::Patterns(names.clone()),
+            });
+        }
+        let picked = Selection {
+            install: std::slice::from_ref(entry),
+            remove: &[],
+            only: None,
+        };
+        change(self, scope, &Change::Selection(&picked))
+    }
+
+    /// `agents`, or every agent when none are named.
+    fn agents_or_all(&self, agents: &[Agent]) -> Vec<Agent> {
+        if agents.is_empty() {
+            self.deps.adapters.iter().map(|a| a.agent()).collect()
+        } else {
+            agents.to_vec()
         }
     }
 

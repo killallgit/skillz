@@ -71,8 +71,18 @@ skillz install killallgit/killall-skills                 # has a marketplace: pi
 
 Source installs prefer each tool's native plugin installer when a marketplace is available.
 `--all` installs every offered plugin; `--skill` selects the plugins that supply the matching
-skills. Sources without a matching plugin use `npx skills`. Library skill installs inspect
-the source again, so older loose-skill entries can install through the native plugin too.
+skills, and installs everything such a plugin ships. The plan names each plugin with how many
+skills it brings, and for `--all` lists the skills of the source that no plugin supplies, which
+are not installed (name them with `--skill`). Sources without a matching plugin use `npx
+skills`. Library skill installs that name skills inspect the source again, so older loose-skill
+entries can install through the native plugin too; a malformed marketplace or plugin manifest
+in the source never fails the install, its skills install loose instead.
+
+A Codex project install writes the marketplace and plugin into `.codex/config.toml`, which a team
+usually commits, so skillz refuses a source that carries credentials (an `https://user:token@`
+URL; use ssh or a credential helper), and a local source is written as this machine's path.
+It also refuses a marketplace name you already registered for yourself from another source: Codex
+keeps one downloaded copy per name for every project, and the project install would replace it.
 
 If a skill you ask for is already installed globally and not in the project, `install` says so
 and asks before installing it into the project too (`-y` goes ahead).
@@ -151,7 +161,7 @@ Every value must be non-empty and must not start with `-`; an MCP entry has exac
 | Kind | Claude | Codex |
 | --- | --- | --- |
 | skill | `npx skills add`, all agents at once | same |
-| plugin | `claude plugin marketplace add` + `plugin install`; project scope uses Claude's `local` scope, never the file the team shares | Global: `codex plugin marketplace add` + `plugin add`. Project: marketplace and plugin settings in `.codex/config.toml`; Codex loads them when the trusted project is opened |
+| plugin | `claude plugin marketplace add` + `plugin install`; project scope uses Claude's `local` scope, never the file the team shares | Global: `codex plugin marketplace add` + `plugin add`. Project: marketplace and plugin settings in `.codex/config.toml`; Codex materializes them on a marketplace refresh in a trusted project |
 | subagent | `.md` files into `.claude/agents` (`~/.claude/agents` global) | `.toml` files into `.codex/agents` (`~/.codex/agents` global) |
 | hook | `settings.json` (global) or `.claude/settings.local.json` (project) | `hooks.json` in the same scope |
 | mcp | `claude mcp add`, scope `user` (global) or `local` (project) | `codex mcp add`, global only, no SSE |

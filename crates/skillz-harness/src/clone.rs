@@ -54,7 +54,7 @@ pub fn with_source<T>(
     inspect(temporary.path(), source)
 }
 
-fn clone_url(source: &str) -> String {
+pub(crate) fn clone_url(source: &str) -> String {
     if source.contains("://") || source.starts_with("git@") {
         source.to_string()
     } else {
