@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::app::prompt::Prompter;
 use crate::app::sync::Scanner;
 use skillz_harness::agents::Harness;
+use skillz_harness::model::Agent;
 use skillz_harness::runner::CommandRunner;
 use skillz_harness::update::check::UpdateCheck;
 
@@ -51,6 +52,14 @@ impl<'a> Deps<'a> {
 }
 
 impl<'a> Deps<'a> {
+    pub(super) fn agents_or_all(&self, agents: &[Agent]) -> Vec<Agent> {
+        if agents.is_empty() {
+            self.adapters.iter().map(|a| a.agent()).collect()
+        } else {
+            agents.to_vec()
+        }
+    }
+
     /// The same effects asking `prompter` instead.
     pub(super) fn with_prompter<'b>(&'b self, prompter: &'b dyn Prompter) -> Deps<'b> {
         Deps {

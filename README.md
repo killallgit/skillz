@@ -79,10 +79,15 @@ entries can install through the native plugin too; a malformed marketplace or pl
 in the source never fails the install, its skills install loose instead.
 
 A Codex project install writes the marketplace and plugin into `.codex/config.toml`, which a team
-usually commits, so skillz refuses a source that carries credentials (an `https://user:token@`
-URL; use ssh or a credential helper), and a local source is written as this machine's path.
-It also refuses a marketplace name you already registered for yourself from another source: Codex
-keeps one downloaded copy per name for every project, and the project install would replace it.
+usually commits, so skillz refuses a source with a user, password or token in its URL (use ssh or
+a credential helper; this includes a bare `https://user@` account), and a local source is written
+as this machine's path. It also refuses a marketplace name you already registered for yourself
+from another source, or pinned to another revision or a sparse checkout: Codex keeps one
+downloaded copy per name for every project, and the project install would replace it. The same
+repo under another spelling (`o/r`, `https://github.com/o/r.git`, `git@github.com:o/r.git`) is
+the same source. A refusal skips that agent and says why in the plan; the other agents still
+install, and an install every agent refuses fails with the reasons. A config that does not parse,
+or has the wrong shape, is refused before anything is downloaded.
 
 If a skill you ask for is already installed globally and not in the project, `install` says so
 and asks before installing it into the project too (`-y` goes ahead).

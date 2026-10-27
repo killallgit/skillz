@@ -99,8 +99,13 @@ impl Harness for Claude {
         }
     }
 
-    fn plan_install(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
-        match entry {
+    fn plan_install(
+        &self,
+        entry: &Spec,
+        scope: Scope,
+        env: &Env,
+    ) -> anyhow::Result<Option<Vec<Action>>> {
+        Ok(match entry {
             Spec::Hook { .. } => hooks::provision(entry, hook_settings(env, scope)),
             Spec::Mcp { .. } => mcp::provision(entry, scope, env),
             Spec::Subagent { .. } => {
@@ -108,7 +113,7 @@ impl Harness for Claude {
             }
             Spec::Plugin { .. } => marketplace::provision(entry, scope, &env.project),
             Spec::Skill { .. } => None,
-        }
+        })
     }
 
     fn plugin_offer(&self, src: &Path, _scope: Scope) -> anyhow::Result<Option<PluginOffer>> {

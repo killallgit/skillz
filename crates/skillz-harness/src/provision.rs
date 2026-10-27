@@ -14,6 +14,8 @@ use crate::npx;
 pub struct Unsupported {
     pub entry: Spec,
     pub agent: Agent,
+    /// Why the agent refused the entry, when it says: it could take the entry, but not this one.
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -53,12 +55,21 @@ fn provision_per_agent(
 ) -> Provision {
     let mut out = Provision::default();
     for &agent in entry.agents() {
-        let steps = adapter_for(adapters, agent).and_then(|a| a.plan_install(entry, scope, env));
-        match steps {
-            Some(steps) => out.steps.extend(steps),
-            None => out.unsupported.push(Unsupported {
+        let planned = match adapter_for(adapters, agent) {
+            Some(adapter) => adapter.plan_install(entry, scope, env),
+            None => Ok(None),
+        };
+        match planned {
+            Ok(Some(steps)) => out.steps.extend(steps),
+            Ok(None) => out.unsupported.push(Unsupported {
                 entry: entry.clone(),
                 agent,
+                reason: None,
+            }),
+            Err(refusal) => out.unsupported.push(Unsupported {
+                entry: entry.clone(),
+                agent,
+                reason: Some(format!("{refusal:#}")),
             }),
         }
     }

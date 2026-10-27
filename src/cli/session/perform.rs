@@ -7,7 +7,7 @@ use super::selection::Selection;
 use crate::app::install::{InstallRequest, SkillSelection};
 use crate::app::workspace::Act;
 use skillz_harness::Spec;
-use skillz_harness::model::{Agent, Scope};
+use skillz_harness::model::Scope;
 
 impl Session<'_, '_> {
     /// What the toast should say, if anything.
@@ -38,7 +38,7 @@ impl Session<'_, '_> {
             Act::InstallSource { scope, source } => self.install_source(&InstallRequest {
                 source: source.clone(),
                 cwd: self.deps.cwd.clone(),
-                agents: self.agents_or_all(&[]),
+                agents: self.deps.agents_or_all(&[]),
                 scope: *scope,
                 selection: SkillSelection::Interactive,
             }),
@@ -70,7 +70,7 @@ impl Session<'_, '_> {
             return self.install_source(&InstallRequest {
                 source: source.clone(),
                 cwd: self.deps.cwd.clone(),
-                agents: self.agents_or_all(agents),
+                agents: self.deps.agents_or_all(agents),
                 scope,
                 selection: SkillSelection::Patterns(names.clone()),
             });
@@ -81,15 +81,6 @@ impl Session<'_, '_> {
             only: None,
         };
         change(self, scope, &Change::Selection(&picked))
-    }
-
-    /// `agents`, or every agent when none are named.
-    fn agents_or_all(&self, agents: &[Agent]) -> Vec<Agent> {
-        if agents.is_empty() {
-            self.deps.adapters.iter().map(|a| a.agent()).collect()
-        } else {
-            agents.to_vec()
-        }
     }
 
     /// Apply `profile` at `scope`, and remember it as that level's once the change went through.

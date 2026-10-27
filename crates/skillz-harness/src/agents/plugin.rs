@@ -27,6 +27,37 @@ pub(super) fn skill_names(root: &Path) -> anyhow::Result<Vec<String>> {
     Ok(names)
 }
 
+/// A marketplace file that is not valid JSON.
+#[derive(Debug)]
+struct MalformedMarketplace {
+    path: PathBuf,
+    source: serde_json::Error,
+}
+
+impl std::fmt::Display for MalformedMarketplace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid {}", self.path.display())
+    }
+}
+
+impl std::error::Error for MalformedMarketplace {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+/// A marketplace file that is not valid JSON is no offer: the source's skills still install
+/// instead of the whole install failing on a file the agent itself would not load. Any other
+/// failure stays an error.
+pub(super) fn tolerate_malformed(
+    read: anyhow::Result<Option<PluginOffer>>,
+) -> anyhow::Result<Option<PluginOffer>> {
+    match read {
+        Err(error) if error.downcast_ref::<MalformedMarketplace>().is_some() => Ok(None),
+        read => read,
+    }
+}
+
 /// An argument for an agent's CLI, so never option-like.
 fn cli_arg(v: &serde_json::Value) -> Option<&str> {
     v.as_str().filter(|s| !s.starts_with('-'))
@@ -48,7 +79,10 @@ pub(super) fn read_marketplace(
         return Ok(None);
     };
     let json: serde_json::Value =
-        serde_json::from_str(&text).with_context(|| format!("invalid {}", path.display()))?;
+        serde_json::from_str(&text).map_err(|source| MalformedMarketplace {
+            path: path.to_path_buf(),
+            source,
+        })?;
     let Some(name) = cli_arg(&json["name"]) else {
         return Ok(None);
     };

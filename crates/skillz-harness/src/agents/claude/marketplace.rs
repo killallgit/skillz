@@ -9,7 +9,7 @@ use super::removal::{plugin_removal, unique_in_order};
 use crate::Spec;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::agents::PluginOffer;
-use crate::agents::plugin::{declared_skill_paths, read_marketplace};
+use crate::agents::plugin::{declared_skill_paths, read_marketplace, tolerate_malformed};
 use crate::env::Env;
 use crate::model::{Agent, Installed, Installer, Kind, Scope, split_plugin_id};
 use crate::runner::Cmd;
@@ -188,12 +188,12 @@ fn owned_clone(claude: &Path, m: &Marketplace) -> Option<RemovalTarget> {
 
 /// The Claude marketplace `src` carries, if any.
 pub(super) fn plugin_offer(src: &Path) -> anyhow::Result<Option<PluginOffer>> {
-    read_marketplace(
+    tolerate_malformed(read_marketplace(
         &src.join(".claude-plugin/marketplace.json"),
         src,
         &[".claude-plugin/plugin.json"],
         plugin_skill_paths,
-    )
+    ))
 }
 
 fn plugin_skill_paths(
@@ -316,6 +316,17 @@ mod tests {
     use crate::runner::NoCommands;
     use crate::test_support::{marketplace_fixture, project_with, s};
     use serde_json::json;
+
+    #[test]
+    fn a_marketplace_file_that_does_not_parse_offers_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            &dir.path().join(".claude-plugin/marketplace.json"),
+            "{ not json",
+        );
+
+        assert!(plugin_offer(dir.path()).unwrap().is_none());
+    }
 
     fn mp() -> PluginOffer {
         PluginOffer {

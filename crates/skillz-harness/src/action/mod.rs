@@ -32,17 +32,23 @@ fn redacted_text<S: Serializer>(text: &str, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(&redact_text(text))
 }
 
-fn redacted_texts<S: Serializer>(texts: &[String], s: S) -> Result<S::Ok, S::Error> {
-    s.collect_seq(texts.iter().map(|text| redact_text(text).to_string()))
-}
-
 /// A TOML value a config edit sets.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TomlValue {
     Bool(bool),
-    Text(#[serde(serialize_with = "redacted_text")] String),
-    Texts(#[serde(serialize_with = "redacted_texts")] Vec<String>),
+    Text(String),
+    /// An array with nothing in it.
+    EmptyArray,
+}
+
+impl Serialize for TomlValue {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            TomlValue::Bool(on) => s.serialize_bool(*on),
+            TomlValue::Text(text) => s.serialize_str(&redact_text(text)),
+            TomlValue::EmptyArray => s.collect_seq(std::iter::empty::<()>()),
+        }
+    }
 }
 
 impl std::fmt::Display for TomlValue {
@@ -56,11 +62,7 @@ impl TomlValue {
         match self {
             TomlValue::Bool(on) => (*on).into(),
             TomlValue::Text(text) => text.as_str().into(),
-            TomlValue::Texts(texts) => texts
-                .iter()
-                .map(String::as_str)
-                .collect::<toml_edit::Array>()
-                .into(),
+            TomlValue::EmptyArray => toml_edit::Array::new().into(),
         }
     }
 }

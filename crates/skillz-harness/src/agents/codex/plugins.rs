@@ -5,18 +5,24 @@ use toml_edit::DocumentMut;
 use super::config::{hook_state_keys, plugin_ids, read_config, str_field, table_keys};
 use super::removal::{native, toml_remove};
 use crate::Spec;
-use crate::action::{Action, Edit, RemovalTarget, TomlValue};
+use crate::action::{Action, Edit, RemovalTarget, TomlValue, apply_edit};
 use crate::agents::PluginOffer;
-use crate::agents::plugin::{declared_skill_paths, read_marketplace};
+use crate::agents::plugin::{declared_skill_paths, read_marketplace, tolerate_malformed};
 use crate::env::Env;
 use crate::hooks;
 use crate::model::{
     Agent, HOOK_CHILD, Installed, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
 };
+use crate::read_optional::read_optional;
+use crate::redact::redact;
 
-/// Global installs use the CLI; project installs declare the marketplace and plugin in TOML. A
-/// project install this agent refuses (`project_install_steps`) is one it cannot take.
-pub(super) fn provision(entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
+/// Global installs use the CLI; project installs declare the marketplace and plugin in TOML and
+/// can be refused (`project_install_steps`).
+pub(super) fn provision(
+    entry: &Spec,
+    scope: Scope,
+    env: &Env,
+) -> anyhow::Result<Option<Vec<Action>>> {
     let Spec::Plugin {
         source,
         marketplace,
@@ -24,18 +30,48 @@ pub(super) fn provision(entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Act
         ..
     } = entry
     else {
-        return None;
+        return Ok(None);
     };
+    let names = std::slice::from_ref(name);
     if scope == Scope::Project {
-        return project_install_steps(source, marketplace, std::slice::from_ref(name), env).ok();
+        return Ok(Some(project_install_steps(
+            source,
+            marketplace,
+            names,
+            env,
+        )?));
     }
-    Some(install_steps(
-        source,
-        marketplace,
-        std::slice::from_ref(name),
-        env,
-    ))
+    Ok(Some(install_steps(source, marketplace, names, env)))
 }
+
+/// Why a project install is refused.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Refused {
+    /// The marketplace's source carries credentials the project file would hold.
+    Credentials(String),
+    /// The user registered the marketplace's name from another source.
+    NameTaken(String),
+    /// A config file the install would read or write does not parse, or has the wrong shape.
+    Config(String),
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Refused::Credentials(marketplace) => write!(
+                f,
+                "marketplace {marketplace}'s source has a user, password or token in its URL, which the project's .codex/config.toml would hold; use an ssh URL or a credential helper"
+            ),
+            Refused::NameTaken(marketplace) => write!(
+                f,
+                "marketplace {marketplace} is already registered for the user from another source; installing it into a project would replace the copy every project shares"
+            ),
+            Refused::Config(cause) => write!(f, "{cause}"),
+        }
+    }
+}
+
+impl std::error::Error for Refused {}
 
 /// Declare the marketplace and `names` in the project's `.codex/config.toml`, and download the
 /// marketplace's metadata without registering or enabling anything for the user. Codex
@@ -52,7 +88,7 @@ pub(super) fn project_install_steps(
     marketplace: &str,
     names: &[String],
     env: &Env,
-) -> anyhow::Result<Vec<Action>> {
+) -> Result<Vec<Action>, Refused> {
     let local =
         Path::new(source).is_absolute() || source.starts_with("./") || source.starts_with("../");
     let (source, git_ref) = if local {
@@ -68,24 +104,19 @@ pub(super) fn project_install_steps(
             .map_or((source, None), |(repo, git_ref)| (repo, Some(git_ref)));
         (crate::clone::clone_url(repo), git_ref)
     };
-    anyhow::ensure!(
-        !has_credentials(&source),
-        "refusing to write the credentials in marketplace {marketplace}'s source into the project's .codex/config.toml; use an ssh URL or a credential helper"
-    );
+    if has_credentials(&source) {
+        return Err(Refused::Credentials(marketplace.into()));
+    }
     let file = super::scope_dir(env, Scope::Project).join("config.toml");
-    read_config(&file)?;
+    let unusable = |cause: anyhow::Error| Refused::Config(format!("{cause:#}"));
     if !local {
-        let user = read_config(&super::scope_dir(env, Scope::Global).join("config.toml"))?;
-        let taken = user.as_ref().map(marketplaces).is_some_and(|known| {
-            known.iter().any(|m| {
-                m.name == marketplace
-                    && m.source.as_deref() != Some(display_source(&source).as_str())
-            })
-        });
-        anyhow::ensure!(
-            !taken,
-            "marketplace {marketplace} is already registered for the user from another source; installing it into a project would replace the copy every project shares"
-        );
+        let user = read_config(&super::scope_dir(env, Scope::Global).join("config.toml"))
+            .map_err(unusable)?;
+        if user.is_some_and(|user| {
+            replaces_user_copy(&user, marketplace, &source, git_ref.unwrap_or("HEAD"))
+        }) {
+            return Err(Refused::NameTaken(marketplace.into()));
+        }
     }
     let text = |value: &str| TomlValue::Text(value.into());
     let mut fields = vec![
@@ -96,7 +127,7 @@ pub(super) fn project_install_steps(
         // A project source must not inherit a different revision or sparse checkout from
         // a user-level marketplace with the same name.
         fields.push(("ref", text(git_ref.unwrap_or("HEAD"))));
-        fields.push(("sparse_paths", TomlValue::Texts(vec![])));
+        fields.push(("sparse_paths", TomlValue::EmptyArray));
     }
     let mut steps = Vec::new();
     if !local {
@@ -131,20 +162,64 @@ pub(super) fn project_install_steps(
             value: TomlValue::Bool(true),
         },
     }));
+    // Rehearse the edits on the config as it is: one that parses but has the wrong shape (a
+    // `plugins` that is not a table) must refuse now, not after the download has run.
+    let mut config = read_optional(&file).map_err(unusable)?.unwrap_or_default();
+    for step in &steps {
+        if let Action::Edit { edit, .. } = step {
+            config = apply_edit(&file, edit, &config).map_err(unusable)?;
+        }
+    }
     Ok(steps)
 }
 
-/// Whether a git URL carries a secret: a password, or a user on an http(s) URL (a token). The
-/// `git` user of an ssh URL names an account, not a secret.
+/// Whether downloading `source` at `git_ref` for a project would replace a copy the user keeps
+/// under `marketplace`. The download is one copy per name, shared by every project, so any
+/// registration of that name that is not this very repo at this revision, in full, is at risk.
+fn replaces_user_copy(user: &DocumentMut, marketplace: &str, source: &str, git_ref: &str) -> bool {
+    table_keys(user, "marketplaces")
+        .into_iter()
+        .any(|(name, theirs)| {
+            let same_copy = str_field(theirs, "source")
+                .is_some_and(|theirs| repo_identity(theirs) == repo_identity(source))
+                && str_field(theirs, "ref").unwrap_or("HEAD") == git_ref
+                && theirs
+                    .get("sparse_paths")
+                    .and_then(toml_edit::Item::as_array)
+                    .is_none_or(|paths| paths.is_empty());
+            name == marketplace && str_field(theirs, "source_type") != Some("local") && !same_copy
+        })
+}
+
+/// A git source as `host/owner/repo`, whichever way it is spelled: shorthand, https, ssh or scp
+/// form, with or without `.git`, a trailing slash or capitals.
+fn repo_identity(source: &str) -> String {
+    let url = crate::clone::clone_url(source).to_ascii_lowercase();
+    let rest = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest);
+    let rest = match rest.split_once('@') {
+        Some((user, after)) if !user.contains('/') => after,
+        _ => rest,
+    };
+    rest.replacen(':', "/", 1)
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .trim_end_matches('/')
+        .to_string()
+}
+
+/// Whether a git URL carries a secret, by what `redact` would hide: userinfo, a query string. The
+/// account of an ssh URL (`ssh://git@host`) names a user, not a secret, so it is set aside first.
 fn has_credentials(url: &str) -> bool {
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return false;
+    let url = match url.split_once("://") {
+        Some((scheme @ ("ssh" | "git+ssh"), rest)) => match rest.split_once('@') {
+            Some((account, after)) if !account.contains(['/', ':']) => {
+                format!("{scheme}://{after}")
+            }
+            _ => url.to_string(),
+        },
+        _ => url.to_string(),
     };
-    let authority = rest.split('/').next().unwrap_or_default();
-    let Some((userinfo, _)) = authority.rsplit_once('@') else {
-        return false;
-    };
-    userinfo.contains(':') || matches!(scheme, "http" | "https")
+    redact(&url) != url
 }
 
 /// `codex plugin marketplace add` then `plugin add` for each of `names`.
@@ -167,9 +242,9 @@ pub(super) fn install_steps(
         .collect()
 }
 
-/// The Codex marketplace `src` carries, if any. A marketplace file that cannot be read or parsed
-/// is no offer, so the source's skills still install instead of the whole install failing on a
-/// file Codex itself would not load.
+/// The Codex marketplace `src` carries, if any. A marketplace file that is not valid JSON is no
+/// offer, so the source's skills still install instead of the whole install failing on a file
+/// Codex itself would not load; any other failure is an error.
 pub(super) fn plugin_offer(src: &Path) -> anyhow::Result<Option<PluginOffer>> {
     let manifests = &[
         "plugin.json",
@@ -177,12 +252,17 @@ pub(super) fn plugin_offer(src: &Path) -> anyhow::Result<Option<PluginOffer>> {
         ".claude-plugin/plugin.json",
     ];
     let offer = |file: &str| {
-        read_marketplace(&src.join(file), src, manifests, plugin_skill_paths)
-            .ok()
-            .flatten()
+        tolerate_malformed(read_marketplace(
+            &src.join(file),
+            src,
+            manifests,
+            plugin_skill_paths,
+        ))
     };
-    Ok(offer(".agents/plugins/marketplace.json")
-        .or_else(|| offer(".claude-plugin/marketplace.json")))
+    match offer(".agents/plugins/marketplace.json")? {
+        Some(offer) => Ok(Some(offer)),
+        None => offer(".claude-plugin/marketplace.json"),
+    }
 }
 
 fn plugin_skill_paths(
@@ -405,8 +485,8 @@ mod tests {
         project_install_steps(source, marketplace, &names, env).unwrap()
     }
 
-    fn refused(source: &str, marketplace: &str, env: &Env) -> bool {
-        project_install_steps(source, marketplace, &["p".to_string()], env).is_err()
+    fn refusal(source: &str, marketplace: &str, env: &Env) -> Option<Refused> {
+        project_install_steps(source, marketplace, &["p".to_string()], env).err()
     }
 
     #[test]
@@ -550,6 +630,8 @@ mod tests {
             ("https://user:s3cret@host/o/r.git", true),
             ("https://token@host/o/r.git", true),
             ("ssh://git:pw@host/o/r.git", true),
+            ("https://host/o/r.git?token=abc", true),
+            ("ssh://git@host/o/r.git?token=abc", true),
             ("ssh://git@host/o/r.git", false),
             ("git@github.com:o/r.git", false),
             ("https://github.com/o/r.git", false),
@@ -564,8 +646,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let env = Env::new(dir.path().join("home"), dir.path().join("project"));
 
-        assert!(refused("https://user:s3cret@host/o/r.git", "mp", &env));
-        assert!(!refused("https://host/o/r.git", "mp", &env));
+        assert_eq!(
+            refusal("https://user:s3cret@host/o/r.git", "mp", &env),
+            Some(Refused::Credentials("mp".into()))
+        );
+        assert_eq!(refusal("https://host/o/r.git", "mp", &env), None);
         assert!(!env.project.join(".codex/config.toml").exists());
     }
 
@@ -578,10 +663,16 @@ mod tests {
             "[marketplaces.mp]\nsource_type = \"git\"\nsource = \"https://github.com/mine/skills.git\"\n",
         );
 
-        assert!(refused("someone/else", "mp", &env));
-        assert!(!refused("mine/skills", "mp", &env));
-        assert!(!refused("https://github.com/mine/skills.git", "mp", &env));
-        assert!(!refused("someone/else", "another-name", &env));
+        assert_eq!(
+            refusal("someone/else", "mp", &env),
+            Some(Refused::NameTaken("mp".into()))
+        );
+        assert_eq!(refusal("mine/skills", "mp", &env), None);
+        assert_eq!(
+            refusal("https://github.com/mine/skills.git", "mp", &env),
+            None
+        );
+        assert_eq!(refusal("someone/else", "another-name", &env), None);
     }
 
     #[test]
@@ -590,7 +681,95 @@ mod tests {
         let env = Env::new(dir.path().join("home"), dir.path().join("project"));
         write(&env.project.join(".codex/config.toml"), "plugins = [\n");
 
-        assert!(refused("o/r", "mp", &env));
+        assert!(matches!(
+            refusal("o/r", "mp", &env),
+            Some(Refused::Config(_))
+        ));
+    }
+
+    #[test]
+    fn a_project_config_with_the_wrong_shape_refuses_before_the_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::new(dir.path().join("home"), dir.path().join("project"));
+        write(&env.project.join(".codex/config.toml"), "plugins = \"x\"\n");
+
+        assert!(matches!(
+            refusal("o/r", "mp", &env),
+            Some(Refused::Config(_))
+        ));
+    }
+
+    #[test]
+    fn the_same_repo_spelled_another_way_is_not_a_different_source() {
+        for spelling in [
+            "mine/skills",
+            "https://github.com/mine/skills.git",
+            "https://github.com/mine/skills/",
+            "git@github.com:mine/skills.git",
+            "ssh://git@github.com/Mine/Skills.git",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let env = Env::new(dir.path().join("home"), dir.path().join("project"));
+            write(
+                &env.home.join(".codex/config.toml"),
+                &format!("[marketplaces.mp]\nsource_type = \"git\"\nsource = \"{spelling}\"\n"),
+            );
+
+            assert_eq!(refusal("mine/skills", "mp", &env), None, "{spelling}");
+        }
+    }
+
+    #[test]
+    fn a_user_copy_pinned_to_a_revision_or_a_sparse_checkout_is_not_replaced() {
+        for pin in ["ref = \"v1\"", "sparse_paths = [\"skills\"]"] {
+            let dir = tempfile::tempdir().unwrap();
+            let env = Env::new(dir.path().join("home"), dir.path().join("project"));
+            write(
+                &env.home.join(".codex/config.toml"),
+                &format!("[marketplaces.mp]\nsource = \"mine/skills\"\n{pin}\n"),
+            );
+
+            assert_eq!(
+                refusal("mine/skills", "mp", &env),
+                Some(Refused::NameTaken("mp".into())),
+                "{pin}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_user_local_marketplace_of_the_same_name_has_no_download_to_replace() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::new(dir.path().join("home"), dir.path().join("project"));
+        write(
+            &env.home.join(".codex/config.toml"),
+            "[marketplaces.mp]\nsource_type = \"local\"\nsource = \"/some/dir\"\n",
+        );
+
+        assert_eq!(refusal("someone/else", "mp", &env), None);
+    }
+
+    #[test]
+    fn picking_several_plugins_through_the_harness_plans_one_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::new(dir.path().join("home"), dir.path().join("project"));
+        let offer = PluginOffer {
+            marketplace: "mp".into(),
+            plugins: vec!["a".into(), "b".into()],
+            skills: Default::default(),
+        };
+
+        let steps = Codex
+            .plan_add_source(
+                &offer,
+                &["a".to_string(), "b".to_string()],
+                "o/r",
+                Scope::Project,
+                &env,
+            )
+            .unwrap();
+
+        assert_eq!(runs(&steps).len(), 1);
     }
 
     #[test]

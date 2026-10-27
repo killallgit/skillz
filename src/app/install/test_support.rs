@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 
 use crate::app::prompt::Prompter;
+use crate::app::review::{Group, PlanView, Verdict};
 use skillz_harness::model::{Agent, Scope};
 
 pub use skillz_harness::test_support::*;
@@ -24,6 +25,8 @@ pub struct ScriptedPrompter {
     picks: Vec<usize>,
     confirm: bool,
     pub offered: RefCell<Vec<Vec<String>>>,
+    /// Each plan shown, as how many lines it listed under each group.
+    pub plans: RefCell<Vec<Vec<(Group, usize)>>>,
 }
 
 impl ScriptedPrompter {
@@ -32,6 +35,7 @@ impl ScriptedPrompter {
             picks: picks.to_vec(),
             confirm,
             offered: RefCell::default(),
+            plans: RefCell::default(),
         }
     }
 }
@@ -43,6 +47,15 @@ impl Prompter for ScriptedPrompter {
     }
     fn confirm(&self, _question: &str) -> anyhow::Result<bool> {
         Ok(self.confirm)
+    }
+    fn plan(&self, view: &PlanView) -> anyhow::Result<Verdict> {
+        let shape = view.groups.iter().map(|(g, lines)| (*g, lines.len()));
+        self.plans.borrow_mut().push(shape.collect());
+        Ok(if self.confirm {
+            Verdict::Apply
+        } else {
+            Verdict::Cancel
+        })
     }
 }
 

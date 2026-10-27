@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::app::prompt::Prompter;
 use crate::app::review::{Group, PlanView, Verdict};
 use skillz_harness::action::{self, Action};
+use skillz_harness::agent_skills::skill_names_under;
 use skillz_harness::agents::{Harness, PluginOffer, adapter_for};
 use skillz_harness::env::Env;
 use skillz_harness::model::{Agent, Scope};
@@ -55,6 +56,8 @@ struct Tree<'a> {
 struct Plan {
     lines: Vec<String>,
     steps: Vec<Action>,
+    /// Agents that refused the install, with why.
+    skipped: Vec<String>,
 }
 
 /// `true` when the plan was approved and ran.
@@ -66,7 +69,10 @@ pub fn install(ctx: &Ctx, req: &InstallRequest) -> anyhow::Result<bool> {
         };
         let view = PlanView {
             heading: format!("Install from {source}"),
-            groups: vec![(Group::Install, plan.lines)],
+            groups: [(Group::Install, plan.lines), (Group::Skip, plan.skipped)]
+                .into_iter()
+                .filter(|(_, lines)| !lines.is_empty())
+                .collect(),
             steps: plan.steps.iter().map(Action::describe).collect(),
             targets: None,
         };
@@ -84,6 +90,7 @@ fn plan(ctx: &Ctx, req: &InstallRequest, tree: &Tree) -> anyhow::Result<Option<P
     let mut plan = Plan {
         lines: vec![],
         steps: vec![],
+        skipped: vec![],
     };
     let mut rest = vec![];
     for &agent in &req.agents {
@@ -92,6 +99,7 @@ fn plan(ctx: &Ctx, req: &InstallRequest, tree: &Tree) -> anyhow::Result<Option<P
                 plan.lines.extend(lines);
                 plan.steps.extend(steps);
             }
+            AgentPlugins::Refused(why) => plan.skipped.push(why),
             AgentPlugins::Declined => return Ok(None),
             AgentPlugins::Unoffered => rest.push(agent),
         }
@@ -102,6 +110,12 @@ fn plan(ctx: &Ctx, req: &InstallRequest, tree: &Tree) -> anyhow::Result<Option<P
         plan.lines.push(skills.line);
         plan.steps.push(skills.step);
     }
+    // Every agent refusing leaves nothing to approve, so say why instead of doing nothing.
+    anyhow::ensure!(
+        !plan.steps.is_empty() || plan.skipped.is_empty(),
+        "{}",
+        plan.skipped.join("; ")
+    );
     Ok((!plan.steps.is_empty()).then_some(plan))
 }
 
@@ -111,6 +125,8 @@ enum AgentPlugins {
     Unoffered,
     /// The user picked no plugins.
     Declined,
+    /// The agent will not install from this source, and says why.
+    Refused(String),
     Install {
         lines: Vec<String>,
         steps: Vec<Action>,
@@ -140,7 +156,7 @@ fn agent_plugins(
         }
         SkillSelection::All => offer.plugins.clone(),
         SkillSelection::Patterns(_) => {
-            let available = skills::scan_available(tree.src)?;
+            let available = skill_names_under(tree.src)?;
             let selected = skills::select_skills(&available, &req.selection);
             if selected.is_empty() || !left_out(&offer, &selected).is_empty() {
                 return Ok(AgentPlugins::Unoffered);
@@ -167,8 +183,13 @@ fn agent_plugins(
         named.join(", "),
         offer.marketplace
     )];
-    if req.selection == SkillSelection::All {
-        let skipped = left_out(&offer, &skills::scan_available(tree.src)?);
+    // Only a source whose every plugin says what it ships can say what is left out.
+    let known = offer
+        .plugins
+        .iter()
+        .all(|plugin| offer.skills.contains_key(plugin));
+    if req.selection == SkillSelection::All && known {
+        let skipped = left_out(&offer, &skill_names_under(tree.src)?);
         if !skipped.is_empty() {
             lines.push(format!(
                 "{agent}: not installed, no plugin supplies them (name them with --skill): {}",
@@ -176,10 +197,12 @@ fn agent_plugins(
             ));
         }
     }
-    Ok(AgentPlugins::Install {
-        lines,
-        steps: adapter.plan_add_source(&offer, &chosen, tree.source, req.scope, ctx.env)?,
-    })
+    Ok(
+        match adapter.plan_add_source(&offer, &chosen, tree.source, req.scope, ctx.env) {
+            Ok(steps) => AgentPlugins::Install { lines, steps },
+            Err(refusal) => AgentPlugins::Refused(format!("{agent}: {refusal:#}")),
+        },
+    )
 }
 
 /// The skills in `names` that none of the offer's plugins supplies: installing the plugins
@@ -253,6 +276,84 @@ mod tests {
                 .map(|(plugin, names)| (plugin.to_string(), s(names)))
                 .collect(),
         }
+    }
+
+    const CREDENTIALED: &str = "https://user:s3cret@host/o/r.git";
+
+    fn project_install(
+        source: &str,
+        agents: Vec<Agent>,
+        selection: SkillSelection,
+        prepare: impl Fn(&std::path::Path) + 'static,
+    ) -> (anyhow::Result<bool>, ScriptedPrompter, Fixture) {
+        let fx = project_with(|_| {});
+        let runner = FakeRunner::new(prepare);
+        let request = InstallRequest {
+            agents,
+            scope: Scope::Project,
+            ..req(&fx, source, selection)
+        };
+        let prompter = ScriptedPrompter::new(&[0, 1], true);
+        let result = run_install(&fx, &request, &runner, &prompter);
+        (result, prompter, fx)
+    }
+
+    #[test]
+    fn an_agent_that_refuses_the_source_is_skipped_and_the_others_still_install() {
+        let (result, prompter, fx) = project_install(
+            CREDENTIALED,
+            vec![Agent::Claude, Agent::Codex],
+            SkillSelection::All,
+            marketplace_fixture,
+        );
+
+        assert!(result.unwrap());
+        assert_eq!(
+            prompter.plans.borrow()[0],
+            [(Group::Install, 1), (Group::Skip, 1)]
+        );
+        assert!(!fx.env.project.join(".codex/config.toml").exists());
+    }
+
+    #[test]
+    fn an_install_every_agent_refuses_is_an_error_not_a_silent_nothing() {
+        let (result, prompter, _) = project_install(
+            CREDENTIALED,
+            vec![Agent::Codex],
+            SkillSelection::All,
+            marketplace_fixture,
+        );
+
+        assert!(result.is_err());
+        assert!(prompter.plans.borrow().is_empty());
+    }
+
+    #[test]
+    fn all_lists_the_skills_no_plugin_supplies_as_not_installed() {
+        let lines = |extra: bool| {
+            let (result, prompter, _) = project_install(
+                "https://host/o/r.git",
+                vec![Agent::Claude],
+                SkillSelection::All,
+                move |root| {
+                    marketplace_fixture(root);
+                    std::fs::write(
+                        root.join(".claude-plugin/marketplace.json"),
+                        r#"{"name":"mp","plugins":[{"name":"p1","source":"./plugins/p1"},{"name":"p2","source":"./plugins/p2"}]}"#,
+                    )
+                    .unwrap();
+                    if extra {
+                        skill(root, "loose/gamma");
+                    }
+                },
+            );
+            assert!(result.unwrap());
+            let plans = prompter.plans.borrow();
+            plans[0].clone()
+        };
+
+        assert_eq!(lines(false), [(Group::Install, 1)]);
+        assert_eq!(lines(true), [(Group::Install, 2)]);
     }
 
     #[test]

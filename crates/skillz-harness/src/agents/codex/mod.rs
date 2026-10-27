@@ -91,17 +91,22 @@ impl Harness for Codex {
     }
 
     /// Project plugins are configured directly; native add commands write the user config.
-    fn plan_install(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
-        match entry {
+    fn plan_install(
+        &self,
+        entry: &Spec,
+        scope: Scope,
+        env: &Env,
+    ) -> anyhow::Result<Option<Vec<Action>>> {
+        Ok(match entry {
             Spec::Hook { .. } => hooks::provision(entry, scope_dir(env, scope).join("hooks.json")),
             Spec::Mcp { .. } => mcp::provision(entry, scope, env),
             Spec::Subagent { .. } => {
                 let to = scope_dir(env, scope).join("agents");
                 subagents::provision(entry, &AgentDir::new(&to, "toml"), env)
             }
-            Spec::Plugin { .. } => plugins::provision(entry, scope, env),
+            Spec::Plugin { .. } => return plugins::provision(entry, scope, env),
             Spec::Skill { .. } => None,
-        }
+        })
     }
 
     fn plugin_offer(&self, src: &Path, _scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
@@ -117,7 +122,12 @@ impl Harness for Codex {
         env: &Env,
     ) -> anyhow::Result<Vec<Action>> {
         if scope == Scope::Project {
-            plugins::project_install_steps(source, &offer.marketplace, picked, env)
+            Ok(plugins::project_install_steps(
+                source,
+                &offer.marketplace,
+                picked,
+                env,
+            )?)
         } else {
             Ok(plugins::install_steps(
                 source,
