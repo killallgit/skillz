@@ -104,7 +104,8 @@ pub(super) fn project_install_steps(
             .map_or((source, None), |(repo, git_ref)| (repo, Some(git_ref)));
         (crate::clone::clone_url(repo), git_ref)
     };
-    if has_credentials(&source) {
+    // A local path goes nowhere near a URL: a folder called `key=1` is not a secret.
+    if !local && has_credentials(&source) {
         return Err(Refused::Credentials(marketplace.into()));
     }
     let file = super::scope_dir(env, Scope::Project).join("config.toml");
@@ -638,6 +639,16 @@ mod tests {
             ("/local/path", false),
         ] {
             assert_eq!(has_credentials(url), secret, "{url}");
+        }
+    }
+
+    #[test]
+    fn a_local_path_that_looks_like_a_secret_is_not_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::new(dir.path().join("home"), dir.path().join("project"));
+
+        for path in ["/tmp/my-key=1/dir", "./rel/key=1", "/tmp/Bearer docs/x"] {
+            assert_eq!(refusal(path, "mp", &env), None, "{path}");
         }
     }
 

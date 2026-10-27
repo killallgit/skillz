@@ -206,6 +206,20 @@ mod tests {
     use crate::test_support::skill;
     use serde_json::{Value, json};
 
+    #[test]
+    fn only_a_malformed_marketplace_is_tolerated() {
+        let malformed = || {
+            let source = serde_json::from_str::<Value>("{").unwrap_err();
+            anyhow::Error::new(MalformedMarketplace {
+                path: "m.json".into(),
+                source,
+            })
+        };
+
+        assert!(tolerate_malformed(Err(malformed())).unwrap().is_none());
+        assert!(tolerate_malformed(Err(anyhow::anyhow!("permission denied"))).is_err());
+    }
+
     fn write_json(root: &Path, path: &str, value: Value) {
         let path = root.join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
