@@ -7,7 +7,7 @@ use super::removal::{native, toml_remove};
 use crate::Spec;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::agents::PluginOffer;
-use crate::agents::plugin::read_marketplace;
+use crate::agents::plugin::{declared_skill_paths, read_marketplace};
 use crate::env::Env;
 use crate::hooks;
 use crate::model::{
@@ -138,10 +138,26 @@ pub(super) fn plugin_offer(src: &Path) -> anyhow::Result<Option<PluginOffer>> {
         &src.join(".agents/plugins/marketplace.json"),
         src,
         manifests,
+        plugin_skill_paths,
     )? {
         Some(offer) => Ok(Some(offer)),
-        None => read_marketplace(&src.join(".claude-plugin/marketplace.json"), src, manifests),
+        None => read_marketplace(
+            &src.join(".claude-plugin/marketplace.json"),
+            src,
+            manifests,
+            plugin_skill_paths,
+        ),
     }
+}
+
+fn plugin_skill_paths(
+    entry: &serde_json::Value,
+    manifest: Option<&serde_json::Value>,
+    _from_marketplace_root: bool,
+) -> Vec<String> {
+    // Codex uses the entry as a manifest only when the package has none; explicit skill
+    // paths replace its default scan rather than extending it as Claude's paths do.
+    declared_skill_paths(manifest.unwrap_or(entry)).unwrap_or_else(|| vec!["./skills".into()])
 }
 
 pub(super) struct Marketplace {

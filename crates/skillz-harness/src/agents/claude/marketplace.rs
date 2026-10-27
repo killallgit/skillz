@@ -9,7 +9,7 @@ use super::removal::{plugin_removal, unique_in_order};
 use crate::Spec;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::agents::PluginOffer;
-use crate::agents::plugin::read_marketplace;
+use crate::agents::plugin::{declared_skill_paths, read_marketplace};
 use crate::env::Env;
 use crate::model::{Agent, Installed, Installer, Kind, Scope, split_plugin_id};
 use crate::runner::Cmd;
@@ -192,7 +192,42 @@ pub(super) fn plugin_offer(src: &Path) -> anyhow::Result<Option<PluginOffer>> {
         &src.join(".claude-plugin/marketplace.json"),
         src,
         &[".claude-plugin/plugin.json"],
+        plugin_skill_paths,
     )
+}
+
+fn plugin_skill_paths(
+    entry: &serde_json::Value,
+    manifest: Option<&serde_json::Value>,
+    from_marketplace_root: bool,
+) -> Vec<String> {
+    if manifest.is_some()
+        && entry["strict"] == false
+        && [
+            "commands",
+            "agents",
+            "skills",
+            "hooks",
+            "outputStyles",
+            "themes",
+        ]
+        .iter()
+        .any(|key| entry.get(key).is_some())
+    {
+        return vec![];
+    }
+    let entry_paths = declared_skill_paths(entry);
+    // Root-sourced marketplace entries can expose separate subsets of a shared skills tree.
+    let mut paths = if from_marketplace_root && entry_paths.is_some() {
+        vec![]
+    } else {
+        vec!["./skills".into()]
+    };
+    if let Some(manifest_paths) = manifest.and_then(declared_skill_paths) {
+        paths.extend(manifest_paths);
+    }
+    paths.extend(entry_paths.into_iter().flatten());
+    paths
 }
 
 /// Add `source` as a marketplace and install the `picked` plugins of `offer`.

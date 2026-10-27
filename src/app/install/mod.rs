@@ -421,11 +421,14 @@ mod tests {
     }
 
     #[test]
-    fn plugin_skill_mapping_uses_manifest_paths() {
-        for paths in [r#""./custom/tdd""#, r#"["./custom/tdd"]"#] {
+    fn claude_custom_skill_paths_preserve_default_skills() {
+        for paths in [
+            r#""./custom/custom-helper""#,
+            r#"["./custom/custom-helper"]"#,
+        ] {
             let fx = project_with(|root| {
                 mattpocock_fixture(root);
-                skill(root, "custom/tdd");
+                skill(root, "custom/custom-helper");
                 std::fs::write(
                     root.join(".claude-plugin/plugin.json"),
                     format!(r#"{{"name":"mattpocock-skills","skills":{paths}}}"#),
@@ -433,13 +436,72 @@ mod tests {
                 .unwrap();
             });
             let runner = FakeRunner::new(|_| {});
-            let request = req(&fx, "repo", SkillSelection::Patterns(s(&["tdd"])));
+            let request = req(&fx, "repo", SkillSelection::Patterns(s(&["custom-helper"])));
             run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
             assert_eq!(runner.calls()[1].0, "claude");
             let runner = FakeRunner::new(|_| {});
             let request = req(&fx, "repo", SkillSelection::Patterns(s(&["code-review"])));
             run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
-            assert_eq!(runner.calls()[0].0, "npx");
+            assert_eq!(runner.calls().len(), 2);
+            assert_eq!(runner.calls()[1].0, "claude");
+        }
+    }
+
+    #[test]
+    fn root_entry_skill_subsets_select_only_the_matching_native_plugin() {
+        let fx = project_with(|root| {
+            skill(root, "skills/alpha");
+            skill(root, "skills/beta");
+            std::fs::create_dir_all(root.join(".claude-plugin")).unwrap();
+            std::fs::write(root.join(".claude-plugin/marketplace.json"), r#"{"name":"mp","plugins":[{"name":"p1","source":"./","skills":["./skills/alpha"],"strict":false},{"name":"p2","source":"./","skills":["./skills/beta"],"strict":false}]}"#).unwrap();
+        });
+        let runner = FakeRunner::new(|_| {});
+        let request = InstallRequest {
+            agents: vec![Agent::Claude, Agent::Codex],
+            ..req(&fx, "repo", SkillSelection::Patterns(s(&["alpha"])))
+        };
+        run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
+        let calls = runner.calls();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            calls[1].1,
+            s(&["plugin", "install", "p1@mp", "--scope", "local"])
+        );
+        let config: toml_edit::DocumentMut =
+            std::fs::read_to_string(fx.env.project.join(".codex/config.toml"))
+                .unwrap()
+                .parse()
+                .unwrap();
+        assert_eq!(config["plugins"]["p1@mp"]["enabled"].as_bool(), Some(true));
+        assert!(config["plugins"].get("p2@mp").is_none());
+    }
+
+    #[test]
+    fn multiple_codex_plugins_share_one_marketplace_download() {
+        let fx = project_with(|_| {});
+        let runner = FakeRunner::new(codex_marketplace_fixture);
+        let request = InstallRequest {
+            agents: vec![Agent::Codex],
+            ..req(&fx, "org/repo", SkillSelection::All)
+        };
+        run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
+        let calls = runner.calls();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].0, "git");
+        assert_eq!(calls[1].0, "codex");
+        assert!(
+            calls[1]
+                .1
+                .windows(4)
+                .any(|args| args == ["plugin", "marketplace", "upgrade", "mp"])
+        );
+        let config: toml_edit::DocumentMut =
+            std::fs::read_to_string(fx.env.project.join(".codex/config.toml"))
+                .unwrap()
+                .parse()
+                .unwrap();
+        for plugin in ["p1@mp", "p2@mp"] {
+            assert_eq!(config["plugins"][plugin]["enabled"].as_bool(), Some(true));
         }
     }
 
