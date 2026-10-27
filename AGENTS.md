@@ -50,7 +50,7 @@ findings are resolved.
    not again on later pushes, because the plan allows about one review an hour. Push first, then
    add the label (`gh pr edit N --add-label needs-review`) once the PR is ready, and confirm it
    reviewed the current HEAD commit (the `wait-for-action` skill with `--coderabbit`; without
-   the label it finds no status). After fixing findings, comment `@coderabbitai review` to
+   the label its status reads `Review skipped`, which is not a review). After fixing findings, comment `@coderabbitai review` to
    review the new commits, if the hour allows.
 2. If CodeRabbit is unavailable or rate-limited, run a local review in a fresh
    context: a reviewer agent that did not write the change, given the diff, this file,
