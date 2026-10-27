@@ -6,11 +6,12 @@ editing; close completed issues after validation. Store project memory with
 `bd remember`.
 
 Issues live in `.beads/dolt/`. The JSONL export is passive; normal sync uses
-`bd dolt push/pull`. Run git operations and remote sync only when explicitly requested.
+`bd dolt push/pull`. Run Git operations—including add, commit, push, and merge—or
+remote sync only when explicitly requested.
 
 ## Working conventions
 
-- Prefix shell commands with `rtk`.
+- Prefix each shell command with `rtk`, including every command in a chain.
 - Use non-interactive file operations: `cp -f`, `mv -f`, `rm -f`, and their recursive
   forms. Use `ssh`/`scp -o BatchMode=yes` and `HOMEBREW_NO_AUTO_UPDATE=1` for brew.
 - Keep decisions pure and effects explicit. Inject `Env`, `CommandRunner`,
@@ -27,6 +28,9 @@ Issues live in `.beads/dolt/`. The JSONL export is passive; normal sync uses
   and direct control flow over narration, speculative hooks, or test-only helpers.
 
 ## Validation
+
+Before reporting implementation complete, run and report the entire required suite;
+scoped checks do not substitute:
 
 ```sh
 rtk task dev
@@ -45,19 +49,6 @@ After finishing work and opening a PR, decide whether it needs an independent re
 Documentation-only and small, mechanical changes do not. Anything that changes behavior,
 safety, or module boundaries does, and it is not merged before one is done and its
 findings are resolved.
-
-1. Prefer CodeRabbit. `.coderabbit.yaml` makes it review only PRs labelled `needs-review`, and
-   not again on later pushes, because the plan allows about one review an hour. Push first, then
-   add the label (`gh pr edit N --add-label needs-review`) once the PR is ready, and confirm it
-   reviewed the current HEAD commit (the `wait-for-action` skill with `--coderabbit`; without
-   the label its status reads `Review skipped`, which is not a review). After fixing findings, comment `@coderabbitai review` to
-   review the new commits, if the hour allows.
-2. If CodeRabbit is unavailable or rate-limited, run a local review in a fresh
-   context: a reviewer agent that did not write the change, given the diff, this file,
-   `DESIGN.md`, `GLOSSARY.md`, and the originating bead. The author's own pass does not
-   count.
-
-Verify each finding against the code; fix what is valid and say why the rest were skipped.
 
 See `DESIGN.md` for module ownership and execution rules; `README.md` documents
 commands and interaction.
