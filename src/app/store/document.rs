@@ -15,8 +15,9 @@ pub struct Document {
     pub items: Catalog,
     #[serde(default)]
     pub profiles: Vec<Profile>,
-    /// The profile last applied to each project directory. The directory's own config stays the
-    /// truth about what is installed; this only remembers which profile it was brought to.
+    /// The profile last applied to each project directory, and to the user level under the key
+    /// `user-level`. The config itself stays the truth about what is installed; this only
+    /// remembers which profile it was brought to.
     #[serde(default)]
     pub applied: BTreeMap<String, String>,
 }
