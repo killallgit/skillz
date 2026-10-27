@@ -5,7 +5,7 @@ use skillz_harness::action::Action;
 use skillz_harness::agents::{Harness, registry};
 use skillz_harness::env::Env;
 use skillz_harness::model::{Agent, Scope};
-use skillz_harness::provision::{Provision, Unsupported, plan_entries};
+use skillz_harness::provision::{Provision, plan_entries};
 
 use super::Profile;
 
@@ -101,8 +101,7 @@ fn plugins_go_to_each_agent_that_can_take_them() {
 }
 
 #[test]
-fn what_an_agent_cannot_take_is_reported_not_dropped() {
-    // Codex plugin commands only exist for the global config.
+fn project_plugins_are_supported_for_both_agents() {
     let p = plan(
         &registry(),
         &profile(vec![plugin(vec![])]),
@@ -110,14 +109,17 @@ fn what_an_agent_cannot_take_is_reported_not_dropped() {
         &env(),
     )
     .unwrap();
-    assert!(runs(&p.steps).iter().all(|(prog, _)| *prog == "claude"));
-    assert_eq!(
-        p.unsupported,
-        [Unsupported {
-            entry: plugin(vec![Agent::Claude, Agent::Codex]),
-            agent: Agent::Codex
-        }]
-    );
+    assert!(p.unsupported.is_empty());
+    let programs: Vec<&str> = p
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Action::Run { program, .. } => Some(program.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(programs, ["claude", "claude", "codex"]);
+    assert!(p.steps.iter().any(|step| matches!(step, Action::Edit { file, .. } if file == &env().project.join(".codex/config.toml"))));
 }
 
 #[test]
@@ -257,4 +259,20 @@ fn an_invalid_profile_plans_nothing() {
     let mut p = profile(vec![skills(vec![])]);
     p.agents.clear();
     assert!(plan(&registry(), &p, Scope::Project, &env()).is_err());
+}
+
+#[test]
+fn a_project_plugin_whose_source_carries_credentials_is_refused_with_its_reason() {
+    let entry = Spec::Plugin {
+        source: "https://user:s3cret@host/o/r.git".into(),
+        marketplace: "mp".into(),
+        name: "pp".into(),
+        agents: vec![Agent::Codex],
+    };
+
+    let p = plan_entries(&registry(), &[entry], Scope::Project, &env());
+
+    assert!(p.steps.is_empty());
+    assert_eq!(p.unsupported.len(), 1);
+    assert!(p.unsupported[0].reason.is_some());
 }

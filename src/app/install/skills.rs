@@ -1,10 +1,7 @@
-use std::path::Path;
-
 use crate::app::matcher::pattern_matches;
 use crate::app::prompt::Prompter;
 use skillz_harness::action::Action;
-use skillz_harness::agent_skills::skill_name;
-use skillz_harness::fswalk;
+use skillz_harness::agent_skills::skill_names_under;
 use skillz_harness::model::Agent;
 use skillz_harness::npx::commands;
 
@@ -25,7 +22,7 @@ pub(super) fn plan(
     tree: &Tree,
     agents: &[Agent],
 ) -> anyhow::Result<Option<SkillsPlan>> {
-    let names = scan_available(tree.src)?;
+    let names = skill_names_under(tree.src)?;
     anyhow::ensure!(
         !names.is_empty(),
         "found no marketplace, plugin or skills in {}",
@@ -67,7 +64,7 @@ fn choose(
 }
 
 /// Skill names picked by a non-interactive selection. `Interactive` yields every candidate.
-fn select_skills(names: &[String], selection: &SkillSelection) -> Vec<String> {
+pub(super) fn select_skills(names: &[String], selection: &SkillSelection) -> Vec<String> {
     match selection {
         SkillSelection::Patterns(patterns) => {
             let pats: Vec<&str> = patterns
@@ -84,20 +81,6 @@ fn select_skills(names: &[String], selection: &SkillSelection) -> Vec<String> {
         }
         SkillSelection::All | SkillSelection::Interactive => names.to_vec(),
     }
-}
-
-/// Frontmatter names of every skill (dir containing `SKILL.md`) under `root`, recursively,
-/// sorted: the names npx `skills --skill` matches.
-fn scan_available(root: &Path) -> anyhow::Result<Vec<String>> {
-    let mut found = Vec::new();
-    fswalk::walk(root, &mut |path, is_dir| {
-        if is_dir {
-            found.extend(skill_name(path));
-        }
-    })?;
-    found.sort();
-    found.dedup();
-    Ok(found)
 }
 
 #[cfg(test)]
@@ -222,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_available_recurses_skips_and_dedupes() {
+    fn skill_names_under_recurses_skips_and_dedupes() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         skill(root, "b/deep/nested/beta");
@@ -233,11 +216,11 @@ mod tests {
         for build_dir in ["dist", "build", "__pycache__"] {
             skill(root, &format!("{build_dir}/gen"));
         }
-        assert_eq!(scan_available(root).unwrap(), s(&["alpha", "beta"]));
+        assert_eq!(skill_names_under(root).unwrap(), s(&["alpha", "beta"]));
     }
 
     #[test]
-    fn scan_available_names_skills_by_frontmatter() {
+    fn skill_names_under_names_skills_by_frontmatter() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         skill_md(
@@ -266,13 +249,13 @@ mod tests {
             "---\nname: plain\ndescription:\n  text\n---\n",
         );
         assert_eq!(
-            scan_available(root).unwrap(),
+            skill_names_under(root).unwrap(),
             s(&["folded", "plain", "q-name", "real-name", "single-q"])
         );
     }
 
     #[test]
-    fn scan_available_skips_skills_missing_name_or_description() {
+    fn skill_names_under_skips_skills_missing_name_or_description() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         skill_md(root, "no-desc", "---\nname: no-desc\n---\n");
@@ -286,25 +269,25 @@ mod tests {
             "---\nname: eb\ndescription: |\nlicense: MIT\n---\n",
         );
         skill(root, "ok");
-        assert_eq!(scan_available(root).unwrap(), s(&["ok"]));
+        assert_eq!(skill_names_under(root).unwrap(), s(&["ok"]));
     }
 
     #[test]
-    fn scan_available_skips_option_like_names() {
+    fn skill_names_under_skips_option_like_names() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         skill_md(root, "g", "---\nname: -g\ndescription: d\n---\n");
         skill(root, "-y");
         skill(root, "ok");
-        assert_eq!(scan_available(root).unwrap(), s(&["ok"]));
+        assert_eq!(skill_names_under(root).unwrap(), s(&["ok"]));
     }
 
     #[test]
-    fn scan_available_root_itself_can_be_a_skill() {
+    fn skill_names_under_root_itself_can_be_a_skill() {
         let dir = tempfile::tempdir().unwrap();
         skill(dir.path(), "solo");
         assert_eq!(
-            scan_available(&dir.path().join("solo")).unwrap(),
+            skill_names_under(&dir.path().join("solo")).unwrap(),
             s(&["solo"])
         );
     }

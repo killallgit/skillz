@@ -58,7 +58,7 @@ pub enum Command {
     Run(RunArgs),
     /// Add everything installed, in the project and at user level, to the library; never removes
     Sync(SyncArgs),
-    /// Install skills (via `npx skills`) or a Claude plugin marketplace
+    /// Install through native plugins when available, otherwise through `npx skills`
     #[command(visible_alias = "add")]
     Install(InstallArgs),
 }
@@ -221,7 +221,7 @@ pub struct InstallArgs {
     /// Target agents (default: all)
     #[arg(short, long = "agent", value_enum)]
     pub agents: Vec<Agent>,
-    /// Install every skill in the source
+    /// Install every native plugin, or every loose skill when no marketplace is available
     #[arg(long, conflicts_with = "skill")]
     pub all: bool,
     /// Skill names or globs, comma separated (e.g. `tdd,*commit`)

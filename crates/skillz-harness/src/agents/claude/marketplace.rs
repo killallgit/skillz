@@ -9,7 +9,7 @@ use super::removal::{plugin_removal, unique_in_order};
 use crate::Spec;
 use crate::action::{Action, Edit, RemovalTarget};
 use crate::agents::PluginOffer;
-use crate::agents::plugin::read_marketplace;
+use crate::agents::plugin::{declared_skill_paths, read_marketplace, tolerate_malformed};
 use crate::env::Env;
 use crate::model::{Agent, Installed, Installer, Kind, Scope, split_plugin_id};
 use crate::runner::Cmd;
@@ -188,7 +188,55 @@ fn owned_clone(claude: &Path, m: &Marketplace) -> Option<RemovalTarget> {
 
 /// The Claude marketplace `src` carries, if any.
 pub(super) fn plugin_offer(src: &Path) -> anyhow::Result<Option<PluginOffer>> {
-    read_marketplace(&src.join(".claude-plugin/marketplace.json"))
+    tolerate_malformed(read_marketplace(
+        &src.join(".claude-plugin/marketplace.json"),
+        src,
+        &[".claude-plugin/plugin.json"],
+        plugin_skill_paths,
+    ))
+}
+
+fn plugin_skill_paths(
+    entry: &serde_json::Value,
+    manifest: Option<&serde_json::Value>,
+    from_marketplace_root: bool,
+) -> Vec<String> {
+    if manifest.is_some()
+        && entry["strict"] == false
+        && [
+            "commands",
+            "agents",
+            "skills",
+            "hooks",
+            "outputStyles",
+            "themes",
+        ]
+        .iter()
+        .any(|key| entry.get(key).is_some())
+    {
+        return vec![];
+    }
+    let entry_paths = declared_skill_paths(entry);
+    // Root-sourced marketplace entries can expose separate subsets of a shared skills tree.
+    let mut paths = if from_marketplace_root && entry_paths.is_some() {
+        vec![]
+    } else {
+        vec!["./skills".into()]
+    };
+    if let Some(manifest_paths) = manifest.and_then(declared_skill_paths) {
+        paths.extend(manifest_paths);
+    }
+    paths.extend(entry_paths.into_iter().flatten());
+    paths
+}
+
+/// The `--scope` a plugin installs at: project installs go in the private `local` scope, so
+/// only this project has them and nothing is committed.
+fn install_scope(scope: Scope) -> &'static str {
+    match scope {
+        Scope::Global => "user",
+        Scope::Project => "local",
+    }
 }
 
 /// Add `source` as a marketplace and install the `picked` plugins of `offer`.
@@ -199,10 +247,7 @@ pub(super) fn plugin_steps(
     scope: Scope,
     cwd: &Path,
 ) -> Vec<Action> {
-    let scope = match scope {
-        Scope::Global => "user",
-        Scope::Project => "project",
-    };
+    let scope = install_scope(scope);
     install_commands(source, &offer.marketplace, picked, scope)
         .into_iter()
         .map(|(program, args)| Action::required(&program, args, cwd))
@@ -250,10 +295,7 @@ pub(super) fn provision(entry: &Spec, scope: Scope, cwd: &Path) -> Option<Vec<Ac
     else {
         return None;
     };
-    let scope = match scope {
-        Scope::Global => "user",
-        Scope::Project => "local",
-    };
+    let scope = install_scope(scope);
     let commands = install_commands(source, marketplace, std::slice::from_ref(name), scope);
     Some(
         commands
@@ -275,10 +317,22 @@ mod tests {
     use crate::test_support::{marketplace_fixture, project_with, s};
     use serde_json::json;
 
+    #[test]
+    fn a_marketplace_file_that_does_not_parse_offers_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            &dir.path().join(".claude-plugin/marketplace.json"),
+            "{ not json",
+        );
+
+        assert!(plugin_offer(dir.path()).unwrap().is_none());
+    }
+
     fn mp() -> PluginOffer {
         PluginOffer {
             marketplace: "mp".into(),
             plugins: s(&["p1", "p2"]),
+            skills: Default::default(),
         }
     }
 
@@ -536,17 +590,17 @@ mod tests {
             vec![
                 Action::required(
                     "claude",
-                    s(&["plugin", "marketplace", "add", "o/r", "--scope", "project"]),
+                    s(&["plugin", "marketplace", "add", "o/r", "--scope", "local"]),
                     cwd
                 ),
                 Action::required(
                     "claude",
-                    s(&["plugin", "install", "p1@mp", "--scope", "project"]),
+                    s(&["plugin", "install", "p1@mp", "--scope", "local"]),
                     cwd
                 ),
                 Action::required(
                     "claude",
-                    s(&["plugin", "install", "p2@mp", "--scope", "project"]),
+                    s(&["plugin", "install", "p2@mp", "--scope", "local"]),
                     cwd
                 ),
             ]

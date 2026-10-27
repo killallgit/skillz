@@ -142,11 +142,7 @@ fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
     let request = InstallRequest {
         source: args.source,
         cwd: deps.cwd.clone(),
-        agents: if args.agents.is_empty() {
-            deps.adapters.iter().map(|a| a.agent()).collect()
-        } else {
-            args.agents
-        },
+        agents: deps.agents_or_all(&args.agents),
         scope,
         selection: skill_selection(args.all, args.skill),
     };

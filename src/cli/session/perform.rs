@@ -6,6 +6,7 @@ use super::notice::Notice;
 use super::selection::Selection;
 use crate::app::install::{InstallRequest, SkillSelection};
 use crate::app::workspace::Act;
+use skillz_harness::Spec;
 use skillz_harness::model::Scope;
 
 impl Session<'_, '_> {
@@ -37,19 +38,12 @@ impl Session<'_, '_> {
             Act::InstallSource { scope, source } => self.install_source(&InstallRequest {
                 source: source.clone(),
                 cwd: self.deps.cwd.clone(),
-                agents: self.deps.adapters.iter().map(|a| a.agent()).collect(),
+                agents: self.deps.agents_or_all(&[]),
                 scope: *scope,
                 selection: SkillSelection::Interactive,
             }),
             Act::LibraryAdd { spec } => self.library_add(spec),
-            Act::LibraryInstall { scope, entry } => {
-                let picked = Selection {
-                    install: std::slice::from_ref(entry),
-                    remove: &[],
-                    only: None,
-                };
-                change(self, *scope, &Change::Selection(&picked))
-            }
+            Act::LibraryInstall { scope, entry } => self.library_install(*scope, entry),
             Act::LibraryRemove(entry) => self.library_remove(entry),
             Act::CreateProfile { name, entries } => self.create_profile(name, entries).map(Some),
             Act::SaveCurrent { name } => {
@@ -60,6 +54,33 @@ impl Session<'_, '_> {
             Act::SetEntries { profile, entries } => self.set_entries(profile, entries).map(Some),
             Act::DeleteProfile { name } => self.delete_profile(name).map(Some),
         }
+    }
+
+    /// Install a library entry. A skill that names its skills is installed from its source like
+    /// any other source, so a plugin the source offers is used; every other entry is a plain
+    /// change.
+    fn library_install(&self, scope: Scope, entry: &Spec) -> anyhow::Result<Option<Notice>> {
+        if let Spec::Skill {
+            source,
+            names,
+            agents,
+        } = entry
+            && !names.is_empty()
+        {
+            return self.install_source(&InstallRequest {
+                source: source.clone(),
+                cwd: self.deps.cwd.clone(),
+                agents: self.deps.agents_or_all(agents),
+                scope,
+                selection: SkillSelection::Patterns(names.clone()),
+            });
+        }
+        let picked = Selection {
+            install: std::slice::from_ref(entry),
+            remove: &[],
+            only: None,
+        };
+        change(self, scope, &Change::Selection(&picked))
     }
 
     /// Apply `profile` at `scope`, and remember it as that level's once the change went through.

@@ -90,26 +90,26 @@ impl Harness for Codex {
             .collect())
     }
 
-    /// `codex plugin …` and `codex mcp …` only work on the user config, so project scope has no
-    /// way in for those.
-    fn plan_install(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
-        match entry {
+    /// Project plugins are configured directly; native add commands write the user config.
+    fn plan_install(
+        &self,
+        entry: &Spec,
+        scope: Scope,
+        env: &Env,
+    ) -> anyhow::Result<Option<Vec<Action>>> {
+        Ok(match entry {
             Spec::Hook { .. } => hooks::provision(entry, scope_dir(env, scope).join("hooks.json")),
             Spec::Mcp { .. } => mcp::provision(entry, scope, env),
             Spec::Subagent { .. } => {
                 let to = scope_dir(env, scope).join("agents");
                 subagents::provision(entry, &AgentDir::new(&to, "toml"), env)
             }
-            Spec::Plugin { .. } => plugins::provision(entry, scope, env),
+            Spec::Plugin { .. } => return plugins::provision(entry, scope, env),
             Spec::Skill { .. } => None,
-        }
+        })
     }
 
-    /// Plugins go through `codex plugin …`, which only acts on the user config.
-    fn plugin_offer(&self, src: &Path, scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
-        if scope != Scope::Global {
-            return Ok(None);
-        }
+    fn plugin_offer(&self, src: &Path, _scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
         plugins::plugin_offer(src)
     }
 
@@ -118,10 +118,24 @@ impl Harness for Codex {
         offer: &PluginOffer,
         picked: &[String],
         source: &str,
-        _scope: Scope,
+        scope: Scope,
         env: &Env,
-    ) -> Vec<Action> {
-        plugins::install_steps(source, &offer.marketplace, picked, env)
+    ) -> anyhow::Result<Vec<Action>> {
+        if scope == Scope::Project {
+            Ok(plugins::project_install_steps(
+                source,
+                &offer.marketplace,
+                picked,
+                env,
+            )?)
+        } else {
+            Ok(plugins::install_steps(
+                source,
+                &offer.marketplace,
+                picked,
+                env,
+            ))
+        }
     }
 
     /// Codex keeps no counters: a tool call in a session log under

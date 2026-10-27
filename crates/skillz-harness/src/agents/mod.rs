@@ -24,6 +24,8 @@ use crate::runner::CommandRunner;
 pub struct PluginOffer {
     pub marketplace: String,
     pub plugins: Vec<String>,
+    /// Skill names supplied by local plugin sources, keyed by plugin name.
+    pub skills: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 pub trait Harness {
@@ -44,7 +46,8 @@ pub trait Harness {
     fn plugin_offer(&self, _src: &Path, _scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
         Ok(None)
     }
-    /// Steps that add `source`'s marketplace and install the `picked` plugins of `offer`.
+    /// Steps that add `source`'s marketplace and install the `picked` plugins of `offer`. An
+    /// error refuses the install, for a source this agent must not write into its configuration.
     fn plan_add_source(
         &self,
         _offer: &PluginOffer,
@@ -52,14 +55,20 @@ pub trait Harness {
         _source: &str,
         _scope: Scope,
         _env: &Env,
-    ) -> Vec<Action> {
-        vec![]
+    ) -> anyhow::Result<Vec<Action>> {
+        Ok(vec![])
     }
     /// Steps that install a profile `entry` for this agent at `scope`, or `None` when this agent
-    /// has no way to take that entry there. Skills are not asked of adapters: `provision::plan`
-    /// sends them through `npx skills` for every agent at once.
-    fn plan_install(&self, _entry: &Spec, _scope: Scope, _env: &Env) -> Option<Vec<Action>> {
-        None
+    /// has no way to take that entry there. An error is a refusal with a reason (see
+    /// `plan_add_source`). Skills are not asked of adapters: `provision::plan` sends them through
+    /// `npx skills` for every agent at once.
+    fn plan_install(
+        &self,
+        _entry: &Spec,
+        _scope: Scope,
+        _env: &Env,
+    ) -> anyhow::Result<Option<Vec<Action>>> {
+        Ok(None)
     }
     fn plan_update(&self, _item: &Installed, _cwd: &Path) -> Vec<Action> {
         vec![]

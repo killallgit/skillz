@@ -11,6 +11,20 @@ pub use frontmatter::{Frontmatter, parse, skill_name};
 pub use layout::{Layout, layout};
 pub use validate::{Violation, validate};
 
+/// Frontmatter names of every skill (a directory holding `SKILL.md`) under `root`, recursively,
+/// sorted and without repeats: the names `npx skills --skill` matches.
+pub fn skill_names_under(root: &std::path::Path) -> anyhow::Result<Vec<String>> {
+    let mut names = Vec::new();
+    crate::fswalk::walk(root, &mut |path, is_dir| {
+        if is_dir {
+            names.extend(skill_name(path));
+        }
+    })?;
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
 /// The file that makes a directory a skill.
 pub const SKILL_FILE: &str = "SKILL.md";
 

@@ -25,11 +25,12 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
     let skip = switch
         .unsupported
         .iter()
-        .map(|u| {
-            format!(
+        .map(|u| match &u.reason {
+            Some(reason) => format!("{}: {reason}", u.entry),
+            None => format!(
                 "{}: not available for {} at {scope} scope",
                 u.entry, u.agent
-            )
+            ),
         })
         .collect();
     let groups = [
