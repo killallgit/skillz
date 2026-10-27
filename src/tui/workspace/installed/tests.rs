@@ -25,6 +25,7 @@ pub(super) fn model() -> Model {
         library: Default::default(),
         profiles: vec![web],
         applied: None,
+        applied_global: None,
         notice: None,
     }
 }
@@ -68,7 +69,7 @@ fn enter_on_a_section_closes_and_reopens_it_without_asking_for_anything() {
 }
 
 #[test]
-fn a_lists_the_profiles_and_the_chosen_one_replaces_everything() {
+fn a_lists_the_profiles_and_the_chosen_one_adds_what_is_missing() {
     let mut tab = loaded();
 
     let opened = press(&mut tab, KeyCode::Char('a'));
@@ -79,7 +80,8 @@ fn a_lists_the_profiles_and_the_chosen_one_replaces_everything() {
     assert!(capturing && !tab.captures_keys());
     assert_eq!(
         chosen,
-        Some(Act::ApplyExact {
+        Some(Act::Apply {
+            scope: Scope::Project,
             profile: "web".into()
         })
     );
@@ -257,7 +259,8 @@ fn the_apply_list_chooses_the_profile_under_the_cursor_and_escape_closes_it() {
 
     assert_eq!(
         chosen,
-        Some(Act::ApplyExact {
+        Some(Act::Apply {
+            scope: Scope::Project,
             profile: "api".into()
         })
     );
@@ -309,7 +312,7 @@ fn the_header_compares_with_the_applied_profile() {
 }
 
 #[test]
-fn m_in_the_apply_list_adds_what_is_missing_instead_of_replacing() {
+fn m_in_the_apply_list_replaces_instead_of_adding_what_is_missing() {
     let mut tab = applied_tab();
 
     press(&mut tab, KeyCode::Char('a'));
@@ -318,7 +321,8 @@ fn m_in_the_apply_list_adds_what_is_missing_instead_of_replacing() {
 
     assert_eq!(
         chosen,
-        Some(Act::Apply {
+        Some(Act::ApplyExact {
+            scope: Scope::Project,
             profile: "web".into()
         })
     );

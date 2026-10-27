@@ -146,13 +146,24 @@ fn the_applied_profile_is_remembered_per_project_and_replaced_by_the_next() {
             ..session(here.deps, dir)
         };
 
-        let before = here.applied();
-        here.remember_applied("web").unwrap();
-        here.remember_applied("api").unwrap();
+        let before = here.applied(Scope::Project);
+        here.remember_applied(Scope::Project, "web").unwrap();
+        here.remember_applied(Scope::Project, "api").unwrap();
 
         assert_eq!(before, None);
-        assert_eq!(here.applied().as_deref(), Some("api"));
-        assert_eq!(elsewhere.applied(), None);
+        assert_eq!(here.applied(Scope::Project).as_deref(), Some("api"));
+        assert_eq!(elsewhere.applied(Scope::Project), None);
+    });
+}
+
+#[test]
+fn the_user_level_remembers_its_own_applied_profile_apart_from_every_project() {
+    with_session(|here, _| {
+        here.remember_applied(Scope::Project, "web").unwrap();
+        here.remember_applied(Scope::Global, "api").unwrap();
+
+        assert_eq!(here.applied(Scope::Project).as_deref(), Some("web"));
+        assert_eq!(here.applied(Scope::Global).as_deref(), Some("api"));
     });
 }
 
@@ -160,11 +171,11 @@ fn the_applied_profile_is_remembered_per_project_and_replaced_by_the_next() {
 fn deleting_a_profile_forgets_it_as_the_applied_one() {
     with_session(|here, _| {
         here.create_profile("web", &[]).unwrap();
-        here.remember_applied("web").unwrap();
+        here.remember_applied(Scope::Project, "web").unwrap();
 
         here.delete_profile("web").unwrap();
         here.create_profile("web", &[]).unwrap();
 
-        assert_eq!(here.applied(), None);
+        assert_eq!(here.applied(Scope::Project), None);
     });
 }

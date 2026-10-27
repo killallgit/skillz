@@ -24,8 +24,9 @@ pub enum Act {
         scope: Scope,
         ids: Vec<String>,
     },
-    /// Install what the profile has that the project lacks.
+    /// Install what the profile has that `scope` lacks.
     Apply {
+        scope: Scope,
         profile: String,
     },
     /// Install what `source` (`owner/repo`, a git URL or a path) offers each agent in `scope`.
@@ -43,8 +44,9 @@ pub enum Act {
         entry: Spec,
     },
     LibraryRemove(Spec),
-    /// Make the project hold exactly what the profile has, removing the rest.
+    /// Make `scope` hold exactly what the profile has, removing the rest.
     ApplyExact {
+        scope: Scope,
         profile: String,
     },
     /// Make the project hold these entries of its profile and not the rest of it: install the
@@ -89,6 +91,8 @@ pub struct Model {
     pub profiles: Vec<Profile>,
     /// The profile last applied to the project.
     pub applied: Option<String>,
+    /// The profile last applied at user level.
+    pub applied_global: Option<String>,
     /// Shown as a toast: what the last act did or why it failed.
     pub notice: Option<String>,
 }

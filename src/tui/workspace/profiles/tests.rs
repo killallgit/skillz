@@ -44,6 +44,7 @@ fn model() -> Model {
         ]),
         profiles: vec![profile("api", &["a"]), profile("web", &["a", "b"])],
         applied: None,
+        applied_global: None,
         notice: None,
     }
 }

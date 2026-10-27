@@ -203,6 +203,9 @@ pub struct UseArgs {
     /// Project directory (default: cwd)
     #[arg(short = 'p', long)]
     pub project: Option<PathBuf>,
+    /// Apply at user level, for every project, instead of to the project
+    #[arg(short, long)]
+    pub global: bool,
     /// Don't ask before changing anything
     #[arg(short, long)]
     pub yes: bool,

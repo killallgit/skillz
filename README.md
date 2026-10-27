@@ -290,8 +290,9 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   The Project tab also shows global plugins and skills below a dimmed `Global installs · read only`
   separator. They can be expanded there; changes belong on the Global tab. Project clear and
   removal picks exclude these global items.
-  Profiles apply to a project only, so Global has no `a`, `p`, `c` or `s`. Adding is `A`, or the
-  Library tab and profiles.
+  `a` on Global applies a profile at user level, for every project, and the line above the list
+  compares the user's installs with the profile last applied there; Global has no `p`, `c` or
+  `s`. Adding is `A`, or the Library tab and profiles.
   In the background the tabs check whether installed Claude marketplaces have a newer version
   (a read-only `ls-remote`) and shows those in bold with a `*` after the name. Other kinds have
   no reliable check and are never marked. `SKILLZ_NO_UPDATE_CHECK=1` turns the check off;

@@ -56,7 +56,7 @@ impl InstalledTab {
     fn open_apply(&mut self) {
         if !self.profiles.is_empty() {
             let names = self.profiles.iter().map(|p| p.name.clone()).collect();
-            self.popup = Popup::Apply(Picker::new(names, self.applied.as_deref()));
+            self.popup = Popup::Apply(Picker::new(names, self.applied.as_deref(), self.scope));
         }
     }
 
@@ -169,11 +169,17 @@ impl InstalledTab {
             Pick::Chosen {
                 profile,
                 exact: true,
-            } => return Some(Act::ApplyExact { profile }),
+            } => {
+                let scope = self.scope;
+                return Some(Act::ApplyExact { scope, profile });
+            }
             Pick::Chosen {
                 profile,
                 exact: false,
-            } => return Some(Act::Apply { profile }),
+            } => {
+                let scope = self.scope;
+                return Some(Act::Apply { scope, profile });
+            }
             Pick::Closed => {}
         }
         None
