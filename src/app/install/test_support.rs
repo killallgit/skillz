@@ -7,6 +7,17 @@ use skillz_harness::model::{Agent, Scope};
 
 pub use skillz_harness::test_support::*;
 
+pub fn mattpocock_fixture(root: &std::path::Path) {
+    skill(root, "skills/engineering/tdd");
+    skill(root, "skills/engineering/code-review");
+    std::fs::create_dir_all(root.join(".claude-plugin")).unwrap();
+    std::fs::write(
+        root.join(".claude-plugin/marketplace.json"),
+        r#"{"name":"mattpocock","plugins":[{"name":"mattpocock-skills","source":"./"}]}"#,
+    )
+    .unwrap();
+}
+
 use super::{InstallRequest, SkillSelection};
 
 pub struct ScriptedPrompter {

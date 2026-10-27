@@ -5,7 +5,7 @@ use toml_edit::DocumentMut;
 use super::config::{hook_state_keys, plugin_ids, str_field, table_keys};
 use super::removal::{native, toml_remove};
 use crate::Spec;
-use crate::action::{Action, RemovalTarget};
+use crate::action::{Action, Edit, RemovalTarget};
 use crate::agents::PluginOffer;
 use crate::agents::plugin::read_marketplace;
 use crate::env::Env;
@@ -14,7 +14,7 @@ use crate::model::{
     Agent, HOOK_CHILD, Installed, Installer, Kind, Origin, SKILL_CHILD, Scope, split_plugin_id,
 };
 
-/// `codex plugin marketplace add` then `plugin add`; the user config only.
+/// Global installs use the CLI; project installs declare the marketplace and plugin in TOML.
 pub(super) fn provision(entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
     let Spec::Plugin {
         source,
@@ -25,8 +25,8 @@ pub(super) fn provision(entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Act
     else {
         return None;
     };
-    if scope != Scope::Global {
-        return None;
+    if scope == Scope::Project {
+        return Some(project_install_steps(source, marketplace, name, env));
     }
     Some(install_steps(
         source,
@@ -34,6 +34,77 @@ pub(super) fn provision(entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Act
         std::slice::from_ref(name),
         env,
     ))
+}
+
+/// Download Git marketplace metadata without registering or enabling anything globally.
+/// Codex materializes configured plugins in its shared cache when the project is opened.
+pub(super) fn project_install_steps(
+    source: &str,
+    marketplace: &str,
+    name: &str,
+    env: &Env,
+) -> Vec<Action> {
+    let local =
+        Path::new(source).is_absolute() || source.starts_with("./") || source.starts_with("../");
+    let (source, git_ref) = if local {
+        (
+            env.project.join(source).to_string_lossy().into_owned(),
+            None,
+        )
+    } else if source.contains("://") || source.starts_with("git@") {
+        (source.to_string(), None)
+    } else {
+        let (repo, git_ref) = source
+            .split_once('@')
+            .map_or((source, None), |(repo, git_ref)| (repo, Some(git_ref)));
+        (format!("https://github.com/{repo}.git"), git_ref)
+    };
+    let encoded = |s: &str| toml_edit::Value::from(s).to_string();
+    let mut fields = vec![
+        ("source_type", encoded(if local { "local" } else { "git" })),
+        ("source", encoded(&source)),
+    ];
+    if !local {
+        // A project source must not inherit a different revision or sparse checkout from
+        // a user-level marketplace with the same name.
+        fields.push(("ref", encoded(git_ref.unwrap_or("HEAD"))));
+        fields.push(("sparse_paths", "[]".into()));
+    }
+    let mut steps = Vec::new();
+    if !local {
+        let mut args = Vec::new();
+        for (key, value) in &fields {
+            args.extend([
+                "-c".into(),
+                format!(
+                    "marketplaces.{}.{key}={value}",
+                    toml_edit::Key::new(marketplace)
+                ),
+            ]);
+        }
+        args.extend(["plugin", "marketplace", "upgrade", marketplace].map(String::from));
+        steps.push(Action::required("codex", args, &super::cwd(env)));
+    }
+    let file = super::scope_dir(env, Scope::Project).join("config.toml");
+    steps.extend(fields.into_iter().map(|(key, value)| Action::Edit {
+        file: file.clone(),
+        edit: Edit::TomlSetKey {
+            path: ["marketplaces", marketplace, key].map(String::from).into(),
+            value,
+        },
+    }));
+    steps.push(Action::Edit {
+        file,
+        edit: Edit::TomlSetKey {
+            path: vec![
+                "plugins".into(),
+                format!("{name}@{marketplace}"),
+                "enabled".into(),
+            ],
+            value: "true".into(),
+        },
+    });
+    steps
 }
 
 /// `codex plugin marketplace add` then `plugin add` for each of `names`.
@@ -58,7 +129,19 @@ pub(super) fn install_steps(
 
 /// The Codex marketplace `src` carries, if any.
 pub(super) fn plugin_offer(src: &Path) -> anyhow::Result<Option<PluginOffer>> {
-    read_marketplace(&src.join(".agents/plugins/marketplace.json"))
+    let manifests = &[
+        "plugin.json",
+        ".codex-plugin/plugin.json",
+        ".claude-plugin/plugin.json",
+    ];
+    match read_marketplace(
+        &src.join(".agents/plugins/marketplace.json"),
+        src,
+        manifests,
+    )? {
+        Some(offer) => Ok(Some(offer)),
+        None => read_marketplace(&src.join(".claude-plugin/marketplace.json"), src, manifests),
+    }
 }
 
 pub(super) struct Marketplace {
@@ -260,6 +343,123 @@ fn marketplace_removal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agents::codex::config::read_config;
+    use crate::agents::codex::testutil::write;
+    use crate::agents::{Harness, codex::Codex};
+    use crate::runner::NoCommands;
+    use crate::test_support::FakeRunner;
+
+    #[test]
+    fn project_local_plugin_install_and_removal_preserve_other_configuration() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::new(dir.path().join("home"), dir.path().join("project"));
+        let config = env.project.join(".codex/config.toml");
+        let source = dir.path().join("local marketplace");
+        std::fs::create_dir_all(&source).unwrap();
+        write(
+            &config,
+            "model = \"o3\"\n[plugins.\"other@mp\"]\nenabled = false\n",
+        );
+        let steps = project_install_steps(&source.to_string_lossy(), "local.mp", "my-plugin", &env);
+
+        crate::action::execute(&steps, &NoCommands).unwrap();
+
+        let doc = read_config(&config).unwrap().unwrap();
+        assert_eq!(doc["model"].as_str(), Some("o3"));
+        assert_eq!(
+            doc["marketplaces"]["local.mp"]["source_type"].as_str(),
+            Some("local")
+        );
+        assert_eq!(
+            doc["marketplaces"]["local.mp"]["source"].as_str(),
+            source.to_str()
+        );
+        assert_eq!(doc["plugins"]["other@mp"]["enabled"].as_bool(), Some(false));
+        let items = Codex.installed(&env, Scope::Project).unwrap();
+        let plugin = items
+            .iter()
+            .find(|p| p.name == "my-plugin@local.mp")
+            .unwrap();
+        crate::action::execute(&plugin.removal, &NoCommands).unwrap();
+        let doc = read_config(&config).unwrap().unwrap();
+        assert!(doc["plugins"].get("my-plugin@local.mp").is_none());
+        assert!(doc["plugins"].get("other@mp").is_some());
+        assert!(!env.home.join(".codex/config.toml").exists());
+    }
+
+    #[test]
+    fn project_git_sources_keep_urls_and_expand_shorthand_refs() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::new(dir.path().join("home"), dir.path().join("project"));
+        for (source, expected, git_ref) in [
+            (
+                "mattpocock/skills@v1.3.1",
+                "https://github.com/mattpocock/skills.git",
+                Some("v1.3.1"),
+            ),
+            (
+                "https://example.org/team/skills.git",
+                "https://example.org/team/skills.git",
+                None,
+            ),
+            (
+                "git@example.org:team/skills.git",
+                "git@example.org:team/skills.git",
+                None,
+            ),
+        ] {
+            let steps = project_install_steps(source, "test.mp", "skills", &env);
+            let runner = FakeRunner::new(|_| {});
+            crate::action::execute(&steps, &runner).unwrap();
+            let doc = read_config(&env.project.join(".codex/config.toml"))
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                doc["marketplaces"]["test.mp"]["source"].as_str(),
+                Some(expected)
+            );
+            assert_eq!(
+                doc["marketplaces"]["test.mp"]["ref"].as_str(),
+                Some(git_ref.unwrap_or("HEAD"))
+            );
+            assert!(
+                doc["marketplaces"]["test.mp"]["sparse_paths"]
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
+            let calls = runner.calls();
+            assert_eq!(calls.len(), 1);
+            assert_eq!(calls[0].0, "codex");
+            assert_eq!(calls[0].2, env.home);
+            let overrides = calls[0]
+                .1
+                .windows(2)
+                .filter(|args| args[0] == "-c")
+                .map(|args| args[1].as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let overrides: DocumentMut = overrides.parse().unwrap();
+            assert_eq!(
+                overrides["marketplaces"]["test.mp"]["source"].as_str(),
+                Some(expected)
+            );
+        }
+        assert!(!env.home.join(".codex/config.toml").exists());
+    }
+
+    #[test]
+    fn a_failed_project_marketplace_download_leaves_configuration_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = Env::new(dir.path().join("home"), dir.path().join("project"));
+        let steps =
+            project_install_steps("mattpocock/skills", "mattpocock", "mattpocock-skills", &env);
+        let runner = FakeRunner::new(|_| {}).failing("codex");
+
+        assert!(crate::action::execute(&steps, &runner).is_err());
+        assert!(!env.project.join(".codex/config.toml").exists());
+        assert!(!env.home.join(".codex/config.toml").exists());
+    }
 
     fn runs(plan: &[Action]) -> Vec<Vec<String>> {
         plan.iter()

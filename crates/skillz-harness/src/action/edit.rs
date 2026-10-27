@@ -5,7 +5,7 @@ use anyhow::Context;
 use serde_json::Value;
 
 use super::json::{remove_array_items, remove_json_key};
-use super::toml::toml_remove_key;
+use super::toml::{toml_remove_key, toml_set_key};
 use super::{Action, Edit};
 use crate::hook_text::{self, Format};
 use crate::json_edit::edit_json;
@@ -15,6 +15,7 @@ use crate::json_edit::edit_json;
 pub fn apply_edit(file: &Path, edit: &Edit, contents: &str) -> anyhow::Result<String> {
     match edit {
         Edit::TomlRemoveKey { path } => toml_remove_key(contents, path),
+        Edit::TomlSetKey { path, value } => toml_set_key(contents, path, value),
         Edit::AddHook {
             event,
             matcher,
@@ -46,7 +47,7 @@ fn validate(file: &Path, contents: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// The original text of a file (`None` when a hook edit will create it) and the planned one.
+/// The original text of a file (`None` when an additive edit will create it) and the planned one.
 struct Texts {
     before: Option<String>,
     planned: String,
@@ -74,6 +75,10 @@ impl FilePlan {
             (None, Edit::AddHook { .. }) => Some(Texts {
                 before: None,
                 planned: NEW_FILE.to_string(),
+            }),
+            (None, Edit::TomlSetKey { .. }) => Some(Texts {
+                before: None,
+                planned: String::new(),
             }),
             (None, _) => None,
         };

@@ -43,6 +43,24 @@ impl Session<'_, '_> {
             }),
             Act::LibraryAdd { spec } => self.library_add(spec),
             Act::LibraryInstall { scope, entry } => {
+                if let skillz_harness::Spec::Skill {
+                    source,
+                    names,
+                    agents,
+                } = entry
+                {
+                    return self.install_source(&InstallRequest {
+                        source: source.clone(),
+                        cwd: self.deps.cwd.clone(),
+                        agents: if agents.is_empty() {
+                            self.deps.adapters.iter().map(|a| a.agent()).collect()
+                        } else {
+                            agents.clone()
+                        },
+                        scope: *scope,
+                        selection: SkillSelection::Patterns(names.clone()),
+                    });
+                }
                 let picked = Selection {
                     install: std::slice::from_ref(entry),
                     remove: &[],

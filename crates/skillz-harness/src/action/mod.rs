@@ -50,7 +50,7 @@ pub enum Action {
     },
     /// Delete a file, symlink, or directory tree. Missing paths are not an error.
     RemovePath(RemovalTarget),
-    /// Rewrite a config file in place. Missing files are skipped.
+    /// Rewrite a config file in place. Additive edits can create missing files.
     Edit { file: PathBuf, edit: Edit },
     /// Install subagent definitions: fetch `source` (a directory relative to `cwd`, else a git
     /// repo), copy the `ext` files called `names` into `to`, note the source beside them.
@@ -155,6 +155,12 @@ pub enum Edit {
     },
     /// Remove the TOML key/table at `path` (e.g. `["plugins", "x@y"]`), keeping formatting.
     TomlRemoveKey { path: Vec<String> },
+    /// Set a TOML key to an encoded TOML value, creating missing tables and the file.
+    TomlSetKey {
+        path: Vec<String>,
+        #[serde(serialize_with = "redacted_text")]
+        value: String,
+    },
 }
 
 impl Edit {
@@ -168,6 +174,9 @@ impl Edit {
             }
             Edit::JsonRemoveKey { path } | Edit::TomlRemoveKey { path } => {
                 format!("remove {}", path.join("."))
+            }
+            Edit::TomlSetKey { path, value } => {
+                format!("set {} = {}", path.join("."), redact_text(value))
             }
             Edit::JsonRemoveArrayItems { path, fields } => {
                 let when: Vec<String> = fields.iter().map(|(k, v)| format!("{k}={v}")).collect();
@@ -238,7 +247,16 @@ mod tests {
             },
         };
 
-        let json = serde_json::to_string(&[run, hook]).unwrap();
+        let source = Action::Edit {
+            file: "/config.toml".into(),
+            edit: Edit::TomlSetKey {
+                path: vec!["marketplaces".into(), "mp".into(), "source".into()],
+                value: toml_edit::Value::from("https://u:s3cret@host/repo.git").to_string(),
+            },
+        };
+
+        assert!(!source.describe().contains("s3cret"));
+        let json = serde_json::to_string(&[run, hook, source]).unwrap();
 
         // the --json plan must not carry the secrets either
         assert!(!json.contains("s3cret"));

@@ -24,6 +24,8 @@ use crate::runner::CommandRunner;
 pub struct PluginOffer {
     pub marketplace: String,
     pub plugins: Vec<String>,
+    /// Skill names supplied by local plugin sources, keyed by plugin name.
+    pub skills: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 pub trait Harness {

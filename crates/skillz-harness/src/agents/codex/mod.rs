@@ -90,8 +90,7 @@ impl Harness for Codex {
             .collect())
     }
 
-    /// `codex plugin …` and `codex mcp …` only work on the user config, so project scope has no
-    /// way in for those.
+    /// Project plugins are configured directly; native add commands write the user config.
     fn plan_install(&self, entry: &Spec, scope: Scope, env: &Env) -> Option<Vec<Action>> {
         match entry {
             Spec::Hook { .. } => hooks::provision(entry, scope_dir(env, scope).join("hooks.json")),
@@ -105,11 +104,7 @@ impl Harness for Codex {
         }
     }
 
-    /// Plugins go through `codex plugin …`, which only acts on the user config.
-    fn plugin_offer(&self, src: &Path, scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
-        if scope != Scope::Global {
-            return Ok(None);
-        }
+    fn plugin_offer(&self, src: &Path, _scope: Scope) -> anyhow::Result<Option<PluginOffer>> {
         plugins::plugin_offer(src)
     }
 
@@ -118,10 +113,19 @@ impl Harness for Codex {
         offer: &PluginOffer,
         picked: &[String],
         source: &str,
-        _scope: Scope,
+        scope: Scope,
         env: &Env,
     ) -> Vec<Action> {
-        plugins::install_steps(source, &offer.marketplace, picked, env)
+        if scope == Scope::Project {
+            picked
+                .iter()
+                .flat_map(|name| {
+                    plugins::project_install_steps(source, &offer.marketplace, name, env)
+                })
+                .collect()
+        } else {
+            plugins::install_steps(source, &offer.marketplace, picked, env)
+        }
     }
 
     /// Codex keeps no counters: a tool call in a session log under

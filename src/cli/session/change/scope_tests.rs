@@ -203,8 +203,71 @@ fn installing_a_library_entry_goes_to_the_chosen_scope_and_only_the_chosen_tools
     );
     assert_eq!(
         programs(plugin(vec![Agent::Codex]), Scope::Project),
-        Vec::<String>::new()
+        ["codex"]
     );
+}
+
+#[test]
+fn codex_library_and_profile_plugins_install_only_in_the_project() {
+    use skillz_harness::model::{Agent, Kind};
+    let entry = skillz_harness::Spec::Plugin {
+        source: "mattpocock/skills".into(),
+        marketplace: "mattpocock".into(),
+        name: "mattpocock-skills".into(),
+        agents: vec![Agent::Codex],
+    };
+    for from_profile in [false, true] {
+        let (home, project) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let global = home.path().join(".codex/config.toml");
+        let original = "model = \"o3\"\n[plugins.\"existing@mp\"]\nenabled = true\n";
+        fs::create_dir_all(global.parent().unwrap()).unwrap();
+        fs::write(&global, original).unwrap();
+        let env = Env::new(home.path().into(), project.path().into());
+        let mut profile = profile::Profile::new("matt");
+        profile.entries = vec![entry.clone()];
+        profile::Store::in_env(&env).save(&profile).unwrap();
+        let selection = Selection {
+            install: std::slice::from_ref(&entry),
+            remove: &[],
+            only: None,
+        };
+        let what = if from_profile {
+            Change::Apply("matt")
+        } else {
+            Change::Selection(&selection)
+        };
+
+        let calls = run_in(home.path(), project.path(), Scope::Project, &what);
+
+        assert_eq!(calls.len(), 1);
+        assert!(
+            calls[0]
+                .windows(4)
+                .any(|args| args == ["plugin", "marketplace", "upgrade", "mattpocock"])
+        );
+        let config: toml_edit::DocumentMut =
+            fs::read_to_string(project.path().join(".codex/config.toml"))
+                .unwrap()
+                .parse()
+                .unwrap();
+        assert_eq!(
+            config["marketplaces"]["mattpocock"]["source"].as_str(),
+            Some("https://github.com/mattpocock/skills.git")
+        );
+        assert_eq!(
+            config["plugins"]["mattpocock-skills@mattpocock"]["enabled"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(fs::read_to_string(&global).unwrap(), original);
+        let adapters = registry();
+        let installed = skillz_harness::agents::inventory(&adapters, &env, &[Scope::Project])
+            .complete()
+            .unwrap();
+        assert!(installed.iter().any(|item| item.kind == Kind::Plugin
+            && item.name == "mattpocock-skills@mattpocock"
+            && item.source.as_deref() == Some("mattpocock/skills")));
+        assert!(run_in(home.path(), project.path(), Scope::Project, &what).is_empty());
+    }
 }
 
 #[test]

@@ -67,7 +67,7 @@ fn choose(
 }
 
 /// Skill names picked by a non-interactive selection. `Interactive` yields every candidate.
-fn select_skills(names: &[String], selection: &SkillSelection) -> Vec<String> {
+pub(super) fn select_skills(names: &[String], selection: &SkillSelection) -> Vec<String> {
     match selection {
         SkillSelection::Patterns(patterns) => {
             let pats: Vec<&str> = patterns
@@ -88,7 +88,7 @@ fn select_skills(names: &[String], selection: &SkillSelection) -> Vec<String> {
 
 /// Frontmatter names of every skill (dir containing `SKILL.md`) under `root`, recursively,
 /// sorted: the names npx `skills --skill` matches.
-fn scan_available(root: &Path) -> anyhow::Result<Vec<String>> {
+pub(super) fn scan_available(root: &Path) -> anyhow::Result<Vec<String>> {
     let mut found = Vec::new();
     fswalk::walk(root, &mut |path, is_dir| {
         if is_dir {

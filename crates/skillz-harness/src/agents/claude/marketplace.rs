@@ -188,7 +188,11 @@ fn owned_clone(claude: &Path, m: &Marketplace) -> Option<RemovalTarget> {
 
 /// The Claude marketplace `src` carries, if any.
 pub(super) fn plugin_offer(src: &Path) -> anyhow::Result<Option<PluginOffer>> {
-    read_marketplace(&src.join(".claude-plugin/marketplace.json"))
+    read_marketplace(
+        &src.join(".claude-plugin/marketplace.json"),
+        src,
+        &[".claude-plugin/plugin.json"],
+    )
 }
 
 /// Add `source` as a marketplace and install the `picked` plugins of `offer`.
@@ -201,7 +205,7 @@ pub(super) fn plugin_steps(
 ) -> Vec<Action> {
     let scope = match scope {
         Scope::Global => "user",
-        Scope::Project => "project",
+        Scope::Project => "local",
     };
     install_commands(source, &offer.marketplace, picked, scope)
         .into_iter()
@@ -279,6 +283,7 @@ mod tests {
         PluginOffer {
             marketplace: "mp".into(),
             plugins: s(&["p1", "p2"]),
+            skills: Default::default(),
         }
     }
 
@@ -536,17 +541,17 @@ mod tests {
             vec![
                 Action::required(
                     "claude",
-                    s(&["plugin", "marketplace", "add", "o/r", "--scope", "project"]),
+                    s(&["plugin", "marketplace", "add", "o/r", "--scope", "local"]),
                     cwd
                 ),
                 Action::required(
                     "claude",
-                    s(&["plugin", "install", "p1@mp", "--scope", "project"]),
+                    s(&["plugin", "install", "p1@mp", "--scope", "local"]),
                     cwd
                 ),
                 Action::required(
                     "claude",
-                    s(&["plugin", "install", "p2@mp", "--scope", "project"]),
+                    s(&["plugin", "install", "p2@mp", "--scope", "local"]),
                     cwd
                 ),
             ]

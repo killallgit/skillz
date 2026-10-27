@@ -1,5 +1,34 @@
 use anyhow::Context;
 
+pub(super) fn toml_set_key(contents: &str, path: &[String], value: &str) -> anyhow::Result<String> {
+    let mut doc: toml_edit::DocumentMut = contents.parse().context("invalid TOML")?;
+    let mut value: toml_edit::Value = value.parse().context("invalid TOML value")?;
+    let (last, parents) = path.split_last().context("empty TOML path")?;
+    let mut parent = doc.as_item_mut();
+    for key in parents {
+        let table = parent
+            .as_table_like_mut()
+            .context("TOML parent is not a table")?;
+        if !table.contains_key(key) {
+            let mut child = toml_edit::Table::new();
+            child.set_implicit(true);
+            table.insert(key, toml_edit::Item::Table(child));
+        }
+        parent = table.get_mut(key).context("missing TOML parent")?;
+    }
+    let table = parent
+        .as_table_like_mut()
+        .context("TOML parent is not a table")?;
+    if let Some(existing) = table.get(last).and_then(toml_edit::Item::as_value) {
+        *value.decor_mut() = existing.decor().clone();
+        if existing.to_string() == value.to_string() {
+            return Ok(contents.to_string());
+        }
+    }
+    table.insert(last, toml_edit::Item::Value(value));
+    Ok(doc.to_string())
+}
+
 pub(super) fn toml_remove_key(contents: &str, path: &[String]) -> anyhow::Result<String> {
     let mut doc: toml_edit::DocumentMut = contents.parse().context("invalid TOML")?;
     let Some((last, parents)) = path.split_last() else {
@@ -22,6 +51,61 @@ mod tests {
     use crate::action::testutil::*;
     use crate::action::{Edit, apply_edit};
     use std::path::Path;
+
+    #[test]
+    fn setting_toml_keys_preserves_siblings_and_handles_dotted_and_inline_tables() {
+        let edit = Edit::TomlSetKey {
+            path: strings(&["plugins", "p@m", "enabled"]),
+            value: "true".into(),
+        };
+        for before in [
+            "model = \"o3\"\n",
+            "model = \"o3\"\nplugins.\"p@m\".enabled = false\n",
+            "model = \"o3\"\nplugins = { \"p@m\" = { enabled = false }, keep = { enabled = false } }\n",
+        ] {
+            let after = apply_edit(Path::new(TOML), &edit, before).unwrap();
+            let doc: toml_edit::DocumentMut = after.parse().unwrap();
+            assert_eq!(doc["model"].as_str(), Some("o3"));
+            assert_eq!(doc["plugins"]["p@m"]["enabled"].as_bool(), Some(true));
+            if let Some(keep) = doc["plugins"].get("keep") {
+                assert_eq!(keep["enabled"].as_bool(), Some(false));
+            }
+            assert_eq!(apply_edit(Path::new(TOML), &edit, &after).unwrap(), after);
+        }
+    }
+
+    #[test]
+    fn setting_toml_keys_preserves_comments_and_rejects_invalid_structure() {
+        let edit = Edit::TomlSetKey {
+            path: strings(&["plugins", "p@m", "enabled"]),
+            value: "true".into(),
+        };
+        let before = "# comment\n[plugins.\"p@m\"]\nenabled = true # keep\n";
+        assert_eq!(apply_edit(Path::new(TOML), &edit, before).unwrap(), before);
+        assert!(apply_edit(Path::new(TOML), &edit, "plugins = false\n").is_err());
+        assert!(
+            apply_edit(
+                Path::new(TOML),
+                &Edit::TomlSetKey {
+                    path: vec![],
+                    value: "true".into()
+                },
+                ""
+            )
+            .is_err()
+        );
+        assert!(
+            apply_edit(
+                Path::new(TOML),
+                &Edit::TomlSetKey {
+                    path: strings(&["a"]),
+                    value: "invalid!".into()
+                },
+                ""
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn toml_remove_table_keeps_formatting() {

@@ -22,7 +22,7 @@ pub enum SkillSelection {
     /// else let the user pick skills.
     Interactive,
     All,
-    /// Names or globs (`*commit`); matches are confirmed before installing.
+    /// Names or globs (`*commit`); prefer their owning plugins, else install loose skills.
     Patterns(Vec<String>),
 }
 
@@ -123,21 +123,48 @@ fn agent_plugins(
     tree: &Tree,
     agent: Agent,
 ) -> anyhow::Result<AgentPlugins> {
-    if req.selection != SkillSelection::Interactive {
-        return Ok(AgentPlugins::Unoffered);
-    }
     let Some(adapter) = adapter_for(ctx.adapters, agent) else {
         return Ok(AgentPlugins::Unoffered);
     };
     let Some(offer) = adapter.plugin_offer(tree.src, req.scope)? else {
         return Ok(AgentPlugins::Unoffered);
     };
-    let title = format!("{agent} plugins to install");
-    let picked = ctx.prompter.multi_select(&title, &offer.plugins)?;
-    if picked.is_empty() {
-        return Ok(AgentPlugins::Declined);
+    let chosen: Vec<String> = match &req.selection {
+        SkillSelection::Interactive => {
+            let title = format!("{agent} plugins to install");
+            let picked = ctx.prompter.multi_select(&title, &offer.plugins)?;
+            if picked.is_empty() {
+                return Ok(AgentPlugins::Declined);
+            }
+            picked.iter().map(|&i| offer.plugins[i].clone()).collect()
+        }
+        SkillSelection::All => offer.plugins.clone(),
+        SkillSelection::Patterns(_) => {
+            let available = skills::scan_available(tree.src)?;
+            let selected = skills::select_skills(&available, &req.selection);
+            if selected.is_empty()
+                || selected
+                    .iter()
+                    .any(|name| !offer.skills.values().any(|names| names.contains(name)))
+            {
+                return Ok(AgentPlugins::Unoffered);
+            }
+            offer
+                .plugins
+                .iter()
+                .filter(|name| {
+                    offer
+                        .skills
+                        .get(*name)
+                        .is_some_and(|names| names.iter().any(|name| selected.contains(name)))
+                })
+                .cloned()
+                .collect()
+        }
+    };
+    if chosen.is_empty() {
+        return Ok(AgentPlugins::Unoffered);
     }
-    let chosen: Vec<String> = picked.iter().map(|&i| offer.plugins[i].clone()).collect();
     Ok(AgentPlugins::Install {
         line: format!("{agent}: {} from {}", chosen.join(", "), offer.marketplace),
         steps: adapter.plan_add_source(&offer, &chosen, tree.source, req.scope, ctx.env),
@@ -244,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn marketplace_with_other_agents_offers_them_the_skill_picker() {
+    fn claude_marketplaces_are_offered_as_plugins_to_both_agents() {
         let fx = project_with(marketplace_fixture);
         let runner = FakeRunner::new(|_| {});
         let r = InstallRequest {
@@ -254,43 +281,32 @@ mod tests {
         };
         let prompter = ScriptedPrompter::new(&[1], true);
         run_install(&fx, &r, &runner, &prompter).unwrap();
-        assert_eq!(prompter.offered.borrow()[1], s(&["alpha", "beta"]));
+        assert_eq!(prompter.offered.borrow()[1], s(&["p1", "p2"]));
         let calls = runner.calls();
         assert_eq!(
             calls[1].1,
             s(&["plugin", "install", "p2@mp", "--scope", "user"])
         );
-        let src = fx
-            .env
-            .project
-            .join("repo")
-            .canonicalize()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
-        assert_eq!(
-            calls[2].1,
-            npx(&src, &["--skill", "beta", "-a", "codex", "-g", "-y"])
-        );
-        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[3].1, s(&["plugin", "add", "p2@mp"]));
+        assert_eq!(calls.len(), 4);
     }
 
     #[test]
-    fn marketplace_ignored_without_claude_or_with_explicit_selection() {
-        for (agents, sel) in [
-            (vec![Agent::Codex], SkillSelection::Interactive),
-            (vec![Agent::Claude], SkillSelection::All),
-        ] {
+    fn all_installs_every_native_plugin_without_a_picker() {
+        for agent in [Agent::Claude, Agent::Codex] {
             let fx = project_with(marketplace_fixture);
             let runner = FakeRunner::new(|_| {});
             let r = InstallRequest {
-                agents: agents.to_vec(),
-                ..req(&fx, "repo", sel)
+                agents: vec![agent],
+                scope: Scope::Global,
+                ..req(&fx, "repo", SkillSelection::All)
             };
             run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[0], true)).unwrap();
             let calls = runner.calls();
-            assert_eq!(calls.len(), 1);
-            assert_eq!(calls[0].0, "npx");
+            assert_eq!(calls.len(), 3);
+            assert!(calls.iter().all(|call| call.0 == agent.to_string()));
+            assert!(calls[1].1.contains(&"p1@mp".into()));
+            assert!(calls[2].1.contains(&"p2@mp".into()));
         }
     }
 
@@ -312,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_plugins_are_user_level_so_a_project_install_falls_back_to_skills() {
+    fn codex_project_source_installs_configure_native_plugins() {
         let fx = project_with(codex_marketplace_fixture);
         let runner = FakeRunner::new(|_| {});
         let r = InstallRequest {
@@ -321,9 +337,110 @@ mod tests {
             ..req(&fx, "repo", SkillSelection::Interactive)
         };
         run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[0], true)).unwrap();
+        assert!(runner.calls().is_empty());
+        let config: toml_edit::DocumentMut =
+            std::fs::read_to_string(fx.env.project.join(".codex/config.toml"))
+                .unwrap()
+                .parse()
+                .unwrap();
+        assert_eq!(config["plugins"]["p1@mp"]["enabled"].as_bool(), Some(true));
+        assert!(!fx.env.home.join(".codex/config.toml").exists());
+    }
+
+    #[test]
+    fn selected_mattpocock_skills_install_the_owning_plugin_for_both_agents() {
+        for scope in [Scope::Project, Scope::Global] {
+            let fx = project_with(mattpocock_fixture);
+            let runner = FakeRunner::new(|_| {});
+            let request = InstallRequest {
+                agents: vec![Agent::Claude, Agent::Codex],
+                scope,
+                ..req(&fx, "repo", SkillSelection::Patterns(s(&["tdd"])))
+            };
+            run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
+            let calls = runner.calls();
+            assert!(calls.iter().all(|call| call.0 != "npx"));
+            assert_eq!(
+                calls[1].1,
+                s(&[
+                    "plugin",
+                    "install",
+                    "mattpocock-skills@mattpocock",
+                    "--scope",
+                    if scope == Scope::Project {
+                        "local"
+                    } else {
+                        "user"
+                    }
+                ])
+            );
+            if scope == Scope::Global {
+                assert_eq!(
+                    calls[3].1,
+                    s(&["plugin", "add", "mattpocock-skills@mattpocock"])
+                );
+            } else {
+                let config: toml_edit::DocumentMut =
+                    std::fs::read_to_string(fx.env.project.join(".codex/config.toml"))
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                assert_eq!(
+                    config["plugins"]["mattpocock-skills@mattpocock"]["enabled"].as_bool(),
+                    Some(true)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn selecting_a_skill_installs_only_its_owning_plugin() {
+        let fx = project_with(|root| {
+            marketplace_fixture(root);
+            std::fs::write(root.join(".claude-plugin/marketplace.json"), r#"{"name":"mp","plugins":[{"name":"p1","source":"./plugins/p1"},{"name":"p2","source":"./plugins/p2"}]}"#).unwrap();
+        });
+        let runner = FakeRunner::new(|_| {});
+        let request = req(&fx, "repo", SkillSelection::Patterns(s(&["alpha"])));
+        run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
         let calls = runner.calls();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].0, "npx");
+        assert_eq!(calls.len(), 2);
+        assert_eq!(
+            calls[1].1,
+            s(&["plugin", "install", "p1@mp", "--scope", "local"])
+        );
+    }
+
+    #[test]
+    fn skills_outside_plugins_still_install_as_loose_skills() {
+        let fx = project_with(marketplace_fixture);
+        let runner = FakeRunner::new(|_| {});
+        let request = req(&fx, "repo", SkillSelection::Patterns(s(&["alpha"])));
+        run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
+        assert_eq!(runner.calls().len(), 1);
+        assert_eq!(runner.calls()[0].0, "npx");
+    }
+
+    #[test]
+    fn plugin_skill_mapping_uses_manifest_paths() {
+        for paths in [r#""./custom/tdd""#, r#"["./custom/tdd"]"#] {
+            let fx = project_with(|root| {
+                mattpocock_fixture(root);
+                skill(root, "custom/tdd");
+                std::fs::write(
+                    root.join(".claude-plugin/plugin.json"),
+                    format!(r#"{{"name":"mattpocock-skills","skills":{paths}}}"#),
+                )
+                .unwrap();
+            });
+            let runner = FakeRunner::new(|_| {});
+            let request = req(&fx, "repo", SkillSelection::Patterns(s(&["tdd"])));
+            run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
+            assert_eq!(runner.calls()[1].0, "claude");
+            let runner = FakeRunner::new(|_| {});
+            let request = req(&fx, "repo", SkillSelection::Patterns(s(&["code-review"])));
+            run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
+            assert_eq!(runner.calls()[0].0, "npx");
+        }
     }
 
     #[test]

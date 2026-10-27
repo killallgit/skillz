@@ -62,12 +62,17 @@ skillz reset --dry-run | --force
 skillz prune                     # duplicates + unused 7+ days -> pick -> confirm -> remove
 skillz prune --dry-run | --force
 
-skillz install mattpocock/skills --skill 'tdd,*commit'   # glob match, confirm, npx skills add
+skillz install mattpocock/skills --skill tdd             # installs the plugin that supplies tdd
 skillz install mattpocock/skills --all
 skillz install mattpocock/skills --all -g                 # for the user, not the project
 skillz update tdd -g                                     # update a user-level skill
 skillz install killallgit/killall-skills                 # has a marketplace: pick plugins, review the plan
 ```
+
+Source installs prefer each tool's native plugin installer when a marketplace is available.
+`--all` installs every offered plugin; `--skill` selects the plugins that supply the matching
+skills. Sources without a matching plugin use `npx skills`. Library skill installs inspect
+the source again, so older loose-skill entries can install through the native plugin too.
 
 If a skill you ask for is already installed globally and not in the project, `install` says so
 and asks before installing it into the project too (`-y` goes ahead).
@@ -146,7 +151,7 @@ Every value must be non-empty and must not start with `-`; an MCP entry has exac
 | Kind | Claude | Codex |
 | --- | --- | --- |
 | skill | `npx skills add`, all agents at once | same |
-| plugin | `claude plugin marketplace add` + `plugin install`; project scope uses Claude's `local` scope, never the file the team shares | `codex plugin marketplace add` + `plugin add`, global only |
+| plugin | `claude plugin marketplace add` + `plugin install`; project scope uses Claude's `local` scope, never the file the team shares | Global: `codex plugin marketplace add` + `plugin add`. Project: marketplace and plugin settings in `.codex/config.toml`; Codex loads them when the trusted project is opened |
 | subagent | `.md` files into `.claude/agents` (`~/.claude/agents` global) | `.toml` files into `.codex/agents` (`~/.codex/agents` global) |
 | hook | `settings.json` (global) or `.claude/settings.local.json` (project) | `hooks.json` in the same scope |
 | mcp | `claude mcp add`, scope `user` (global) or `local` (project) | `codex mcp add`, global only, no SSE |
