@@ -28,11 +28,6 @@ pub(in crate::cli) enum Notice {
         secrets: usize,
     },
     Created(String),
-    /// A profile saved from the project, with the installed items it could not hold.
-    Saved {
-        name: String,
-        skipped: Vec<String>,
-    },
     Updated(String),
     Deleted(String),
 }
@@ -66,10 +61,6 @@ impl fmt::Display for Notice {
                 Ok(())
             }
             Notice::Created(name) => write!(f, "created {name}"),
-            Notice::Saved { name, skipped } if skipped.is_empty() => write!(f, "saved {name}"),
-            Notice::Saved { name, skipped } => {
-                write!(f, "saved {name}; not saved: {}", skipped.join(", "))
-            }
             Notice::Updated(name) => write!(f, "updated {name}"),
             Notice::Deleted(name) => write!(f, "deleted {name}"),
         }

@@ -1,4 +1,4 @@
-//! The result screen's list of what was done, item by item.
+//! The result screen's list of what was done, one line per item.
 
 use ratatui::text::{Line, Span};
 
@@ -23,7 +23,7 @@ pub(super) fn done_lines(outcome: &Outcome, theme: &Theme) -> Vec<Line<'static>>
             Span::raw(format!("{} {}", verb(&event.target), event.label)),
         ])
     });
-    std::iter::once(Line::default()).chain(lines).collect()
+    lines.collect()
 }
 
 fn verb(target: &Target) -> &'static str {
@@ -59,8 +59,7 @@ mod tests {
 
         let lines = done_lines(&outcome, &Theme::dark());
 
-        // A blank separator, then the two that worked.
-        assert_eq!(lines.len(), 3);
+        assert_eq!(lines.len(), 2);
     }
 
     #[test]

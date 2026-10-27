@@ -13,6 +13,7 @@ use crate::tui::keymap::{self, Scope};
 use crate::tui::theme::Theme;
 use crate::tui::widgets::empty;
 use crate::tui::widgets::keybar::KeyBar;
+use crate::tui::widgets::margin;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
 
@@ -31,8 +32,8 @@ fn mark_span(mark: Mark, theme: &Theme) -> Span<'static> {
 
 impl TreeState {
     pub fn draw(&mut self, title: &str, frame: &mut Frame, theme: &Theme) {
-        let [body, foot] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(frame.area());
+        let [body, foot] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)])
+            .areas(margin::inset(frame.area()));
         self.draw_list(title, frame, body, theme);
         self.draw_footer(frame, foot, theme);
         self.draw_overlay(frame, theme);

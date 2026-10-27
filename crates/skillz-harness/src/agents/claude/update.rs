@@ -69,10 +69,7 @@ mod tests {
     use crate::model::{Agent, Scope};
     use crate::runner::CommandRunner;
     use crate::runner::Output;
-    use crate::update::check::spawn;
     use std::path::Path;
-    use std::sync::Arc;
-    use std::sync::mpsc;
 
     struct Heads {
         local: &'static str,
@@ -143,16 +140,5 @@ mod tests {
         ];
 
         assert_eq!(results, [false; 3]);
-    }
-
-    #[test]
-    fn found_ids_arrive_on_the_channel() {
-        let dir = tempfile::tempdir().unwrap();
-        let check: Arc<dyn UpdateCheck> = Arc::new(checker(dir.path(), "aaa", "bbb"));
-        let (tx, rx) = mpsc::channel();
-
-        spawn(check, vec![marketplace("mp")], tx);
-
-        assert_eq!(rx.iter().collect::<Vec<_>>(), ["marketplace:mp"]);
     }
 }

@@ -25,6 +25,17 @@ impl Group {
         }
     }
 
+    /// How the plan modal titles the group: what is being done to its entries.
+    pub fn heading(self) -> &'static str {
+        match self {
+            Group::Keep => "keeping",
+            Group::Remove => "removing",
+            Group::Install => "installing",
+            Group::Update => "updating",
+            Group::Skip => "skipping",
+        }
+    }
+
     pub const ALL: [Group; 5] = [
         Group::Keep,
         Group::Remove,
@@ -44,19 +55,53 @@ pub struct PlanView {
     pub steps: Vec<String>,
 }
 
-/// The agents a plan offers to act on, each checked or not, and the one under the cursor.
+/// One item a plan installs or removes, which the user may leave out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pick {
+    pub group: Group,
+    /// What names it in this plan: the entry as text, or the installed item's id.
+    pub id: String,
+    /// The ids of the installed copies behind it. Narrowing the agents folds a shared item down to
+    /// the copies that remain and so renames it; these still say it is the same item.
+    pub copies: Vec<String>,
+    pub label: String,
+    pub on: bool,
+}
+
+/// An item a plan lists, before the user's checks are applied to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listed {
+    pub group: Group,
+    pub id: String,
+    pub copies: Vec<String>,
+    pub label: String,
+}
+
+/// What a plan offers to narrow: the agents it reaches and the items it installs or removes,
+/// each checked or not, and the one under the cursor (the agents first, then the items).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Targets {
+    /// Empty when the plan reaches no more than one agent: there is nothing to choose.
     pub agents: Vec<(Agent, bool)>,
+    pub items: Vec<Pick>,
     pub cursor: usize,
+    /// Items the user unchecked that the plan stopped listing (narrowing the agents hid them):
+    /// they stay unchecked should they come back.
+    pub left_out: Vec<Pick>,
 }
 
 impl Targets {
-    /// All of `agents`, checked.
+    /// All of `agents`, checked; none are offered for one agent or fewer.
     pub fn all(agents: Vec<Agent>) -> Self {
+        let offered = match agents.len() > 1 {
+            true => agents,
+            false => vec![],
+        };
         Targets {
-            agents: agents.into_iter().map(|agent| (agent, true)).collect(),
+            agents: offered.into_iter().map(|agent| (agent, true)).collect(),
+            items: vec![],
             cursor: 0,
+            left_out: vec![],
         }
     }
 
@@ -68,15 +113,63 @@ impl Targets {
             .collect()
     }
 
+    /// The agents to plan for, when the user can choose among them.
+    pub fn narrowing(&self) -> Option<Vec<Agent>> {
+        (!self.agents.is_empty()).then(|| self.checked())
+    }
+
+    /// How many lines the cursor can rest on.
+    pub fn rows(&self) -> usize {
+        self.agents.len() + self.items.len()
+    }
+
+    /// Whether the item called `id` is left in the plan; one the plan does not list is.
+    pub fn includes(&self, id: &str) -> bool {
+        self.items.iter().find(|p| p.id == id).is_none_or(|p| p.on)
+    }
+
+    /// The plan's items as they are now, keeping what the user already unchecked.
+    pub fn sync_items(&mut self, listed: Vec<Listed>) {
+        let known: Vec<Pick> = std::mem::take(&mut self.items)
+            .into_iter()
+            .chain(std::mem::take(&mut self.left_out))
+            .collect();
+        let same = |old: &Pick, new: &Listed| {
+            old.id == new.id || old.copies.iter().any(|copy| new.copies.contains(copy))
+        };
+        self.left_out = known
+            .iter()
+            .filter(|old| !old.on && !listed.iter().any(|new| same(old, new)))
+            .cloned()
+            .collect();
+        self.items = listed
+            .into_iter()
+            .map(|new| Pick {
+                on: known
+                    .iter()
+                    .find(|old| same(old, &new))
+                    .is_none_or(|p| p.on),
+                group: new.group,
+                id: new.id,
+                copies: new.copies,
+                label: new.label,
+            })
+            .collect();
+        self.cursor = self.cursor.min(self.rows().saturating_sub(1));
+    }
+
     pub fn toggled(mut self) -> Self {
+        let agents = self.agents.len();
         if let Some((_, on)) = self.agents.get_mut(self.cursor) {
             *on = !*on;
+        } else if let Some(pick) = self.items.get_mut(self.cursor - agents) {
+            pick.on = !pick.on;
         }
         self
     }
 
     pub fn moved(mut self, down: bool) -> Self {
-        let last = self.agents.len().saturating_sub(1);
+        let last = self.rows().saturating_sub(1);
         self.cursor = match down {
             true => (self.cursor + 1).min(last),
             false => self.cursor.saturating_sub(1),
@@ -236,6 +329,95 @@ mod tests {
         assert_eq!(
             (removes.destructive(), installs.destructive()),
             (true, false)
+        );
+    }
+
+    fn item(group: Group, id: &str, copies: &[&str]) -> Listed {
+        Listed {
+            group,
+            id: id.into(),
+            copies: copies.iter().map(|copy| copy.to_string()).collect(),
+            label: id.into(),
+        }
+    }
+
+    fn listed() -> Vec<Listed> {
+        vec![
+            item(Group::Install, "a", &[]),
+            item(Group::Remove, "b", &["b"]),
+        ]
+    }
+
+    #[test]
+    fn syncing_items_keeps_what_was_unchecked_and_includes_new_ones() {
+        let mut targets = Targets::all(vec![]);
+        targets.sync_items(listed());
+        targets.cursor = 1;
+        let targets = targets.toggled();
+
+        let mut again = targets.clone();
+        again.sync_items(vec![
+            item(Group::Remove, "b", &["b"]),
+            item(Group::Install, "c", &[]),
+        ]);
+
+        assert!(!again.includes("b") && again.includes("c") && again.includes("unlisted"));
+        assert!(!targets.includes("b") && targets.includes("a"));
+    }
+
+    #[test]
+    fn an_item_renamed_by_narrowing_the_agents_stays_unchecked() {
+        let mut targets = Targets::all(vec![Agent::Claude, Agent::Codex]);
+        targets.sync_items(vec![item(
+            Group::Remove,
+            "subagent:claude:reviewer",
+            &["subagent:claude:reviewer", "subagent:codex:reviewer"],
+        )]);
+        targets.cursor = 2;
+        let mut targets = targets.toggled();
+
+        targets.sync_items(vec![item(
+            Group::Remove,
+            "subagent:codex:reviewer",
+            &["subagent:codex:reviewer"],
+        )]);
+
+        assert!(!targets.includes("subagent:codex:reviewer"));
+    }
+
+    #[test]
+    fn an_unchecked_item_that_drops_out_of_the_plan_is_still_unchecked_when_it_returns() {
+        let mut targets = Targets::all(vec![Agent::Claude, Agent::Codex]);
+        targets.sync_items(vec![item(Group::Install, "a", &[])]);
+        targets.cursor = 2;
+        let mut targets = targets.toggled();
+
+        targets.sync_items(vec![]);
+        targets.sync_items(vec![item(Group::Install, "a", &[])]);
+
+        assert!(!targets.includes("a"));
+    }
+
+    #[test]
+    fn the_cursor_runs_over_the_agents_then_the_items() {
+        let mut targets = Targets::all(vec![Agent::Claude, Agent::Codex]);
+        targets.sync_items(listed());
+
+        let at_item = targets.clone().moved(true).moved(true);
+        let toggled = at_item.clone().toggled();
+
+        assert_eq!(targets.rows(), 4);
+        assert_eq!(toggled.checked(), [Agent::Claude, Agent::Codex]);
+        assert!(!toggled.includes("a"));
+        assert_eq!(toggled.moved(true).moved(true).moved(true).cursor, 3);
+    }
+
+    #[test]
+    fn one_agent_or_none_offers_no_agent_choice() {
+        assert_eq!(Targets::all(vec![Agent::Claude]).narrowing(), None);
+        assert_eq!(
+            Targets::all(vec![Agent::Claude, Agent::Codex]).narrowing(),
+            Some(vec![Agent::Claude, Agent::Codex])
         );
     }
 

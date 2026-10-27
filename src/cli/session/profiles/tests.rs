@@ -6,8 +6,10 @@ use crate::app::install::test_support::{FakeRunner, ScriptedPrompter};
 use crate::app::profile::{self, StillExtended};
 use crate::app::store;
 use crate::cli::deps::Deps;
+use crate::cli::profile::save_profile;
+use crate::cli::scope::{complete_installed, project_env};
 use skillz_harness::agents::registry;
-use skillz_harness::model::Agent;
+use skillz_harness::model::{Agent, Scope};
 
 fn session<'a, 'd>(deps: &'a Deps<'d>, dir: &Path) -> Session<'a, 'd> {
     Session {
@@ -24,6 +26,13 @@ fn with_session<T>(check: impl FnOnce(&Session, &Path) -> T) -> T {
     let prompter = ScriptedPrompter::new(&[], true);
     let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
     check(&session(&deps, dir.path()), dir.path())
+}
+
+/// What `skillz profile save` does: snapshot the project's installs into a profile.
+fn save_current(session: &Session, name: &str) -> anyhow::Result<crate::app::snapshot::Snapshot> {
+    let env = project_env(session.deps, &session.project);
+    let items = complete_installed(session.deps, &env, Scope::Project)?;
+    save_profile(&session.profiles, &items, name, false)
 }
 
 fn skill(name: &str) -> Spec {
@@ -93,12 +102,9 @@ fn saving_the_project_lists_what_could_not_be_saved() {
         fs::create_dir_all(&loose).unwrap();
         fs::write(loose.join("SKILL.md"), "---\nname: mine\n---\n").unwrap();
 
-        let notice = session.save_current("snap").unwrap();
+        let saved = save_current(session, "snap").unwrap();
 
-        let Notice::Saved { skipped, .. } = notice else {
-            panic!("expected a saved notice");
-        };
-        assert_eq!(skipped.len(), 1);
+        assert_eq!(saved.skipped.len(), 1);
         assert!(session.profiles.load("snap").unwrap().entries.is_empty());
     });
 }
@@ -114,7 +120,7 @@ fn saving_the_project_keeps_a_hand_made_skill_by_the_dir_holding_it() {
         )
         .unwrap();
 
-        session.save_current("snap").unwrap();
+        save_current(session, "snap").unwrap();
 
         // Assert the profile reinstalls it from the skills dir, canonicalized as discovery does.
         let held_in = fs::canonicalize(dir.join(".claude/skills")).unwrap();
@@ -134,7 +140,7 @@ fn saving_over_an_existing_profile_is_refused() {
     with_session(|session, _| {
         session.create_profile("snap", &[]).unwrap();
 
-        assert!(session.save_current("snap").is_err());
+        assert!(save_current(session, "snap").is_err());
     });
 }
 

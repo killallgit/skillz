@@ -1,12 +1,12 @@
-//! A yes/no dialog. Focus starts on No so a stray Enter never destroys anything.
+//! A confirm dialog: a question and two answers as buttons, the cancelling one first. Focus starts
+//! on the cancelling button so a stray Enter never destroys anything.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
-use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
+use super::buttons::Buttons;
+use super::container::{Container, Size};
 use super::modal::{self, ModalSize};
 use super::panel::Panel;
 use crate::tui::keymap::{self, Action, Scope};
@@ -20,17 +20,15 @@ pub enum Outcome {
     No,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Button {
-    Yes,
-    No,
-}
+/// Where the cancelling and the confirming button sit in the row.
+const CANCEL: usize = 0;
+const CONFIRM: usize = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfirmDialog {
     title: String,
     prompt: String,
-    focus: Button,
+    buttons: Buttons,
 }
 
 impl ConfirmDialog {
@@ -38,13 +36,13 @@ impl ConfirmDialog {
         ConfirmDialog {
             title: title.into(),
             prompt: prompt.into(),
-            focus: Button::No,
+            buttons: Buttons::new(&["No", "Yes"], CANCEL),
         }
     }
 
     #[cfg(test)]
     pub fn yes_focused(&self) -> bool {
-        self.focus == Button::Yes
+        self.buttons.focus() == CONFIRM
     }
 
     pub fn handle(&mut self, key: KeyEvent) -> Outcome {
@@ -53,7 +51,7 @@ impl ConfirmDialog {
             Some(Action::No | Action::Back | Action::Quit | Action::Interrupt) => Outcome::No,
             Some(Action::Select) => self.choice(),
             Some(Action::Toggle) => {
-                self.toggle_focus();
+                self.buttons.next();
                 Outcome::Pending
             }
             _ => Outcome::Pending,
@@ -61,17 +59,10 @@ impl ConfirmDialog {
     }
 
     fn choice(&self) -> Outcome {
-        match self.focus {
-            Button::Yes => Outcome::Yes,
-            Button::No => Outcome::No,
+        match self.buttons.focus() {
+            CONFIRM => Outcome::Yes,
+            _ => Outcome::No,
         }
-    }
-
-    fn toggle_focus(&mut self) {
-        self.focus = match self.focus {
-            Button::Yes => Button::No,
-            Button::No => Button::Yes,
-        };
     }
 
     pub fn render(&self, frame: &mut Frame, theme: &Theme) {
@@ -80,34 +71,11 @@ impl ConfirmDialog {
             height: 7,
         };
         let inner = modal::open(frame, size, Panel::new(self.title.clone()), theme);
-        let [text, _, buttons] = Layout::vertical([
-            Constraint::Min(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-        ])
-        .areas(inner);
+        let [text, _, buttons] =
+            Container::column([Size::Fill(1), Size::Fixed(1), Size::Fixed(1)]).areas(inner);
         let prompt = Paragraph::new(self.prompt.clone()).wrap(Wrap { trim: true });
         frame.render_widget(prompt, text);
-        let row = Paragraph::new(self.button_row(theme)).centered();
-        frame.render_widget(row, buttons);
-    }
-
-    fn button_row(&self, theme: &Theme) -> Line<'static> {
-        Line::from(vec![
-            self.button("Yes", Button::Yes, theme),
-            Span::raw("   "),
-            self.button("No", Button::No, theme),
-        ])
-    }
-
-    fn button(&self, label: &str, which: Button, theme: &Theme) -> Span<'static> {
-        let base = theme.text;
-        let style = if self.focus == which {
-            base.patch(Style::new().add_modifier(Modifier::REVERSED | Modifier::BOLD))
-        } else {
-            base
-        };
-        Span::styled(format!("[ {label} ]"), style)
+        frame.render_widget(Paragraph::new(self.buttons.line(theme)).centered(), buttons);
     }
 }
 
@@ -116,6 +84,7 @@ mod tests {
     use super::*;
     use crate::tui::widgets::testing::{key, render_to_buffer, row_text};
     use ratatui::crossterm::event::KeyCode;
+    use ratatui::style::Modifier;
 
     fn dialog() -> ConfirmDialog {
         ConfirmDialog::new("Remove", "Sure?")
@@ -163,9 +132,13 @@ mod tests {
         assert_eq!(dialog().handle(key(KeyCode::Char('z'))), Outcome::Pending);
     }
 
+    fn drawn(d: &ConfirmDialog, theme: &Theme) -> ratatui::buffer::Buffer {
+        render_to_buffer(60, 12, |f| d.render(f, theme))
+    }
+
     fn button_cell(d: &ConfirmDialog, theme: &Theme) -> ratatui::buffer::Cell {
-        let buffer = render_to_buffer(60, 11, |f| d.render(f, theme));
-        let y = (0..11)
+        let buffer = drawn(d, theme);
+        let y = (0..12)
             .find(|y| row_text(&buffer, *y).contains('['))
             .unwrap();
         let x = row_text(&buffer, y).chars().position(|c| c == '[').unwrap();
@@ -176,8 +149,12 @@ mod tests {
     fn focused_button_is_reversed() {
         let theme = Theme::dark();
         let mut d = dialog();
+        // The cancelling button is first; moving on focuses the confirming one, so the first
+        // button is no longer the reversed one.
+        let before = button_cell(&d, &theme);
         d.handle(key(KeyCode::Tab));
-        let cell = button_cell(&d, &theme);
-        assert!(cell.modifier.contains(Modifier::REVERSED));
+        let after = button_cell(&d, &theme);
+        assert!(before.modifier.contains(Modifier::REVERSED));
+        assert!(!after.modifier.contains(Modifier::REVERSED));
     }
 }

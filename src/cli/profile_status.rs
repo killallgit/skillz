@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use super::deps::Deps;
 use super::scope::installed;
 use crate::app::apply::{Standing, compare, drift};
+use crate::app::json::Json;
 use crate::app::profile::{Profile, Store};
 use crate::app::stale::{Disk, Probe, missing_source};
 use skillz_harness::Spec;
@@ -30,7 +31,7 @@ pub(super) fn list(deps: &Deps, env: &Env, json: bool, out: &mut dyn Write) -> a
         })
         .collect();
     if json {
-        return Ok(writeln!(out, "{}", serde_json::to_string_pretty(&rows)?)?);
+        return rows.write_json(out);
     }
     rows.iter()
         .try_for_each(|row| writeln!(out, "{}", line_of(row)))?;
@@ -79,7 +80,7 @@ pub(super) fn status(
         .map(|p| standing_json(&p.name, &compare(&p.resolved(), &here), &Disk))
         .collect();
     if json {
-        return Ok(writeln!(out, "{}", serde_json::to_string_pretty(&rows)?)?);
+        return rows.write_json(out);
     }
     rows.iter().try_for_each(|row| write_standing(row, out))
 }

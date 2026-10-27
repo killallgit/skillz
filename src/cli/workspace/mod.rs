@@ -1,5 +1,5 @@
-//! The workspace for one directory: what it and the user have installed, the library and the
-//! profiles, with installs, removals and profile applies shown as a plan first, as for `use`.
+//! The workspace for one directory: the plugins list of what it and the user have installed,
+//! with installs and removals shown as a plan first, as for `install`.
 
 mod model;
 mod sync;
@@ -13,7 +13,6 @@ use super::scope::resolve_project;
 use super::session::{Notice, Session};
 use crate::app::workspace::{Act, Screen, SharedScreen};
 use model::snapshot;
-use skillz_harness::update::check;
 
 /// Open the workspace on `path` (default: the current directory). An act that fails shows its
 /// error as a toast and the workspace stays open. The terminal is entered once and kept until
@@ -25,33 +24,14 @@ pub fn workspace(deps: &Deps, path: Option<&Path>) -> anyhow::Result<()> {
     sync::start(deps, &env, synced);
     let session = Session::open(deps, &env);
     let screen = deps.prompter.screen()?;
-    let (found, results) = mpsc::channel();
-    lock(&screen).watch_updates(results);
     lock(&screen).watch_syncs(syncs);
     let mut notice = None;
-    let mut checked = std::collections::HashSet::new();
     loop {
         let model = snapshot(&session, notice.take())?;
-        let due = model
-            .installed
-            .iter()
-            .chain(&model.global)
-            .filter(|item| checked.insert(item.id.clone()))
-            .cloned()
-            .collect::<Vec<_>>();
-        if !due.is_empty() {
-            check::spawn(deps.checker.clone(), due, found.clone());
-        }
         lock(&screen).load(model);
         let act = deps.prompter.workspace()?;
         if act == Act::Quit {
             return Ok(());
-        }
-        if let Act::Update { ids, .. } = &act {
-            lock(&screen).forget_updates(ids);
-            for id in ids {
-                checked.remove(id);
-            }
         }
         notice = session
             .perform(act)

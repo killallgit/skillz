@@ -2,6 +2,7 @@
 
 mod args;
 mod deps;
+mod doctor;
 mod isolate;
 mod library;
 mod library_args;
@@ -28,11 +29,11 @@ use std::sync::Arc;
 use anyhow::Context;
 use clap::Parser;
 
-use args::wants_auto_yes;
 pub use args::{
-    Cli, Command, Filter, InstallArgs, ListArgs, PruneArgs, ResetArgs, SyncArgs, UninstallArgs,
-    UpdateArgs, UseArgs,
+    Cli, Command, DoctorArgs, Filter, InstallArgs, ListArgs, PruneArgs, ResetArgs, SyncArgs,
+    UninstallArgs, UpdateArgs, UseArgs,
 };
+use args::{plugin_list, wants_auto_yes};
 pub use deps::Deps;
 pub use library_args::{
     AddArgs, KindFlags, LibraryCommand, LibraryInstallArgs, LibraryListArgs, LibraryRemoveArgs,
@@ -52,7 +53,19 @@ use skillz_harness::update::check::{NoCheck, UpdateCheck};
 pub fn main() -> anyhow::Result<i32> {
     let cli = Cli::parse();
     let theme = Theme::detect(&|name| std::env::var(name).ok());
-    let tui = TuiPrompter::new(theme, std::env::var_os("SKILLZ_NO_MOUSE").is_none());
+    // Pickers and the browser read keys from stdin and draw on stdout.
+    let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let plugins = cli
+        .command
+        .as_ref()
+        .filter(|_| interactive)
+        .and_then(plugin_list)
+        .unwrap_or(skillz_harness::model::Scope::Project);
+    let tui = TuiPrompter::new(
+        theme,
+        std::env::var_os("SKILLZ_NO_MOUSE").is_none(),
+        plugins,
+    );
     let prompter: &dyn Prompter = if cli.command.as_ref().is_some_and(wants_auto_yes) {
         &AssumeYes
     } else {
@@ -71,8 +84,7 @@ pub fn main() -> anyhow::Result<i32> {
         adapters: agents::registry().into(),
         runner: &runner,
         prompter,
-        // Pickers and the browser read keys from stdin and draw on stdout.
-        interactive: std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
+        interactive,
         checker,
         scanner: background_scanner(),
     };

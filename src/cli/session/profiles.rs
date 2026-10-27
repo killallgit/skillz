@@ -1,10 +1,8 @@
-//! Changes to the stored profiles: creating, building, saving from the project and deleting.
+//! Changes to the stored profiles: creating, building and deleting.
 
 use super::Session;
 use super::notice::Notice;
 use crate::app::profile::Profile;
-use crate::cli::profile::save_profile;
-use crate::cli::scope::{complete_installed, project_env};
 use skillz_harness::Spec;
 use skillz_harness::model::Scope;
 
@@ -25,17 +23,6 @@ impl Session<'_, '_> {
         Ok(Notice::Created(name.into()))
     }
 
-    /// A profile of what the project has installed; what cannot be reproduced is reported.
-    pub(in crate::cli) fn save_current(&self, name: &str) -> anyhow::Result<Notice> {
-        let env = project_env(self.deps, &self.project);
-        let items = complete_installed(self.deps, &env, Scope::Project)?;
-        let saved = save_profile(&self.profiles, &items, name, false)?;
-        Ok(Notice::Saved {
-            name: name.into(),
-            skipped: saved.skipped.into_iter().map(|s| s.label).collect(),
-        })
-    }
-
     pub(in crate::cli) fn set_entries(
         &self,
         name: &str,
@@ -48,7 +35,9 @@ impl Session<'_, '_> {
     }
 
     /// The profile last applied at `scope`: to this project, or at user level. Deleting a
-    /// profile forgets it.
+    /// profile forgets it. Only tests read the record back: nothing shows it since the profile
+    /// header went with the old tabs.
+    #[cfg(test)]
     pub(in crate::cli) fn applied(&self, scope: Scope) -> Option<String> {
         self.store
             .read()

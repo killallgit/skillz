@@ -85,24 +85,6 @@ pub fn holds(installed: &[Installed], entry: &Spec) -> bool {
     compare(&profile.resolved(), installed).missing.is_empty()
 }
 
-/// The ids of installed items that `dropped` wants and `kept` does not: what is left over once
-/// only the kept entries are to stay.
-pub fn only_wanted_by(dropped: &[Spec], kept: &[Spec], installed: &[Installed]) -> Vec<String> {
-    let unwanted_by = |entries: &[Spec]| -> HashSet<String> {
-        compare(entries, installed)
-            .extras
-            .into_iter()
-            .map(|extra| extra.item.id)
-            .collect()
-    };
-    let (not_dropped, not_kept) = (unwanted_by(dropped), unwanted_by(kept));
-    installed
-        .iter()
-        .filter(|item| !not_dropped.contains(&item.id) && not_kept.contains(&item.id))
-        .map(|item| item.id.clone())
-        .collect()
-}
-
 fn distinct(entries: &[Spec]) -> Vec<Spec> {
     let mut seen: Vec<Spec> = Vec::new();
     for entry in entries {
@@ -241,24 +223,6 @@ mod tests {
 
         assert!(wanting.extras.is_empty());
         assert_eq!(not_wanting.extras.len(), 1);
-    }
-
-    #[test]
-    fn dropping_an_entry_removes_only_what_no_kept_entry_wants() {
-        let live = [sourced_skill("a"), sourced_skill("b"), sourced_skill("c")];
-
-        let removable = only_wanted_by(&[skill_entry(&["a"])], &[skill_entry(&["b"])], &live);
-
-        assert_eq!(removable, ["skill:a"]);
-    }
-
-    #[test]
-    fn an_item_a_kept_entry_also_wants_stays() {
-        let live = [sourced_skill("a")];
-
-        let removable = only_wanted_by(&[skill_entry(&["a"])], &[skill_entry(&["a"])], &live);
-
-        assert!(removable.is_empty());
     }
 
     fn profile(name: &str, skills: &[&str]) -> Profile {

@@ -159,6 +159,7 @@ impl Outline {
     }
 
     /// How many rows sit directly under row `id`.
+    #[cfg(test)]
     pub fn child_count(&self, id: usize) -> usize {
         self.parents.iter().filter(|&&p| p == Some(id)).count()
     }

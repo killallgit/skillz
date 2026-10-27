@@ -17,6 +17,11 @@ pub struct Glyphs {
     pub failed: &'static str,
     /// One cell of a horizontal rule.
     pub rule: &'static str,
+    /// Three cells each: a tree's connector to a child that has later siblings, to the last
+    /// child, and the line that carries on past a branch.
+    pub branch: &'static str,
+    pub last: &'static str,
+    pub trunk: &'static str,
     /// The frames of the in-flight spinner, one cell wide.
     pub spinner: &'static [&'static str],
 }
@@ -36,6 +41,9 @@ impl Glyphs {
         closed: "▸",
         failed: "✗",
         rule: "─",
+        branch: "├─ ",
+        last: "└─ ",
+        trunk: "│  ",
         spinner: &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
     };
 
@@ -53,6 +61,9 @@ impl Glyphs {
         closed: "+",
         failed: "x",
         rule: "-",
+        branch: "|- ",
+        last: "`- ",
+        trunk: "|  ",
         spinner: &["|", "/", "-", "\\"],
     };
 

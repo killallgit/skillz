@@ -41,7 +41,7 @@ reports item start/end events and action steps.
 asks which to install and returns its steps (`plan_add_source`); the remaining agents install the source's skills through
 `npx skills`. The steps are shown as one plan and run only once approved. The CLI and the workspace
 share `Session::install_source`, which also records what arrived in the library.
-Library skill installs inspect their source through that flow too. Explicit skill selections
+Explicit skill selections
 use the owning plugins when the marketplace supplies all selected skills; sources without a
 matching plugin use loose skills. Codex recognizes native and legacy Claude marketplaces.
 Its project plugin plans download Git marketplace metadata without registering it globally,
@@ -113,7 +113,7 @@ crate, `crates/skillz-harness`, so cargo itself stops it importing anything abov
 | harness | `model`, `env` | Installed facts, identities, scopes, and filesystem roots |
 | harness | `agents` | The `Harness` trait; per-agent (Claude, Codex) discovery of plugins and marketplaces, planning, usage, and native command knowledge |
 | harness | `npx` | Every loose skill, where each agent reads skills from, the `npx skills` commands and lock file |
-| harness | `agent_skills` | The Agent Skills open format: frontmatter (harness extensions kept), validation, layout |
+| harness | `agent_skills` | The Agent Skills open format: frontmatter (harness extensions kept), validation, layout, and `doctor`: typed diagnostics of the skills on disk (collisions, stray files, invalid files, broken links), read-only |
 | harness | `hooks`, `hook_text`, `mcp`, `subagents`, `subagent_store` | Shared formats and typed installed facts |
 | harness | `provision`, `update`, `usage`, `cost` | Planning steps against a tool's commands and reading its usage and context cost |
 | harness | `action`, `runner`, `redact`, `read_optional`, `json_edit`, `fswalk`, `clone`, `Spec` | Pure edits, staged writes, owned deletion, command running, secret redaction, the desired-thing vocabulary |
@@ -122,31 +122,30 @@ crate, `crates/skillz-harness`, so cargo itself stops it importing anything abov
 | app | `merge`, `package`, `location`, `info`, `matcher` | Logical copies, source-package grouping, display facts |
 | app | `install`, `remove`, `prune` | Source resolution, selection, and the install, removal and prune flows |
 | app | `review`, `prompt`, `workspace` | Typed plans, verdicts, outcomes, the `Prompter` and `Screen` interfaces, workspace acts and model |
-| app | `tree`, `spinner` | Plain tables and progress text |
+| app | `tree`, `spinner`, `rule`, `json` | Plain tables and progress text, the labelled rule, and the `Json` trait every printable item has |
 | tui | `tui` | Reusable list/outline widgets and interactive presentation |
 | cli | `cli` | Command parsing, scope selection, sessions, and real dependency wiring |
 
 ## Interaction
 
-Project and Global share `InstalledTab`. Rows resolve into actionable items once,
-so installing, removing, and updating a package do not depend on expansion state.
-Plugin contents are display-only children of the owning plugin. The Project tab includes
-global plugins and skills under a separate read-only branch; its actions and clear flow
-exclude that branch. The Library groups agents by source within their own section.
-Library and profile row values carry the facts their presentation needs.
+The workspace is one list, `PluginsTab`, over the project or over the user's installs (`-g`).
+Packages are grouped from installed items and library entries by `Package`; selecting flips a
+pending state and `enter` submits all of it as one `Act::Change`. The project list shows global
+packages below a read-only divider, and its changes exclude them. Hooks, MCP servers and
+hand-made files are not in the list yet. Saving, applying and clearing profiles, updating and
+library editing are commands, not screens.
 
 `Outline` owns navigation and filtering. Screens resolve actions through
 `keymap::BINDINGS`; the same bindings generate help and hints. Plan and result
 screens share a text modal that accounts for wrapped visual lines and viewport
-height. `App` drives one screen; local popup enums describe dialogs within tabs.
+height. `App` drives one screen; a local popup describes a dialog within the tab.
 Terminal ownership and restoration remain in the shell and its hold guards.
 Opening a group reveals one level. Closing it resets its descendants; reloads preserve
 open groups by their ancestor paths so matching labels in other branches stay independent.
 
-Plain `list QUERY` prints matching items. Browsing is explicit with `list -i`.
-Background checks examine each installed id once per workspace session, then
-recheck updated items and newly discovered ids. The README owns key tables and
-command examples.
+Plain `list QUERY` prints matching items. Browsing is explicit with `list -i`. Whether an
+installed item has a newer version is asked only by `update --check` and `list --check`; the
+list does not mark updates yet. The README owns key tables and command examples.
 
 ## Extension and tests
 

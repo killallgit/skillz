@@ -2,6 +2,7 @@ use super::marks::Mark;
 use super::model::Overlay;
 use super::*;
 use crate::tui::theme::Theme;
+use crate::tui::widgets::margin::{MARGIN_X, MARGIN_Y};
 use crate::tui::widgets::testing::{key, keys, render_to_buffer, row_text};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
@@ -212,9 +213,11 @@ fn the_cursor_row_is_drawn_with_the_selection_style() {
 
     let buffer = render_to_buffer(40, 8, |f| s.draw("t", f, &theme));
 
-    // Row 0 sits under the border and the column header; its cells carry the selection background.
-    assert_eq!(buffer[(6, 2)].bg, theme.selection.bg.unwrap());
-    assert_ne!(buffer[(6, 3)].bg, theme.selection.bg.unwrap());
+    // Row 0 sits under the margin, the border and the column header; its cells carry the
+    // selection background.
+    let (x, y) = (6 + MARGIN_X, 2 + MARGIN_Y);
+    assert_eq!(buffer[(x, y)].bg, theme.selection.bg.unwrap());
+    assert_ne!(buffer[(x, y + 1)].bg, theme.selection.bg.unwrap());
 }
 
 #[test]

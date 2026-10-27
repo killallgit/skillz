@@ -9,6 +9,7 @@ use serde_json::json;
 use super::removal::{Pick, choose};
 use super::scope::Scene;
 use super::session::{Change, change, with_session};
+use crate::app::json::Json;
 use crate::app::remove;
 use skillz_harness::model::{Installed, Scope};
 use skillz_harness::update;
@@ -72,7 +73,7 @@ pub(super) fn check(
             .iter()
             .map(|i| json!({"id": i.id, "name": i.name, "kind": i.kind, "scope": i.scope}))
             .collect();
-        writeln!(out, "{}", serde_json::to_string_pretty(&rows)?)?;
+        rows.write_json(out)?;
     } else if outdated.is_empty() {
         writeln!(out, "no updates found")?;
     } else {
