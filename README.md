@@ -403,7 +403,7 @@ non-UTF-8 locale). `SKILLZ_NO_MOUSE` (any value) turns mouse capture off.
 | Item | Removed |
 | --- | --- |
 | Skill (npx `skills` or loose) | every agent link to it, the store copy in `.agents/skills`, its lock entry |
-| Hook group (`(unknown) hooks`; a plugin's own hooks go with the plugin) | every handler that runs the same tool, pruning empty groups/events |
+| Hook group (`(unknown) hooks`; a plugin's own hooks go with the plugin) | every handler that runs the same tool, in every agent that has one (one row, `bd  claude, codex`), pruning empty groups/events |
 | Subagent | the definition file and its `.skillz-sources.json` entry |
 | MCP server | `claude mcp remove` / `codex mcp remove`, then its config entry |
 | Claude plugin | `enabledPlugins` entry, install record, cache + data dirs once no scope uses it |

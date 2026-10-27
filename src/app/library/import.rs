@@ -3,7 +3,7 @@ use super::item::LibraryItem;
 use super::provenance::Provenance;
 use crate::app::merge::merge;
 use crate::app::snapshot::{Skipped, collect};
-use skillz_harness::model::Installed;
+use skillz_harness::model::{Installed, Kind};
 
 /// Reinstallable entries from the installed `items`, each with the provenance its
 /// installer left; what they leave out (needing secrets, or with nothing to reinstall from) is
@@ -16,10 +16,14 @@ pub(super) fn collect_installed(
     let mut kept = vec![];
     let mut skipped = vec![];
     for item in merge(items.to_vec()) {
-        // One entry for the logical item: `collect` would split it back into its copies.
-        let item = Installed {
-            members: Vec::new(),
-            ..item
+        // One entry for the logical item: `collect` would split it back into its copies. A
+        // hook keeps its copies, since each agent's own handlers belong to that agent alone.
+        let item = match item.kind {
+            Kind::Hook => item,
+            _ => Installed {
+                members: Vec::new(),
+                ..item
+            },
         };
         let (entries, left_out) = collect(std::slice::from_ref(&item));
         skipped.extend(left_out);
@@ -78,6 +82,47 @@ pub(super) mod tests {
             children: vec![],
             removal: vec![],
         }
+    }
+
+    #[test]
+    fn a_hook_seen_through_two_agents_is_recorded_with_each_agents_own_command() {
+        let hook = |agent: Agent, command: &str| Installed {
+            kind: Kind::Hook,
+            name: "bd".into(),
+            id: format!("hook:{agent}"),
+            agents: vec![agent],
+            installer: Installer::Local,
+            hooks: vec![skillz_harness::hook_text::HookEntry {
+                event: "SessionStart".into(),
+                matcher: None,
+                command: command.into(),
+            }],
+            ..installed_skill("bd", None)
+        };
+        let items = [
+            hook(Agent::Claude, "bd prime"),
+            hook(Agent::Codex, "bd codex-hook"),
+        ];
+
+        let (found, _) = collect_installed(&items, 7);
+
+        let mut commands: Vec<(String, Vec<Agent>)> = found
+            .iter()
+            .filter_map(|item| match &item.entry {
+                skillz_harness::Spec::Hook {
+                    command, agents, ..
+                } => Some((command.clone(), agents.clone())),
+                _ => None,
+            })
+            .collect();
+        commands.sort();
+        assert_eq!(
+            commands,
+            [
+                ("bd codex-hook".to_string(), vec![Agent::Codex]),
+                ("bd prime".to_string(), vec![Agent::Claude]),
+            ]
+        );
     }
 
     #[test]

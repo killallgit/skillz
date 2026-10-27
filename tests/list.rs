@@ -4,6 +4,7 @@ mod common;
 
 use common::*;
 use serde_json::Value;
+use skillz::app::merge::merge;
 use skillz_harness::agents;
 use skillz_harness::model::Scope;
 
@@ -21,7 +22,7 @@ fn a_directory_target_lists_the_project_not_a_query() {
 }
 
 #[test]
-fn list_json_has_one_row_per_inventory_item() {
+fn list_json_has_one_row_per_logical_inventory_item() {
     let w = world();
 
     let rows = list_json(&w, None);
@@ -31,7 +32,7 @@ fn list_json_has_one_row_per_inventory_item() {
         &w.env(),
         &[Scope::Global, Scope::Project],
     );
-    assert_eq!(rows.len(), inventory.items.len());
+    assert_eq!(rows.len(), merge(inventory.items).len());
 }
 
 #[test]

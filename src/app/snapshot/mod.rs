@@ -434,6 +434,45 @@ mod tests {
     }
 
     #[test]
+    fn a_merged_hook_row_gives_each_agent_only_its_own_command() {
+        let hook = |agent: Agent, command: &str| {
+            let mut i = in_group(
+                item("bd", Kind::Hook, Installer::Local, &[agent]),
+                "hooks",
+                None,
+            );
+            i.hooks = vec![skillz_harness::hook_text::HookEntry {
+                event: "SessionStart".into(),
+                matcher: None,
+                command: command.into(),
+            }];
+            i
+        };
+        let merged = crate::app::merge::merge(vec![
+            hook(Agent::Claude, "bd prime"),
+            hook(Agent::Codex, "bd codex-hook"),
+            hook(Agent::Codex, "bd prime"),
+        ]);
+        assert_eq!(merged.len(), 1);
+
+        let agents_of = |command: &str| {
+            let (entries, _) = collect(&merged);
+            entries.into_iter().find_map(|entry| match entry {
+                Spec::Hook {
+                    command: c, agents, ..
+                } if c == command => Some(agents),
+                _ => None,
+            })
+        };
+
+        assert_eq!(
+            agents_of("bd prime"),
+            Some(vec![Agent::Claude, Agent::Codex])
+        );
+        assert_eq!(agents_of("bd codex-hook"), Some(vec![Agent::Codex]));
+    }
+
+    #[test]
     fn a_matcher_containing_a_colon_survives_the_snapshot() {
         let mut i = in_group(
             item("fmt", Kind::Hook, Installer::Local, &both()),

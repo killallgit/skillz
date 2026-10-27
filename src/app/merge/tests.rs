@@ -88,13 +88,28 @@ fn a_hook_with_the_same_handler_in_two_agents_is_one() {
 }
 
 #[test]
-fn hooks_with_different_handlers_stay_apart() {
+fn hooks_of_one_program_are_one_row_whatever_each_agents_command_says() {
     let claude = hook(Agent::Claude, "rtk hook claude");
     let codex = hook(Agent::Codex, "rtk hook codex");
 
     let merged = merge(vec![claude, codex]);
 
-    assert_eq!(merged.len(), 2);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0].agents, [Agent::Claude, Agent::Codex]);
+    assert_eq!(merged[0].hooks.len(), 2);
+    assert_eq!(merged[0].parts().len(), 2);
+    assert_eq!(merged[0].removal.len(), 2);
+}
+
+#[test]
+fn hooks_of_different_programs_stay_apart() {
+    let claude = hook(Agent::Claude, "rtk hook");
+    let codex = Installed {
+        name: "bd".into(),
+        ..hook(Agent::Codex, "bd hook")
+    };
+
+    assert_eq!(merge(vec![claude, codex]).len(), 2);
 }
 
 #[test]

@@ -58,20 +58,7 @@ pub fn entries(item: &Installed) -> Result<Vec<Spec>, Reason> {
                 agents,
             }]
         }
-        Kind::Hook => {
-            if item.hooks.is_empty() {
-                return Err(Reason::Unreadable);
-            }
-            item.hooks
-                .iter()
-                .map(|hook| Spec::Hook {
-                    event: hook.event.clone(),
-                    matcher: hook.matcher.clone(),
-                    command: hook.command.clone(),
-                    agents: agents.clone(),
-                })
-                .collect()
-        }
+        Kind::Hook => hook_entries(item)?,
         Kind::Mcp => {
             let Details::Mcp { server, .. } = &item.details else {
                 return Err(Reason::Unreadable);
@@ -118,5 +105,32 @@ pub(super) fn server_entry(
             transport: (transport != "http").then_some(transport),
             agents,
         },
+    }
+}
+
+/// One entry per handler, for the agents whose own copy holds it: a merged hook row can carry
+/// each agent's own command line.
+fn hook_entries(item: &Installed) -> Result<Vec<Spec>, Reason> {
+    let mut handlers: Vec<Spec> = Vec::new();
+    for part in item.parts() {
+        for hook in &part.hooks {
+            let held = handlers.iter_mut().find(|spec| {
+                matches!(spec, Spec::Hook { event, matcher, command, .. }
+                    if *event == hook.event && *matcher == hook.matcher && *command == hook.command)
+            });
+            match held {
+                Some(Spec::Hook { agents, .. }) => agents.extend(part.agents.iter().copied()),
+                _ => handlers.push(Spec::Hook {
+                    event: hook.event.clone(),
+                    matcher: hook.matcher.clone(),
+                    command: hook.command.clone(),
+                    agents: part.agents.clone(),
+                }),
+            }
+        }
+    }
+    match handlers.is_empty() {
+        true => Err(Reason::Unreadable),
+        false => Ok(handlers),
     }
 }
