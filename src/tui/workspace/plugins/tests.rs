@@ -3,6 +3,8 @@ use ratatui::crossterm::event::KeyCode;
 use super::rows::Plugin;
 use super::*;
 use crate::app::library::{Catalog, LibraryItem};
+use crate::app::workspace::Act;
+use crate::tui::theme::Theme;
 use crate::tui::widgets::testing::{key, render_to_buffer, row_text};
 use skillz_harness::Spec;
 use skillz_harness::model::{Details, Installed, Installer, Kind, Scope};
@@ -305,16 +307,13 @@ fn a_line_is_a_checkbox_and_a_name_with_the_tools_only_while_installed() {
 }
 
 #[test]
-fn the_list_has_no_column_header() {
-    let mut tab = tab(Model {
+fn the_first_row_is_a_package_not_a_header() {
+    let tab = tab(Model {
         library: library(vec![skill("o/r", "tdd")]),
         ..Model::default()
     });
-    let theme = Theme::dark();
 
-    let buffer = render_to_buffer(40, 4, |f| tab.draw(f, f.area(), &theme));
-
-    assert!(row_text(&buffer, 0).contains("o/r"));
+    assert_eq!(names(&tab), ["o/r"]);
 }
 
 fn with_global() -> PluginsTab {
@@ -733,4 +732,26 @@ fn info_works_on_the_users_packages_and_not_on_the_divider() {
     press(&mut tab, KeyCode::Esc);
 
     assert!(opened && tab.info.is_none());
+}
+
+#[test]
+fn flipping_a_package_installed_in_both_scopes_removes_only_the_projects_copy() {
+    let here = installed("tdd", Kind::Skill, "o/r", Some("o/r"));
+    let user = globally("tdd", Kind::Skill, "o/r", Some("o/r"));
+    let mut tab = tab(Model {
+        installed: vec![here.clone()],
+        global: vec![user],
+        ..Model::default()
+    });
+
+    let act = flip_and_apply(&mut tab);
+
+    assert_eq!(
+        act,
+        Some(Act::Change {
+            scope: Scope::Project,
+            install: vec![],
+            remove: vec![here.id],
+        })
+    );
 }

@@ -24,7 +24,6 @@ impl Session<'_, '_> {
                 };
                 change(self, *scope, &Change::Selection(&picked))
             }
-            Act::Update { scope, ids } => change(self, *scope, &Change::Update(ids)),
         }
     }
 

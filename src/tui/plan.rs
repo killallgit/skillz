@@ -374,6 +374,7 @@ mod tests {
         crate::app::review::Pick {
             group,
             id: id.into(),
+            copies: vec![],
             label: id.into(),
             on,
         }

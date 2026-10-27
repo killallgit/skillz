@@ -11,17 +11,10 @@ mod tests;
 
 use std::collections::HashMap;
 
-use ratatui::Frame;
-use ratatui::crossterm::event::KeyEvent;
-use ratatui::layout::Rect;
-
 use self::rows::{Row, build};
-use super::tab::Tab;
 use crate::app::package::Package;
-use crate::app::workspace::Act;
 use crate::app::workspace::Model;
 use crate::tui::keymap::{Action, Scope};
-use crate::tui::theme::Theme;
 use crate::tui::widgets::input::InputField;
 use crate::tui::widgets::outline::Outline;
 use crate::tui::widgets::text_modal::TextModal;
@@ -61,18 +54,14 @@ impl PluginsTab {
             agents: vec![],
         }
     }
-}
 
-impl Tab for PluginsTab {
-    fn title(&self) -> &'static str {
-        "Plugins"
-    }
-
-    fn scopes(&self) -> &'static [Scope] {
+    /// The key scopes the list answers to, for `?`.
+    pub fn scopes(&self) -> &'static [Scope] {
         &[Scope::Plugins]
     }
 
-    fn load(&mut self, model: &Model) {
+    /// Take the new snapshot, keeping the cursor, open rows and filter where they were.
+    pub fn load(&mut self, model: &Model) {
         self.agents.clone_from(&model.agents);
         self.rows = build(model, self.scope);
         // A flip stands while its package is still as it was; once it changed, the flip is done.
@@ -88,19 +77,13 @@ impl Tab for PluginsTab {
         self.settle(Action::Down);
     }
 
-    fn handle(&mut self, key: KeyEvent) -> Option<Act> {
-        self.handle_key(key)
-    }
-
-    fn draw(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        self.draw_body(frame, area, theme);
-    }
-
-    fn captures_keys(&self) -> bool {
+    /// A text field or the info modal wants every key.
+    pub fn captures_keys(&self) -> bool {
         self.filtering || self.info.is_some()
     }
 
-    fn prompt(&self) -> Option<&InputField> {
+    /// The filter being typed, drawn where a footer would be.
+    pub fn prompt(&self) -> Option<&InputField> {
         self.filtering.then(|| self.outline.field())
     }
 }

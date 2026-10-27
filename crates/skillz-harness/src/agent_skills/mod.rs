@@ -8,7 +8,7 @@ mod frontmatter;
 mod layout;
 mod validate;
 
-pub use doctor::{Copy, Diagnostic, Readers, Root, Stray, diagnose, roots};
+pub use doctor::{Diagnostic, Instance, Readers, Root, Stray, diagnose, roots};
 pub use frontmatter::{Frontmatter, parse, skill_name};
 pub use layout::{Layout, layout};
 pub use validate::{Violation, validate};

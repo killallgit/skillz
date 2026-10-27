@@ -2,7 +2,7 @@
 
 use crate::app::apply::Switch;
 use crate::app::remove::Plan;
-use crate::app::review::{Group, PlanView};
+use crate::app::review::{Group, Listed, PlanView};
 use skillz_harness::action::Action;
 use skillz_harness::model::{Installed, Scope, split_plugin_id};
 use skillz_harness::redact::redact;
@@ -53,14 +53,21 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
 }
 
 /// What a plan installs and removes, one entry per item, for the user to check or leave out.
-pub(super) fn item_lines(switch: &Switch) -> Vec<(Group, String, String)> {
-    let removing = switch
-        .removals
-        .iter()
-        .map(|item| (Group::Remove, item.id.clone(), plan_label(item)));
+pub(super) fn item_lines(switch: &Switch) -> Vec<Listed> {
+    let removing = switch.removals.iter().map(|item| Listed {
+        group: Group::Remove,
+        id: item.id.clone(),
+        copies: item.parts().iter().map(|part| part.id.clone()).collect(),
+        label: plan_label(item),
+    });
     let installing = switch.installs.iter().map(|(entry, _)| {
         let text = entry.to_string();
-        (Group::Install, text.clone(), text)
+        Listed {
+            group: Group::Install,
+            id: text.clone(),
+            copies: vec![],
+            label: text,
+        }
     });
     removing.chain(installing).collect()
 }

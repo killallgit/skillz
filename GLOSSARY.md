@@ -26,6 +26,16 @@ _Avoid_: Level, context
 The `name@marketplace` identity of a plugin; a bare name has no marketplace.
 _Avoid_: Plugin key, qualified name
 
+### Plugins list
+
+**Package**:
+What the plugins list shows a line for: a marketplace, an `owner/repo`, or the installed items and library entries that share one source. Selecting it and submitting installs or removes all of it as one change.
+_Avoid_: Plugin group, bundle
+
+**Plugins list**:
+The one interactive screen: a checkbox per package, `space` to select, `enter` to submit one plan. It has no tabs.
+_Avoid_: Workspace tabs, Project tab
+
 ### Loose skills
 
 **Loose skill**:

@@ -35,7 +35,9 @@ impl Session<'_, '_> {
     }
 
     /// The profile last applied at `scope`: to this project, or at user level. Deleting a
-    /// profile forgets it.
+    /// profile forgets it. Only tests read the record back: nothing shows it since the profile
+    /// header went with the old tabs.
+    #[cfg(test)]
     pub(in crate::cli) fn applied(&self, scope: Scope) -> Option<String> {
         self.store
             .read()

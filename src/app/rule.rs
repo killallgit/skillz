@@ -1,6 +1,9 @@
 //! A horizontal rule with a label in the middle: `──────── global ────────`. The list's divider
 //! and the command line's group headings are both drawn with it.
 
+/// How wide the command line draws a rule: the width of a terminal that is not asked.
+pub const RULE_WIDTH: usize = 72;
+
 /// `label` between two runs of `rule`, `width` cells in all and the label centred. A label too
 /// wide for that stands alone.
 pub fn centered_rule(label: &str, width: usize, rule: &str) -> String {

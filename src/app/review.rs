@@ -59,10 +59,22 @@ pub struct PlanView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pick {
     pub group: Group,
-    /// What names it across plans: the entry as text, or the installed item's id.
+    /// What names it in this plan: the entry as text, or the installed item's id.
     pub id: String,
+    /// The ids of the installed copies behind it. Narrowing the agents folds a shared item down to
+    /// the copies that remain and so renames it; these still say it is the same item.
+    pub copies: Vec<String>,
     pub label: String,
     pub on: bool,
+}
+
+/// An item a plan lists, before the user's checks are applied to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listed {
+    pub group: Group,
+    pub id: String,
+    pub copies: Vec<String>,
+    pub label: String,
 }
 
 /// What a plan offers to narrow: the agents it reaches and the items it installs or removes,
@@ -113,15 +125,22 @@ impl Targets {
     }
 
     /// The plan's items as they are now, keeping what the user already unchecked.
-    pub fn sync_items(&mut self, listed: Vec<(Group, String, String)>) {
+    pub fn sync_items(&mut self, listed: Vec<Listed>) {
         let before = std::mem::take(&mut self.items);
+        let same = |old: &Pick, new: &Listed| {
+            old.id == new.id || old.copies.iter().any(|copy| new.copies.contains(copy))
+        };
         self.items = listed
             .into_iter()
-            .map(|(group, id, label)| Pick {
-                on: before.iter().find(|p| p.id == id).is_none_or(|p| p.on),
-                group,
-                id,
-                label,
+            .map(|new| Pick {
+                on: before
+                    .iter()
+                    .find(|old| same(old, &new))
+                    .is_none_or(|p| p.on),
+                group: new.group,
+                id: new.id,
+                copies: new.copies,
+                label: new.label,
             })
             .collect();
         self.cursor = self.cursor.min(self.rows().saturating_sub(1));
@@ -301,10 +320,19 @@ mod tests {
         );
     }
 
-    fn listed() -> Vec<(Group, String, String)> {
+    fn item(group: Group, id: &str, copies: &[&str]) -> Listed {
+        Listed {
+            group,
+            id: id.into(),
+            copies: copies.iter().map(|copy| copy.to_string()).collect(),
+            label: id.into(),
+        }
+    }
+
+    fn listed() -> Vec<Listed> {
         vec![
-            (Group::Install, "a".into(), "a".into()),
-            (Group::Remove, "b".into(), "b".into()),
+            item(Group::Install, "a", &[]),
+            item(Group::Remove, "b", &["b"]),
         ]
     }
 
@@ -317,12 +345,32 @@ mod tests {
 
         let mut again = targets.clone();
         again.sync_items(vec![
-            (Group::Remove, "b".into(), "b".into()),
-            (Group::Install, "c".into(), "c".into()),
+            item(Group::Remove, "b", &["b"]),
+            item(Group::Install, "c", &[]),
         ]);
 
         assert!(!again.includes("b") && again.includes("c") && again.includes("unlisted"));
         assert!(!targets.includes("b") && targets.includes("a"));
+    }
+
+    #[test]
+    fn an_item_renamed_by_narrowing_the_agents_stays_unchecked() {
+        let mut targets = Targets::all(vec![Agent::Claude, Agent::Codex]);
+        targets.sync_items(vec![item(
+            Group::Remove,
+            "subagent:claude:reviewer",
+            &["subagent:claude:reviewer", "subagent:codex:reviewer"],
+        )]);
+        targets.cursor = 2;
+        let mut targets = targets.toggled();
+
+        targets.sync_items(vec![item(
+            Group::Remove,
+            "subagent:codex:reviewer",
+            &["subagent:codex:reviewer"],
+        )]);
+
+        assert!(!targets.includes("subagent:codex:reviewer"));
     }
 
     #[test]

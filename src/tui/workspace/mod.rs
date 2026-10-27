@@ -3,17 +3,13 @@
 //! the tab the `Model`. Keys become an `Act` that `cli::workspace` performs before the screen is
 //! shown again.
 
-mod checks;
-mod frame;
 mod plugins;
 mod run;
 mod shell;
 mod syncs;
-mod tab;
 mod tools;
 
 pub use shell::Workspace;
-pub use tab::Tab;
 
 use std::sync::{Arc, Mutex, PoisonError};
 

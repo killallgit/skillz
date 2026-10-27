@@ -9,6 +9,7 @@ use super::rows::{Row, grouped, rows};
 use crate::app::apply::holds;
 use crate::app::json::Json;
 use crate::app::library::{Held, LibraryItem};
+use crate::app::rule::RULE_WIDTH;
 use crate::app::stale::Disk;
 use crate::app::store::Store;
 use skillz_harness::env::Env;
@@ -57,9 +58,6 @@ pub(in crate::cli) fn available(
     write_rows(&rows, (json, &deps.home), out)
 }
 
-/// Columns of the rules over each group in the printed listing.
-const WIDTH: usize = 72;
-
 /// JSON keeps every path as it is; the listing a person reads groups the items by package and
 /// writes the home directory `~`.
 fn write_rows(
@@ -71,7 +69,7 @@ fn write_rows(
         let json: Vec<_> = rows.iter().map(Row::json).collect();
         json.write_json(out)?;
     } else {
-        grouped(rows, home, WIDTH)
+        grouped(rows, home, RULE_WIDTH)
             .iter()
             .try_for_each(|line| writeln!(out, "{line}"))?;
     }

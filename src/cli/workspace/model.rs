@@ -1,4 +1,5 @@
-//! What the tabs show: the project read from its native config, the library and the profiles.
+//! What the list shows: the project and the user's installs read from their native config, and
+//! the library.
 
 use std::path::Path;
 
@@ -9,7 +10,7 @@ use crate::cli::scope::{installed, project_env};
 use skillz_harness::model::Scope;
 
 /// The snapshot to show next, with `notice` to toast; an unreadable library is shown empty and
-/// reported in its place, along with the profiles kept beside it.
+/// reported in its place.
 pub(super) fn snapshot(session: &Session, notice: Option<Notice>) -> anyhow::Result<Model> {
     let deps = session.deps();
     let env = project_env(deps, session.project());
@@ -27,15 +28,6 @@ pub(super) fn snapshot(session: &Session, notice: Option<Notice>) -> anyhow::Res
             .map(|adapter| adapter.agent())
             .collect(),
         library,
-        profiles: session
-            .profiles()
-            .readable()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|profile| profile.in_env(&env))
-            .collect(),
-        applied: session.applied(Scope::Project),
-        applied_global: session.applied(Scope::Global),
         notice: notice.or(problem).map(|n| n.to_string()),
     })
 }
@@ -61,9 +53,8 @@ mod tests {
         assert_eq!((inside.as_str(), outside.as_str()), ("~/app", "/srv/app"));
     }
     #[test]
-    fn local_sources_match_in_workspace_views_without_rewriting_stored_entries() {
+    fn local_sources_match_in_the_list_without_rewriting_stored_entries() {
         use crate::app::library::{Catalog, Held, LibraryItem};
-        use crate::app::profile::Profile;
         use crate::app::store::Store;
         use crate::cli::deps::Deps;
         use skillz_harness::Spec;
@@ -94,14 +85,11 @@ mod tests {
             names: vec![name.into()],
             agents: vec![Agent::Claude],
         };
-        let mut profile = Profile::new("local");
-        profile.entries = vec![entry("reviewer")];
         let default = LibraryItem::from_entry(entry("reviewer"));
         let custom = LibraryItem::new("My helper", entry("helper"));
         let store = Store::in_env(&env);
         store
             .update(|document| {
-                document.profiles = vec![profile];
                 document.items = Catalog::from_items(vec![default.clone(), custom.clone()]);
                 Ok(())
             })
@@ -117,8 +105,6 @@ mod tests {
 
         let model = snapshot(&Session::open(&deps, &env), None).unwrap();
 
-        assert!(crate::app::apply::drift(&model.profiles[0], &model.installed).matches());
-        assert!(crate::app::apply::loaded(&model.profiles, &model.installed).is_some());
         assert!(
             Held::of(&model.installed, &model.global)
                 .presence(&model.library.items()[0].entry)
@@ -140,55 +126,5 @@ mod tests {
             fs::read(crate::app::app_paths::store_path(&env)).unwrap(),
             before
         );
-    }
-
-    #[test]
-    fn explicit_missing_sources_stay_local_and_repository_references_stay_portable() {
-        use crate::app::profile::Profile;
-        use crate::app::stale::{Disk, missing_source};
-        use crate::app::store::Store;
-        use crate::cli::deps::Deps;
-        use skillz_harness::Spec;
-        use skillz_harness::env::Env;
-        let dir = tempfile::tempdir().unwrap();
-        let env = Env::new(dir.path().into(), dir.path().into());
-        let mut profile = Profile::new("sources");
-        profile.entries = [
-            "./gone",
-            "../gone",
-            "org/repo",
-            "https://host/repo.git",
-            "git@host:org/repo.git",
-        ]
-        .into_iter()
-        .map(|source| Spec::Skill {
-            source: source.into(),
-            names: vec!["reviewer".into()],
-            agents: vec![],
-        })
-        .collect();
-        let original = profile.clone();
-        Store::in_env(&env)
-            .update(|document| {
-                document.profiles.push(profile);
-                Ok(())
-            })
-            .unwrap();
-        let prompter = crate::app::prompt::AssumeYes;
-        let deps = Deps::for_test(
-            dir.path(),
-            vec![],
-            (&skillz_harness::runner::NoCommands, &prompter),
-        );
-
-        let model = snapshot(&Session::open(&deps, &env), None).unwrap();
-        let entries = &model.profiles[0].entries;
-
-        assert!(
-            entries[..2]
-                .iter()
-                .all(|entry| missing_source(entry, &Disk).is_some())
-        );
-        assert_eq!(&entries[2..], &original.resolved()[2..]);
     }
 }

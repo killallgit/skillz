@@ -305,3 +305,18 @@ fn the_roots_are_the_folders_each_tool_reads_with_shared_ones_merged() {
             .any(|r| r.dir == Path::new("/p/.claude/skills") && r.scope == Scope::Project)
     );
 }
+
+#[test]
+fn a_project_that_is_the_home_directory_does_not_repeat_the_user_level_roots() {
+    let dir = tempfile::tempdir().unwrap();
+    let env = Env::new(dir.path().into(), dir.path().into());
+
+    let found = roots(&env);
+
+    let mut dirs: Vec<_> = found.iter().map(|root| root.dir.clone()).collect();
+    let all = dirs.len();
+    dirs.sort();
+    dirs.dedup();
+    assert_eq!(dirs.len(), all);
+    assert!(found.iter().all(|root| root.scope == Scope::Global));
+}

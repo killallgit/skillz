@@ -9,11 +9,10 @@ use crate::app::workspace::Act;
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::widgets::input::Outcome as Edit;
 use crate::tui::widgets::text_modal::TextModal;
-use crate::tui::workspace::Tab;
 use crate::tui::workspace::tools::for_tools;
 
 impl PluginsTab {
-    pub(super) fn handle_key(&mut self, key: KeyEvent) -> Option<Act> {
+    pub fn handle(&mut self, key: KeyEvent) -> Option<Act> {
         if let Some(info) = &mut self.info {
             match keymap::resolve_in(&[Scope::Plugins], key) {
                 Some(Action::Back | Action::Select | Action::Quit | Action::Info) => {

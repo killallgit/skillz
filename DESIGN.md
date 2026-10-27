@@ -113,7 +113,7 @@ crate, `crates/skillz-harness`, so cargo itself stops it importing anything abov
 | harness | `model`, `env` | Installed facts, identities, scopes, and filesystem roots |
 | harness | `agents` | The `Harness` trait; per-agent (Claude, Codex) discovery of plugins and marketplaces, planning, usage, and native command knowledge |
 | harness | `npx` | Every loose skill, where each agent reads skills from, the `npx skills` commands and lock file |
-| harness | `agent_skills` | The Agent Skills open format: frontmatter (harness extensions kept), validation, layout |
+| harness | `agent_skills` | The Agent Skills open format: frontmatter (harness extensions kept), validation, layout, and `doctor`: typed diagnostics of the skills on disk (collisions, stray files, invalid files, broken links), read-only |
 | harness | `hooks`, `hook_text`, `mcp`, `subagents`, `subagent_store` | Shared formats and typed installed facts |
 | harness | `provision`, `update`, `usage`, `cost` | Planning steps against a tool's commands and reading its usage and context cost |
 | harness | `action`, `runner`, `redact`, `read_optional`, `json_edit`, `fswalk`, `clone`, `Spec` | Pure edits, staged writes, owned deletion, command running, secret redaction, the desired-thing vocabulary |
@@ -122,7 +122,7 @@ crate, `crates/skillz-harness`, so cargo itself stops it importing anything abov
 | app | `merge`, `package`, `location`, `info`, `matcher` | Logical copies, source-package grouping, display facts |
 | app | `install`, `remove`, `prune` | Source resolution, selection, and the install, removal and prune flows |
 | app | `review`, `prompt`, `workspace` | Typed plans, verdicts, outcomes, the `Prompter` and `Screen` interfaces, workspace acts and model |
-| app | `tree`, `spinner` | Plain tables and progress text |
+| app | `tree`, `spinner`, `rule`, `json` | Plain tables and progress text, the labelled rule, and the `Json` trait every printable item has |
 | tui | `tui` | Reusable list/outline widgets and interactive presentation |
 | cli | `cli` | Command parsing, scope selection, sessions, and real dependency wiring |
 
@@ -143,10 +143,9 @@ Terminal ownership and restoration remain in the shell and its hold guards.
 Opening a group reveals one level. Closing it resets its descendants; reloads preserve
 open groups by their ancestor paths so matching labels in other branches stay independent.
 
-Plain `list QUERY` prints matching items. Browsing is explicit with `list -i`.
-Background checks examine each installed id once per workspace session, then
-recheck updated items and newly discovered ids. The README owns key tables and
-command examples.
+Plain `list QUERY` prints matching items. Browsing is explicit with `list -i`. Whether an
+installed item has a newer version is asked only by `update --check` and `list --check`; the
+list does not mark updates yet. The README owns key tables and command examples.
 
 ## Extension and tests
 

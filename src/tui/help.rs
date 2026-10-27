@@ -100,13 +100,13 @@ mod tests {
 
     #[test]
     fn every_listed_binding_gets_a_row_under_a_section_per_group() {
-        let sections = keymap::help_sections(&[Scope::Project]);
+        let sections = keymap::help_sections(&[Scope::Plugins]);
 
-        let rows = rows(&[Scope::Project]);
+        let rows = rows(&[Scope::Plugins]);
 
         let listed: usize = sections.iter().map(|(_, b)| b.len()).sum();
         assert_eq!(rows.len(), listed + sections.len());
-        assert!(matches!(rows[0], Row::Section(Scope::Project)));
+        assert!(matches!(rows[0], Row::Section(Scope::Plugins)));
     }
 
     #[test]
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn escape_and_question_mark_close_while_navigation_keeps_it_open() {
-        let mut help = Help::new(&[Scope::Project]);
+        let mut help = Help::new(&[Scope::Plugins]);
 
         let moved = help.handle(key(KeyCode::Down));
         let ignored = help.handle(key(KeyCode::Char('z')));
@@ -150,7 +150,7 @@ mod tests {
     #[test]
     fn a_short_screen_scrolls_the_overlay_instead_of_cutting_it() {
         let theme = Theme::dark();
-        let mut help = Help::new(&[Scope::Project]);
+        let mut help = Help::new(&[Scope::Plugins]);
         let top = render_to_buffer(60, 10, |f| help.render(f, &theme));
         for _ in 0..30 {
             help.handle(key(KeyCode::Down));

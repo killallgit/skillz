@@ -100,7 +100,7 @@ start with `.`, `..` or `/` (`./sub`, not `sub`); any other word is a query.
 ## From the list to the command line
 
 Everything the list does is a command, and both run the same code (a plan reviewed first, then
-the same install and removal steps). The commands also do what the old tabs did:
+the same install and removal steps). What the list does not do is a command too:
 
 | In the list | On the command line |
 | --- | --- |
@@ -108,9 +108,11 @@ the same install and removal steps). The commands also do what the old tabs did:
 | `space` selects, `enter` submits installs and removals as one plan | `install SOURCE`, `uninstall QUERY...` (`-y`, `--dry-run`) |
 | `i` info: provenance and locations | `list --json` (`location`), `library list --json` |
 | Updating | `update [QUERY] [-g]`, `update --check [--json]` |
-| Applying, comparing and saving profiles | `use NAME [--exact] [-g]`, `profile status [NAME] [--json]`, `profile list`, `profile save`, `reset` |
-| The library: add, remove, install | `library add "skill o/r tdd"`, `library remove QUERY`, `library install QUERY [-g]`, `sync` |
-| Editing a profile | `profile new`, `profile add` / `profile remove`, `profile delete` |
+| Applying and comparing a profile | `use NAME [--exact] [-g]`, `profile status [NAME] [--json]`, `profile list` |
+| Saving the project as a profile, editing profiles | `profile save`, `profile new`, `profile add` / `profile remove`, `profile delete` |
+| Clearing the project | `reset` removes skills, plugins and marketplaces; add `--hooks`, `--mcp`, `--subagents` for those kinds |
+| Keeping only some entries of an applied profile | no command yet (bead `skillz-obs`) |
+| The library | `library add "skill o/r tdd"`, `library remove QUERY`, `library install QUERY [-g]` (each entry installs for the agents it names; there is no `-a`), `sync` |
 | `/` filter, `?` help, movement keys | on screen only: `list QUERY` and `list --all` do the same for the command line |
 
 ## Profiles
@@ -288,26 +290,29 @@ never `~/.claude` or `~/.codex`. The variable is also set on every command skill
 `skillz [PATH]` opens the plugins list for one directory (default: the current one). It keeps
 nothing per project: what is installed is read from the agents' own config each time. It needs a
 terminal at least 40x10. `skillz list` in a terminal (with no query, flag or kind filter) opens
-the same list instead of printing; `skillz list -g` (`--global`) opens the same list for the
-user's installs alone, with no project rows and no global section, and flipping a package there
-installs or removes it at user level: a line per package (a marketplace or an
-`owner/repo`) from the library and from what the project has, by name, with no column header. A
-checkbox says whether the project has it, and an installed one names its agents, `[claude,
-codex]`. `j` / `k` move. `space` selects or deselects the package under the cursor: its line turns
-bold and its box shows what it will become, and nothing happens yet. `esc` drops the selection.
-`enter` submits everything selected as one change: the plan lists `installing` and `removing`
-groups to confirm (an install is for every agent; an entry that names its own agents keeps to
-them). In that plan each skill or plugin to install or remove has its own box, all checked: `↑`
-`↓` move and `space` unchecks one you want to leave out. `i` opens an info modal for the package
-under the cursor: where it comes from, how the library came to know it (added by hand, found by
-a scan or installed by skillz, when, what it is fetched from, with which tool and which
-version), what it offers and where each installed item lives on disk. `/` filters. Hooks, MCP
-servers and hand-made files are not in this list yet.
+the same list instead of printing, and `skillz list -g` (`--global`) opens it for the user's
+installs alone, with no project rows and no global section; flipping a package there installs or
+removes it at user level.
 
-The list has no tabs. Hooks, MCP servers and hand-made files are not in it yet, and what used to
-be keys on the old tabs is a command: `update` and `uninstall` for updating and removing,
-`profile`, `use` and `reset` for saving, applying and clearing profiles, and `library` for
-adding to the library, removing from it and installing from it (see Commands).
+The list has a line per package (a marketplace or an `owner/repo`), from the library and from
+what the project has, by name, with no column header. A checkbox says whether the project has
+it, and an installed one names its agents, `[claude, codex]`. Hooks, MCP servers and hand-made
+files are not in it yet.
+
+- `space` selects or deselects the package under the cursor: its line turns bold and its box
+  shows what it will become, and nothing happens yet. `esc` drops the selection.
+- `enter` submits everything selected as one change. The plan lists `installing` and `removing`
+  groups to confirm (an install is for every agent; an entry that names its own agents keeps to
+  them), each skill or plugin with its own box, all checked: `↑` `↓` move and `space` unchecks
+  one you want to leave out.
+- `i` opens an info modal for the package under the cursor: where it comes from, how the library
+  came to know it (added by hand, found by a scan or installed by skillz, when, what it is
+  fetched from, with which tool and which version), what it offers and where each installed item
+  lives on disk.
+- `/` filters.
+
+There are no tabs: updating, removing by query, profiles and library editing are commands (see
+the table above).
 
 | Key | Does |
 | --- | --- |

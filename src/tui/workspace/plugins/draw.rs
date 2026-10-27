@@ -19,7 +19,7 @@ use crate::tui::widgets::text_modal::Page;
 const GUTTER: usize = 2;
 
 impl PluginsTab {
-    pub(super) fn draw_body(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+    pub fn draw(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let inner = filter::pane(
             frame,
             area,

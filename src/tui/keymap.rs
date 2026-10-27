@@ -7,16 +7,8 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 pub enum Scope {
     /// Navigation and leaving, valid wherever a list has the keys.
     Common,
-    /// The tab bar and what works on every tab.
-    Workspace,
-    /// The Project and Global tabs: the installed items and what the library could add.
-    Installed,
-    /// What only the Project tab has: comparing and applying a profile.
-    Project,
     /// The single list of plugins, each installed or not in the project.
     Plugins,
-    Library,
-    Profiles,
     /// Choosing library items with checkboxes.
     Picker,
     Tree,
@@ -25,27 +17,19 @@ pub enum Scope {
     Plan,
     Result,
     Confirm,
-    /// Choosing where and for which tools to install a library item.
-    Install,
 }
 
 impl Scope {
     pub fn title(self) -> &'static str {
         match self {
             Scope::Common => "Everywhere",
-            Scope::Workspace => "Tabs",
-            Scope::Installed => "Installed",
-            Scope::Project => "Profile",
             Scope::Plugins => "Plugins",
-            Scope::Library => "Library",
-            Scope::Profiles => "Profiles",
             Scope::Picker => "Choose items",
             Scope::Tree => "List",
             Scope::Filter => "Filter",
             Scope::Plan => "Plan",
             Scope::Result => "Result",
             Scope::Confirm => "Confirm",
-            Scope::Install => "Install",
         }
     }
 }
@@ -71,25 +55,6 @@ pub enum Action {
     Toggle,
     Mark,
     Info,
-    NextTab,
-    PrevTab,
-    GoTab(u8),
-    ApplyProfile,
-    /// Choose which entries of the applied profile the project keeps.
-    PickSubset,
-    /// Remove everything the project has.
-    Clear,
-    Add,
-    /// Install the highlighted library item.
-    Install,
-    Delete,
-    NewProfile,
-    SaveCurrent,
-    Build,
-    Update,
-    /// Install what a repo or path offers.
-    AddSource,
-    Remove,
     ToggleDryRun,
     ToggleSteps,
     Copy,
@@ -145,10 +110,7 @@ const fn bind(
 }
 
 use Action as A;
-use Scope::{
-    Common, Confirm, Filter, Install, Installed, Library, Picker, Plan, Plugins, Profiles, Project,
-    Result, Tree, Workspace,
-};
+use Scope::{Common, Confirm, Filter, Picker, Plan, Plugins, Result, Tree};
 
 #[rustfmt::skip]
 pub const BINDINGS: &[Binding] = &[
@@ -165,40 +127,11 @@ pub const BINDINGS: &[Binding] = &[
     bind(Common, A::Quit, &[ch('q')], "q", "quit", 40),
     bind(Common, A::Interrupt, &[ctrl('c')], "^c", "quit anywhere", 0),
     bind(Common, A::Help, &[ch('?')], "?", "help", 0),
-    bind(Workspace, A::NextTab, &[plain(KeyCode::Right), ch('l'), plain(KeyCode::Tab)], "← → tab", "switch tab", 20),
-    bind(Workspace, A::PrevTab, &[plain(KeyCode::Left), ch('h'), plain(KeyCode::BackTab)], "", "", 0),
-    bind(Workspace, A::GoTab(0), &[ch('1')], "1 2 3 4", "go to tab", 0),
-    bind(Workspace, A::GoTab(1), &[ch('2')], "", "", 0),
-    bind(Workspace, A::GoTab(2), &[ch('3')], "", "", 0),
-    bind(Workspace, A::GoTab(3), &[ch('4')], "", "", 0),
-    bind(Installed, A::Toggle, &[ch(' ')], "space", "pick", 1),
-    bind(Installed, A::Select, &[plain(KeyCode::Enter)], "enter", "apply picks / fold", 2),
-    bind(Installed, A::AddSource, &[ch('A')], "A", "add from repo", 9),
-    bind(Installed, A::Remove, &[ch('r')], "r", "remove", 4),
-    bind(Installed, A::ApplyProfile, &[ch('a')], "a", "apply profile", 3),
-    bind(Project, A::PickSubset, &[ch('p')], "p", "keep from profile", 5),
-    bind(Project, A::Clear, &[ch('c')], "c", "clear", 6),
-    bind(Project, A::SaveCurrent, &[ch('s')], "s", "save as profile", 10),
-    bind(Installed, A::Update, &[ch('u')], "u", "update", 7),
-    bind(Installed, A::Filter, &[ch('/')], "/", "filter", 8),
     bind(Plugins, A::Toggle, &[ch(' ')], "space", "select", 1),
     bind(Plugins, A::Select, &[plain(KeyCode::Enter)], "enter", "apply", 2),
     bind(Plugins, A::Back, &[plain(KeyCode::Esc)], "esc", "clear selection", 0),
     bind(Plugins, A::Info, &[ch('i')], "i", "info", 3),
     bind(Plugins, A::Filter, &[ch('/')], "/", "filter", 4),
-    bind(Library, A::Add, &[ch('a')], "a", "add", 1),
-    bind(Library, A::Install, &[ch('i')], "i", "install", 2),
-    bind(Library, A::Delete, &[ch('x')], "x", "remove", 3),
-    bind(Library, A::Filter, &[ch('/')], "/", "filter", 4),
-    bind(Library, A::Toggle, &[ch(' ')], "space", "expand", 0),
-    bind(Library, A::Select, &[plain(KeyCode::Enter)], "enter", "expand", 0),
-    bind(Profiles, A::Build, &[plain(KeyCode::Enter), ch('e')], "enter e", "edit", 1),
-    bind(Profiles, A::NewProfile, &[ch('n')], "n", "new", 2),
-    bind(Profiles, A::Delete, &[ch('x')], "x", "delete", 3),
-    bind(Profiles, A::Filter, &[ch('/')], "/", "filter", 4),
-    bind(Profiles, A::Toggle, &[ch(' ')], "space", "expand", 0),
-    bind(Install, A::Toggle, &[ch(' ')], "space", "choose", 1),
-    bind(Install, A::Select, &[plain(KeyCode::Enter)], "enter", "install", 2),
     bind(Picker, A::Toggle, &[ch(' ')], "space", "check", 0),
     bind(Picker, A::Select, &[plain(KeyCode::Enter)], "enter", "save selection", 0),
     bind(Picker, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
@@ -332,16 +265,20 @@ mod tests {
 
     #[test]
     fn the_same_letter_means_different_things_per_scope() {
-        let project = press(Project, 'p');
-        let tree = press(Tree, 'p');
+        let plugins = press(Plugins, 'i');
+        let result = press(Result, 'i');
+        let tree = press(Tree, 'x');
 
-        assert_eq!((project, tree), (Some(Action::PickSubset), None));
+        assert_eq!(
+            (plugins, result, tree),
+            (Some(Action::Info), None, Some(Action::Mark))
+        );
     }
 
     #[test]
     fn a_scope_falls_back_to_the_common_bindings() {
         assert_eq!(press(Tree, 'j'), Some(Action::Down));
-        assert_eq!(press(Project, 'q'), Some(Action::Quit));
+        assert_eq!(press(Plugins, 'q'), Some(Action::Quit));
     }
 
     #[test]
@@ -358,53 +295,8 @@ mod tests {
         let half = resolve(Common, ctrl_key('d'));
 
         assert_eq!(half, Some(Action::HalfPageDown));
-        assert_eq!(press(Project, 'd'), None);
-        assert_eq!(resolve(Project, ctrl_key('c')), Some(Action::Interrupt));
-    }
-
-    #[test]
-    fn the_tab_keys_move_between_tabs_and_jump_by_number() {
-        let shift_tab = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
-
-        let keys = [
-            resolve(Workspace, key(KeyCode::Tab)),
-            resolve(Workspace, shift_tab),
-            press(Workspace, '1'),
-            press(Workspace, '4'),
-        ];
-
-        assert_eq!(
-            keys,
-            [
-                Some(Action::NextTab),
-                Some(Action::PrevTab),
-                Some(Action::GoTab(0)),
-                Some(Action::GoTab(3))
-            ]
-        );
-    }
-
-    #[test]
-    fn a_tab_binds_the_keys_of_all_its_scopes_and_global_can_apply_but_not_keep_clear_or_save() {
-        let project = [Installed, Project];
-        let keys = ['r', 'p', 'a', 'c'];
-
-        let on_project = keys.map(|c| resolve_in(&project, key(KeyCode::Char(c))));
-        let on_global = keys.map(|c| resolve_in(&[Installed], key(KeyCode::Char(c))));
-
-        assert_eq!(
-            on_project,
-            [
-                Some(Action::Remove),
-                Some(Action::PickSubset),
-                Some(Action::ApplyProfile),
-                Some(Action::Clear)
-            ]
-        );
-        assert_eq!(
-            on_global,
-            [Some(Action::Remove), None, Some(Action::ApplyProfile), None]
-        );
+        assert_eq!(press(Plugins, 'd'), None);
+        assert_eq!(resolve(Plugins, ctrl_key('c')), Some(Action::Interrupt));
     }
 
     #[test]
@@ -421,7 +313,7 @@ mod tests {
 
     #[test]
     fn hints_come_out_most_important_first_and_without_duplicates() {
-        for scope in [Installed, Library, Tree] {
+        for scope in [Plugins, Tree] {
             let hints = hints(&[scope]);
             let mut sorted = hints.clone();
             sorted.dedup();
@@ -431,7 +323,7 @@ mod tests {
         }
         let ranks: Vec<u8> = BINDINGS
             .iter()
-            .filter(|b| matches!(b.scope, Installed | Project | Workspace) && b.rank > 0)
+            .filter(|b| b.scope == Plugins && b.rank > 0)
             .map(|b| b.rank)
             .collect();
         let mut distinct = ranks.clone();
@@ -442,28 +334,12 @@ mod tests {
 
     #[test]
     fn the_scopes_own_enter_replaces_the_common_one_in_help() {
-        let selects = help_sections(&[Installed, Project])
+        let selects = help_sections(&[Plugins])
             .into_iter()
             .flat_map(|(_, bindings)| bindings)
             .filter(|b| b.action == Action::Select);
 
         assert_eq!(selects.count(), 1);
-    }
-
-    #[test]
-    fn each_profile_key_means_its_own_action() {
-        let keys = ['n', 'e', 'x', 'a', 's'].map(|c| press(Profiles, c));
-
-        assert_eq!(
-            keys,
-            [
-                Some(Action::NewProfile),
-                Some(Action::Build),
-                Some(Action::Delete),
-                None,
-                None
-            ]
-        );
     }
 
     #[test]
@@ -477,10 +353,10 @@ mod tests {
 
     #[test]
     fn help_lists_the_scope_first_then_the_common_bindings() {
-        let sections = help_sections(&[Installed]);
+        let sections = help_sections(&[Plugins]);
 
         let scopes: Vec<Scope> = sections.iter().map(|(s, _)| *s).collect();
-        assert_eq!(scopes, [Installed, Common]);
+        assert_eq!(scopes, [Plugins, Common]);
         assert!(
             sections
                 .iter()
@@ -490,13 +366,13 @@ mod tests {
 
     #[test]
     fn caller_scope_order_wins_over_table_order() {
-        let key = key(KeyCode::Enter);
+        let key = key(KeyCode::Tab);
 
-        let picker_first = resolve_in(&[Picker, Profiles], key);
-        let profiles_first = resolve_in(&[Profiles, Picker], key);
+        let plan_first = resolve_in(&[Plan, Confirm], key);
+        let confirm_first = resolve_in(&[Confirm, Plan], key);
 
         // Assert overlapping bindings follow the scope order supplied by the caller.
-        assert_eq!(picker_first, Some(Action::Select));
-        assert_eq!(profiles_first, Some(Action::Build));
+        assert_eq!(plan_first, Some(Action::Right));
+        assert_eq!(confirm_first, Some(Action::Toggle));
     }
 }

@@ -8,12 +8,9 @@ use super::deps::Deps;
 use super::scope::resolve_project;
 use crate::app::app_paths::tilde;
 use crate::app::json::Json;
-use crate::app::rule::centered_rule;
-use skillz_harness::agent_skills::{self, Copy, Diagnostic, Readers, Stray, Violation};
+use crate::app::rule::{RULE_WIDTH, centered_rule};
+use skillz_harness::agent_skills::{self, Diagnostic, Instance, Readers, Stray, Violation};
 use skillz_harness::model::{Agent, Scope};
-
-/// Columns of the rules over each section.
-const WIDTH: usize = 72;
 
 pub(super) fn doctor(deps: &Deps, args: &DoctorArgs, out: &mut dyn Write) -> anyhow::Result<()> {
     let env = resolve_project(deps, args.project.as_deref())?;
@@ -47,7 +44,7 @@ fn report(found: &[Diagnostic], home: &Path) -> Vec<String> {
         if !lines.is_empty() {
             lines.push(String::new());
         }
-        lines.push(centered_rule(title, WIDTH, "─"));
+        lines.push(centered_rule(title, RULE_WIDTH, "─"));
         lines.extend(body);
     }
     lines
@@ -80,8 +77,13 @@ fn who(readers: &Readers) -> String {
     }
 }
 
-fn copy_line(copy: &Copy, home: &Path) -> String {
-    let path = tilde(&copy.path.display().to_string(), home);
+/// A path as the user reads it: their home directory as `~`.
+fn shown(path: &Path, home: &Path) -> String {
+    tilde(&path.display().to_string(), home)
+}
+
+fn copy_line(copy: &Instance, home: &Path) -> String {
+    let path = shown(&copy.path, home);
     match copy.stray {
         None => format!("  {path}"),
         Some(why) => format!("  {path}   [{}]", stray_reason(why)),
@@ -96,7 +98,7 @@ fn stray_lines(found: &[Diagnostic], home: &Path) -> Vec<String> {
                 path, name, why, ..
             } => Some(format!(
                 "  {}   {}   [{}]",
-                tilde(&path.display().to_string(), home),
+                shown(path, home),
                 name.as_deref().unwrap_or("(no name)"),
                 stray_reason(*why)
             )),
@@ -123,10 +125,7 @@ fn invalid_lines(found: &[Diagnostic], home: &Path) -> Vec<String> {
             ..
         } = diagnostic
         {
-            lines.push(format!(
-                "{name}  {}",
-                tilde(&path.display().to_string(), home)
-            ));
+            lines.push(format!("{name}  {}", shown(path, home)));
             lines.extend(violations.iter().map(|v| format!("  {}", violation(*v))));
         }
     }
@@ -151,7 +150,7 @@ fn dangling_lines(found: &[Diagnostic], home: &Path) -> Vec<String> {
         .iter()
         .filter_map(|d| match d {
             Diagnostic::Dangling { path, target, .. } => {
-                let shown = |p: &Path| tilde(&p.display().to_string(), home);
+                let shown = |p: &Path| shown(p, home);
                 Some(match target {
                     Some(target) => format!("  {}  →  {}", shown(path), shown(target)),
                     None => format!("  {}", shown(path)),
@@ -199,7 +198,7 @@ mod tests {
 
         let rules: Vec<&String> = lines.iter().filter(|l| l.starts_with('─')).collect();
         assert_eq!(rules.len(), 3);
-        assert!(rules.iter().all(|r| r.chars().count() == WIDTH));
+        assert!(rules.iter().all(|r| r.chars().count() == RULE_WIDTH));
         assert!(
             lines
                 .iter()

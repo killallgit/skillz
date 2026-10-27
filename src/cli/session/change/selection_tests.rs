@@ -194,3 +194,68 @@ fn a_failed_removal_is_not_counted_as_removed() {
     assert!(!values[0].is_clean());
     assert!(dir.path().join(".agents/skills/tdd").exists());
 }
+
+/// Unchecks the removal and one install in the first plan it is shown, then approves the second.
+struct UnchecksFirst {
+    install: String,
+    plans: std::cell::Cell<usize>,
+}
+
+impl crate::app::prompt::Prompter for UnchecksFirst {
+    fn multi_select(&self, _title: &str, _options: &[String]) -> anyhow::Result<Vec<usize>> {
+        Ok(vec![])
+    }
+
+    fn confirm(&self, _question: &str) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+
+    fn plan(&self, view: &crate::app::review::PlanView) -> anyhow::Result<Verdict> {
+        self.plans.set(self.plans.get() + 1);
+        if self.plans.get() > 1 {
+            return Ok(Verdict::Apply);
+        }
+        let mut targets = view.targets.clone().expect("a selection offers its items");
+        for pick in &mut targets.items {
+            if pick.group == crate::app::review::Group::Remove || pick.id == self.install {
+                pick.on = false;
+            }
+        }
+        Ok(Verdict::Retarget(targets))
+    }
+}
+
+#[test]
+fn an_item_the_user_unchecks_is_neither_installed_nor_removed() {
+    let dir = tempfile::tempdir().unwrap();
+    project_with_skill(dir.path(), "tdd");
+    let ids = [skill_id(dir.path())];
+    let entries = [skill_entry("grill"), skill_entry("rust")];
+    let runner = crate::app::install::test_support::FakeRunner::new(|_| {});
+    let prompter = UnchecksFirst {
+        install: entries[0].to_string(),
+        plans: Default::default(),
+    };
+    let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+
+    let result = change(
+        &session(&deps, dir.path()),
+        Scope::Project,
+        &Change::Selection(&selection(&entries, &ids)),
+    );
+
+    let adds: Vec<_> = runner
+        .calls()
+        .into_iter()
+        .filter(|(_, args, _)| args.contains(&"add".to_string()))
+        .collect();
+    assert!(matches!(
+        result.unwrap(),
+        Some(Notice::Changed {
+            installed: 1,
+            removed: 0
+        })
+    ));
+    assert_eq!(adds.len(), 1);
+    assert!(dir.path().join(".agents/skills/tdd").exists());
+}

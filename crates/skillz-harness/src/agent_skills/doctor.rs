@@ -30,7 +30,8 @@ pub fn roots(env: &Env) -> Vec<Root> {
     for scope in [Scope::Global, Scope::Project] {
         for agent in [Agent::Claude, Agent::Codex] {
             for dir in crate::npx::skill_dirs(env, agent, scope) {
-                match roots.iter_mut().find(|r| r.dir == dir && r.scope == scope) {
+                // A project that is the home directory shares its folders with the user level.
+                match roots.iter_mut().find(|r| r.dir == dir) {
                     Some(root) => root.agents.push(agent),
                     None => roots.push(Root {
                         dir,
@@ -68,7 +69,7 @@ pub enum Stray {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Copy {
+pub struct Instance {
     pub path: PathBuf,
     pub scope: Scope,
     pub stray: Option<Stray>,
@@ -81,7 +82,7 @@ pub enum Diagnostic {
     Collision {
         name: String,
         readers: Readers,
-        copies: Vec<Copy>,
+        copies: Vec<Instance>,
     },
     Stray {
         path: PathBuf,
@@ -302,9 +303,9 @@ fn grouped<'a>(files: impl Iterator<Item = (usize, &'a Found)>) -> Vec<(String, 
         .collect()
 }
 
-fn copies_of(roots: &[Root], found: &[Found], at: &[usize]) -> Vec<Copy> {
+fn copies_of(roots: &[Root], found: &[Found], at: &[usize]) -> Vec<Instance> {
     at.iter()
-        .map(|&i| Copy {
+        .map(|&i| Instance {
             path: found[i].file.clone(),
             scope: roots[found[i].root].scope,
             stray: found[i].stray,
