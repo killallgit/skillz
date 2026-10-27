@@ -16,7 +16,7 @@ mod tests;
 
 pub use drift::{Drift, drift};
 pub use run::{Report, Watch};
-pub use standing::{Standing, compare, holds, loaded, only_wanted_by};
+pub use standing::{Standing, compare, holds, loaded};
 pub use switch::Switch;
 
 use crate::app::stale::Probe;

@@ -28,8 +28,6 @@ pub struct Theme {
     pub text: Style,
     /// Text that matters more than the rest of its row.
     pub strong: Style,
-    /// The tab being shown.
-    pub tab_active: Style,
     /// The option under the cursor in a dialog's list or a row of buttons.
     pub choice: Style,
     /// Rows shown for reference that no key acts on.
@@ -94,7 +92,6 @@ impl Theme {
             title: fg(Color::White).add_modifier(Modifier::BOLD),
             text: Style::new(),
             strong: modifier(Modifier::BOLD),
-            tab_active: fg(Color::Cyan).add_modifier(Modifier::BOLD),
             choice: modifier(Modifier::REVERSED | Modifier::BOLD),
             inactive: fg(Color::DarkGray).add_modifier(Modifier::DIM),
             kinds: Kinds::of([75, 177, 80, 180, 146]),
@@ -115,7 +112,6 @@ impl Theme {
             title: fg(Color::Black).add_modifier(Modifier::BOLD),
             text: Style::new(),
             strong: modifier(Modifier::BOLD),
-            tab_active: fg(Color::Blue).add_modifier(Modifier::BOLD),
             choice: modifier(Modifier::REVERSED | Modifier::BOLD),
             inactive: fg(Color::Gray).add_modifier(Modifier::DIM),
             kinds: Kinds::of([25, 127, 30, 94, 60]),
@@ -137,7 +133,6 @@ impl Theme {
             title: modifier(Modifier::BOLD),
             text: Style::new(),
             strong: modifier(Modifier::BOLD),
-            tab_active: modifier(Modifier::BOLD),
             choice: modifier(Modifier::REVERSED | Modifier::BOLD),
             inactive: modifier(Modifier::DIM),
             kinds: Kinds::plain(),

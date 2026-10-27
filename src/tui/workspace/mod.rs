@@ -1,7 +1,7 @@
-//! The workspace for one directory: the plugins list of the project or of the user. The list is
-//! a `Tab` in its own module; the `Workspace` shell owns the key bar, help and toasts, and hands
-//! the tab the `Model`. Keys become an `Act` that `cli::workspace` performs before the screen is
-//! shown again.
+//! The workspace for one directory: the plugins list of the project or of the user. The list
+//! (`PluginsTab`) is in its own module; the `Workspace` shell owns help, toasts and the change
+//! under way, and hands the list the `Model`. Keys become an `Act` that `cli::workspace`
+//! performs before the screen is shown again.
 
 mod plugins;
 mod run;

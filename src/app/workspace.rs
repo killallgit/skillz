@@ -1,5 +1,5 @@
 //! What the workspace screen exchanges with the flow that drives it: the `Act` the user asked
-//! for, the `Model` the tabs show, the `Synced` outcomes of background syncs and the `Screen`
+//! for, the `Model` the list shows, the `Synced` outcomes of background syncs and the `Screen`
 //! the flow feeds. Things are named by id, entry or profile name, so an act still means the
 //! same if the lists changed while it was in flight.
 

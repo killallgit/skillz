@@ -1,4 +1,4 @@
-//! `skillz library`: the library the workspace's Library tab shows, from the command line.
+//! `skillz library`: the library of everything skillz has seen or been given, from the command line.
 
 mod install;
 mod listing;

@@ -345,7 +345,7 @@ question with `[ No ]` and `[ Yes ]`, the cancelling one first. A progress scree
 change the button, `enter` answers it, and `c` and `r` still work directly. A toast says what
 happened.
 
-While a change runs, a modal over the tab lists every item it will change, each with a spinner
+While a change runs, a modal over the list lists every item it will change, each with a spinner
 (`⠋`, or `|/-\` in ASCII mode) while it works, then a tick or a cross when it finishes; the
 affected rows in the list show the same marks until the next key. The result screen lists what was done (`Installed X`, `Removed Y`, `Updated Z`) and
 every failure with its reason.

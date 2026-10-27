@@ -390,6 +390,7 @@ mod tests {
                     pick(Group::Install, "b", true),
                 ],
                 cursor: 0,
+                left_out: vec![],
             }),
             ..view()
         })

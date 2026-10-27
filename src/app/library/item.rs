@@ -26,17 +26,6 @@ impl ItemKind {
         }
     }
 
-    /// What several of this kind are called: `skills`, `MCP servers`.
-    pub fn plural(self) -> &'static str {
-        match self {
-            ItemKind::Skill => "skills",
-            ItemKind::Plugin => "plugins",
-            ItemKind::Mcp => "MCP servers",
-            ItemKind::Hook => "hooks",
-            ItemKind::Subagent => "agents",
-        }
-    }
-
     pub fn of_entry(entry: &Spec) -> ItemKind {
         match entry {
             Spec::Skill { .. } => ItemKind::Skill,

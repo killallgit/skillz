@@ -85,6 +85,9 @@ pub struct Targets {
     pub agents: Vec<(Agent, bool)>,
     pub items: Vec<Pick>,
     pub cursor: usize,
+    /// Items the user unchecked that the plan stopped listing (narrowing the agents hid them):
+    /// they stay unchecked should they come back.
+    pub left_out: Vec<Pick>,
 }
 
 impl Targets {
@@ -98,6 +101,7 @@ impl Targets {
             agents: offered.into_iter().map(|agent| (agent, true)).collect(),
             items: vec![],
             cursor: 0,
+            left_out: vec![],
         }
     }
 
@@ -126,14 +130,22 @@ impl Targets {
 
     /// The plan's items as they are now, keeping what the user already unchecked.
     pub fn sync_items(&mut self, listed: Vec<Listed>) {
-        let before = std::mem::take(&mut self.items);
+        let known: Vec<Pick> = std::mem::take(&mut self.items)
+            .into_iter()
+            .chain(std::mem::take(&mut self.left_out))
+            .collect();
         let same = |old: &Pick, new: &Listed| {
             old.id == new.id || old.copies.iter().any(|copy| new.copies.contains(copy))
         };
+        self.left_out = known
+            .iter()
+            .filter(|old| !old.on && !listed.iter().any(|new| same(old, new)))
+            .cloned()
+            .collect();
         self.items = listed
             .into_iter()
             .map(|new| Pick {
-                on: before
+                on: known
                     .iter()
                     .find(|old| same(old, &new))
                     .is_none_or(|p| p.on),
@@ -371,6 +383,19 @@ mod tests {
         )]);
 
         assert!(!targets.includes("subagent:codex:reviewer"));
+    }
+
+    #[test]
+    fn an_unchecked_item_that_drops_out_of_the_plan_is_still_unchecked_when_it_returns() {
+        let mut targets = Targets::all(vec![Agent::Claude, Agent::Codex]);
+        targets.sync_items(vec![item(Group::Install, "a", &[])]);
+        targets.cursor = 2;
+        let mut targets = targets.toggled();
+
+        targets.sync_items(vec![]);
+        targets.sync_items(vec![item(Group::Install, "a", &[])]);
+
+        assert!(!targets.includes("a"));
     }
 
     #[test]

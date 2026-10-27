@@ -39,10 +39,6 @@ fn part_steps(adapters: &[Box<dyn Harness>], item: &Installed, cwd: &Path) -> Ve
     }
 }
 
-pub fn can_update(item: &Installed) -> bool {
-    !steps(&crate::agents::registry(), item, Path::new("")).is_empty()
-}
-
 /// A subagent copied from a source is copied again from it.
 fn recopy(item: &Installed, cwd: &Path) -> Vec<Action> {
     let Some(source) = item.source.clone() else {
@@ -69,6 +65,11 @@ mod tests {
     use super::*;
     use crate::model::Agent;
     use crate::model::Scope;
+
+    /// Whether any agent has a step to update `item`.
+    fn can_update(item: &Installed) -> bool {
+        !steps(&crate::agents::registry(), item, Path::new("")).is_empty()
+    }
 
     fn item(name: &str, kind: Kind, installer: Installer) -> Installed {
         Installed {

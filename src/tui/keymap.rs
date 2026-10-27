@@ -127,11 +127,11 @@ pub const BINDINGS: &[Binding] = &[
     bind(Common, A::Quit, &[ch('q')], "q", "quit", 40),
     bind(Common, A::Interrupt, &[ctrl('c')], "^c", "quit anywhere", 0),
     bind(Common, A::Help, &[ch('?')], "?", "help", 0),
-    bind(Plugins, A::Toggle, &[ch(' ')], "space", "select", 1),
-    bind(Plugins, A::Select, &[plain(KeyCode::Enter)], "enter", "apply", 2),
+    bind(Plugins, A::Toggle, &[ch(' ')], "space", "select", 0),
+    bind(Plugins, A::Select, &[plain(KeyCode::Enter)], "enter", "apply", 0),
     bind(Plugins, A::Back, &[plain(KeyCode::Esc)], "esc", "clear selection", 0),
-    bind(Plugins, A::Info, &[ch('i')], "i", "info", 3),
-    bind(Plugins, A::Filter, &[ch('/')], "/", "filter", 4),
+    bind(Plugins, A::Info, &[ch('i')], "i", "info", 0),
+    bind(Plugins, A::Filter, &[ch('/')], "/", "filter", 0),
     bind(Picker, A::Toggle, &[ch(' ')], "space", "check", 0),
     bind(Picker, A::Select, &[plain(KeyCode::Enter)], "enter", "save selection", 0),
     bind(Picker, A::Left, &[plain(KeyCode::Left), ch('h')], "← →", "collapse / expand", 0),
@@ -313,17 +313,14 @@ mod tests {
 
     #[test]
     fn hints_come_out_most_important_first_and_without_duplicates() {
-        for scope in [Plugins, Tree] {
-            let hints = hints(&[scope]);
-            let mut sorted = hints.clone();
-            sorted.dedup();
-
-            assert_eq!(hints, sorted);
-            assert!(!hints.is_empty());
-        }
+        let hints = hints(&[Tree]);
+        let mut sorted = hints.clone();
+        sorted.dedup();
+        assert_eq!(hints, sorted);
+        assert!(!hints.is_empty());
         let ranks: Vec<u8> = BINDINGS
             .iter()
-            .filter(|b| b.scope == Plugins && b.rank > 0)
+            .filter(|b| b.scope == Tree && b.rank > 0)
             .map(|b| b.rank)
             .collect();
         let mut distinct = ranks.clone();
