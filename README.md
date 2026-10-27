@@ -23,18 +23,18 @@ is also a command.
 
 | Command | Does |
 | --- | --- |
-| `list` (`ls`) | show what is installed as a tree, or browse it with `-i`; `--json` adds each item's location (`--check` also whether a newer version exists); `--available` lists the library items the project (`-g`: the user) lacks |
+| `list` (`ls`) | in a terminal, a plain `list` (or `list -g`) opens the plugins list (see Workspace); otherwise (a query, `--all`, a kind filter, no terminal) it shows what is installed as a tree, or browse it with `-i`; `--json` never opens the list and prints the items for scripts and agents, adding each item's location (`--check` also whether a newer version exists); `--available` lists the library items the project (`-g`: the user) lacks |
 | `uninstall` (`rm`, `delete`) | fuzzy match, pick, confirm, remove completely; several queries go in one plan |
 | `update` | update installed items with the tool that installed them (`-g`: the user's); `--check` lists the ones with a newer version (`--json` for scripts) |
 | `reset` | remove every skill, plugin and marketplace in scope |
 | `prune` | find duplicate and unused skills and plugins, remove the ones picked |
+| `doctor` | check the skills on disk, read-only: names that collide (per tool, listing every copy), skill files nested or loose where a tool will not look (or looks too hard), files that break the format, and broken links; `-g` for the user's skills only, `--json` for scripts |
 | `sync` | add everything installed, in the project and at user level, to the library (`-p PATH`, `-g` for user level only, `--dry-run`, `--json`); never removes anything from it |
 | `install` (`add`) | `install OWNER/REPO` (or a git URL or path): offers each agent the plugins the repo has a marketplace for (Claude `.claude-plugin/`, Codex `.agents/plugins/`), installs skills for the rest with `npx skills`, and shows the plan before running it; `-g` installs for the user instead of the project |
-| `library` (`lib`) | `list` (`ls`, `--json`, kind filters), `add "LINE"`, `remove` (`rm`) a label query or LINE, `install QUERY...` into the project or with `-g` for the user (each with `--dry-run`, `-y` where it asks) |
+| `library` (`lib`) | `list` (`ls`, kind filters; groups the items under a `── package ──` rule per package or folder and writes your home directory as `~`, while `--json` keeps full paths), `add "LINE"`, `remove` (`rm`) a label query or LINE, `install QUERY...` into the project or with `-g` for the user (each with `--dry-run`, `-y` where it asks) |
 | `use` | add what a project lacks of a profile (`--exact` also removes the rest) |
 | `run` | run a command against one profile in config dirs of its own |
 | `profile` | `list` (`ls`, with how each compares with the project; `--json`), `status [NAME]` (present, missing, extra; `--json`), `show` (`export`), `import FILE`, `new`, `add NAME "LINE"` or `--from-library QUERY`, `remove NAME QUERY`, `save`, `delete` (`rm`) |
-| `project` | `list` (`ls`), `add`, `remove` (`rm`) |
 
 Kind filters on `list`, `uninstall`, `reset` and `prune`: `--skills --hooks --plugins
 --marketplaces --mcp --subagents` (singular spellings work too; none given means all kinds).
@@ -74,9 +74,9 @@ Source installs prefer each tool's native plugin installer when a marketplace is
 skills, and installs everything such a plugin ships. The plan names each plugin with how many
 skills it brings, and for `--all` lists the skills of the source that no plugin supplies, which
 are not installed (name them with `--skill`). Sources without a matching plugin use `npx
-skills`. Library skill installs that name skills inspect the source again, so older loose-skill
-entries can install through the native plugin too; a malformed marketplace or plugin manifest
-in the source never fails the install, its skills install loose instead.
+skills`. A malformed marketplace or plugin manifest in the source never fails the install, its
+skills install loose instead. `library install` and profile applies still install a loose
+skill entry with `npx skills`, not through the plugin its source may offer.
 
 A Codex project install writes the marketplace and plugin into `.codex/config.toml`, which a team
 usually commits, so skillz refuses a source with a user, password or token in its URL (use ssh or
@@ -94,28 +94,24 @@ and asks before installing it into the project too (`-y` goes ahead).
 
 Scope for `list`, `uninstall`, `reset` and `prune`: a `PATH` (or `-p PATH`) means that project only,
 `-g` means global only, neither means both (project = cwd). `install` and `update` act on one
-project, or with `-g` on the user's installs; `use`, `run` and `profile` always act on one project,
-and the workspace has a tab for each. A project that is your home directory counts as global. A `list` PATH must
+project, or with `-g` on the user's installs; `use`, `run` and `profile` always act on one project. A project that is your home directory counts as global. A `list` PATH must
 start with `.`, `..` or `/` (`./sub`, not `sub`); any other word is a query.
 
-## From the workspace to the command line
+## From the list to the command line
 
-Everything the workspace does is a command, and both run the same code (a plan reviewed first,
-then the same install and removal steps):
+Everything the list does is a command, and both run the same code (a plan reviewed first, then
+the same install and removal steps). The commands also do what the old tabs did:
 
-| In the workspace | On the command line |
+| In the list | On the command line |
 | --- | --- |
-| Project / Global tabs: what is installed, the split, where each item lives | `list`, `list -g`, `list --json` (`location`) |
-| Update markers | `list --json --check`, `update --check [--json]` |
-| `space` picks, `enter` removes the picks as one plan | `uninstall QUERY...` (`-y`, `--dry-run`) |
-| `r` remove / `u` update the highlighted item | `uninstall`, `update` |
-| `A` add from a repo: type `owner/repo`, a git URL or a path | `install SOURCE` |
-| The Project header: the applied profile, matches / N missing / N extra | `profile status [NAME] [--json]`, `profile list [--json]` |
-| Project and Global: `a` apply a profile (adds what is missing; `m` switches to replace). Project also: `p` keep some of its entries, `c` clear | `use NAME`, `use NAME --exact`, `use NAME -g` (`-y`, `--dry-run`), `uninstall` |
-| Library: `a` add a typed line, `x` remove, `i` install the highlighted item | `library add "skill o/r tdd"`, `library remove QUERY`, `library install QUERY [-g]`, `sync` |
-| Library: origin, link, version, installed in project / global | `library list [--json]` |
-| Profiles: `n` new, `enter` / `e` edit, `x` delete; Project: `s` save the project as a profile | `profile new`, `profile add` / `profile remove`, `profile save`, `profile delete` |
-| `/` filter, `space` fold, `?` help, `tab`, movement keys | on screen only: `list QUERY` and `list --all` do the same for the command line |
+| What is installed, the split, where each item lives | `list`, `list -g`, `list --json` (`location`) |
+| `space` selects, `enter` submits installs and removals as one plan | `install SOURCE`, `uninstall QUERY...` (`-y`, `--dry-run`) |
+| `i` info: provenance and locations | `list --json` (`location`), `library list --json` |
+| Updating | `update [QUERY] [-g]`, `update --check [--json]` |
+| Applying, comparing and saving profiles | `use NAME [--exact] [-g]`, `profile status [NAME] [--json]`, `profile list`, `profile save`, `reset` |
+| The library: add, remove, install | `library add "skill o/r tdd"`, `library remove QUERY`, `library install QUERY [-g]`, `sync` |
+| Editing a profile | `profile new`, `profile add` / `profile remove`, `profile delete` |
+| `/` filter, `?` help, movement keys | on screen only: `list QUERY` and `list --all` do the same for the command line |
 
 ## Profiles
 
@@ -217,12 +213,12 @@ shared with a wanted entry, such as a skill for two agents of which the profile 
 `use` acts on one level only. In a project it installs into that project (Claude plugins at
 `local` scope, so only that project has them) and counts only what the project holds; with `-g`
 it installs at user level (Claude `--scope user`, `npx skills -g`, the Codex user config) and
-counts only the user's own installs. A profile applied at user level shows up in the Project tab
-as inherited, read-only items, and does not make the project match it. Codex plugins can only be
+counts only the user's own installs. A profile applied at user level shows up in the project list
+below the divider, read-only, and does not make the project match it. Codex plugins can only be
 installed at user level, so a project apply skips them.
 
 Which profile a project has loaded is never stored. A project matches a profile when nothing the
-profile wants is missing from the inventory; the Project tab compares the directory with the
+profile wants is missing from the inventory; `profile status` compares the directory with the
 profile you choose.
 
 ## The store and the library
@@ -230,7 +226,7 @@ profile you choose.
 `~/.config/skillz/store.json` is the only file skillz keeps for itself (apart from the scratch
 config dirs `run` makes). It holds `version`, `items` (the library) and `profiles`. The library is
 every skill, plugin, MCP server, hook and subagent you have installed or typed in, so that
-anything installed once can be installed again from the Project or Global tab. Each item records its
+anything installed once can be installed again with `library install`. Each item records its
 provenance: the `link` it was fetched from, the `engine` that installed it, the `version` (a
 plugin version, or the content hash `npx skills` locked) and when it was `recorded_at`. Every
 successful `install`, `use` and workspace change adds what it installed.
@@ -239,18 +235,18 @@ The library is a master record, so it also learns what you installed some other 
 workspace opens, a background scan reads everything installed in the project and at user level,
 for every agent (skills, plugins, MCP servers, hooks, subagents), and adds what the library does
 not have yet, marked as *detected* in its provenance. The workspace is shown at once; when the scan
-ends the Library tab fills and a toast says how many were new (and how many MCP servers were left
+ends the list gains them and a toast says how many were new (and how many MCP servers were left
 out for needing secrets). The same scan runs as `skillz sync`, after every install, update or
 change. It only ever adds: a second run adds nothing, labels you
-gave are kept, and items that are no longer installed stay. The only way out of the library is its
-remove key (`x`) or removing it by hand in `store.json`. `SKILLZ_NO_SYNC=1` turns the startup scan
+gave are kept, and items that are no longer installed stay. The only way out of the library is
+`skillz library remove` or removing it by hand in `store.json`. `SKILLZ_NO_SYNC=1` turns the startup scan
 off. A hand-made skill or subagent is recorded by the directory that holds it (engine `local`,
 marked detected), so it is reinstalled with `npx skills add <that directory> --skill <name>`.
 Items needing secrets, and items with nothing to reinstall them from, are not recorded.
 
 **Moving a folder.** skillz keeps no registry of projects, so moving a project is fine, but a
 hand-made skill or subagent is recorded by its absolute directory. When that directory is gone the
-item is *stale*: the Library tab tags it `! missing source`, `library list` marks it and
+item is *stale*: `library list` marks it as missing its source and
 `--json` has `"stale": true`, and `profile status` lists profile entries in that state as
 `unavailable` (apart from `missing`). The next sync (startup scan or `skillz sync`) re-points a
 stale item at the new directory in place when exactly one live local source holds a skill or
@@ -289,100 +285,64 @@ never `~/.claude` or `~/.codex`. The variable is also set on every command skill
 
 ## Workspace
 
-`skillz [PATH]` opens a workspace for one directory (default: the current one). It keeps nothing
-per project: what is installed is read from the agents' own config each time. It needs a terminal
-at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
+`skillz [PATH]` opens the plugins list for one directory (default: the current one). It keeps
+nothing per project: what is installed is read from the agents' own config each time. It needs a
+terminal at least 40x10. `skillz list` in a terminal (with no query, flag or kind filter) opens
+the same list instead of printing; `skillz list -g` (`--global`) opens the same list for the
+user's installs alone, with no project rows and no global section, and flipping a package there
+installs or removes it at user level: a line per package (a marketplace or an
+`owner/repo`) from the library and from what the project has, by name, with no column header. A
+checkbox says whether the project has it, and an installed one names its agents, `[claude,
+codex]`. `j` / `k` move. `space` selects or deselects the package under the cursor: its line turns
+bold and its box shows what it will become, and nothing happens yet. `esc` drops the selection.
+`enter` submits everything selected as one change: the plan lists `installing` and `removing`
+groups to confirm (an install is for every agent; an entry that names its own agents keeps to
+them). In that plan each skill or plugin to install or remove has its own box, all checked: `↑`
+`↓` move and `space` unchecks one you want to leave out. `i` opens an info modal for the package
+under the cursor: where it comes from, how the library came to know it (added by hand, found by
+a scan or installed by skillz, when, what it is fetched from, with which tool and which
+version), what it offers and where each installed item lives on disk. `/` filters. Hooks, MCP
+servers and hand-made files are not in this list yet.
 
-- **Project** and **Global**: the same tab over two scopes. Project is what this directory has
-  installed; Global is what you have installed at user level, outside any project. Each lists
-  only what is installed there, in sections by kind: `plugins`, `skills`, `agents`,
-  `MCP servers` and `hooks` (a section with nothing in it is left out). Every row is a whole
-  unit you can remove or update: a plugin is one row that says what it provides
-  (`3 skills, 2 hooks`), and what it provides is not listed again among the skills and hooks;
-  removing the plugin removes them. Skills hang under the package they came from, as
-  `npx skills list` does: an `owner/repo` or `local files`. `hooks` are only the hooks no plugin
-  declares. Every row shows its agents and where it lives on disk (the skill's directory, or the
-  config file). The header line is the directory, or `User-level, all projects`; on Project a
-  line above it names the profile last applied to the directory and how the directory compares
-  with it: matching, or `N missing` / `N extra` (`no profile applied` before the first apply). Picked rows get their own marker and a `to remove` note, and each
-  section or package shows its count of picks. `space`, `r` and `u` on a package row act on
-  everything in it (the plan shows what, and nothing happens until you confirm it); on an item
-  row they act on that item; on a section `space` folds it, `r` marks every item in it for removal
-  and `u` does nothing. A thing installed for
-  several agents (a subagent for Claude and Codex, say) is one row naming its agents, `claude,
-  codex`, or `claude, codex +2` when there are many; removing it removes every copy. A filter
-  keeps the section structure and hides rows with no match. Removals and updates on Global act on
-  the user's installs (`npx skills -g`, `claude ... --scope user`, the Codex user config).
-  Installed plugins expand with `→` (or `enter`, when nothing is picked) to show their skills, agents, commands and hooks.
-  These child rows are for inspection; removal and update apply to the whole plugin.
-  The Project tab also shows global plugins and skills below a dimmed `Global installs · read only`
-  separator. They can be expanded there; changes belong on the Global tab. Project clear and
-  removal picks exclude these global items.
-  `a` on Global applies a profile at user level, for every project, and the line above the list
-  compares the user's installs with the profile last applied there; Global has no `p`, `c` or
-  `s`. Adding is `A`, or the Library tab and profiles.
-  In the background the tabs check whether installed Claude marketplaces have a newer version
-  (a read-only `ls-remote`) and shows those in bold with a `*` after the name. Other kinds have
-  no reliable check and are never marked. `SKILLZ_NO_UPDATE_CHECK=1` turns the check off;
-  `skillz update --check` runs it from the command line.
-- **Library**: the items skillz knows about, grouped by package like the other tabs, with where
-  each came from. Agents have a separate collapsible section, grouped by source repository or
-  directory; local agent directories stay separate. `space` or `enter` folds a section or source
-  group, and filtering an agent keeps its section and source visible. The line under the list
-  starts with how it got there (*detected*, *added by skillz* or *added by hand*), then shows the
-  link, how it was installed (`npx skills`, `claude plugin`, `codex plugin`, `manual`) and the
-  version or hash recorded. A `project` or `global` tag after a name says where the item is
-  installed right now; no tag means it is only in the library. `i` on an item opens a dialog
-  to install it: pick *This project* or *Global* and check the coding tools to install it for
-  (`space` chooses, `enter` installs, `esc` cancels). The tools the item names start checked.
-- **Profiles**: your saved combinations, kept apart from any project: make, edit and delete
-  them here, and apply them from the Project tab. It is one list, each profile with its entries
-  under it. `n` opens a single modal: type the name, `tab` to the library items, `space` to
-  check them, and `s` (or `enter` in the name) saves. `enter` or `e` edits the profile under the
-  cursor in the same modal; `x` deletes it.
-
-Expanding a group reveals its immediate children. Nested groups stay closed until opened
-individually, including after their parent is closed and reopened. In the profile editor, library
-item names omit the kind their section already shows; source and marketplace details remain visible.
+The list has no tabs. Hooks, MCP servers and hand-made files are not in it yet, and what used to
+be keys on the old tabs is a command: `update` and `uninstall` for updating and removing,
+`profile`, `use` and `reset` for saving, applying and clearing profiles, and `library` for
+adding to the library, removing from it and installing from it (see Commands).
 
 | Key | Does |
 | --- | --- |
-| `space` | pick the item under the cursor for removal; again to unpick (on a package: everything in it; on a section: open or close it) |
-| `enter` | remove all picks as one change, with one plan to review; with nothing picked, open or close the section |
-| `r` | remove the item under the cursor from the tab's scope at once (after the plan); on a package row, removes everything in it; on a section, marks every item in it for removal. When the items are installed for more than one agent, the plan shows an Agents list above what will be removed; every agent starts checked and `space` unchecks one (`↑↓` moves) before `enter` applies |
-| `esc` | clear the picks (with none, clear the filter) |
-| `u` | update the installed item under the cursor, or every installed item of the package, after a plan to review; kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
-| `a` | list the profiles and apply the one you choose, after a plan to review. It adds what is missing and removes nothing; `m` in the list switches to replacing everything (installs what is missing, removes the rest). The project (or, on Global, the user level) remembers it as its applied profile |
-| `p` | list the applied profile's entries, those the project has checked; `space` checks or unchecks, `enter` installs the checked ones and removes the unchecked ones, after a plan (Project only) |
-| `c` | clear: remove everything the project has, after a plan to review. The applied profile stays, so `p` or `a` can bring back all or part of it (Project only) |
-| `s` | save what the project has installed as a new profile, after typing its name; the project then counts that profile as applied (Project only) |
-| `←` `→`, `h` `l` | close / open a section (`←` on an item jumps to its section) |
+| `space` | select the package under the cursor, or unselect it |
+| `enter` | submit everything selected as one change, after a plan to review |
+| `esc` | drop the selection (with none, clear the filter) |
+| `i` | info: where the package comes from and where each installed item lives |
+| `/` | filter; keeps matching rows, `esc` clears it |
 | `↑↓` `j` `k`, `PgUp` `PgDn`, `^u` `^d`, `g` `G` | move |
-| `/` | filter; keeps matching rows and their section, `esc` clears it |
 | `?` | all keys for the screen |
 | `q`, `^c` | quit |
-
-Marketplaces have their own selectable rows in the Project and Global tabs. `r` removes
-that scope's marketplace declarations and installed plugins; `u` updates the marketplace.
-Skills remain grouped by source, so a source row can remove or update its installed skills
-together. Removing an installation keeps its saved Library entry for later reuse.
 
 Project profile applies declare Claude marketplaces and install plugins in the project's
 `.claude/settings.local.json`. Claude keeps downloaded marketplaces and plugin caches under
 its user configuration directory; that shared storage does not make them global installs.
 Marketplace scope comes from `extraKnownMarketplaces` in settings, not from the shared
-`known_marketplaces.json` download registry. Adding a plugin from the Project tab declares its
+`known_marketplaces.json` download registry. Adding a plugin to the project declares its
 marketplace in the project's `.claude/settings.json`, the same scope the plugin is enabled in.
 
 Installing, removing, updating and applying show a plan first: `=` kept, `-` removed, `+`
-installed, `^` updated, `~` skipped, framed in red when it removes something. `enter` or `y` goes ahead, `d` turns on dry run,
-`s` shows the raw steps, `esc` cancels. A progress screen follows, then a result with counts and
-any failures: `c` copies them (through the terminal, so it works over ssh), `r` retries, `enter`
-closes. A toast says what happened.
+installed, `^` updated, `~` skipped, framed in red when it removes something. It ends in two
+buttons, `[ Cancel ]` and `[ Delete ]` (`[ Apply ]` when nothing is removed), with no help text:
+`←` `→` or `tab` change the button and `enter` answers it, `y` goes ahead and `n` or `esc` cancels.
+`d` turns on dry run (the button then reads `Dry run`) and `s` shows the raw steps. A removal that
+spans both agents lists them as checkboxes first; `space` unchecks one. Each plan line is the
+item's name, its source when that adds something, and its kind. A plain confirm dialog is the
+question with `[ No ]` and `[ Yes ]`, the cancelling one first. A progress screen follows, then a short result: a line for each item that changed and an
+`[ OK ]` button, with no help text. If something failed, its reasons are listed and `[ Copy ]`
+(through the terminal, so it works over ssh) and `[ Retry ]` come before OK; `←` `→` or `tab`
+change the button, `enter` answers it, and `c` and `r` still work directly. A toast says what
+happened.
 
 While a change runs, a modal over the tab lists every item it will change, each with a spinner
 (`⠋`, or `|/-\` in ASCII mode) while it works, then a tick or a cross when it finishes; the
-affected rows on the Project and Global tabs show the same marks until the next key. The result screen lists what was done (`Installed X`, `Removed Y`, `Updated Z`) and
+affected rows in the list show the same marks until the next key. The result screen lists what was done (`Installed X`, `Removed Y`, `Updated Z`) and
 every failure with its reason.
 
 The browser (`list -i`) and every picker (`uninstall`, `prune`, `install`)

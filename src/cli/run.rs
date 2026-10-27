@@ -6,6 +6,7 @@ use super::args::{
     UpdateArgs, UseArgs,
 };
 use super::deps::Deps;
+use super::doctor::doctor;
 use super::isolate::run_isolated;
 use super::library::{available, library_command};
 use super::list::{ListView, list};
@@ -16,6 +17,7 @@ use super::scope::{Scene, resolve, resolve_project, split_target};
 use super::session::{Change, Session, with_session};
 use super::sync::{SyncRequest, sync};
 use super::update::{UpdateRequest, check, update};
+use super::workspace::workspace;
 use crate::app::install::{InstallRequest, SkillSelection};
 use skillz_harness::model::Scope;
 
@@ -27,6 +29,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         Command::Uninstall(args) => succeeded(run_uninstall(deps, args, out)),
         Command::Update(args) => succeeded(run_update(deps, args, out)),
         Command::Prune(args) => succeeded(run_prune(deps, args, out)),
+        Command::Doctor(args) => succeeded(doctor(deps, &args, out)),
         Command::Reset(args) => succeeded(run_reset(deps, args, out)),
         Command::Use(args) => succeeded(run_use(deps, args, out)),
         Command::Sync(args) => succeeded(run_sync(deps, args, out)),
@@ -45,6 +48,9 @@ fn succeeded(result: anyhow::Result<()>) -> anyhow::Result<i32> {
 }
 
 fn run_list(deps: &Deps, args: ListArgs, out: &mut dyn Write) -> anyhow::Result<()> {
+    if deps.interactive && args.plugin_list().is_some() {
+        return workspace(deps, args.project.as_deref());
+    }
     if args.available {
         let scope = scope_of(args.filter.global);
         let env = resolve_project(deps, args.project.as_deref())?;

@@ -4,7 +4,8 @@ use crate::app::apply::Switch;
 use crate::app::remove::Plan;
 use crate::app::review::{Group, PlanView};
 use skillz_harness::action::Action;
-use skillz_harness::model::Scope;
+use skillz_harness::model::{Installed, Scope, split_plugin_id};
+use skillz_harness::redact::redact;
 
 pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
     let kept = switch.present.iter().map(ToString::to_string).collect();
@@ -12,15 +13,15 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
         .removals
         .iter()
         .map(|item| match switch.is_unsourced(item) {
-            true => format!("{}  (no known source)", item.label(true)),
-            false => item.label(true),
+            true => format!("{}  (no known source)", plan_label(item)),
+            false => plan_label(item),
         })
         .collect();
     let install = switch.installs.iter().map(|(e, _)| e.to_string()).collect();
     let update = switch
         .updates
         .iter()
-        .map(|(item, _)| item.label(true))
+        .map(|(item, _)| plan_label(item))
         .collect();
     let skip = switch
         .unsupported
@@ -49,6 +50,36 @@ pub(super) fn plan_view(switch: &Switch, scope: Scope) -> PlanView {
             .collect(),
         steps: switch.steps().iter().map(Action::describe).collect(),
     }
+}
+
+/// What a plan installs and removes, one entry per item, for the user to check or leave out.
+pub(super) fn item_lines(switch: &Switch) -> Vec<(Group, String, String)> {
+    let removing = switch
+        .removals
+        .iter()
+        .map(|item| (Group::Remove, item.id.clone(), plan_label(item)));
+    let installing = switch.installs.iter().map(|(entry, _)| {
+        let text = entry.to_string();
+        (Group::Install, text.clone(), text)
+    });
+    removing.chain(installing).collect()
+}
+
+/// An installed item as a plan line: its name, where it comes from when that says something more
+/// than the name, and its kind. The agents and the scope are left out: the plan's heading names the
+/// scope and its agent boxes name the agents.
+fn plan_label(item: &Installed) -> String {
+    let (name, marketplace) = split_plugin_id(&item.name);
+    let source = item
+        .source
+        .as_deref()
+        .filter(|_| marketplace.is_empty())
+        .unwrap_or(marketplace);
+    let from = match source {
+        s if s.is_empty() || s == name => String::new(),
+        s => format!(" [{}]", redact(s)),
+    };
+    format!("{name}{from}  ({})", item.kind)
 }
 
 /// What `step` is for and what it does: `removing orca: rm ~/.claude/skills/orca`.
@@ -118,6 +149,37 @@ mod tests {
             unsupported: vec![],
             updates: vec![],
         }
+    }
+
+    fn plugin(name: &str, group: &str) -> Installed {
+        Installed {
+            kind: Kind::Plugin,
+            group: group.into(),
+            source: None,
+            agents: vec![Agent::Claude, Agent::Codex],
+            ..removable(name)
+        }
+    }
+
+    #[test]
+    fn a_plugin_named_for_its_marketplace_says_so_once_and_leaves_out_agents_and_scope() {
+        let same = plan_label(&plugin("killall-skills@killall-skills", "killall-skills"));
+        let other = plan_label(&plugin("tdd@killall-skills", "killall-skills"));
+
+        assert_eq!(same, "killall-skills  (plugin)");
+        assert_eq!(other, "tdd [killall-skills]  (plugin)");
+    }
+
+    #[test]
+    fn a_skill_names_its_source_unless_that_is_its_name() {
+        let from_repo = Installed {
+            source: Some("o/r".into()),
+            ..removable("tdd")
+        };
+        let local = removable("tdd");
+
+        assert_eq!(plan_label(&from_repo), "tdd [o/r]  (skill)");
+        assert_eq!(plan_label(&local), "tdd  (skill)");
     }
 
     #[test]

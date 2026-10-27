@@ -2,19 +2,34 @@
 //! counts matches, and match highlighting.
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 
 use super::theme::Theme;
+use super::widgets::container::{Container, Size};
 use super::widgets::input::InputField;
+use super::widgets::panel::Panel;
 
 /// The `/` prompt with its text field, drawn where the key bar usually is.
 pub fn draw_prompt(frame: &mut Frame, area: Rect, field: &InputField, theme: &Theme) {
-    let [slash, text] = Layout::horizontal([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+    let [slash, text] = Container::row([Size::Fixed(1), Size::Fill(1)]).areas(area);
     frame.render_widget(Paragraph::new("/").style(theme.accent), slash);
     field.render(frame, text, theme);
+}
+
+/// The area for a pane's rows. Unfiltered, that is all of `area`; a filter takes the top line to
+/// name the query and the matches.
+pub fn pane(frame: &mut Frame, area: Rect, query: &str, badge: String, theme: &Theme) -> Rect {
+    if query.is_empty() {
+        return area;
+    }
+    Panel::new(title("", query))
+        .focused(true)
+        .bare()
+        .badge(badge)
+        .render(frame, area, theme)
 }
 
 /// `title` with the active query appended; just the title when nothing is filtered.

@@ -2,7 +2,6 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -60,7 +59,7 @@ impl Tabs {
     fn tab(&self, index: usize, title: &str, theme: &Theme) -> Span<'static> {
         let label = title.to_string();
         if index == self.selected {
-            Span::styled(label, theme.accent.add_modifier(Modifier::BOLD))
+            Span::styled(label, theme.tab_active)
         } else {
             Span::styled(label, theme.muted)
         }

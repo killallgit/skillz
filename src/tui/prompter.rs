@@ -19,6 +19,7 @@ use crate::app::prompt::{Choice, Hold, Picked, Prompter};
 use crate::app::review::{ItemEvent, Next, Outcome, PlanView, Progress, Verdict};
 use crate::app::tree::{self, Node};
 use crate::app::workspace::{Act, SharedScreen};
+use skillz_harness::model::Scope;
 
 /// Terminal prompter. The theme is chosen once by the caller and handed to every screen; the
 /// terminal is entered by the first screen and left again once nothing holds it.
@@ -32,11 +33,12 @@ pub struct TuiPrompter {
 }
 
 impl TuiPrompter {
-    pub fn new(theme: Theme, mouse: bool) -> Self {
+    /// The workspace is the plugins list of `scope`.
+    pub fn new(theme: Theme, mouse: bool, scope: Scope) -> Self {
         TuiPrompter {
             theme,
             shell: Shell::new(mouse),
-            screen: Arc::new(Mutex::new(Workspace::standard())),
+            screen: Arc::new(Mutex::new(Workspace::plugins(scope))),
             shown: RefCell::default(),
         }
     }

@@ -2,10 +2,10 @@
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{Event, MouseEventKind};
-use ratatui::layout::{Constraint, Layout};
 use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Wrap};
 
+use super::container::{Container, Size};
 use super::modal::{self, ModalSize, PAD_X};
 use super::panel::Panel;
 use crate::tui::keymap::Action;
@@ -13,10 +13,15 @@ use crate::tui::theme::Theme;
 
 const WIDTH: u16 = 76;
 
+/// What a text modal shows: the body, then the answers as buttons and a line of help text, each
+/// only when given.
 pub struct Page {
     pub panel: Panel,
     pub lines: Vec<Line<'static>>,
-    pub footer: Line<'static>,
+    pub buttons: Option<Line<'static>>,
+    pub help: Option<Line<'static>>,
+    /// A line (of the body, before wrapping) to scroll into view, when it is not already.
+    pub reveal: Option<usize>,
 }
 
 #[derive(Default)]
@@ -27,6 +32,16 @@ pub struct TextModal {
 }
 
 impl TextModal {
+    /// Scroll the least that brings `line` into the window.
+    fn reveal(&mut self, line: usize) {
+        let window = self.page.max(1);
+        if line < self.offset {
+            self.offset = line;
+        } else if line >= self.offset + window {
+            self.offset = line + 1 - window;
+        }
+    }
+
     pub fn reset(&mut self) {
         self.offset = 0;
     }
@@ -62,23 +77,38 @@ impl TextModal {
         let paragraph = Paragraph::new(page.lines).wrap(Wrap { trim: false });
         let width = WIDTH.min(frame.area().width.saturating_sub(2 * PAD_X));
         let lines = paragraph.line_count(width.saturating_sub(2));
+        let (buttons, help) = (page.buttons.is_some(), page.help.is_some());
+        let below = u16::from(buttons) + u16::from(help);
+        // The body, then a blank line and the rows below it, and the border's two rows.
+        let tail = if below > 0 { 1 + below } else { 0 };
         let size = ModalSize {
             width,
-            height: u16::try_from(lines.saturating_add(4)).unwrap_or(u16::MAX),
+            height: u16::try_from(lines)
+                .unwrap_or(u16::MAX)
+                .saturating_add(tail + 2),
         };
         let inner = modal::open(frame, size, page.panel, theme);
-        let [body, _, foot] = Layout::vertical([
-            Constraint::Min(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
+        let [body, _, buttons_row, help_row] = Container::column([
+            Size::Fill(1),
+            Size::Fixed(u16::from(below > 0)),
+            Size::Fixed(u16::from(buttons)),
+            Size::Fixed(u16::from(help)),
         ])
         .areas(inner);
         self.lines = paragraph.line_count(body.width);
         self.page = usize::from(body.height);
+        if let Some(line) = page.reveal {
+            self.reveal(line);
+        }
         self.clamp();
         let offset = u16::try_from(self.offset).unwrap_or(u16::MAX);
         frame.render_widget(paragraph.scroll((offset, 0)), body);
-        frame.render_widget(Paragraph::new(page.footer), foot);
+        if let Some(line) = page.buttons {
+            frame.render_widget(Paragraph::new(line).centered(), buttons_row);
+        }
+        if let Some(line) = page.help {
+            frame.render_widget(Paragraph::new(line), help_row);
+        }
     }
 
     fn clamp(&mut self) {

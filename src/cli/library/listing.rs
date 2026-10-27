@@ -5,13 +5,15 @@ use std::io::Write;
 use super::super::deps::Deps;
 use super::super::library_args::LibraryListArgs;
 use super::super::scope::installed;
-use super::rows::{Row, rows};
+use super::rows::{Row, grouped, rows};
 use crate::app::apply::holds;
+use crate::app::json::Json;
 use crate::app::library::{Held, LibraryItem};
 use crate::app::stale::Disk;
 use crate::app::store::Store;
 use skillz_harness::env::Env;
 use skillz_harness::model::Scope;
+use std::path::Path;
 
 /// What the project and the user have installed, as the library tells it apart.
 fn held_by(deps: &Deps, env: &Env) -> Held {
@@ -33,7 +35,8 @@ pub(super) fn list(
         .iter()
         .filter(|item| kinds.is_empty() || kinds.contains(&item.kind()))
         .collect();
-    write_rows(rows(shown, (&held_by(deps, env), &Disk)), args.json, out)
+    let rows = rows(shown, (&held_by(deps, env), &Disk));
+    write_rows(&rows, (args.json, &deps.home), out)
 }
 
 /// The library items the project, or with `Scope::Global` the user, does not have installed.
@@ -50,16 +53,27 @@ pub(in crate::cli) fn available(
         .iter()
         .filter(|item| !holds(&here, &item.entry))
         .collect();
-    write_rows(rows(offered, (&held_by(deps, env), &Disk)), json, out)
+    let rows = rows(offered, (&held_by(deps, env), &Disk));
+    write_rows(&rows, (json, &deps.home), out)
 }
 
-fn write_rows(rows: Vec<Row>, json: bool, out: &mut dyn Write) -> anyhow::Result<()> {
+/// Columns of the rules over each group in the printed listing.
+const WIDTH: usize = 72;
+
+/// JSON keeps every path as it is; the listing a person reads groups the items by package and
+/// writes the home directory `~`.
+fn write_rows(
+    rows: &[Row],
+    (json, home): (bool, &Path),
+    out: &mut dyn Write,
+) -> anyhow::Result<()> {
     if json {
         let json: Vec<_> = rows.iter().map(Row::json).collect();
-        writeln!(out, "{}", serde_json::to_string_pretty(&json)?)?;
+        json.write_json(out)?;
     } else {
-        rows.iter()
-            .try_for_each(|row| writeln!(out, "{}", row.line()))?;
+        grouped(rows, home, WIDTH)
+            .iter()
+            .try_for_each(|line| writeln!(out, "{line}"))?;
     }
     Ok(())
 }

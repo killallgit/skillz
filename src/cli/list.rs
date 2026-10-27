@@ -4,6 +4,7 @@ use std::io::Write;
 use super::deps::Deps;
 use super::removal::{Review, confirm_and_remove};
 use super::scope::Scene;
+use crate::app::json::Json;
 use crate::app::location::location;
 use crate::app::package::Package;
 use crate::app::prompt::Choice;
@@ -135,9 +136,7 @@ fn print_json(
             anyhow::Ok(row)
         })
         .collect::<Result<_, _>>()?;
-    serde_json::to_writer_pretty(&mut *out, &rows)?;
-    writeln!(out)?;
-    Ok(())
+    rows.write_json(out)
 }
 
 /// The per-agent copies a merged item stands for, each with its own id, agents and location.

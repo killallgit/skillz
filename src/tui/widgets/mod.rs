@@ -1,10 +1,13 @@
 //! Reusable widgets. Each is a pure state type plus a render fn that takes a `Theme`.
 
+pub(crate) mod buttons;
 pub(crate) mod confirm;
+pub(crate) mod container;
 pub(crate) mod empty;
 pub(crate) mod input;
 pub(crate) mod keybar;
 pub(crate) mod list;
+pub(crate) mod margin;
 pub(crate) mod modal;
 pub(crate) mod outline;
 pub(crate) mod panel;

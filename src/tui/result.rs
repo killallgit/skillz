@@ -1,5 +1,5 @@
-//! How a switch ended: counts, then anything that went wrong with a key to copy it or run the
-//! rest again, then the steps that ran.
+//! How a switch ended: a line for each item that changed, then anything that went wrong and the
+//! steps that ran. It is answered with an OK button, plus Copy and Retry when something failed.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{Event, KeyEvent};
@@ -10,9 +10,18 @@ use super::clipboard;
 use super::keymap::{self, Action, Scope};
 use super::result_items::done_lines;
 use super::theme::Theme;
+use super::widgets::buttons::Buttons;
 use super::widgets::panel::Panel;
 use super::widgets::text_modal::{Page, TextModal};
 use crate::app::review::{Next, Outcome};
+
+/// What a button does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pressed {
+    Copy,
+    Retry,
+    Ok,
+}
 
 pub struct ResultScreen {
     title: String,
@@ -20,16 +29,52 @@ pub struct ResultScreen {
     modal: TextModal,
     copied: bool,
     copy: fn(&str),
+    /// The buttons' meanings, in the order of `buttons`; OK is last and focused.
+    choices: Vec<Pressed>,
+    buttons: Buttons,
 }
 
 impl ResultScreen {
     pub fn new(title: &str, outcome: Outcome) -> Self {
+        let mut choices = Vec::new();
+        if !outcome.is_clean() {
+            choices.push(Pressed::Copy);
+        }
+        if !outcome.failures.is_empty() {
+            choices.push(Pressed::Retry);
+        }
+        choices.push(Pressed::Ok);
+        let labels: Vec<&str> = choices
+            .iter()
+            .map(|choice| match choice {
+                Pressed::Copy => "Copy",
+                Pressed::Retry => "Retry",
+                Pressed::Ok => "OK",
+            })
+            .collect();
         ResultScreen {
             title: title.to_string(),
             outcome,
             modal: TextModal::default(),
             copied: false,
             copy: copy_to_terminal,
+            buttons: Buttons::new(&labels, choices.len() - 1),
+            choices,
+        }
+    }
+
+    fn press(&mut self, choice: Pressed) -> Step<Next> {
+        match choice {
+            Pressed::Copy => {
+                (self.copy)(&self.clip());
+                self.copied = true;
+                if let Some(at) = self.choices.iter().position(|c| *c == Pressed::Copy) {
+                    self.buttons.set_label(at, "Copied");
+                }
+                Step::Stay
+            }
+            Pressed::Retry => Step::Act(Next::Retry),
+            Pressed::Ok => Step::Act(Next::Done),
         }
     }
 
@@ -48,14 +93,14 @@ impl ResultScreen {
 
     fn on_key(&mut self, key: KeyEvent) -> Step<Next> {
         match keymap::resolve(Scope::Result, key) {
-            Some(Action::Copy) => {
-                (self.copy)(&self.clip());
-                self.copied = true;
+            Some(Action::Copy) if self.choices.contains(&Pressed::Copy) => {
+                return self.press(Pressed::Copy);
             }
             Some(Action::Retry) if self.can_retry() => return Step::Act(Next::Retry),
-            Some(Action::Back | Action::Select | Action::Quit) => {
-                return Step::Act(Next::Done);
-            }
+            Some(Action::Select) => return self.press(self.choices[self.buttons.focus()]),
+            Some(Action::Back | Action::Quit) => return Step::Act(Next::Done),
+            Some(Action::Left) => self.buttons.previous(),
+            Some(Action::Right) => self.buttons.next(),
             Some(Action::Interrupt) => return Step::Quit,
             Some(movement) => self.modal.navigate(movement),
             None => {}
@@ -64,8 +109,10 @@ impl ResultScreen {
     }
 
     fn lines(&self, theme: &Theme) -> Vec<Line<'static>> {
-        let mut lines = vec![counts(&self.outcome, theme)];
-        lines.extend(done_lines(&self.outcome, theme));
+        let mut lines = done_lines(&self.outcome, theme);
+        if lines.is_empty() && self.outcome.is_clean() {
+            lines.push(Line::styled("Nothing changed", theme.muted));
+        }
         lines.extend(problem_lines(&self.outcome, theme));
         let steps = collapse_repeats(&self.outcome.log);
         if !self.outcome.is_clean() && !steps.is_empty() {
@@ -74,21 +121,6 @@ impl ResultScreen {
             lines.extend(steps.iter().map(|l| Line::raw(format!("  {l}"))));
         }
         lines
-    }
-
-    fn hints(&self, theme: &Theme) -> Line<'static> {
-        let spans = keymap::hint_bindings(&[Scope::Result])
-            .into_iter()
-            .filter(|binding| binding.action != Action::Retry || self.can_retry())
-            .map(|binding| {
-                let label = if binding.action == Action::Copy && self.copied {
-                    "copied"
-                } else {
-                    binding.label
-                };
-                Span::styled(format!("{} {label}  ", binding.keys), theme.muted)
-            });
-        Line::from(spans.collect::<Vec<_>>())
     }
 }
 
@@ -104,20 +136,6 @@ fn collapse_repeats(log: &[String]) -> Vec<String> {
 
 fn copy_to_terminal(text: &str) {
     let _ = clipboard::copy(text);
-}
-
-fn counts(outcome: &Outcome, theme: &Theme) -> Line<'static> {
-    let count = |n: usize, what: &str, shown: ratatui::style::Style| {
-        let style = if n == 0 { theme.muted } else { shown };
-        Span::styled(format!("{what} {n}   "), style)
-    };
-    Line::from(vec![
-        count(outcome.removed, "removed", theme.text),
-        count(outcome.installed, "installed", theme.ok),
-        count(outcome.updated, "updated", theme.ok),
-        count(outcome.skipped, "skipped", theme.warn),
-        count(outcome.failures.len(), "failed", theme.danger),
-    ])
 }
 
 fn problem_lines(outcome: &Outcome, theme: &Theme) -> Vec<Line<'static>> {
@@ -162,7 +180,9 @@ impl Screen<Next> for ResultScreen {
         let page = Page {
             panel: Panel::new(self.title.clone()).danger(!self.outcome.is_clean()),
             lines: self.lines(theme),
-            footer: self.hints(theme),
+            buttons: Some(self.buttons.line(theme)),
+            help: None,
+            reveal: None,
         };
         self.modal.render(frame, theme, page);
     }
@@ -255,8 +275,70 @@ mod tests {
 
         let lines = screen.lines(&theme);
 
-        // Line 0 is the counts; the failure is the second problem block line.
-        assert_eq!(lines[2].spans[0].style, theme.danger);
+        // Line 0 is the blank that opens the problems; the failure follows it.
+        assert_eq!(lines[1].spans[0].style, theme.danger);
+    }
+
+    fn drawn_text(screen: &mut ResultScreen) -> String {
+        use crate::tui::widgets::testing::{render_to_buffer, row_text};
+        let theme = Theme::dark();
+        let buffer = render_to_buffer(100, 30, |f| screen.draw(f, &theme));
+        (0..30)
+            .map(|y| row_text(&buffer, y))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn a_clean_result_is_the_list_of_what_changed_and_one_ok_button() {
+        let outcome = Outcome {
+            items: vec![crate::app::review::ItemEvent {
+                target: crate::app::review::Target::Remove("a".into()),
+                label: "killall-skills".into(),
+                phase: crate::app::review::Phase::Succeeded,
+            }],
+            ..Outcome::default()
+        };
+        let mut screen = ResultScreen::new("Change", outcome);
+
+        let text = drawn_text(&mut screen);
+
+        assert!(text.contains("Removed killall-skills") && text.contains("[ OK ]"));
+        assert!(!text.contains("Copy") && !text.contains("Retry"));
+        // No counts and no key hints.
+        assert!(
+            !text.contains("installed 0") && !text.contains("enter") && !text.contains("close")
+        );
+    }
+
+    #[test]
+    fn a_failed_result_offers_copy_and_retry_before_ok_and_enter_answers_ok() {
+        let mut screen = ResultScreen::new("Change", failed());
+
+        let text = drawn_text(&mut screen);
+        let enter = answer(&mut screen, KeyCode::Enter);
+
+        let (copy, retry, ok) = (
+            text.find("[ Copy ]").unwrap(),
+            text.find("[ Retry ]").unwrap(),
+            text.find("[ OK ]").unwrap(),
+        );
+        assert!(copy < retry && retry < ok);
+        assert_eq!(enter, Some(Next::Done));
+    }
+
+    #[test]
+    fn moving_to_retry_and_pressing_enter_retries_and_copy_says_copied() {
+        let mut screen = ResultScreen::new("Change", failed());
+        screen.copy = |_| {};
+
+        answer(&mut screen, KeyCode::Left);
+        let retry = answer(&mut screen, KeyCode::Enter);
+        answer(&mut screen, KeyCode::Left);
+        let copy = answer(&mut screen, KeyCode::Enter);
+
+        assert_eq!((retry, copy), (Some(Next::Retry), None));
+        assert!(drawn_text(&mut screen).contains("[ Copied ]"));
     }
 
     #[test]

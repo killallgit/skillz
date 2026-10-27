@@ -13,7 +13,7 @@ pub enum Used {
     At(u64),
 }
 
-fn describe_installer(installer: Installer) -> &'static str {
+pub(crate) fn describe_installer(installer: Installer) -> &'static str {
     match installer {
         Installer::Npx => "npx skills",
         Installer::ClaudeCli => "claude plugin",

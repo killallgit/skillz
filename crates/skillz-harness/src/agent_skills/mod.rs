@@ -3,10 +3,12 @@
 //! `references/` and `assets/`. Harnesses extend the frontmatter with keys of their own; those
 //! are kept in `Frontmatter::extra` rather than dropped.
 
+mod doctor;
 mod frontmatter;
 mod layout;
 mod validate;
 
+pub use doctor::{Copy, Diagnostic, Readers, Root, Stray, diagnose, roots};
 pub use frontmatter::{Frontmatter, parse, skill_name};
 pub use layout::{Layout, layout};
 pub use validate::{Violation, validate};

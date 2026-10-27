@@ -4,7 +4,7 @@
 
 use super::Session;
 use super::notice::Notice;
-use super::plan_view::{plan_view, step_label};
+use super::plan_view::{item_lines, plan_view, step_label};
 use super::selection::{Selection, outcome_of, selection_plan};
 use super::updates::update_plan;
 use crate::app::apply::{self, Switch, Watch};
@@ -91,16 +91,24 @@ pub(in crate::cli) fn change(
         let applier = job.applier();
         let mut switch = job.plan(&applier, what, None)?;
         targets = targets.or_else(|| job.offered_targets(what, &switch));
-        if let Some(chosen) = &targets {
-            switch = job.plan(&applier, what, Some(&chosen.checked()))?;
+        if let Some(only) = targets.as_ref().and_then(Targets::narrowing) {
+            switch = job.plan(&applier, what, Some(&only))?;
         }
         switch
             .updates
             .retain(|(item, _)| !completed_updates.contains(&item.id));
-        if switch.is_empty() && targets.is_none() {
+        if switch.is_empty() && targets.as_ref().is_none_or(|t| t.agents.is_empty()) {
             return Ok(Some(Notice::UpToDate));
         }
         let mut view = plan_view(&switch, job.scope);
+        if let Some(chosen) = &mut targets {
+            // The plan lists every item with a box; what is unchecked is not done.
+            chosen.sync_items(item_lines(&switch));
+            switch
+                .installs
+                .retain(|(entry, _)| chosen.includes(&entry.to_string()));
+            switch.removals.retain(|item| chosen.includes(&item.id));
+        }
         view.targets.clone_from(&targets);
         view.heading = what.heading(job.scope);
         match deps.prompter.plan(&view)? {
@@ -137,7 +145,8 @@ impl Job<'_> {
         }
     }
 
-    /// The agents a removal could reach, when it spans more than one.
+    /// What the user may narrow in a change they picked: the agents it reaches, when more than
+    /// one, and each item it installs or removes.
     fn offered_targets(&self, what: &Change, switch: &Switch) -> Option<Targets> {
         if !matches!(what, Change::Selection(_)) {
             return None;
@@ -149,7 +158,7 @@ impl Job<'_> {
             .collect();
         agents.sort();
         agents.dedup();
-        (agents.len() > 1).then(|| Targets::all(agents))
+        Some(Targets::all(agents))
     }
 
     fn plan(

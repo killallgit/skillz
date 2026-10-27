@@ -14,63 +14,17 @@ use skillz_harness::model::{Agent, Installed, Scope};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Act {
     Quit,
-    /// Remove the installed items with these ids in `scope`, as one plan.
-    Remove {
-        scope: Scope,
-        ids: Vec<String>,
-    },
     /// Bring the installed items with these ids in `scope` to their latest version, as one plan.
     Update {
         scope: Scope,
         ids: Vec<String>,
     },
-    /// Install what the profile has that `scope` lacks.
-    Apply {
+    /// Install these entries and remove the installed items with these ids, as one plan, in
+    /// `scope`.
+    Change {
         scope: Scope,
-        profile: String,
-    },
-    /// Install what `source` (`owner/repo`, a git URL or a path) offers each agent in `scope`.
-    InstallSource {
-        scope: Scope,
-        source: String,
-    },
-    /// Add the item a one-line entry describes to the library.
-    LibraryAdd {
-        spec: String,
-    },
-    /// Install this library entry in `scope`, for the tools its agents name.
-    LibraryInstall {
-        scope: Scope,
-        entry: Spec,
-    },
-    LibraryRemove(Spec),
-    /// Make `scope` hold exactly what the profile has, removing the rest.
-    ApplyExact {
-        scope: Scope,
-        profile: String,
-    },
-    /// Make the project hold these entries of its profile and not the rest of it: install the
-    /// entries, remove the installed items with these ids.
-    Subset {
         install: Vec<Spec>,
         remove: Vec<String>,
-    },
-    /// Make a profile of this name holding these entries.
-    CreateProfile {
-        name: String,
-        entries: Vec<Spec>,
-    },
-    /// Store what the project has installed as a new profile.
-    SaveCurrent {
-        name: String,
-    },
-    /// Replace the profile's entries.
-    SetEntries {
-        profile: String,
-        entries: Vec<Spec>,
-    },
-    DeleteProfile {
-        name: String,
     },
 }
 

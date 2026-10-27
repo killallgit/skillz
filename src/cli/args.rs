@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand};
 
 use super::library_args::LibraryCommand;
 use super::profile_args::ProfileCommand;
-use skillz_harness::model::{Agent, Installed, Kind};
+use skillz_harness::model::{Agent, Installed, Kind, Scope};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -35,6 +35,8 @@ pub enum Command {
     Reset(ResetArgs),
     /// Find duplicate skills and skills/plugins unused for 7+ days, then remove the ones picked
     Prune(PruneArgs),
+    /// Check the skills on disk for name collisions, stray skill files, format problems and broken links
+    Doctor(DoctorArgs),
     /// Install what a project lacks of a profile (with --exact, remove the rest)
     Use(UseArgs),
     /// Create, inspect and delete profiles
@@ -87,6 +89,19 @@ pub struct ListArgs {
     /// Browse in a collapsible tree
     #[arg(short, long)]
     pub interactive: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DoctorArgs {
+    /// Project directory (default: cwd)
+    #[arg(short = 'p', long)]
+    pub project: Option<PathBuf>,
+    /// Only the user's skills, not the project's
+    #[arg(short, long, conflicts_with = "project")]
+    pub global: bool,
+    /// Print the diagnostics as JSON for scripts and agents
+    #[arg(long)]
+    pub json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -282,6 +297,41 @@ impl Filter {
     }
 }
 
+/// The scope whose plugins list the command opens instead of printing: a plain `list` of the
+/// project, or of the user's installs with `-g`. A query, a flag or a kind filter asks for the
+/// printed listing.
+pub(super) fn plugin_list(command: &Command) -> Option<Scope> {
+    match command {
+        Command::List(args) => args.plugin_list(),
+        _ => None,
+    }
+}
+
+impl ListArgs {
+    pub(super) fn plugin_list(&self) -> Option<Scope> {
+        let plain = self.target.is_none()
+            && !(self.all || self.json || self.check || self.available || self.interactive)
+            && !self.filter.narrows();
+        plain.then_some(match self.filter.global {
+            true => Scope::Global,
+            false => Scope::Project,
+        })
+    }
+}
+
+impl Filter {
+    /// Asks for some kinds or agents only.
+    fn narrows(&self) -> bool {
+        self.skills
+            || self.hooks
+            || self.plugins
+            || self.marketplaces
+            || self.mcp
+            || self.subagents
+            || !self.agents.is_empty()
+    }
+}
+
 /// `--yes` (prune: `--force`) swaps the interactive prompter for one that picks and confirms everything.
 pub(super) fn wants_auto_yes(command: &Command) -> bool {
     match command {
@@ -315,6 +365,47 @@ pub(super) fn wants_auto_yes(command: &Command) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn opens(args: &[&str]) -> Option<Scope> {
+        let cli = Cli::try_parse_from(std::iter::once("skillz").chain(args.iter().copied()));
+        cli.unwrap().command.as_ref().and_then(plugin_list)
+    }
+
+    #[test]
+    fn a_plain_list_opens_the_projects_plugins_and_dash_g_the_users() {
+        let plain = opens(&["list"]);
+        let in_project = opens(&["ls", "-p", "."]);
+        let user = opens(&["list", "-g"]);
+        let long = opens(&["list", "--global"]);
+
+        assert_eq!(
+            (plain, in_project, user, long),
+            (
+                Some(Scope::Project),
+                Some(Scope::Project),
+                Some(Scope::Global),
+                Some(Scope::Global)
+            )
+        );
+    }
+
+    #[test]
+    fn json_a_query_or_any_other_flag_prints_instead_of_opening_the_list() {
+        let printed = [
+            &["list", "--json"][..],
+            &["list", "-g", "--json"],
+            &["list", "--json", "--check"],
+            &["list", "tdd"],
+            &["list", "--all"],
+            &["list", "-i"],
+            &["list", "-g", "--skills"],
+            &["list", "--skills"],
+            &["list", "--available"],
+        ]
+        .map(opens);
+
+        assert_eq!(printed, [None; 9]);
+    }
 
     #[test]
     fn the_command_tree_is_valid_and_profile_commands_parse() {

@@ -26,6 +26,14 @@ pub struct Theme {
     pub border: Style,
     pub title: Style,
     pub text: Style,
+    /// Text that matters more than the rest of its row.
+    pub strong: Style,
+    /// The tab being shown.
+    pub tab_active: Style,
+    /// The option under the cursor in a dialog's list or a row of buttons.
+    pub choice: Style,
+    /// Rows shown for reference that no key acts on.
+    pub inactive: Style,
     pub kinds: Kinds,
     pub glyphs: Glyphs,
 }
@@ -85,6 +93,10 @@ impl Theme {
             border: fg(Color::DarkGray),
             title: fg(Color::White).add_modifier(Modifier::BOLD),
             text: Style::new(),
+            strong: modifier(Modifier::BOLD),
+            tab_active: fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            choice: modifier(Modifier::REVERSED | Modifier::BOLD),
+            inactive: fg(Color::DarkGray).add_modifier(Modifier::DIM),
             kinds: Kinds::of([75, 177, 80, 180, 146]),
             glyphs: Glyphs::UNICODE,
         }
@@ -102,6 +114,10 @@ impl Theme {
             border: fg(Color::Gray),
             title: fg(Color::Black).add_modifier(Modifier::BOLD),
             text: Style::new(),
+            strong: modifier(Modifier::BOLD),
+            tab_active: fg(Color::Blue).add_modifier(Modifier::BOLD),
+            choice: modifier(Modifier::REVERSED | Modifier::BOLD),
+            inactive: fg(Color::Gray).add_modifier(Modifier::DIM),
             kinds: Kinds::of([25, 127, 30, 94, 60]),
             glyphs: Glyphs::UNICODE,
         }
@@ -120,6 +136,10 @@ impl Theme {
             border: modifier(Modifier::DIM),
             title: modifier(Modifier::BOLD),
             text: Style::new(),
+            strong: modifier(Modifier::BOLD),
+            tab_active: modifier(Modifier::BOLD),
+            choice: modifier(Modifier::REVERSED | Modifier::BOLD),
+            inactive: modifier(Modifier::DIM),
             kinds: Kinds::plain(),
             glyphs: Glyphs {
                 cursor: "> ",
@@ -179,6 +199,12 @@ impl Theme {
             ItemKind::Mcp => self.kinds.mcp,
             ItemKind::Hook => self.kinds.hook,
         }
+    }
+
+    /// A section heading: its kind's colour when it has one, bold either way.
+    pub fn heading(&self, kind: Option<ItemKind>) -> Style {
+        kind.map_or(self.title, |kind| self.kind_style(kind))
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn border_for(&self, focused: bool) -> Style {

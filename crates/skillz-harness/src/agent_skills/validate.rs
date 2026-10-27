@@ -5,7 +5,8 @@ const DESCRIPTION_MAX: usize = 1024;
 const COMPATIBILITY_MAX: usize = 500;
 
 /// A way a skill breaks the Agent Skills specification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Violation {
     MissingName,
     NameTooLong,

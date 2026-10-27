@@ -3,15 +3,14 @@
 
 use ratatui::Frame;
 use ratatui::crossterm::event::KeyEvent;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::text::Line;
 
 use std::sync::mpsc::Receiver;
 
 use super::checks::Checks;
-use super::installed::InstalledTab;
-use super::library::LibraryTab;
-use super::profiles::ProfilesTab;
+use super::frame;
+use super::plugins::PluginsTab;
 use super::run::RunModal;
 use super::syncs::Syncs;
 use super::tab::Tab;
@@ -23,10 +22,13 @@ use crate::tui::filter;
 use crate::tui::help::{Help, Verdict};
 use crate::tui::keymap::{self, Action, Scope};
 use crate::tui::theme::Theme;
+use crate::tui::widgets::container::{Container, Size};
 use crate::tui::widgets::empty;
 use crate::tui::widgets::keybar::KeyBar;
+use crate::tui::widgets::margin;
 use crate::tui::widgets::tabs::Tabs;
 use crate::tui::widgets::toast::Toasts;
+use skillz_harness::model::Scope as Level;
 
 #[cfg(test)]
 mod tests;
@@ -108,14 +110,9 @@ impl Workspace {
         self.run = None;
     }
 
-    /// Project, Global, Library and Profiles.
-    pub fn standard() -> Self {
-        Workspace::new(vec![
-            Box::new(InstalledTab::project()),
-            Box::new(InstalledTab::global()),
-            Box::new(LibraryTab::new()),
-            Box::new(ProfilesTab::new()),
-        ])
+    /// The plugins list alone, for the project or for the user: with one tab there is no tab bar.
+    pub fn plugins(scope: Level) -> Self {
+        Workspace::new(vec![Box::new(PluginsTab::new(scope))])
     }
 
     fn take_syncs(&mut self) {
@@ -130,6 +127,12 @@ impl Workspace {
         }
     }
 
+    /// Tabs to switch between. A lone tab is shown bare: the list and nothing around it, with no
+    /// frame, tab bar or key bar.
+    fn has_bar(&self) -> bool {
+        self.tabs.len() > 1
+    }
+
     fn tab(&self) -> &dyn Tab {
         self.tabs[self.bar.selected()].as_ref()
     }
@@ -140,7 +143,9 @@ impl Workspace {
 
     fn scopes(&self) -> Vec<Scope> {
         let mut scopes = self.tab().scopes().to_vec();
-        scopes.push(Scope::Workspace);
+        if self.has_bar() {
+            scopes.push(Scope::Workspace);
+        }
         scopes
     }
 
@@ -186,20 +191,33 @@ impl Workspace {
         if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
             return draw_too_small(frame, area, theme);
         }
-        let [bar, body, foot] = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Min(1),
-            Constraint::Length(1),
+        let inner = match self.has_bar() {
+            true => frame::draw(frame, area, &self.model.dir, theme),
+            false => margin::inset(area),
+        };
+        let head = u16::from(self.has_bar());
+        // A bare tab has a footer only while its filter is being typed.
+        let foot = u16::from(self.has_bar() || self.tab().prompt().is_some());
+        let [bar, rule, body, foot] = Container::column([
+            Size::Fixed(head),
+            Size::Fixed(head),
+            Size::Fill(1),
+            Size::Fixed(foot),
         ])
-        .areas(area);
+        .areas(inner);
         let outdated = self.checks.outdated().clone();
         self.tabs
             .iter_mut()
             .for_each(|tab| tab.mark_outdated(&outdated));
-        self.bar.render(frame, bar, theme);
+        if self.has_bar() {
+            self.bar.render(frame, frame::padded(bar), theme);
+            frame::divider(frame, rule, theme);
+        }
         self.tabs[self.bar.selected()].draw(frame, body, theme);
-        self.draw_footer(frame, foot, theme);
-        self.toasts.render(frame, area, theme);
+        if !foot.is_empty() {
+            self.draw_footer(frame, frame::padded(foot), theme);
+        }
+        self.toasts.render(frame, inner, theme);
         if let Some(help) = &mut self.help {
             help.render(frame, theme);
         }
