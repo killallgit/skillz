@@ -8,6 +8,9 @@ use crate::cli::scope::{complete_installed, project_env};
 use skillz_harness::Spec;
 use skillz_harness::model::Scope;
 
+/// What the applied profile of the user level is remembered under.
+const USER_LEVEL: &str = "user-level";
+
 impl Session<'_, '_> {
     pub(in crate::cli) fn create_profile(
         &self,
@@ -44,21 +47,30 @@ impl Session<'_, '_> {
         Ok(Notice::Updated(name.into()))
     }
 
-    /// The profile last applied to this project; deleting a profile forgets it here.
-    pub(in crate::cli) fn applied(&self) -> Option<String> {
-        self.store.read().ok()?.applied.remove(&self.project_key())
+    /// The profile last applied at `scope`: to this project, or at user level. Deleting a
+    /// profile forgets it.
+    pub(in crate::cli) fn applied(&self, scope: Scope) -> Option<String> {
+        self.store
+            .read()
+            .ok()?
+            .applied
+            .remove(&self.applied_key(scope))
     }
 
-    pub(in crate::cli) fn remember_applied(&self, name: &str) -> anyhow::Result<()> {
-        let key = self.project_key();
+    pub(in crate::cli) fn remember_applied(&self, scope: Scope, name: &str) -> anyhow::Result<()> {
+        let key = self.applied_key(scope);
         self.store.update(|document| {
             document.applied.insert(key, name.into());
             Ok(())
         })
     }
 
-    fn project_key(&self) -> String {
-        self.project.display().to_string()
+    /// A project is remembered by its path; the user level by a word no path can be.
+    fn applied_key(&self, scope: Scope) -> String {
+        match scope {
+            Scope::Project => self.project.display().to_string(),
+            Scope::Global => USER_LEVEL.into(),
+        }
     }
 
     pub(in crate::cli) fn delete_profile(&self, name: &str) -> anyhow::Result<Notice> {

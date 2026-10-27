@@ -5,6 +5,7 @@ use super::tests::{on_item, press};
 use super::*;
 use crate::tui::widgets::testing::open_all;
 use crate::tui::widgets::testing::render_to_buffer;
+use skillz_harness::Spec;
 use skillz_harness::model::Kind;
 
 /// `tdd` installed in the project and `grill` globally.
@@ -44,17 +45,65 @@ fn the_project_tab_also_lists_global_skills_for_inspection() {
 }
 
 #[test]
-fn the_global_tab_has_no_profile_keys() {
+fn the_global_tab_has_no_keep_clear_or_save_keys() {
     let mut tab = loaded(Scope::Global);
 
-    let compare = press(&mut tab, KeyCode::Char('p'));
-    let apply = press(&mut tab, KeyCode::Char('a'));
-    let save = press(&mut tab, KeyCode::Char('s'));
+    let keys = ['p', 'c', 's'].map(|c| press(&mut tab, KeyCode::Char(c)));
+
+    assert_eq!((keys, tab.captures_keys()), ([None, None, None], false));
+}
+
+/// A global tab holding `grill` globally, with a profile `web` that wants it, applied there.
+fn global_tab_with_profile() -> InstalledTab {
+    let mut web = Profile::new("web");
+    web.entries = vec![Spec::Skill {
+        source: "o/r".into(),
+        names: vec!["grill".into()],
+        agents: vec![],
+    }];
+    let mut tab = InstalledTab::new(Scope::Global);
+    tab.load(&Model {
+        global: vec![global("grill", Kind::Skill, Some("o/r"))],
+        profiles: vec![web],
+        applied: Some("api".into()),
+        applied_global: Some("web".into()),
+        ..Model::default()
+    });
+    tab
+}
+
+#[test]
+fn a_on_the_global_tab_applies_a_profile_at_user_level_and_adds_by_default() {
+    let mut tab = global_tab_with_profile();
+
+    press(&mut tab, KeyCode::Char('a'));
+    let added = press(&mut tab, KeyCode::Enter);
+    press(&mut tab, KeyCode::Char('a'));
+    press(&mut tab, KeyCode::Char('m'));
+    let replaced = press(&mut tab, KeyCode::Enter);
 
     assert_eq!(
-        (compare, apply, save, tab.captures_keys()),
-        (None, None, None, false)
+        (added, replaced),
+        (
+            Some(Act::Apply {
+                scope: Scope::Global,
+                profile: "web".into()
+            }),
+            Some(Act::ApplyExact {
+                scope: Scope::Global,
+                profile: "web".into()
+            })
+        )
     );
+}
+
+#[test]
+fn the_global_tab_compares_with_the_profile_applied_at_user_level_not_the_projects() {
+    let tab = global_tab_with_profile();
+
+    let drift = tab.drift().unwrap();
+
+    assert_eq!((drift.profile.as_str(), drift.matches()), ("web", true));
 }
 
 #[test]

@@ -133,6 +133,24 @@ impl crate::app::prompt::Prompter for Outcomes {
 }
 
 #[test]
+fn applying_at_user_level_records_the_user_level_and_not_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    save_empty_profile(dir.path(), "web");
+    let runner = FakeRunner::new(|_| {});
+    let prompter = ScriptedPrompter::new(&[], true);
+    let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+    let here = session(&deps, dir.path());
+
+    here.apply(Scope::Global, "web", &Change::Apply("web"))
+        .unwrap();
+
+    assert_eq!(
+        (here.applied(Scope::Global), here.applied(Scope::Project)),
+        (Some("web".to_string()), None)
+    );
+}
+
+#[test]
 fn only_an_approved_apply_records_the_applied_profile() {
     let approved = [(false, None), (true, Some("web".to_string()))];
     for (approve, expected) in approved {
@@ -144,8 +162,9 @@ fn only_an_approved_apply_records_the_applied_profile() {
         let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
         let here = session(&deps, dir.path());
 
-        here.apply("web", &Change::ApplyExact("web")).unwrap();
+        here.apply(Scope::Project, "web", &Change::ApplyExact("web"))
+            .unwrap();
 
-        assert_eq!(here.applied(), expected);
+        assert_eq!(here.applied(Scope::Project), expected);
     }
 }

@@ -26,9 +26,8 @@ impl InstalledTab {
     pub(super) fn draw_body(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let drift = self.drift();
         let comparison = self.comparison(&drift);
-        let head_height = u16::from(!matches!(comparison, Comparison::Off));
         let [head, body] =
-            Layout::vertical([Constraint::Length(head_height), Constraint::Min(1)]).areas(area);
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
         let line = header::line(comparison, head.width, theme);
         frame.render_widget(Paragraph::new(line), head);
         self.draw_outline(frame, body, theme);
@@ -63,10 +62,9 @@ impl InstalledTab {
     }
 
     fn comparison<'a>(&self, drift: &'a Option<Drift>) -> Comparison<'a> {
-        match (self.scope, drift) {
-            (Scope::Global, _) => Comparison::Off,
-            (Scope::Project, None) => Comparison::Unchosen,
-            (Scope::Project, Some(drift)) => Comparison::With(drift),
+        match drift {
+            None => Comparison::Unchosen,
+            Some(drift) => Comparison::With(drift),
         }
     }
 

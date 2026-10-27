@@ -339,6 +339,7 @@ pub fn use_cmd(profile: &str, dry_run: bool) -> Command {
         profile: profile.into(),
         exact: false,
         project: Some(PathBuf::from(".")),
+        global: false,
         yes: true,
         dry_run,
     })

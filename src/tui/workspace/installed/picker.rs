@@ -1,5 +1,5 @@
-//! The popup that chooses the profile to apply to the project, and whether it replaces what is
-//! there or only adds what is missing.
+//! The popup that chooses the profile to apply to the project or at user level, and whether it
+//! replaces what is there or only adds what is missing.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
@@ -12,6 +12,7 @@ use crate::tui::theme::Theme;
 use crate::tui::widgets::list::ListView;
 use crate::tui::widgets::modal::{self, ModalSize};
 use crate::tui::widgets::panel::Panel;
+use skillz_harness::model::Scope as Level;
 
 const WIDTH: u16 = 44;
 
@@ -32,11 +33,13 @@ pub(super) struct Picker {
     names: Vec<String>,
     list: ListView,
     exact: bool,
+    level: Level,
 }
 
 impl Picker {
-    /// The cursor starts on `current`, when it is one of `names`. Applying replaces by default.
-    pub fn new(names: Vec<String>, current: Option<&str>) -> Self {
+    /// The cursor starts on `current`, when it is one of `names`. Applying only adds what is
+    /// missing by default: replacing removes things, so it is chosen with `m`.
+    pub fn new(names: Vec<String>, current: Option<&str>, level: Level) -> Self {
         let mut list = ListView::new(names.len());
         list.select(
             names
@@ -47,7 +50,8 @@ impl Picker {
         Picker {
             names,
             list,
-            exact: true,
+            exact: false,
+            level,
         }
     }
 
@@ -79,7 +83,11 @@ impl Picker {
             width: WIDTH.min(frame.area().width),
             height: (self.names.len() as u16 + 4).min(frame.area().height),
         };
-        let inner = modal::open(frame, size, Panel::new("Apply profile"), theme);
+        let title = match self.level {
+            Level::Project => "Apply profile to this project",
+            Level::Global => "Apply profile at user level",
+        };
+        let inner = modal::open(frame, size, Panel::new(title), theme);
         let [rows, _, mode] = Layout::vertical([
             Constraint::Min(1),
             Constraint::Length(1),
@@ -103,7 +111,7 @@ mod tests {
     use crate::tui::widgets::testing::key;
 
     fn picker(current: Option<&str>) -> Picker {
-        Picker::new(vec!["api".into(), "web".into()], current)
+        Picker::new(vec!["api".into(), "web".into()], current, Level::Project)
     }
 
     fn chosen(profile: &str, exact: bool) -> Pick {
@@ -114,13 +122,13 @@ mod tests {
     }
 
     #[test]
-    fn enter_replaces_with_the_profile_under_the_cursor() {
+    fn enter_adds_what_is_missing_with_the_profile_under_the_cursor() {
         let mut picker = picker(None);
 
         picker.handle(key(KeyCode::Down));
         let pick = picker.handle(key(KeyCode::Enter));
 
-        assert_eq!(pick, chosen("web", true));
+        assert_eq!(pick, chosen("web", false));
     }
 
     #[test]
@@ -128,13 +136,13 @@ mod tests {
         let mut picker = picker(None);
 
         picker.handle(key(KeyCode::Char('m')));
-        let adding = picker.handle(key(KeyCode::Enter));
-        picker.handle(key(KeyCode::Char('m')));
         let replacing = picker.handle(key(KeyCode::Enter));
+        picker.handle(key(KeyCode::Char('m')));
+        let adding = picker.handle(key(KeyCode::Enter));
 
         assert_eq!(
-            (adding, replacing),
-            (chosen("api", false), chosen("api", true))
+            (replacing, adding),
+            (chosen("api", true), chosen("api", false))
         );
     }
 
@@ -145,7 +153,7 @@ mod tests {
         let pick = picker.handle(key(KeyCode::Enter));
         let closed = picker.handle(key(KeyCode::Esc));
 
-        assert_eq!(pick, chosen("web", true));
+        assert_eq!(pick, chosen("web", false));
         assert_eq!(closed, Pick::Closed);
     }
 }

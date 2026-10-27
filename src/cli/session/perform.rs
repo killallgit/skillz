@@ -30,8 +30,10 @@ impl Session<'_, '_> {
                 change(self, Scope::Project, &Change::Selection(&picked))
             }
             Act::Update { scope, ids } => change(self, *scope, &Change::Update(ids)),
-            Act::Apply { profile } => self.apply(profile, &Change::Apply(profile)),
-            Act::ApplyExact { profile } => self.apply(profile, &Change::ApplyExact(profile)),
+            Act::Apply { scope, profile } => self.apply(*scope, profile, &Change::Apply(profile)),
+            Act::ApplyExact { scope, profile } => {
+                self.apply(*scope, profile, &Change::ApplyExact(profile))
+            }
             Act::InstallSource { scope, source } => self.install_source(&InstallRequest {
                 source: source.clone(),
                 cwd: self.deps.cwd.clone(),
@@ -52,7 +54,7 @@ impl Session<'_, '_> {
             Act::CreateProfile { name, entries } => self.create_profile(name, entries).map(Some),
             Act::SaveCurrent { name } => {
                 let saved = self.save_current(name)?;
-                self.remember_applied(name)?;
+                self.remember_applied(Scope::Project, name)?;
                 Ok(Some(saved))
             }
             Act::SetEntries { profile, entries } => self.set_entries(profile, entries).map(Some),
@@ -60,15 +62,16 @@ impl Session<'_, '_> {
         }
     }
 
-    /// Apply `profile`, and remember it as the project's once the change went through.
+    /// Apply `profile` at `scope`, and remember it as that level's once the change went through.
     pub(in crate::cli) fn apply(
         &self,
+        scope: Scope,
         profile: &str,
         what: &Change,
     ) -> anyhow::Result<Option<Notice>> {
-        let notice = change(self, Scope::Project, what)?;
+        let notice = change(self, scope, what)?;
         if matches!(notice, Some(Notice::Applied(_) | Notice::UpToDate)) {
-            self.remember_applied(profile)?;
+            self.remember_applied(scope, profile)?;
         }
         Ok(notice)
     }

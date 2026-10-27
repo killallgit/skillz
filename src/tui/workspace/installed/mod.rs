@@ -151,7 +151,11 @@ impl Tab for InstalledTab {
         };
         self.installed = here.clone();
         self.profiles = model.profiles.clone();
-        self.applied.clone_from(&model.applied);
+        let applied = match self.scope {
+            Scope::Project => &model.applied,
+            Scope::Global => &model.applied_global,
+        };
+        self.applied.clone_from(applied);
         self.rows = build(here);
         if self.scope == Scope::Project {
             let inherited: Vec<_> = model

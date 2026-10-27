@@ -116,8 +116,12 @@ fn run_use(deps: &Deps, args: UseArgs, out: &mut dyn Write) -> anyhow::Result<()
     } else {
         Change::Apply(&args.profile)
     };
+    let scope = match args.global {
+        true => Scope::Global,
+        false => Scope::Project,
+    };
     with_session(deps, &env, out, args.dry_run, |session, console| {
-        console.conclude(session.apply(&args.profile, &what)?)
+        console.conclude(session.apply(scope, &args.profile, &what)?)
     })
 }
 

@@ -172,7 +172,7 @@ pub const BINDINGS: &[Binding] = &[
     bind(Installed, A::Select, &[plain(KeyCode::Enter)], "enter", "apply picks / fold", 2),
     bind(Installed, A::AddSource, &[ch('A')], "A", "add from repo", 9),
     bind(Installed, A::Remove, &[ch('r')], "r", "remove", 4),
-    bind(Project, A::ApplyProfile, &[ch('a')], "a", "apply profile", 3),
+    bind(Installed, A::ApplyProfile, &[ch('a')], "a", "apply profile", 3),
     bind(Project, A::PickSubset, &[ch('p')], "p", "keep from profile", 5),
     bind(Project, A::Clear, &[ch('c')], "c", "clear", 6),
     bind(Project, A::SaveCurrent, &[ch('s')], "s", "save as profile", 10),
@@ -377,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tab_binds_the_keys_of_all_its_scopes_and_the_global_tab_has_no_profile_keys() {
+    fn a_tab_binds_the_keys_of_all_its_scopes_and_global_can_apply_but_not_keep_clear_or_save() {
         let project = [Installed, Project];
         let keys = ['r', 'p', 'a', 'c'];
 
@@ -393,7 +393,10 @@ mod tests {
                 Some(Action::Clear)
             ]
         );
-        assert_eq!(on_global, [Some(Action::Remove), None, None, None]);
+        assert_eq!(
+            on_global,
+            [Some(Action::Remove), None, Some(Action::ApplyProfile), None]
+        );
     }
 
     #[test]

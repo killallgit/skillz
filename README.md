@@ -91,7 +91,7 @@ then the same install and removal steps):
 | `r` remove / `u` update the highlighted item | `uninstall`, `update` |
 | `A` add from a repo: type `owner/repo`, a git URL or a path | `install SOURCE` |
 | The Project header: the applied profile, matches / N missing / N extra | `profile status [NAME] [--json]`, `profile list [--json]` |
-| Project: `a` apply a profile (`m` switches replace / add what is missing), `p` keep some of its entries, `c` clear | `use NAME`, `use NAME --exact` (`-y`, `--dry-run`), `uninstall` |
+| Project and Global: `a` apply a profile (adds what is missing; `m` switches to replace). Project also: `p` keep some of its entries, `c` clear | `use NAME`, `use NAME --exact`, `use NAME -g` (`-y`, `--dry-run`), `uninstall` |
 | Library: `a` add a typed line, `x` remove, `i` install the highlighted item | `library add "skill o/r tdd"`, `library remove QUERY`, `library install QUERY [-g]`, `sync` |
 | Library: origin, link, version, installed in project / global | `library list [--json]` |
 | Profiles: `n` new, `enter` / `e` edit, `x` delete; Project: `s` save the project as a profile | `profile new`, `profile add` / `profile remove`, `profile save`, `profile delete` |
@@ -174,6 +174,7 @@ skillz profile ls | show web | rm web
 skillz use web --dry-run         # what installing `web` into this project would do
 skillz use web                   # shows the plan, asks, then installs what is missing
 skillz use web --exact           # also removes what `web` does not want (-y skips the question)
+skillz use web -g                # the same at user level: plugins, skills and the rest for every project
 ```
 
 skillz works on one directory: the current one, or the one given with `-p PATH`. Profiles are
@@ -192,6 +193,13 @@ installed item the profile does not want, after showing the plan; items with no 
 (plugins without a marketplace, skills `npx skills` cannot see) are flagged because no profile
 can bring them back. An item
 shared with a wanted entry, such as a skill for two agents of which the profile wants one, stays.
+
+`use` acts on one level only. In a project it installs into that project (Claude plugins at
+`local` scope, so only that project has them) and counts only what the project holds; with `-g`
+it installs at user level (Claude `--scope user`, `npx skills -g`, the Codex user config) and
+counts only the user's own installs. A profile applied at user level shows up in the Project tab
+as inherited, read-only items, and does not make the project match it. Codex plugins can only be
+installed at user level, so a project apply skips them.
 
 Which profile a project has loaded is never stored. A project matches a profile when nothing the
 profile wants is missing from the inventory; the Project tab compares the directory with the
@@ -290,8 +298,9 @@ at least 40x10. Four tabs, switched with `tab` / `shift-tab` or `1` `2` `3` `4`:
   The Project tab also shows global plugins and skills below a dimmed `Global installs · read only`
   separator. They can be expanded there; changes belong on the Global tab. Project clear and
   removal picks exclude these global items.
-  Profiles apply to a project only, so Global has no `a`, `p`, `c` or `s`. Adding is `A`, or the
-  Library tab and profiles.
+  `a` on Global applies a profile at user level, for every project, and the line above the list
+  compares the user's installs with the profile last applied there; Global has no `p`, `c` or
+  `s`. Adding is `A`, or the Library tab and profiles.
   In the background the tabs check whether installed Claude marketplaces have a newer version
   (a read-only `ls-remote`) and shows those in bold with a `*` after the name. Other kinds have
   no reliable check and are never marked. `SKILLZ_NO_UPDATE_CHECK=1` turns the check off;
@@ -323,7 +332,7 @@ item names omit the kind their section already shows; source and marketplace det
 | `r` | remove the item under the cursor from the tab's scope at once (after the plan); on a package row, removes everything in it; on a section, marks every item in it for removal. When the items are installed for more than one agent, the plan shows an Agents list above what will be removed; every agent starts checked and `space` unchecks one (`↑↓` moves) before `enter` applies |
 | `esc` | clear the picks (with none, clear the filter) |
 | `u` | update the installed item under the cursor, or every installed item of the package, after a plan to review; kinds with nothing to update (hooks, MCP servers, hand-made skills) are ignored |
-| `a` | list the profiles and apply the one you choose, after a plan to review. It replaces everything in the project (installs what is missing, removes the rest); `m` in the list switches to only adding what is missing. The project remembers it as its applied profile (Project only) |
+| `a` | list the profiles and apply the one you choose, after a plan to review. It adds what is missing and removes nothing; `m` in the list switches to replacing everything (installs what is missing, removes the rest). The project (or, on Global, the user level) remembers it as its applied profile |
 | `p` | list the applied profile's entries, those the project has checked; `space` checks or unchecks, `enter` installs the checked ones and removes the unchecked ones, after a plan (Project only) |
 | `c` | clear: remove everything the project has, after a plan to review. The applied profile stays, so `p` or `a` can bring back all or part of it (Project only) |
 | `s` | save what the project has installed as a new profile, after typing its name; the project then counts that profile as applied (Project only) |

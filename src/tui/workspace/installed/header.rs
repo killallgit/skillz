@@ -22,10 +22,9 @@ fn seg(text: impl Into<String>, style: Style) -> Segment {
     }
 }
 
-/// How the items stand against a profile, where a tab compares at all.
+/// How the items stand against the profile applied at the tab's level.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum Comparison<'a> {
-    Off,
     Unchosen,
     With(&'a Drift),
 }
@@ -34,7 +33,6 @@ pub(super) enum Comparison<'a> {
 pub(super) fn segments(comparison: Comparison, theme: &Theme) -> Vec<Segment> {
     let mut shown = vec![];
     match comparison {
-        Comparison::Off => {}
         Comparison::Unchosen => shown.push(seg("no profile applied", theme.muted)),
         Comparison::With(d) if d.matches() => shown.push(seg(
             format!("{} matches {}", theme.glyphs.loaded, d.profile),
@@ -112,11 +110,10 @@ mod tests {
     }
 
     #[test]
-    fn without_a_profile_the_badge_is_muted_and_a_tab_that_does_not_compare_has_none() {
+    fn without_a_profile_the_badge_is_muted() {
         let theme = Theme::dark();
 
         assert_eq!(styles(Comparison::Unchosen, &theme), [theme.muted]);
-        assert!(styles(Comparison::Off, &theme).is_empty());
     }
 
     #[test]

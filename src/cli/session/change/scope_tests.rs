@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::tests::{session, skill_entry};
+use super::tests::{project_with_skill, session, skill_entry};
 use super::*;
 use crate::app::install::test_support::{FakeRunner, ScriptedPrompter};
 use crate::cli::scope::installed;
@@ -205,4 +205,39 @@ fn installing_a_library_entry_goes_to_the_chosen_scope_and_only_the_chosen_tools
         programs(plugin(vec![Agent::Codex]), Scope::Project),
         Vec::<String>::new()
     );
+}
+
+#[test]
+fn replacing_at_user_level_removes_user_installs_and_leaves_the_project_alone() {
+    let (home, project) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    global_skill(home.path(), "userskill");
+    project_with_skill(project.path(), "projectskill");
+    let env = Env::new(home.path().into(), project.path().into());
+    let mut profile = profile::Profile::new("web");
+    profile.agents = vec![skillz_harness::model::Agent::Claude];
+    profile::Store::in_env(&env).save(&profile).unwrap();
+    let runner = FakeRunner::new(|_| {});
+    let prompter = ScriptedPrompter::new(&[], true);
+    let deps = Deps::for_test(home.path(), registry(), (&runner, &prompter));
+
+    let applied = change(
+        &session(&deps, project.path()),
+        Scope::Global,
+        &Change::ApplyExact("web"),
+    )
+    .unwrap();
+
+    let argv: Vec<String> = runner
+        .calls()
+        .into_iter()
+        .flat_map(|(_, args, _)| args)
+        .collect();
+    let project_names: Vec<String> = installed(&deps, &env, Scope::Project)
+        .into_iter()
+        .map(|item| item.name)
+        .collect();
+    assert!(matches!(applied, Some(Notice::Applied(_))));
+    assert!(argv.iter().any(|arg| arg == "userskill"));
+    assert!(!argv.iter().any(|arg| arg == "projectskill"));
+    assert!(project_names.iter().any(|name| name == "projectskill"));
 }
