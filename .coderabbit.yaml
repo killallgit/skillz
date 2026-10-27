@@ -1,0 +1,154 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews a pull request only once it carries the `needs-review` label, and it does
+# not re-review on every push (the plan includes about one review an hour). To review again after
+# new commits, comment `@coderabbitai review` on the PR. See "Review before merge" in AGENTS.md.
+
+language: en-US
+tone_instructions: >-
+  Terse. Report only defects with a concrete failing scenario. No praise, no style nits,
+  no retelling of what the code does.
+
+reviews:
+  profile: chill
+  auto_review:
+    enabled: true
+    labels:
+      - needs-review
+    auto_incremental_review: false
+    drafts: false
+    ignore_title_keywords:
+      - WIP
+      - DO NOT MERGE
+    ignore_usernames:
+      - dependabot[bot]
+  high_level_summary: true
+  poem: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  collapse_walkthrough: true
+  assess_linked_issues: false
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  auto_apply_labels: false
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: false
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    resolve_merge_conflict:
+      enabled: false
+  pre_merge_checks:
+    # Comments here explain constraints only, so a docstring threshold would push the wrong way.
+    docstrings:
+      mode: "off"
+    title:
+      mode: "off"
+    description:
+      mode: "off"
+    issue_assessment:
+      mode: "off"
+
+  # Generated, vendored or tool-owned files: nothing in them is ours to review.
+  path_filters:
+    - "!**/Cargo.lock"
+    - "!target/**"
+    - "!.beads/**"
+    - "!.agents/**"
+    - "!.claude/**"
+    - "!.codex/**"
+    - "!.cursor/**"
+    - "!.config/**"
+    - "!**/*.patch"
+
+  path_instructions:
+    - path: "crates/skillz-harness/**"
+      instructions: |
+        The harness crate must not depend on anything above it (app, tui, cli); cargo enforces
+        that, so flag any attempt to work around it. Agent-specific paths, formats and commands
+        live under src/agents/<agent>/. Flag code that removes files or edits config another
+        scope or project still uses (user vs project vs local scope, shared registries and
+        caches), and removal that bypasses an agent's own CLI where one exists. Installs go
+        through the agent's CLI (claude, codex) or `npx skills`.
+    - path: "src/app/**"
+      instructions: |
+        Decisions are pure and effects are explicit: Env, CommandRunner and Prompter are injected,
+        never reached for. src/app must not import src/tui or src/cli (tests/architecture.rs
+        guards it). Flag hidden I/O, global state and `unwrap` on user data.
+    - path: "src/tui/**"
+      instructions: |
+        Imports go one way: harness < app < tui < cli. The minimum supported terminal is 40x10,
+        so flag unchecked subtraction on widths and heights, indexing a slice with a computed
+        position, and layouts that can hide the row the cursor is on. Screens match on
+        `keymap::Action`, never on raw keys.
+    - path: "src/cli/**"
+      instructions: |
+        Thin wiring around src/app: argument parsing, sessions, output. Flag logic that belongs
+        in src/app. Anything that removes or overwrites user data must show a plan first.
+    - path: "**/tests.rs"
+      instructions: |
+        Tests assert on typed behaviour: actions, parsed contents, tree structure. Flag
+        assertions on message text, error strings or rendered labels (credential-redaction
+        tests are the exception), and test-only helpers added to production types. A new test
+        should fail without the change it covers.
+    - path: "**/*_tests.rs"
+      instructions: |
+        Tests assert on typed behaviour: actions, parsed contents, tree structure. Flag
+        assertions on message text, error strings or rendered labels (credential-redaction
+        tests are the exception), and test-only helpers added to production types. A new test
+        should fail without the change it covers.
+    - path: "tests/**"
+      instructions: |
+        Tests assert on typed behaviour: actions, parsed contents, tree structure. Flag
+        assertions on message text, error strings or rendered labels (credential-redaction
+        tests are the exception), and test-only helpers added to production types. A new test
+        should fail without the change it covers.
+    - path: "**/*.md"
+      instructions: |
+        Check each claim against the code (keys, flags, defaults, behaviour). Flag text that no
+        longer matches. Do not suggest rewording for style.
+    - path: ".github/workflows/**"
+      instructions: |
+        Flag unpinned third-party actions, broad permissions, and secrets exposed to untrusted
+        pull request code.
+
+  tools:
+    # CI already runs cargo clippy with warnings denied.
+    clippy:
+      enabled: false
+    # Prose and Markdown style are not what these docs need reviewed.
+    markdownlint:
+      enabled: false
+    languagetool:
+      enabled: false
+    vale:
+      enabled: false
+    yamllint:
+      enabled: false
+    shellcheck:
+      enabled: false
+    # Worth running on this repo.
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    gitleaks:
+      enabled: true
+
+chat:
+  auto_reply: false
+
+knowledge_base:
+  web_search:
+    enabled: false
+  linear:
+    usage: disabled
+  jira:
+    usage: disabled
