@@ -26,6 +26,9 @@ pub struct PluginOffer {
     pub plugins: Vec<String>,
     /// Skill names supplied by local plugin sources, keyed by plugin name.
     pub skills: std::collections::BTreeMap<String, Vec<String>>,
+    /// Plugins refused because a symlink in their local tree resolves outside the source (directly,
+    /// through a chain, or dangling). Never also in `plugins` or `skills`.
+    pub refused: Vec<String>,
 }
 
 pub trait Harness {

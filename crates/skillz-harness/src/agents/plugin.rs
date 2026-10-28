@@ -3,6 +3,7 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::Context;
 
 use super::PluginOffer;
+use crate::contained::Containment;
 use crate::read_optional::read_dir;
 
 pub(super) fn skill_names(root: &Path) -> anyhow::Result<Vec<String>> {
@@ -68,7 +69,8 @@ fn cli_arg(v: &serde_json::Value) -> Option<&str> {
 /// plugin's skills are, which differs per agent; `manifests` are the plugin manifests to read,
 /// in order). `None` when the file is missing or names no marketplace; malformed marketplace JSON
 /// is an error, a malformed plugin manifest is ignored. Option-like (`-x`) names are dropped
-/// since they end up as CLI args.
+/// since they end up as CLI args. A local plugin whose tree holds a symlink leaving the source
+/// is refused whole, since its agent copies that tree.
 pub(super) fn read_marketplace(
     path: &Path,
     root: &Path,
@@ -93,7 +95,9 @@ pub(super) fn read_marketplace(
         .filter_map(|p| cli_arg(&p["name"]).map(|name| (name.to_string(), p)))
         .collect();
     let mut skills = std::collections::BTreeMap::new();
+    let mut refused = Vec::new();
     let root = root.canonicalize()?;
+    let mut containment = Containment::new(&root)?;
     for (name, plugin) in &entries {
         let source = plugin["source"].as_str().or_else(|| {
             (plugin["source"]["source"] == "local")
@@ -103,6 +107,16 @@ pub(super) fn read_marketplace(
         let Some(source) = source.filter(|source| source.starts_with("./")) else {
             continue;
         };
+        // Checked before `contained_path`, which cannot tell a source linked out of the root or
+        // dangling from one that is simply missing.
+        let linked = root.join(source);
+        if lexically_inside(source)
+            && (linked.exists() || through_a_link(&root, source))
+            && containment.escapes(&linked)?
+        {
+            refused.push(name.clone());
+            continue;
+        }
         let Some(plugin_root) = contained_path(&root, source)? else {
             continue;
         };
@@ -120,10 +134,16 @@ pub(super) fn read_marketplace(
             )?,
         );
     }
+    skills.retain(|name, _| !refused.contains(name));
     Ok(Some(PluginOffer {
         marketplace: name.into(),
-        plugins: entries.into_iter().map(|(name, _)| name).collect(),
+        plugins: entries
+            .into_iter()
+            .map(|(name, _)| name)
+            .filter(|name| !refused.contains(name))
+            .collect(),
         skills,
+        refused,
     }))
 }
 
@@ -174,12 +194,24 @@ pub(super) fn declared_skill_paths(doc: &serde_json::Value) -> Option<Vec<String
     })
 }
 
+fn lexically_inside(relative: &str) -> bool {
+    Path::new(relative)
+        .components()
+        .all(|part| matches!(part, Component::Normal(_) | Component::CurDir))
+}
+
+/// Whether a symlink sits on `relative`'s way down from `root`, dangling or not.
+fn through_a_link(root: &Path, relative: &str) -> bool {
+    let mut path = root.to_path_buf();
+    Path::new(relative).components().any(|part| {
+        path.push(part);
+        std::fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.is_symlink())
+    })
+}
+
 /// Reject lexical escapes and symlinks that resolve outside the source being inspected.
 fn contained_path(root: &Path, relative: &str) -> anyhow::Result<Option<PathBuf>> {
-    if Path::new(relative)
-        .components()
-        .any(|part| !matches!(part, Component::Normal(_) | Component::CurDir))
-    {
+    if !lexically_inside(relative) {
         return Ok(None);
     }
     let path = root.join(relative);
@@ -203,7 +235,7 @@ mod tests {
     use super::*;
     use crate::agents::{Harness, claude::Claude, codex::Codex};
     use crate::model::{Agent, Scope};
-    use crate::test_support::skill;
+    use crate::test_support::{link, skill};
     use serde_json::{Value, json};
 
     #[test]
@@ -370,12 +402,128 @@ mod tests {
             "plugins/p/.claude-plugin/plugin.json",
             json!({"name":"p", "skills":"./extra"}),
         );
-        let claude = offer(&root, Agent::Claude);
-        let codex = offer(&root, Agent::Codex);
-        assert!(!claude.skills.contains_key("escape"));
-        assert!(!codex.skills.contains_key("escape"));
-        assert_eq!(claude.skills["p"], ["safe"]);
-        assert!(codex.skills["p"].is_empty());
+        for agent in [Agent::Claude, Agent::Codex] {
+            let offer = offer(&root, agent);
+            assert!(offer.plugins.is_empty());
+            assert!(offer.skills.is_empty());
+            assert_eq!(offer.refused, ["escape", "p"]);
+        }
+    }
+
+    #[test]
+    fn a_plugin_source_reached_through_an_escaping_or_dangling_link_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("market");
+        let outside = dir.path().join("outside");
+        skill(&outside, "p/skills/secret");
+        skill(&root, "plugins/ok/skills/safe");
+        link(&root, "plugins/lnk", &outside);
+        link(&root, "plugins/dang", "nowhere");
+        link(&root, "middle", &outside);
+        marketplace(
+            &root,
+            json!([
+                {"name":"lnk", "source":"./plugins/lnk"},
+                {"name":"dang", "source":"./plugins/dang"},
+                {"name":"viaobj", "source":{"source":"local", "path":"./plugins/lnk"}},
+                {"name":"mid", "source":"./middle/p"},
+                {"name":"missing", "source":"./plugins/missing"},
+                {"name":"ok", "source":"./plugins/ok"}
+            ]),
+        );
+        for agent in [Agent::Claude, Agent::Codex] {
+            let offer = offer(&root, agent);
+
+            assert_eq!(offer.plugins, ["missing", "ok"]);
+            assert_eq!(offer.refused, ["lnk", "dang", "viaobj", "mid"]);
+            assert_eq!(offer.skills.keys().collect::<Vec<_>>(), ["ok"]);
+        }
+    }
+
+    #[test]
+    fn a_plugin_source_that_is_a_file_is_skipped_unless_a_link_to_it_leaves_the_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("market");
+        std::fs::write(dir.path().join("secret"), "").unwrap();
+        skill(&root, "plugins/ok/skills/safe");
+        std::fs::write(root.join("plugins/afile"), "").unwrap();
+        link(&root, "plugins/flink", "afile");
+        link(&root, "plugins/outlink", dir.path().join("secret"));
+        marketplace(
+            &root,
+            json!([
+                {"name":"file", "source":"./plugins/afile"},
+                {"name":"flink", "source":"./plugins/flink"},
+                {"name":"outlink", "source":"./plugins/outlink"},
+                {"name":"ok", "source":"./plugins/ok"}
+            ]),
+        );
+        for agent in [Agent::Claude, Agent::Codex] {
+            let offer = offer(&root, agent);
+
+            assert_eq!(offer.plugins, ["file", "flink", "ok"]);
+            assert_eq!(offer.refused, ["outlink"]);
+            assert_eq!(offer.skills.keys().collect::<Vec<_>>(), ["ok"]);
+        }
+    }
+
+    #[test]
+    fn a_name_refused_for_one_entry_is_not_also_offered_by_another() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("market");
+        skill(&root, "plugins/clean/skills/safe");
+        link(&root, "plugins/leaky", "nowhere");
+        marketplace(
+            &root,
+            json!([
+                {"name":"p", "source":"./plugins/clean"},
+                {"name":"p", "source":"./plugins/leaky"}
+            ]),
+        );
+        for agent in [Agent::Claude, Agent::Codex] {
+            let offer = offer(&root, agent);
+
+            assert!(offer.plugins.is_empty());
+            assert!(offer.skills.is_empty());
+            assert_eq!(offer.refused, ["p"]);
+        }
+    }
+
+    #[test]
+    fn a_local_plugin_holding_an_escaping_symlink_is_refused_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("market");
+        std::fs::write(dir.path().join("secret"), "").unwrap();
+        skill(&root, "plugins/leaky-skill/skills/alpha");
+        skill(&root, "plugins/leaky-skill/skills/beta");
+        link(
+            &root,
+            "plugins/leaky-skill/skills/beta/x",
+            dir.path().join("secret"),
+        );
+        skill(&root, "plugins/leaky-hooks/skills/gamma");
+        link(
+            &root,
+            "plugins/leaky-hooks/hooks",
+            dir.path().join("secret"),
+        );
+        skill(&root, "plugins/clean/skills/delta");
+        marketplace(
+            &root,
+            json!([
+                {"name":"leaky-skill", "source":"./plugins/leaky-skill"},
+                {"name":"leaky-hooks", "source":"./plugins/leaky-hooks"},
+                {"name":"clean", "source":"./plugins/clean"},
+                {"name":"remote", "source":{"source":"github", "repo":"o/r"}}
+            ]),
+        );
+        for agent in [Agent::Claude, Agent::Codex] {
+            let offer = offer(&root, agent);
+
+            assert_eq!(offer.plugins, ["clean", "remote"]);
+            assert_eq!(offer.refused, ["leaky-skill", "leaky-hooks"]);
+            assert_eq!(offer.skills.keys().collect::<Vec<_>>(), ["clean"]);
+        }
     }
 
     #[test]

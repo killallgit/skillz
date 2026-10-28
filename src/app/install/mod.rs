@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use crate::app::prompt::Prompter;
 use crate::app::review::{Group, PlanView, Verdict};
 use skillz_harness::action::{self, Action};
-use skillz_harness::agent_skills::skill_names_under;
 use skillz_harness::agents::{Harness, PluginOffer, adapter_for};
 use skillz_harness::env::Env;
 use skillz_harness::model::{Agent, Scope};
@@ -94,7 +93,15 @@ fn plan(ctx: &Ctx, req: &InstallRequest, tree: &Tree) -> anyhow::Result<Option<P
     };
     let mut rest = vec![];
     for &agent in &req.agents {
-        match agent_plugins(ctx, req, tree, agent)? {
+        let Some((adapter, offer)) = plugin_offer(ctx, req, tree, agent)? else {
+            rest.push(agent);
+            continue;
+        };
+        if !offer.refused.is_empty() {
+            plan.skipped
+                .push(escaping_symlinks(&agent.to_string(), &offer.refused));
+        }
+        match agent_plugins(ctx, req, tree, adapter, &offer)? {
             AgentPlugins::Install { lines, steps } => {
                 plan.lines.extend(lines);
                 plan.steps.extend(steps);
@@ -109,6 +116,7 @@ fn plan(ctx: &Ctx, req: &InstallRequest, tree: &Tree) -> anyhow::Result<Option<P
     {
         plan.lines.push(skills.line);
         plan.steps.push(skills.step);
+        plan.skipped.extend(skills.skipped);
     }
     // Every agent refusing leaves nothing to approve, so say why instead of doing nothing.
     anyhow::ensure!(
@@ -119,9 +127,32 @@ fn plan(ctx: &Ctx, req: &InstallRequest, tree: &Tree) -> anyhow::Result<Option<P
     Ok((!plan.steps.is_empty()).then_some(plan))
 }
 
+/// The plugins the tree offers `agent`, with the adapter that installs them.
+fn plugin_offer<'a>(
+    ctx: &Ctx<'a>,
+    req: &InstallRequest,
+    tree: &Tree,
+    agent: Agent,
+) -> anyhow::Result<Option<(&'a dyn Harness, PluginOffer)>> {
+    let Some(adapter) = adapter_for(ctx.adapters, agent) else {
+        return Ok(None);
+    };
+    Ok(adapter
+        .plugin_offer(tree.src, req.scope)?
+        .map(|offer| (adapter, offer)))
+}
+
+/// The plan line for what `who` does not install because a symlink in it leaves the source.
+fn escaping_symlinks(who: &str, names: &[String]) -> String {
+    format!(
+        "{who}: not installed, a symlink in them leaves the source: {}",
+        names.join(", ")
+    )
+}
+
 /// What one agent does with the plugins a source offers.
 enum AgentPlugins {
-    /// The source offers it none, so its skills go through `npx skills`.
+    /// The source offers it none it can install, so its skills go through `npx skills`.
     Unoffered,
     /// The user picked no plugins.
     Declined,
@@ -137,14 +168,13 @@ fn agent_plugins(
     ctx: &Ctx,
     req: &InstallRequest,
     tree: &Tree,
-    agent: Agent,
+    adapter: &dyn Harness,
+    offer: &PluginOffer,
 ) -> anyhow::Result<AgentPlugins> {
-    let Some(adapter) = adapter_for(ctx.adapters, agent) else {
+    if offer.plugins.is_empty() {
         return Ok(AgentPlugins::Unoffered);
-    };
-    let Some(offer) = adapter.plugin_offer(tree.src, req.scope)? else {
-        return Ok(AgentPlugins::Unoffered);
-    };
+    }
+    let agent = adapter.agent();
     let chosen: Vec<String> = match &req.selection {
         SkillSelection::Interactive => {
             let title = format!("{agent} plugins to install");
@@ -156,9 +186,9 @@ fn agent_plugins(
         }
         SkillSelection::All => offer.plugins.clone(),
         SkillSelection::Patterns(_) => {
-            let available = skill_names_under(tree.src)?;
+            let available = skills::source_skills(tree.src)?.offered;
             let selected = skills::select_skills(&available, &req.selection);
-            if selected.is_empty() || !left_out(&offer, &selected).is_empty() {
+            if selected.is_empty() || !left_out(offer, &selected).is_empty() {
                 return Ok(AgentPlugins::Unoffered);
             }
             offer
@@ -177,7 +207,7 @@ fn agent_plugins(
     if chosen.is_empty() {
         return Ok(AgentPlugins::Unoffered);
     }
-    let named: Vec<String> = chosen.iter().map(|name| describe(&offer, name)).collect();
+    let named: Vec<String> = chosen.iter().map(|name| describe(offer, name)).collect();
     let mut lines = vec![format!(
         "{agent}: {} from {}",
         named.join(", "),
@@ -189,7 +219,7 @@ fn agent_plugins(
         .iter()
         .all(|plugin| offer.skills.contains_key(plugin));
     if req.selection == SkillSelection::All && known {
-        let skipped = left_out(&offer, &skill_names_under(tree.src)?);
+        let skipped = left_out(offer, &skills::source_skills(tree.src)?.offered);
         if !skipped.is_empty() {
             lines.push(format!(
                 "{agent}: not installed, no plugin supplies them (name them with --skill): {}",
@@ -198,7 +228,7 @@ fn agent_plugins(
         }
     }
     Ok(
-        match adapter.plan_add_source(&offer, &chosen, tree.source, req.scope, ctx.env) {
+        match adapter.plan_add_source(offer, &chosen, tree.source, req.scope, ctx.env) {
             Ok(steps) => AgentPlugins::Install { lines, steps },
             Err(refusal) => AgentPlugins::Refused(format!("{agent}: {refusal:#}")),
         },
@@ -275,6 +305,7 @@ mod tests {
                 .iter()
                 .map(|(plugin, names)| (plugin.to_string(), s(names)))
                 .collect(),
+            refused: vec![],
         }
     }
 
@@ -694,6 +725,144 @@ mod tests {
         let r = req(&fx, "repo", SkillSelection::Interactive);
         run_install(&fx, &r, &runner, &ScriptedPrompter::new(&[0], false)).unwrap();
         assert!(runner.calls().is_empty());
+    }
+
+    /// A link at `root/rel` to a file beside the source, outside it.
+    fn escaping_link(root: &Path, rel: &str) {
+        let secret = root.parent().unwrap().join("secret");
+        std::fs::write(&secret, "").unwrap();
+        link(root, rel, secret);
+    }
+
+    fn leaky_skills_fixture(root: &Path) {
+        skills_fixture(root);
+        skill(root, "skills/leaky");
+        escaping_link(root, "skills/leaky/secret");
+    }
+
+    fn leaky_plugins_fixture(root: &Path) {
+        skill(root, "plugins/p1/skills/alpha");
+        escaping_link(root, "plugins/p1/skills/alpha/secret");
+        skill(root, "plugins/p2/skills/beta");
+        std::fs::create_dir_all(root.join(".claude-plugin")).unwrap();
+        std::fs::write(
+            root.join(".claude-plugin/marketplace.json"),
+            r#"{"name":"mp","plugins":[{"name":"p1","source":"./plugins/p1"},{"name":"p2","source":"./plugins/p2"}]}"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_skill_with_an_escaping_symlink_is_not_offered_and_is_shown_skipped() {
+        let fx = project_with(leaky_skills_fixture);
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ScriptedPrompter::new(&[0], true);
+        let request = req(&fx, "repo", SkillSelection::Interactive);
+
+        run_install(&fx, &request, &runner, &prompter).unwrap();
+
+        assert_eq!(
+            prompter.offered.borrow()[0],
+            s(&["caveman-commit", "git-commit", "tdd", "zeta"])
+        );
+        assert_eq!(
+            prompter.plans.borrow()[0],
+            [(Group::Install, 1), (Group::Skip, 1)]
+        );
+    }
+
+    #[test]
+    fn all_leaves_a_skill_with_an_escaping_symlink_out_of_the_npx_arguments() {
+        let fx = project_with(leaky_skills_fixture);
+        let runner = FakeRunner::new(|_| {});
+        let request = req(&fx, "repo", SkillSelection::All);
+
+        run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
+
+        let calls = runner.calls();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].1.contains(&"tdd".to_string()));
+        assert!(!calls[0].1.contains(&"leaky".to_string()));
+    }
+
+    #[test]
+    fn naming_only_a_skill_with_an_escaping_symlink_fails_and_runs_nothing() {
+        let fx = project_with(leaky_skills_fixture);
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ScriptedPrompter::new(&[], true);
+        let request = req(&fx, "repo", SkillSelection::Patterns(s(&["leaky"])));
+
+        let result = run_install(&fx, &request, &runner, &prompter);
+
+        assert!(result.is_err());
+        assert!(runner.calls().is_empty());
+        assert!(prompter.plans.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_name_carried_by_one_escaping_directory_is_refused_for_all_of_them() {
+        let fx = project_with(|root| {
+            skill(root, "skills/tdd");
+            skill(root, "clean/dup");
+            skill(root, "leaky/dup");
+            escaping_link(root, "leaky/dup/secret");
+        });
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ScriptedPrompter::new(&[], true);
+        let request = req(&fx, "repo", SkillSelection::All);
+
+        run_install(&fx, &request, &runner, &prompter).unwrap();
+
+        assert!(!runner.calls()[0].1.contains(&"dup".to_string()));
+        assert_eq!(
+            prompter.plans.borrow()[0],
+            [(Group::Install, 1), (Group::Skip, 1)]
+        );
+    }
+
+    #[test]
+    fn a_plugin_with_an_escaping_skill_is_refused_and_its_sibling_still_installs() {
+        let fx = project_with(leaky_plugins_fixture);
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ScriptedPrompter::new(&[0], true);
+        let request = req(&fx, "repo", SkillSelection::Interactive);
+
+        run_install(&fx, &request, &runner, &prompter).unwrap();
+
+        assert_eq!(prompter.offered.borrow()[0], s(&["p2"]));
+        assert_eq!(
+            prompter.plans.borrow()[0],
+            [(Group::Install, 1), (Group::Skip, 1)]
+        );
+        assert_eq!(
+            runner.calls()[1].1,
+            s(&["plugin", "install", "p2@mp", "--scope", "local"])
+        );
+    }
+
+    #[test]
+    fn a_source_whose_every_plugin_and_skill_is_refused_fails_and_runs_nothing() {
+        let fx = project_with(|root| {
+            leaky_plugins_fixture(root);
+            std::fs::remove_dir_all(root.join("plugins/p2")).unwrap();
+            std::fs::write(
+                root.join(".claude-plugin/marketplace.json"),
+                r#"{"name":"mp","plugins":[{"name":"p1","source":"./plugins/p1"}]}"#,
+            )
+            .unwrap();
+        });
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ScriptedPrompter::new(&[0], true);
+        let request = InstallRequest {
+            agents: vec![Agent::Claude, Agent::Codex],
+            ..req(&fx, "repo", SkillSelection::Interactive)
+        };
+
+        let result = run_install(&fx, &request, &runner, &prompter);
+
+        assert!(result.is_err());
+        assert!(runner.calls().is_empty());
+        assert!(prompter.plans.borrow().is_empty());
     }
 
     #[test]
