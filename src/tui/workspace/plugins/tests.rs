@@ -789,6 +789,14 @@ fn removing_one_of_two_plugins_of_a_marketplace_keeps_the_marketplace_and_the_ot
     );
 }
 
+fn rows_removing(rows: &[Row], id: &str) -> usize {
+    rows.iter()
+        .filter(
+            |row| matches!(row, Row::Own(plugin) if plugin.installed.iter().any(|held| held == id)),
+        )
+        .count()
+}
+
 #[test]
 fn a_marketplace_whose_plugins_are_listed_in_other_rows_has_no_row_of_its_own() {
     let model = Model {
@@ -803,11 +811,7 @@ fn a_marketplace_whose_plugins_are_listed_in_other_rows_has_no_row_of_its_own() 
 
     let rows = super::rows::build(&model, Scope::Project);
 
-    let marketplace = "marketplace:mp".to_string();
-    let rows_removing_it = rows
-        .iter()
-        .filter(|row| matches!(row, Row::Own(plugin) if plugin.installed.contains(&marketplace)))
-        .count();
+    let rows_removing_it = rows_removing(&rows, "marketplace:mp");
     assert_eq!(rows_removing_it, 0);
 }
 
@@ -820,10 +824,6 @@ fn a_marketplace_left_without_plugins_still_has_a_row_to_remove_it_from() {
 
     let rows = super::rows::build(&model, Scope::Project);
 
-    let marketplace = "marketplace:mp".to_string();
-    let rows_removing_it = rows
-        .iter()
-        .filter(|row| matches!(row, Row::Own(plugin) if plugin.installed.contains(&marketplace)))
-        .count();
+    let rows_removing_it = rows_removing(&rows, "marketplace:mp");
     assert_eq!(rows_removing_it, 1);
 }

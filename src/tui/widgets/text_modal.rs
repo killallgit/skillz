@@ -156,13 +156,13 @@ mod tests {
 
     #[test]
     fn a_reveal_past_the_last_line_does_not_panic() {
-        let lines: Vec<Line<'static>> = vec![Line::from("one"), Line::from("two")];
+        let lines: Vec<Line<'static>> = (0..30).map(|n| Line::from(format!("line {n}"))).collect();
         let mut modal = TextModal::default();
 
         render_to_buffer(40, 12, |frame| {
             modal.render(frame, &Theme::dark(), page(lines.clone(), 99));
         });
 
-        assert!(modal.offset <= modal.lines);
+        assert_eq!(modal.offset + modal.page, modal.lines);
     }
 }

@@ -213,10 +213,11 @@ mod tests {
 
     #[test]
     fn a_symlinked_home_is_still_shown_as_tilde() {
-        let real = tempfile::tempdir().unwrap();
-        let linked = tempfile::tempdir().unwrap().keep().join("home");
-        std::os::unix::fs::symlink(real.path(), &linked).unwrap();
-        let skills = real.path().join(".agents/skills");
+        let base = tempfile::tempdir().unwrap();
+        let real = base.path().join("real");
+        let linked = base.path().join("home");
+        std::os::unix::fs::symlink(&real, &linked).unwrap();
+        let skills = real.join(".agents/skills");
         skill(&skills.join("tdd"), "tdd");
         skill(&skills.join("work/old"), "tdd");
         let runner = crate::app::install::test_support::FakeRunner::new(|_| {});
@@ -236,7 +237,7 @@ mod tests {
         doctor(&deps, &args, &mut out).unwrap();
 
         let text = String::from_utf8(out).unwrap();
-        let canonical = real.path().canonicalize().unwrap().display().to_string();
+        let canonical = real.canonicalize().unwrap().display().to_string();
         assert!(!text.contains(&canonical));
         assert!(text.contains("~/.agents/skills/work/old"));
     }
