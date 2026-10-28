@@ -167,17 +167,28 @@ impl Screen<Verdict> for PlanScreen {
     }
 }
 
-/// The agents the plan may reach, each checked or not, the cursor on one.
+/// The agents the plan may reach, and `npx` when it installs, each checked or not, the cursor
+/// on one.
 fn target_lines(targets: &Targets, theme: &Theme) -> Vec<Line<'static>> {
-    if targets.agents.is_empty() {
+    if targets.items_from() == 0 {
         return vec![];
     }
     let glyphs = &theme.glyphs;
+    let title = match targets.npx {
+        Some(_) => "Install with",
+        None => "Agents",
+    };
     let mut lines = vec![Line::styled(
-        "Agents",
+        title,
         theme.accent.add_modifier(theme.title.add_modifier),
     )];
-    lines.extend(targets.agents.iter().enumerate().map(|(at, (agent, on))| {
+    let npx = targets.npx.map(|on| ("npx".to_string(), on));
+    let boxes = targets
+        .agents
+        .iter()
+        .map(|(agent, on)| (agent.to_string(), *on))
+        .chain(npx);
+    lines.extend(boxes.enumerate().map(|(at, (name, on))| {
         let (glyph, style) = match on {
             true => (glyphs.checked, theme.ok),
             false => (glyphs.unchecked, theme.muted),
@@ -185,7 +196,7 @@ fn target_lines(targets: &Targets, theme: &Theme) -> Vec<Line<'static>> {
         let cursor = if at == targets.cursor { CURSOR } else { "  " };
         Line::from(vec![
             Span::styled(cursor, theme.accent),
-            Span::styled(format!("{glyph} {agent}"), style),
+            Span::styled(format!("{glyph} {name}"), style),
         ])
     }));
     lines.push(Line::default());
@@ -247,7 +258,7 @@ fn check_lines(targets: &Targets, group: Group, theme: &Theme) -> Vec<Line<'stat
         .enumerate()
         .filter(|(_, pick)| pick.group == group)
         .map(|(at, pick)| {
-            let cursor = if targets.agents.len() + at == targets.cursor {
+            let cursor = if targets.items_from() + at == targets.cursor {
                 CURSOR
             } else {
                 "  "
@@ -326,6 +337,34 @@ mod tests {
     }
 
     #[test]
+    fn the_installers_are_the_agents_then_npx_and_space_checks_each_in_turn() {
+        let both = vec![Agent::Claude, Agent::Codex];
+        let mut screen = PlanScreen::new(PlanView {
+            targets: Some(Targets::installers(both.clone(), &both, false)),
+            ..view()
+        });
+
+        answer(&mut screen, KeyCode::Down);
+        answer(&mut screen, KeyCode::Down);
+        let verdict = answer(&mut screen, KeyCode::Char(' '));
+
+        let Some(Verdict::Retarget(targets)) = verdict else {
+            panic!("expected a new plan, got {verdict:?}");
+        };
+        assert_eq!((targets.checked(), targets.npx), (both, Some(true)));
+        assert_eq!(targets.cursor, 2);
+    }
+
+    #[test]
+    fn the_cursor_stops_on_npx_before_the_items() {
+        let both = vec![Agent::Claude, Agent::Codex];
+        let targets = Targets::installers(both.clone(), &both, false);
+
+        assert_eq!((targets.items_from(), targets.rows()), (3, 3));
+        assert_eq!(targets.moved(true).moved(true).moved(true).cursor, 2);
+    }
+
+    #[test]
     fn without_agents_space_does_nothing() {
         let mut screen = PlanScreen::new(view());
 
@@ -385,6 +424,7 @@ mod tests {
             groups: vec![(Group::Install, vec!["a".into(), "b".into()])],
             targets: Some(Targets {
                 agents: vec![],
+                npx: None,
                 items: vec![
                     pick(Group::Install, "a", true),
                     pick(Group::Install, "b", true),

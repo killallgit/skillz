@@ -25,6 +25,8 @@ fn install_picked(dir: &Path, library: &[LibraryItem]) -> (FakeNpx, Store) {
         install: &entries,
         remove: &[],
         only: None,
+        packages: false,
+        npx: None,
     };
     change(
         &session(&deps, dir),

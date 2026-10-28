@@ -11,6 +11,7 @@ use crate::app::apply::{self, Switch, Watch};
 use crate::app::profile;
 use crate::app::remove;
 use crate::app::review::{ItemEvent, Next, Outcome, Phase, Target, Targets, Verdict};
+use crate::app::route::npx_by_default;
 use crate::app::stale::Disk;
 use crate::app::store::Store;
 use crate::cli::deps::Deps;
@@ -91,8 +92,8 @@ pub(in crate::cli) fn change(
         let applier = job.applier();
         let mut switch = job.plan(&applier, what, None)?;
         targets = targets.or_else(|| job.offered_targets(what, &switch));
-        if let Some(only) = targets.as_ref().and_then(Targets::narrowing) {
-            switch = job.plan(&applier, what, Some(&only))?;
+        if targets.is_some() {
+            switch = job.plan(&applier, what, targets.as_ref())?;
         }
         switch
             .updates
@@ -146,10 +147,16 @@ impl Job<'_> {
     }
 
     /// What the user may narrow in a change they picked: the agents it reaches, when more than
-    /// one, and each item it installs or removes.
+    /// one, and each item it installs or removes. An install also offers `npx`, as one of the
+    /// installers to run next to the agents'.
     fn offered_targets(&self, what: &Change, switch: &Switch) -> Option<Targets> {
-        if !matches!(what, Change::Selection(_)) {
+        let Change::Selection(picked) = what else {
             return None;
+        };
+        if picked.packages && !picked.install.is_empty() {
+            let every: Vec<Agent> = self.deps.adapters.iter().map(|a| a.agent()).collect();
+            let npx = npx_by_default(picked.install);
+            return Some(Targets::installers(every.clone(), &every, npx));
         }
         let mut agents: Vec<Agent> = switch
             .removals
@@ -165,14 +172,19 @@ impl Job<'_> {
         &self,
         applier: &apply::Applier,
         what: &Change,
-        only: Option<&[Agent]>,
+        targets: Option<&Targets>,
     ) -> anyhow::Result<Switch> {
         match what {
             Change::Apply(name) => self.apply_plan(applier, name, false),
             Change::ApplyExact(name) => self.apply_plan(applier, name, true),
             Change::Selection(picked) => {
                 let library = self.store.read()?.items.in_env(&self.env);
-                let narrowed = Selection { only, ..**picked };
+                let only = targets.and_then(Targets::narrowing);
+                let narrowed = Selection {
+                    only: only.as_deref(),
+                    npx: targets.and_then(|t| t.npx),
+                    ..**picked
+                };
                 selection_plan(self.deps, &self.env, applier, (&narrowed, &library))
             }
             Change::Update(ids) => update_plan(self.deps, &self.env, self.scope, ids),

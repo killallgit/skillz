@@ -43,6 +43,8 @@ fn installing_at_global_scope_gives_npx_the_global_flag_and_project_scope_does_n
         install: &entries,
         remove: &[],
         only: None,
+        packages: false,
+        npx: None,
     };
 
     let global = run_in(
@@ -103,6 +105,8 @@ fn removing_at_global_scope_removes_only_the_global_item() {
         install: &[],
         remove: &[id],
         only: None,
+        packages: false,
+        npx: None,
     };
 
     let wrong_scope = change(
@@ -179,6 +183,8 @@ fn installing_a_library_entry_goes_to_the_chosen_scope_and_only_the_chosen_tools
             install: &[entry],
             remove: &[],
             only: None,
+            packages: false,
+            npx: None,
         };
         change(
             &session(&deps, project.path()),
@@ -230,6 +236,8 @@ fn codex_library_and_profile_plugins_install_only_in_the_project() {
             install: std::slice::from_ref(&entry),
             remove: &[],
             only: None,
+            packages: false,
+            npx: None,
         };
         let what = if from_profile {
             Change::Apply("matt")

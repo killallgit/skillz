@@ -7,6 +7,7 @@ use crate::app::library::Catalog;
 use crate::app::merge::merge;
 use crate::app::profile::Profile;
 use crate::app::review::Outcome;
+use crate::app::route::{npx_by_default, routed};
 use crate::cli::deps::Deps;
 use crate::cli::scope::complete_installed;
 use skillz_harness::Spec;
@@ -18,8 +19,14 @@ use skillz_harness::model::{Agent, Installed};
 pub(in crate::cli) struct Selection<'a> {
     pub install: &'a [Spec],
     pub remove: &'a [String],
-    /// The agents to remove from; every agent when `None`.
+    /// The agents to install for and remove from; every agent when `None`.
     pub only: Option<&'a [Agent]>,
+    /// The entries are whole packages from the list, to be installed by the installers the user
+    /// checks; otherwise each is installed as given.
+    pub packages: bool,
+    /// Whether `npx skills` is one of the installers; by default when no plugin could install
+    /// the skills instead.
+    pub npx: Option<bool>,
 }
 
 /// Installs for what is missing (from the link the library recorded, when it has one),
@@ -32,11 +39,20 @@ pub(super) fn selection_plan(
     (picked, library): (&Selection, &Catalog),
 ) -> anyhow::Result<Switch> {
     let mut wanted = Profile::new("selection");
-    wanted.entries = picked
+    let entries: Vec<Spec> = picked
         .install
         .iter()
         .map(|entry| library.installable(entry))
         .collect();
+    wanted.entries = match picked.packages {
+        true => {
+            let every: Vec<Agent> = deps.adapters.iter().map(|a| a.agent()).collect();
+            let checked = picked.only.unwrap_or(&every);
+            let npx = picked.npx.unwrap_or_else(|| npx_by_default(picked.install));
+            routed(entries, (checked, &every), npx)
+        }
+        false => entries,
+    };
     let mut switch = applier.plan(&wanted, false).context("planning installs")?;
     switch.removals = complete_installed(deps, env, applier.scope)?
         .into_iter()

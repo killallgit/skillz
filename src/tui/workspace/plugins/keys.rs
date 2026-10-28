@@ -32,6 +32,7 @@ impl PluginsTab {
             Action::Back if !self.pending.is_empty() => self.pending.clear(),
             Action::Back if self.outline.is_filtered() => self.outline.clear_filter(),
             Action::Info => self.show_info(),
+            Action::Update => return self.update(),
             Action::Toggle => self.select(),
             Action::Select => return self.apply(),
             movement => {
@@ -77,6 +78,19 @@ impl PluginsTab {
                 modal: TextModal::default(),
             });
         }
+    }
+
+    /// Update what the project has installed of the package under the cursor. The user's
+    /// packages below the divider are shown only, so they are not updated from here.
+    fn update(&self) -> Option<Act> {
+        let id = self.outline.current()?;
+        let Row::Own(plugin) = &self.rows[id] else {
+            return None;
+        };
+        plugin.is_installed().then(|| Act::Update {
+            scope: self.scope,
+            ids: plugin.installed.clone(),
+        })
     }
 
     /// Flip the package under the cursor between staying as it is and changing. The user's

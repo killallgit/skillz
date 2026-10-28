@@ -20,6 +20,7 @@ mod scope;
 mod session;
 mod sync;
 mod update;
+mod upgrade;
 mod workspace;
 
 use std::io::IsTerminal;
@@ -31,7 +32,7 @@ use clap::Parser;
 
 pub use args::{
     Cli, Command, DoctorArgs, Filter, InstallArgs, ListArgs, PruneArgs, ResetArgs, SyncArgs,
-    UninstallArgs, UpdateArgs, UseArgs,
+    UninstallArgs, UpdateArgs, UpgradeArgs, UseArgs,
 };
 use args::{plugin_list, wants_auto_yes};
 pub use deps::Deps;

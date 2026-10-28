@@ -245,6 +245,7 @@ fn install_asks_the_fake_to_install_plugins_and_runs_no_other_command() {
         agents: vec![Agent::Codex],
         scope: Scope::Global,
         selection: SkillSelection::Interactive,
+        npx: false,
     };
     // The clone of `o/r` would be a command `OnlyFake` refuses, so use a local source.
     let src = w.env.project.join("repo");

@@ -49,6 +49,7 @@ mod tests {
             agents: vec![Agent::Claude],
             scope: Scope::Global,
             selection: SkillSelection::Interactive,
+            npx: false,
         }
     }
 

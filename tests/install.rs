@@ -24,6 +24,7 @@ fn install_args(source: &str) -> InstallArgs {
         agents: vec![Agent::Codex],
         all: true,
         skill: vec![],
+        npx: false,
         project: None,
         global: false,
         yes: true,

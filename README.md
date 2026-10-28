@@ -26,6 +26,7 @@ is also a command.
 | `list` (`ls`) | in a terminal, a plain `list` (or `list -g`) opens the plugins list (see Workspace); otherwise (a query, `--all`, a kind filter, no terminal) it shows what is installed as a tree, or browse it with `-i`; `--json` never opens the list and prints the items for scripts and agents, adding each item's location (`--check` also whether a newer version exists); `--available` lists the library items the project (`-g`: the user) lacks |
 | `uninstall` (`rm`, `delete`) | fuzzy match, pick, confirm, remove completely; several queries go in one plan |
 | `update` | update installed items with the tool that installed them (`-g`: the user's); `--check` lists the ones with a newer version (`--json` for scripts) |
+| `upgrade` | update every Claude and Codex plugin and marketplace, in the project (`-p`) and at user level, that has a newer version; what cannot be checked (Codex) is updated anyway; `--dry-run` shows the plans, `-y` skips the questions, and `SKILLZ_NO_UPDATE_CHECK` updates everything |
 | `reset` | remove every skill, plugin and marketplace in scope |
 | `prune` | find duplicate and unused skills and plugins, remove the ones picked |
 | `doctor` | check the skills on disk, read-only: names that collide (per tool, listing every copy), skill files nested or loose where a tool will not look (or looks too hard), files that break the format, and broken links; `-g` for the user's skills only, `--json` for scripts |
@@ -78,6 +79,18 @@ skills`. A malformed marketplace or plugin manifest in the source never fails th
 skills install loose instead. `library install` and profile applies still install a loose
 skill entry with `npx skills`, not through the plugin its source may offer.
 
+An install's plan starts with the installers it runs, each a box: `claude`, `codex` and `npx`.
+`space` flips the one under the cursor and the plan is made again; every box checked runs its own
+installer, so with all three the source's plugins go in through Claude and Codex and `npx skills`
+installs its skills as well. `claude` and `codex` start checked (`--agent` narrows them) and `npx`
+does not (`--npx` checks it): it takes every skill of the source in one run, or only those named
+with `--skill`, and skips nothing. The exception is a source with no plugin for an agent, whose
+skills still go through `npx skills` as before; the box then shows checked, and unchecking it
+leaves that agent out. Installing a package from `skillz list` follows the same boxes: its
+plugins go in through the agents checked, and its skills through one `npx skills` run for the
+source, never one run per skill, with `npx` checked at the start only for a package that has
+skills and no plugin.
+
 A Codex project install writes the marketplace and plugin into `.codex/config.toml`, which a team
 usually commits, so skillz refuses a source with a user, password or token in its URL (use ssh or
 a credential helper; this includes a bare `https://user@` account), and a local source is written
@@ -107,7 +120,7 @@ the same install and removal steps). What the list does not do is a command too:
 | What is installed, the split, where each item lives | `list`, `list -g`, `list --json` (`location`) |
 | `space` selects, `enter` submits installs and removals as one plan | `install SOURCE`, `uninstall QUERY...` (`-y`, `--dry-run`) |
 | `i` info: provenance and locations | `list --json` (`location`), `library list --json` |
-| Updating | `update [QUERY] [-g]`, `update --check [--json]` |
+| Updating | `update [QUERY] [-g]`, `update --check [--json]`, `upgrade [-p DIR] [--dry-run] [-y]` |
 | Applying and comparing a profile | `use NAME [--exact] [-g]`, `profile status [NAME] [--json]`, `profile list` |
 | Saving the project as a profile, editing profiles | `profile save`, `profile new`, `profile add` / `profile remove`, `profile delete` |
 | Clearing the project | `reset` removes skills, plugins and marketplaces; add `--hooks`, `--mcp`, `--subagents` for those kinds |
@@ -311,7 +324,7 @@ files are not in it yet.
   lives on disk.
 - `/` filters.
 
-There are no tabs: updating, removing by query, profiles and library editing are commands (see
+There are no tabs: updating everything or by query, removing by query, profiles and library editing are commands (see
 the table above).
 
 | Key | Does |
@@ -320,6 +333,7 @@ the table above).
 | `enter` | submit everything selected as one change, after a plan to review |
 | `esc` | drop the selection (with none, clear the filter) |
 | `i` | info: where the package comes from and where each installed item lives |
+| `u` | update the installed package under the cursor, after a plan to review |
 | `/` | filter; keeps matching rows, `esc` clears it |
 | `↑↓` `j` `k`, `PgUp` `PgDn`, `^u` `^d`, `g` `G` | move |
 | `?` | all keys for the screen |

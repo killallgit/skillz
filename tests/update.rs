@@ -6,7 +6,7 @@ use std::fs;
 use std::sync::Arc;
 
 use common::*;
-use skillz::cli::{Command, Deps, Filter, UpdateArgs};
+use skillz::cli::{Command, Deps, Filter, UpdateArgs, UpgradeArgs};
 use skillz_harness::model::Installed;
 use skillz_harness::update::check::UpdateCheck;
 
@@ -61,6 +61,10 @@ struct Outdated(&'static str);
 impl UpdateCheck for Outdated {
     fn available(&self, item: &Installed) -> bool {
         item.name == self.0
+    }
+
+    fn can_tell(&self, _: &Installed) -> bool {
+        true
     }
 }
 
@@ -177,4 +181,19 @@ fn an_agent_filter_updates_only_the_selected_copy_of_a_merged_subagent() {
         assert_eq!(claude == md, selected == Agent::Claude);
         assert_eq!(codex == toml, selected == Agent::Codex);
     }
+}
+
+#[test]
+fn upgrading_a_project_with_no_plugins_runs_nothing() {
+    let w = world_with_skill(true);
+    let command = Command::Upgrade(UpgradeArgs {
+        project: None,
+        yes: true,
+        dry_run: false,
+    });
+
+    let (result, runner) = update_with(&w, command);
+
+    assert!(result.is_ok());
+    assert_eq!(runner.count(), 0);
 }

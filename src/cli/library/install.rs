@@ -28,6 +28,8 @@ pub(super) fn install(
         install: &entries,
         remove: &[],
         only: None,
+        packages: false,
+        npx: None,
     };
     console.conclude(change(session, scope, &Change::Selection(&selection))?)
 }
