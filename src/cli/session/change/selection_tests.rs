@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::tests::{project_with_skill, run_change, session, skill_entry, skill_id};
 use super::*;
-use crate::app::install::test_support::ScriptedPrompter;
+use crate::app::install::test_support::{FakeRunner, ScriptedPrompter, mattpocock_fixture};
 use skillz_harness::Spec;
 use skillz_harness::agents::registry;
 use skillz_harness::runner::{CommandRunner, Output};
@@ -144,6 +144,26 @@ fn one_failing_install_is_reported_and_the_others_still_run() {
         .any(|a| a.contains(&"good".to_string()));
     assert!(matches!(result.unwrap(), Some(Notice::Failed(_))));
     assert!(tried_good);
+}
+
+#[test]
+fn a_skill_its_source_marketplace_supplies_installs_through_claude_and_never_npx() {
+    let dir = tempfile::tempdir().unwrap();
+    let entries = [skill_entry("tdd")];
+    let runner = FakeRunner::new(mattpocock_fixture);
+    let prompter = ScriptedPrompter::new(&[], true);
+    let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+
+    change(
+        &session(&deps, dir.path()),
+        Scope::Project,
+        &Change::Selection(&selection(&entries, &[])),
+    )
+    .unwrap();
+
+    let programs: Vec<String> = runner.calls().into_iter().map(|call| call.0).collect();
+    assert!(programs.contains(&"claude".to_string()));
+    assert!(!programs.contains(&"npx".to_string()));
 }
 
 #[test]

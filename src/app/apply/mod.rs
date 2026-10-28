@@ -23,6 +23,7 @@ use crate::app::stale::Probe;
 use skillz_harness::agents::{self, Harness};
 use skillz_harness::env::Env;
 use skillz_harness::model::{Installed, Scope};
+use skillz_harness::runner::CommandRunner;
 
 /// Everything a switch of one scope works with.
 pub struct Applier<'a> {
@@ -31,6 +32,8 @@ pub struct Applier<'a> {
     pub scope: Scope,
     /// Tells whether a local source still exists before anything is installed from it.
     pub probe: &'a dyn Probe,
+    /// Fetches a skill entry's source at plan time to see whether its marketplace supplies it.
+    pub runner: &'a dyn CommandRunner,
 }
 
 impl Applier<'_> {

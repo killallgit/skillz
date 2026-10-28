@@ -58,8 +58,9 @@ fn installing_at_global_scope_gives_npx_the_global_flag_and_project_scope_does_n
         &Change::Selection(&picked),
     );
 
-    assert!(global[0].contains(&"-g".to_string()));
-    assert!(!local[0].contains(&"-g".to_string()));
+    // The install runs after the plan fetched the source, so it is the last command.
+    assert!(global.last().unwrap().contains(&"-g".to_string()));
+    assert!(!local.last().unwrap().contains(&"-g".to_string()));
 }
 
 #[test]

@@ -75,8 +75,10 @@ skills, and installs everything such a plugin ships. The plan names each plugin 
 skills it brings, and for `--all` lists the skills of the source that no plugin supplies, which
 are not installed (name them with `--skill`). Sources without a matching plugin use `npx
 skills`. A malformed marketplace or plugin manifest in the source never fails the install, its
-skills install loose instead. `library install` and profile applies still install a loose
-skill entry with `npx skills`, not through the plugin its source may offer.
+skills install loose instead. `library install`, `use`, `run` and the list install a skill entry
+the same way: the plan fetches its source, and each agent whose marketplace supplies every named
+skill installs the owning plugin; the others, and all of them when the fetch fails, use `npx
+skills`.
 
 A Codex project install writes the marketplace and plugin into `.codex/config.toml`, which a team
 usually commits, so skillz refuses a source with a user, password or token in its URL (use ssh or
@@ -127,7 +129,7 @@ extends = ["base"]                    # optional, see below
 agents = ["claude", "codex"]          # default for entries that name none (this is the default)
 
 [[entry]]
-kind = "skill"                        # installed with `npx skills`
+kind = "skill"                        # the owning plugin, else `npx skills`
 source = "mattpocock/skills"          # org/repo, git URL or local path
 names = ["tdd", "grilling"]
 
@@ -163,7 +165,7 @@ Every value must be non-empty and must not start with `-`; an MCP entry has exac
 
 | Kind | Claude | Codex |
 | --- | --- | --- |
-| skill | `npx skills add`, all agents at once | same |
+| skill | the owning plugin when the source's marketplace supplies every name, else `npx skills add` with the other agents | same |
 | plugin | `claude plugin marketplace add` + `plugin install`; project scope uses Claude's `local` scope, never the file the team shares | Global: `codex plugin marketplace add` + `plugin add`. Project: marketplace and plugin settings in `.codex/config.toml`; Codex materializes them on a marketplace refresh in a trusted project |
 | subagent | `.md` files into `.claude/agents` (`~/.claude/agents` global) | `.toml` files into `.codex/agents` (`~/.codex/agents` global) |
 | hook | `settings.json` (global) or `.claude/settings.local.json` (project) | `hooks.json` in the same scope |
@@ -189,7 +191,7 @@ wins.
 ```sh
 skillz profile save web          # snapshot what this project has installed (--force replaces)
 skillz profile ls | show web | rm web
-skillz use web --dry-run         # what installing `web` into this project would do
+skillz use web --dry-run         # what installing `web` would do; installs nothing, but still fetches skill sources to plan
 skillz use web                   # shows the plan, asks, then installs what is missing
 skillz use web --exact           # also removes what `web` does not want (-y skips the question)
 skillz use web -g                # the same at user level: plugins, skills and the rest for every project
@@ -243,7 +245,8 @@ change. It only ever adds: a second run adds nothing, labels you
 gave are kept, and items that are no longer installed stay. The only way out of the library is
 `skillz library remove` or removing it by hand in `store.json`. `SKILLZ_NO_SYNC=1` turns the startup scan
 off. A hand-made skill or subagent is recorded by the directory that holds it (engine `local`,
-marked detected), so it is reinstalled with `npx skills add <that directory> --skill <name>`.
+marked detected), so it is reinstalled from that directory: through the owning plugin when the
+directory's marketplace supplies it, else with `npx skills add <that directory> --skill <name>`.
 Items needing secrets, and items with nothing to reinstall them from, are not recorded.
 
 **Moving a folder.** skillz keeps no registry of projects, so moving a project is fine, but a

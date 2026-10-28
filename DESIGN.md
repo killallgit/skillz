@@ -27,7 +27,10 @@ are resolved before comparison with installed claims.
 
 `apply::compare` reports present entries, missing entries, and extras. Planning
 asks each `Harness` (`plan_install`) to turn missing entries into actions, and reuses
-removal plans for extras only in exact mode. Snapshotting converts typed installed
+removal plans for extras only in exact mode. A missing skill entry is the exception: its
+source is fetched once per plan, and each agent whose marketplace supplies every named skill
+installs the owning plugins by the rule `install --skill` uses (`install::native_skills`); the
+other agents, and every agent when the fetch fails, use `npx skills`. Snapshotting converts typed installed
 facts into reproducible entries; it reports missing sources, invalid definitions,
 and secret-bearing MCP servers as skipped.
 
@@ -42,8 +45,9 @@ asks which to install and returns its steps (`plan_add_source`); the remaining a
 `npx skills`. The steps are shown as one plan and run only once approved. The CLI and the workspace
 share `Session::install_source`, which also records what arrived in the library.
 Explicit skill selections
-use the owning plugins when the marketplace supplies all selected skills; sources without a
-matching plugin use loose skills. Codex recognizes native and legacy Claude marketplaces.
+use the owning plugins when the marketplace supplies all selected skills, none refused for a
+symlink that leaves the source; sources without a matching plugin use loose skills. Library
+installs and profile applies share this rule. Codex recognizes native and legacy Claude marketplaces.
 Its project plugin plans download Git marketplace metadata without registering it globally,
 then stage marketplace declarations and plugin enablement in the project's config, once per
 marketplace however many of its plugins are picked. Codex materializes the declared plugins in
@@ -88,8 +92,9 @@ so an isolated command launches only after its profile is ready.
   stored in profiles and the library. The name suggests a declarative desired state.
 - **`Installed`**: what a harness reports it has, with identity, scope, agents, typed
   details and the removal `Action`s.
-- **`Action`**: one side effect (run a command, remove a path, edit a file). Planning is pure;
-  `harness::action` executes plans with staging.
+- **`Action`**: one side effect (run a command, remove a path, edit a file). Planning changes nothing:
+  it reads, and fetches skill sources through the injected runner; `harness::action` executes
+  plans with staging.
 - **`Harness`**: one coding tool (Claude, Codex). It reports `installed` and plans
   `plan_install`, `plan_update` and `plan_add_source`. The `npx` module (free functions named like the
   trait methods, `installed`, `plan_install` and `plan_update`, with their own parameters; not a

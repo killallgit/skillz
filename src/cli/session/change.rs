@@ -142,6 +142,7 @@ impl Job<'_> {
             env: &self.env,
             scope: self.scope,
             probe: &Disk,
+            runner: self.deps.runner,
         }
     }
 
