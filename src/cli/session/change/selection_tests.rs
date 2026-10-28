@@ -259,3 +259,52 @@ fn an_item_the_user_unchecks_is_neither_installed_nor_removed() {
     assert_eq!(adds.len(), 1);
     assert!(dir.path().join(".agents/skills/tdd").exists());
 }
+
+/// Unchecks every removal in the first plan, notes whether each plan shown is destructive, then approves.
+struct UnchecksRemovals {
+    destructive: std::cell::RefCell<Vec<bool>>,
+}
+
+impl crate::app::prompt::Prompter for UnchecksRemovals {
+    fn multi_select(&self, _title: &str, _options: &[String]) -> anyhow::Result<Vec<usize>> {
+        Ok(vec![])
+    }
+
+    fn confirm(&self, _question: &str) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+
+    fn plan(&self, view: &crate::app::review::PlanView) -> anyhow::Result<Verdict> {
+        self.destructive.borrow_mut().push(view.destructive());
+        if self.destructive.borrow().len() > 1 {
+            return Ok(Verdict::Apply);
+        }
+        let mut targets = view.targets.clone().expect("a selection offers its items");
+        for pick in &mut targets.items {
+            pick.on = pick.group != crate::app::review::Group::Remove;
+        }
+        Ok(Verdict::Retarget(targets))
+    }
+}
+
+#[test]
+fn a_plan_whose_removals_are_all_unchecked_is_no_longer_destructive() {
+    let dir = tempfile::tempdir().unwrap();
+    project_with_skill(dir.path(), "tdd");
+    let ids = [skill_id(dir.path())];
+    let entries = [skill_entry("grill")];
+    let runner = crate::app::install::test_support::FakeRunner::new(|_| {});
+    let prompter = UnchecksRemovals {
+        destructive: Default::default(),
+    };
+    let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+
+    change(
+        &session(&deps, dir.path()),
+        Scope::Project,
+        &Change::Selection(&selection(&entries, &ids)),
+    )
+    .unwrap();
+
+    assert_eq!(*prompter.destructive.borrow(), [true, false]);
+}

@@ -46,21 +46,21 @@ fn group_of(item: &LibraryItem) -> (u8, String) {
 
 /// The rows under a rule per package or folder, `~` for the home directory, one line per item.
 pub(in crate::cli) fn grouped(rows: &[Row], home: &Path, width: usize) -> Vec<String> {
-    let mut groups: BTreeMap<(u8, String), Vec<&Row>> = BTreeMap::new();
+    let mut groups: BTreeMap<(u8, String, String), Vec<&Row>> = BTreeMap::new();
     for row in rows {
         let (rank, title) = group_of(row.item);
         groups
-            .entry((rank, title.to_lowercase()))
+            .entry((rank, title.to_lowercase(), title))
             .or_default()
             .push(row);
     }
     let mut lines = Vec::new();
-    for (_, mut members) in groups {
+    for ((_, _, title), mut members) in groups {
         members.sort_by_key(|row| (row.item.kind(), row.item.short_label().to_lowercase()));
         if !lines.is_empty() {
             lines.push(String::new());
         }
-        let title = tilde(&redact(&group_of(members[0].item).1), home);
+        let title = tilde(&redact(&title), home);
         lines.push(centered_rule(&title, width, "─"));
         lines.extend(members.iter().map(|row| row.entry_line(home)));
     }
@@ -179,6 +179,18 @@ mod tests {
             .position(|l| l.contains("~/code/skills"))
             .unwrap();
         assert!(lines[at_rule + 1].contains("grill") && lines[at_rule + 2].contains("tdd"));
+    }
+
+    #[test]
+    fn sources_that_differ_only_in_case_stay_in_separate_groups() {
+        let (upper, lower) = (at("/home/me/Skills", "tdd"), at("/home/me/skills", "grill"));
+        let held = Held::of(&[], &[]);
+        let rows = rows(vec![&upper, &lower], (&held, &Disk));
+
+        let lines = grouped(&rows, Path::new("/nowhere"), 40);
+
+        let rules = lines.iter().filter(|l| l.starts_with('─')).count();
+        assert_eq!(rules, 2);
     }
 
     #[test]

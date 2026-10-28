@@ -1,6 +1,8 @@
 //! A horizontal rule with a label in the middle: `──────── global ────────`. The list's divider
 //! and the command line's group headings are both drawn with it.
 
+use unicode_width::UnicodeWidthStr;
+
 /// How wide the command line draws a rule: the width of a terminal that is not asked.
 pub const RULE_WIDTH: usize = 72;
 
@@ -8,7 +10,7 @@ pub const RULE_WIDTH: usize = 72;
 /// wide for that stands alone.
 pub fn centered_rule(label: &str, width: usize, rule: &str) -> String {
     let label = format!(" {label} ");
-    let room = width.saturating_sub(label.chars().count());
+    let room = width.saturating_sub(label.width());
     let (left, right) = (room / 2, room - room / 2);
     format!("{}{label}{}", rule.repeat(left), rule.repeat(right))
 }
@@ -26,6 +28,13 @@ mod tests {
         assert_eq!(line.chars().count(), 20);
         assert!(before.abs_diff(after) <= 1);
         assert!(line.contains(" global "));
+    }
+
+    #[test]
+    fn a_label_of_wide_characters_is_measured_in_terminal_cells() {
+        let line = centered_rule("日本", 20, "─");
+
+        assert_eq!(line.width(), 20);
     }
 
     #[test]

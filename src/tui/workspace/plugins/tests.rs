@@ -755,3 +755,75 @@ fn flipping_a_package_installed_in_both_scopes_removes_only_the_projects_copy() 
         })
     );
 }
+
+fn plugin_entry(source: &str, name: &str) -> Spec {
+    Spec::Plugin {
+        source: source.into(),
+        marketplace: "mp".into(),
+        name: name.into(),
+        agents: vec![],
+    }
+}
+
+#[test]
+fn removing_one_of_two_plugins_of_a_marketplace_keeps_the_marketplace_and_the_other_plugin() {
+    let mut tab = tab(Model {
+        library: library(vec![plugin_entry("a/one", "p"), plugin_entry("a/two", "q")]),
+        installed: vec![
+            installed("p@mp", Kind::Plugin, "mp", None),
+            installed("q@mp", Kind::Plugin, "mp", None),
+            installed("mp", Kind::Marketplace, "mp", None),
+        ],
+        ..Model::default()
+    });
+
+    let act = flip_and_apply(&mut tab);
+
+    assert_eq!(
+        act,
+        Some(Act::Change {
+            scope: Scope::Project,
+            install: vec![],
+            remove: vec!["plugin:p@mp".into()],
+        })
+    );
+}
+
+fn rows_removing(rows: &[Row], id: &str) -> usize {
+    rows.iter()
+        .filter(
+            |row| matches!(row, Row::Own(plugin) if plugin.installed.iter().any(|held| held == id)),
+        )
+        .count()
+}
+
+#[test]
+fn a_marketplace_whose_plugins_are_listed_in_other_rows_has_no_row_of_its_own() {
+    let model = Model {
+        library: library(vec![plugin_entry("a/one", "p"), plugin_entry("a/two", "q")]),
+        installed: vec![
+            installed("p@mp", Kind::Plugin, "mp", None),
+            installed("q@mp", Kind::Plugin, "mp", None),
+            installed("mp", Kind::Marketplace, "mp", None),
+        ],
+        ..Model::default()
+    };
+
+    let rows = super::rows::build(&model, Scope::Project);
+
+    let rows_removing_it = rows_removing(&rows, "marketplace:mp");
+    assert_eq!(rows_removing_it, 0);
+}
+
+#[test]
+fn a_marketplace_left_without_plugins_still_has_a_row_to_remove_it_from() {
+    let model = Model {
+        installed: vec![installed("mp", Kind::Marketplace, "mp", None)],
+        ..Model::default()
+    };
+
+    let rows = super::rows::build(&model, Scope::Project);
+
+    let rows_removing_it = rows_removing(&rows, "marketplace:mp");
+    assert_eq!(rows_removing_it, 1);
+}
