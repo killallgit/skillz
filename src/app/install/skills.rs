@@ -1,17 +1,49 @@
+use std::collections::BTreeSet;
+use std::path::Path;
+
 use crate::app::matcher::pattern_matches;
 use crate::app::prompt::Prompter;
 use skillz_harness::action::Action;
-use skillz_harness::agent_skills::skill_names_under;
+use skillz_harness::agent_skills::skills_under;
+use skillz_harness::contained::Containment;
 use skillz_harness::model::Agent;
 use skillz_harness::npx::commands;
 
 use super::global::confirm_duplicates;
-use super::{Ctx, InstallRequest, SkillSelection, Tree};
+use super::{Ctx, InstallRequest, SkillSelection, Tree, escaping_symlinks};
 
 /// The `npx skills add` step for the skills the user picks from the tree.
 pub(super) struct SkillsPlan {
     pub line: String,
     pub step: Action,
+    /// The skills refused for a symlink that leaves the source, when there are any.
+    pub skipped: Option<String>,
+}
+
+/// The skill names under a tree: those to offer, and those refused because a directory carrying
+/// the name holds a symlink that leaves the source.
+pub(super) struct SourceSkills {
+    pub offered: Vec<String>,
+    pub refused: Vec<String>,
+}
+
+pub(super) fn source_skills(src: &Path) -> anyhow::Result<SourceSkills> {
+    let mut containment = Containment::new(src)?;
+    let mut offered = BTreeSet::new();
+    let mut refused = BTreeSet::new();
+    for (name, dir) in skills_under(src)? {
+        if containment.escapes(&dir)? {
+            refused.insert(name);
+        } else {
+            offered.insert(name);
+        }
+    }
+    // `npx skills --skill` picks by name, not directory, so one escaping copy refuses the name.
+    offered.retain(|name| !refused.contains(name));
+    Ok(SourceSkills {
+        offered: offered.into_iter().collect(),
+        refused: refused.into_iter().collect(),
+    })
 }
 
 /// Pick skills found under the tree to install with `npx skills add <source>`. `None` when the
@@ -22,7 +54,10 @@ pub(super) fn plan(
     tree: &Tree,
     agents: &[Agent],
 ) -> anyhow::Result<Option<SkillsPlan>> {
-    let names = skill_names_under(tree.src)?;
+    let SourceSkills {
+        offered: names,
+        refused,
+    } = source_skills(tree.src)?;
     anyhow::ensure!(
         !names.is_empty(),
         "found no marketplace, plugin or skills in {}",
@@ -35,10 +70,15 @@ pub(super) fn plan(
         return Ok(None);
     }
     let (program, args) = commands::add_command(tree.source, &chosen, agents, req.scope);
-    let names: Vec<String> = agents.iter().map(ToString::to_string).collect();
+    let agents = agents
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
     Ok(Some(SkillsPlan {
-        line: format!("{}: skills {}", names.join(", "), chosen.join(", ")),
+        line: format!("{agents}: skills {}", chosen.join(", ")),
         step: Action::required(&program, args, &ctx.env.project),
+        skipped: (!refused.is_empty()).then(|| escaping_symlinks(&agents, &refused)),
     }))
 }
 
@@ -87,6 +127,7 @@ pub(super) fn select_skills(names: &[String], selection: &SkillSelection) -> Vec
 mod tests {
     use super::*;
     use crate::app::install::test_support::*;
+    use skillz_harness::agent_skills::skill_names_under;
 
     /// Run the installer on the fixture's `repo/`, handing npx the source `"o/r"`.
     fn run(

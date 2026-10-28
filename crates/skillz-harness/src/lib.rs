@@ -5,6 +5,7 @@ pub mod action;
 pub mod agent_skills;
 pub mod agents;
 pub mod clone;
+pub mod contained;
 pub mod cost;
 pub mod env;
 pub mod fswalk;

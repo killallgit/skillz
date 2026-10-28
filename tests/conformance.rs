@@ -86,6 +86,7 @@ impl Harness for Fake {
             marketplace: "mp".into(),
             plugins: vec![PLUGIN.into()],
             skills: Default::default(),
+            refused: vec![],
         }))
     }
     fn plan_add_source(

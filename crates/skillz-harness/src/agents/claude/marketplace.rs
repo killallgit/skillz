@@ -333,6 +333,7 @@ mod tests {
             marketplace: "mp".into(),
             plugins: s(&["p1", "p2"]),
             skills: Default::default(),
+            refused: vec![],
         }
     }
 

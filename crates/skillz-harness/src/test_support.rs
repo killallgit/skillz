@@ -107,6 +107,13 @@ pub fn skill(root: &Path, rel: &str) {
     );
 }
 
+/// A symlink at `root/rel` to `target`, with the directories above it.
+pub fn link(root: &Path, rel: &str, target: impl AsRef<Path>) {
+    let path = root.join(rel);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(target, path).unwrap();
+}
+
 pub fn skills_fixture(root: &Path) {
     for rel in [
         "skills/tdd",

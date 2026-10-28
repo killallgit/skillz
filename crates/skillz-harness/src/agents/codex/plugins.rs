@@ -768,6 +768,7 @@ mod tests {
             marketplace: "mp".into(),
             plugins: vec!["a".into(), "b".into()],
             skills: Default::default(),
+            refused: vec![],
         };
 
         let steps = Codex
