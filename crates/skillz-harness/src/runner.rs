@@ -55,6 +55,10 @@ impl CommandRunner for NoCommands {
     }
 }
 
+/// Transports git may use in every child skillz runs except a launched agent; blocks `ext::` and
+/// other remote helpers whatever the user's `protocol.*.allow` says.
+pub const GIT_ALLOW_PROTOCOL: (&str, &str) = ("GIT_ALLOW_PROTOCOL", "http:https:ssh:git:file");
+
 /// Spawns real processes in `cwd` with stdin and stdout inherited (npx and claude print
 /// prompts and errors to stdout) and stderr captured for the error message. `envs` are set on
 /// every child, so a config dir skillz was pointed at (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`)
@@ -71,6 +75,17 @@ impl SystemRunner {
             .args(args)
             .envs(self.envs.iter().map(|(key, value)| (key, value)))
             .current_dir(cwd);
+        command
+    }
+
+    fn command_restricting_git_transports(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: &Path,
+    ) -> Command {
+        let mut command = self.command(program, args, cwd);
+        command.env(GIT_ALLOW_PROTOCOL.0, GIT_ALLOW_PROTOCOL.1);
         command
     }
 }
@@ -95,7 +110,7 @@ impl CommandRunner for SystemRunner {
 
     fn run(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output> {
         let out = self
-            .command(program, args, cwd)
+            .command_restricting_git_transports(program, args, cwd)
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .output()
@@ -108,7 +123,7 @@ impl CommandRunner for SystemRunner {
 
     fn run_quiet(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<Output> {
         let out = self
-            .command(program, args, cwd)
+            .command_restricting_git_transports(program, args, cwd)
             .stdin(Stdio::null())
             .output()
             .with_context(|| format!("failed to run `{program}` in {}", cwd.display()))?;
@@ -126,7 +141,7 @@ impl CommandRunner for SystemRunner {
 
     fn capture(&self, program: &str, args: &[String], cwd: &Path) -> anyhow::Result<String> {
         let out = self
-            .command(program, args, cwd)
+            .command_restricting_git_transports(program, args, cwd)
             .stdin(Stdio::null())
             .output()
             .with_context(|| format!("failed to run `{program}` in {}", cwd.display()))?;
@@ -249,6 +264,73 @@ mod tests {
         let res = SystemRunner::default().run("skillz-definitely-not-a-program", &[], dir.path());
         assert!(res.is_err());
     }
+
+    fn plain_and_redirected_runners() -> Vec<Box<dyn CommandRunner>> {
+        let redirected = SystemRunner::default()
+            .with_envs(vec![("SKILLZ_KEEP", "/keep".into())])
+            .unwrap();
+        vec![Box::new(SystemRunner::default()), redirected]
+    }
+
+    fn sh_args(script: String) -> [String; 2] {
+        ["-c".into(), script]
+    }
+
+    #[test]
+    fn captured_children_may_only_use_the_allowed_git_transports() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = sh_args("printf %s \"$GIT_ALLOW_PROTOCOL\"".into());
+
+        for runner in plain_and_redirected_runners() {
+            let seen = runner.capture("sh", &args, dir.path()).unwrap();
+            assert_eq!(seen, "http:https:ssh:git:file");
+        }
+    }
+
+    #[test]
+    fn run_and_run_quiet_children_may_only_use_the_allowed_git_transports() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = sh_args(format!(
+            "test \"$GIT_ALLOW_PROTOCOL\" = {}",
+            GIT_ALLOW_PROTOCOL.1
+        ));
+
+        for runner in plain_and_redirected_runners() {
+            assert!(runner.run("sh", &args, dir.path()).unwrap().success);
+            assert!(runner.run_quiet("sh", &args, dir.path()).unwrap().success);
+        }
+    }
+
+    #[test]
+    fn a_launched_agent_does_not_get_the_git_transport_restriction() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = sh_args(format!(
+            "test \"$GIT_ALLOW_PROTOCOL\" != {}",
+            GIT_ALLOW_PROTOCOL.1
+        ));
+
+        for runner in plain_and_redirected_runners() {
+            assert_eq!(runner.launch("sh", &args, dir.path()).unwrap(), 0);
+        }
+    }
+
+    #[test]
+    fn the_transport_restriction_overrides_the_users_git_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = [
+            "-c",
+            "protocol.allow=always",
+            "ls-remote",
+            "ext::sh -c touch% marker",
+        ]
+        .map(String::from);
+
+        let out = SystemRunner::default().run_quiet("git", &args, dir.path());
+
+        assert!(!out.unwrap().success);
+        assert!(!dir.path().join("marker").exists());
+    }
+
     #[test]
     fn child_redirects_preserve_other_configured_environment_variables() {
         let directory = tempfile::tempdir().unwrap();

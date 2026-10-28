@@ -17,6 +17,24 @@ fn check_source(source: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A GitHub shorthand is exactly `<owner>/<repo>`: anything else (`../x`, `~/x`, `a/b/c`) is
+/// not a repository name and must not reach git.
+fn check_repo_name(source: &str) -> anyhow::Result<()> {
+    let is_url = source.contains("://") || source.starts_with("git@");
+    let is_name = |part: &str| {
+        !part.is_empty() && part != "." && part != ".." && !part.starts_with(['-', '~'])
+    };
+    let is_owner_and_repo = source
+        .split_once('/')
+        .is_some_and(|(owner, repo)| is_name(owner) && is_name(repo) && !repo.contains('/'));
+    anyhow::ensure!(
+        is_url || (is_owner_and_repo && !source.contains('\\')),
+        "invalid repository name: {}",
+        redact_text(source)
+    );
+    Ok(())
+}
+
 /// Resolve a local directory or inspect a temporary clone. The callback receives the stable
 /// install source as well as the fetched tree, so temporary paths are never persisted.
 pub fn with_source<T>(
@@ -40,6 +58,7 @@ pub fn with_source<T>(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e).with_context(|| format!("reading source {}", redact_text(source))),
     }
+    check_repo_name(source)?;
     let temporary = tempfile::Builder::new()
         .prefix("skillz-install-")
         .tempdir()?;
@@ -144,6 +163,77 @@ mod source_tests {
             let res = with_source(source, &fx.env.project, &runner, |_, _| Ok(()));
             assert!(res.is_err());
         }
+        assert!(runner.calls().is_empty());
+    }
+
+    #[test]
+    fn anything_but_owner_slash_repo_is_refused_and_runs_nothing() {
+        let fx = project_with(|_| {});
+        let runner = FakeRunner::new(|_| {});
+        let sources = [
+            "../x",
+            "a/../b",
+            "./a/b",
+            "~/x",
+            "~o/r",
+            "o/~r",
+            "o/-r",
+            "o/r/extra",
+            "o",
+            "o//r",
+            "/o/r",
+            "o\\r",
+            "o/r\\x",
+            "o\\x/r",
+            "o/",
+            "/r",
+            "./o",
+        ];
+        for source in sources {
+            let res = with_source(source, &fx.env.project, &runner, |_, _| Ok(()));
+            assert!(res.is_err(), "{source}");
+        }
+        assert!(runner.calls().is_empty());
+    }
+
+    #[test]
+    fn owner_slash_repo_and_urls_are_cloned_unchanged() {
+        let fx = project_with(|_| {});
+        let runner = FakeRunner::new(|_| {});
+        let sources = ["o/r", "https://x.dev/o/r.git", "git@x.dev:o/r.git"];
+        for source in sources {
+            with_source(source, &fx.env.project, &runner, |_, _| Ok(())).unwrap();
+        }
+        let cloned: Vec<String> = runner
+            .calls()
+            .iter()
+            .map(|(_, args, _)| args[4].clone())
+            .collect();
+        assert_eq!(
+            cloned,
+            [
+                "https://github.com/o/r.git",
+                "https://x.dev/o/r.git",
+                "git@x.dev:o/r.git"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_local_directory_at_a_deep_relative_path_is_used_in_place() {
+        let directory = tempfile::tempdir().unwrap();
+        let deep = directory.path().join("a/b/c");
+        std::fs::create_dir_all(&deep).unwrap();
+        let runner = FakeRunner::new(|_| {});
+        let mut used = None;
+
+        with_source("a/b/c", directory.path(), &runner, |tree, _| {
+            used = Some(tree.to_path_buf());
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(used, Some(deep.canonicalize().unwrap()));
         assert!(runner.calls().is_empty());
     }
 
