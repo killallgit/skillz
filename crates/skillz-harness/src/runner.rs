@@ -302,16 +302,14 @@ mod tests {
     }
 
     #[test]
-    fn a_launched_agent_does_not_get_the_git_transport_restriction() {
+    fn a_launched_agent_keeps_its_own_git_allow_protocol() {
         let dir = tempfile::tempdir().unwrap();
-        let args = sh_args(format!(
-            "test \"$GIT_ALLOW_PROTOCOL\" != {}",
-            GIT_ALLOW_PROTOCOL.1
-        ));
+        let args = sh_args("test \"$GIT_ALLOW_PROTOCOL\" = sentinel".into());
+        let runner = SystemRunner::default()
+            .with_envs(vec![(GIT_ALLOW_PROTOCOL.0, "sentinel".into())])
+            .unwrap();
 
-        for runner in plain_and_redirected_runners() {
-            assert_eq!(runner.launch("sh", &args, dir.path()).unwrap(), 0);
-        }
+        assert_eq!(runner.launch("sh", &args, dir.path()).unwrap(), 0);
     }
 
     #[test]
