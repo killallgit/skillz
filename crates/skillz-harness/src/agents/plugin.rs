@@ -441,6 +441,33 @@ mod tests {
     }
 
     #[test]
+    fn a_plugin_source_that_is_a_file_is_skipped_unless_a_link_to_it_leaves_the_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("market");
+        std::fs::write(dir.path().join("secret"), "").unwrap();
+        skill(&root, "plugins/ok/skills/safe");
+        std::fs::write(root.join("plugins/afile"), "").unwrap();
+        link(&root, "plugins/flink", "afile");
+        link(&root, "plugins/outlink", dir.path().join("secret"));
+        marketplace(
+            &root,
+            json!([
+                {"name":"file", "source":"./plugins/afile"},
+                {"name":"flink", "source":"./plugins/flink"},
+                {"name":"outlink", "source":"./plugins/outlink"},
+                {"name":"ok", "source":"./plugins/ok"}
+            ]),
+        );
+        for agent in [Agent::Claude, Agent::Codex] {
+            let offer = offer(&root, agent);
+
+            assert_eq!(offer.plugins, ["file", "flink", "ok"]);
+            assert_eq!(offer.refused, ["outlink"]);
+            assert_eq!(offer.skills.keys().collect::<Vec<_>>(), ["ok"]);
+        }
+    }
+
+    #[test]
     fn a_name_refused_for_one_entry_is_not_also_offered_by_another() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("market");

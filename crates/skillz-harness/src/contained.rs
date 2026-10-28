@@ -36,6 +36,9 @@ impl Containment {
         let Some(start) = self.resolve(&self.root, dir)? else {
             return Ok(true);
         };
+        if !start.is_dir() {
+            return Ok(false);
+        }
         let mut seen = HashSet::new();
         let mut pending = vec![start];
         while let Some(dir) = pending.pop() {
