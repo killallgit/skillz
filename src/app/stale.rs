@@ -4,10 +4,16 @@
 use std::path::Path;
 
 use skillz_harness::Spec;
+use skillz_harness::agent_skills::skill_names_under;
 
-/// Whether a path exists; injected so the rules can be tested without a disk.
+/// What is on disk; injected so the rules can be tested without a disk.
 pub trait Probe {
     fn exists(&self, path: &Path) -> bool;
+
+    /// Whether the directory holds a skill called `name`. A probe that cannot tell says yes.
+    fn holds_skill(&self, _dir: &Path, _name: &str) -> bool {
+        true
+    }
 }
 
 pub struct Disk;
@@ -15,6 +21,10 @@ pub struct Disk;
 impl Probe for Disk {
     fn exists(&self, path: &Path) -> bool {
         path.exists()
+    }
+
+    fn holds_skill(&self, dir: &Path, name: &str) -> bool {
+        skill_names_under(dir).map_or(true, |names| names.iter().any(|n| n == name))
     }
 }
 
@@ -45,6 +55,18 @@ pub fn sole_name(entry: &Spec) -> Option<&str> {
         },
         _ => None,
     }
+}
+
+/// The local source of a skill entry that exists but no longer holds a skill the entry names.
+pub fn source_without_skill<'a>(entry: &'a Spec, probe: &dyn Probe) -> Option<&'a str> {
+    let Spec::Skill { names, .. } = entry else {
+        return None;
+    };
+    local_source(entry).filter(|source| {
+        names
+            .iter()
+            .any(|name| !probe.holds_skill(Path::new(source), name))
+    })
 }
 
 /// The same entry installed from `new_source`.
@@ -110,6 +132,20 @@ pub(crate) mod tests {
         for source in ["org/repo", "https://h/o/r.git", "git@h:o/r.git"] {
             assert_eq!(missing_source(&skill(source, "a"), &nothing), None);
         }
+    }
+
+    #[test]
+    fn the_disk_holds_the_skills_found_under_a_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        skillz_harness::test_support::skill(dir.path(), "nested/x");
+
+        assert!(Disk.holds_skill(dir.path(), "x"));
+        assert!(!Disk.holds_skill(dir.path(), "y"));
+    }
+
+    #[test]
+    fn a_folder_that_cannot_be_read_is_not_reported_as_missing_the_skill() {
+        assert!(Disk.holds_skill(Path::new("/no/such/folder"), "x"));
     }
 
     #[test]
