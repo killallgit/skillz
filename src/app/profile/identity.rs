@@ -5,10 +5,14 @@
 //! replaces a parent entry holding the same key; a parent entry that only partly overlaps keeps
 //! its other names, and disappears when none are left. The agents of an entry are not part of its
 //! identity: the child's agents win along with the entry.
+//!
+//! A skill or subagent key holds its source as a repository identity, so `o/r` and
+//! `https://github.com/o/r.git` name the same source.
 
 use std::collections::HashSet;
 
 use skillz_harness::Spec;
+use skillz_harness::clone::repo_identity;
 use skillz_harness::model::{Agent, Details, Installed, Installer, Kind, split_plugin_id};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -55,6 +59,8 @@ pub(crate) fn installed_claims(item: &Installed) -> Vec<Claim> {
         .collect()
 }
 
+/// A plugin also holds each skill it ships, from its marketplace's source, so a skill entry
+/// installed through its owning plugin is in place.
 pub(crate) fn installed_keys(item: &Installed) -> Vec<Key> {
     let source = || match item.installer {
         Installer::Npx => item.source.as_ref(),
@@ -67,20 +73,26 @@ pub(crate) fn installed_keys(item: &Installed) -> Vec<Key> {
                     Details::Skill { install_name, .. } => install_name,
                     _ => &item.name,
                 };
-                vec![Key::Skill(source.clone(), name.clone())]
+                vec![sourced(Key::Skill, source, name)]
             })
             .unwrap_or_default(),
         Kind::Subagent => match (source(), &item.details) {
             (Some(source), Details::Subagent { file }) => file
                 .file_stem()
                 .and_then(|stem| stem.to_str())
-                .map(|name| vec![Key::Subagent(source.clone(), name.into())])
+                .map(|name| vec![sourced(Key::Subagent, source, name)])
                 .unwrap_or_default(),
             _ => vec![],
         },
         Kind::Plugin => {
             let (name, marketplace) = split_plugin_id(&item.name);
-            vec![Key::Plugin(marketplace.into(), name.into())]
+            let shipped = source().into_iter().flat_map(|source| {
+                item.plugin_skills()
+                    .map(move |skill| sourced(Key::Skill, source, skill))
+            });
+            std::iter::once(Key::Plugin(marketplace.into(), name.into()))
+                .chain(shipped)
+                .collect()
         }
         Kind::Hook => item
             .hooks
@@ -133,8 +145,12 @@ pub(crate) fn keys(entry: &Spec) -> Vec<Key> {
 fn per_name(source: &str, names: &[String], key: fn(String, String) -> Key) -> Vec<Key> {
     names
         .iter()
-        .map(|name| key(source.to_string(), name.clone()))
+        .map(|name| sourced(key, source, name))
         .collect()
+}
+
+fn sourced(key: fn(String, String) -> Key, source: &str, name: &str) -> Key {
+    key(repo_identity(source), name.into())
 }
 
 /// The entry minus the names whose key is taken; `None` when nothing of it is left.
@@ -154,7 +170,6 @@ fn without(mut entry: Spec, taken: &HashSet<Key>) -> Option<Spec> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use skillz_harness::model::Agent;
 
     fn skills(source: &str, names: &[&str]) -> Spec {
         Spec::Skill {
@@ -187,12 +202,12 @@ mod tests {
     #[test]
     fn only_the_names_missing_for_some_agent_are_lacking() {
         let entry = skills("o/r", &["a", "b"]).with_agents(vec![Agent::Claude, Agent::Codex]);
-        let have: HashSet<Claim> = [
-            (Key::Skill("o/r".into(), "a".into()), Agent::Claude),
-            (Key::Skill("o/r".into(), "a".into()), Agent::Codex),
-            (Key::Skill("o/r".into(), "b".into()), Agent::Claude),
-        ]
-        .into();
+        let both = skills("o/r", &["a"]).with_agents(vec![Agent::Claude, Agent::Codex]);
+        let claude_only = skills("o/r", &["b"]).with_agents(vec![Agent::Claude]);
+        let have: HashSet<Claim> = claims(&both)
+            .into_iter()
+            .chain(claims(&claude_only))
+            .collect();
 
         let lacking = lacking(&entry, &have);
 
@@ -261,6 +276,64 @@ mod tests {
         assert!(same_thing(&a, &skills("o/r", &["b", "c"])));
         assert!(!same_thing(&a, &skills("o/r", &["c"])));
         assert!(!same_thing(&a, &mcp("a", "x")));
+    }
+
+    #[test]
+    fn a_source_is_the_same_however_it_is_spelled() {
+        let short = skills("o/r", &["a"]);
+
+        assert!(same_thing(
+            &short,
+            &skills("https://github.com/o/r.git", &["a"])
+        ));
+        assert!(same_thing(
+            &short,
+            &skills("git@github.com:O/R.git", &["a"])
+        ));
+        assert!(!same_thing(&short, &skills("o/other", &["a"])));
+    }
+
+    fn plugin_shipping(source: Option<&str>, shipped: &[&str]) -> Installed {
+        Installed {
+            details: Details::Plugin {
+                location: "/plugins/p".into(),
+                skills: shipped.iter().map(|s| s.to_string()).collect(),
+            },
+            hooks: vec![],
+            members: vec![],
+            id: "plugin:claude:project:p@mp".into(),
+            name: "p@mp".into(),
+            kind: Kind::Plugin,
+            agents: vec![Agent::Claude],
+            scope: skillz_harness::model::Scope::Project,
+            group: "mp".into(),
+            source: source.map(Into::into),
+            installer: Installer::ClaudeCli,
+            origin: Default::default(),
+            children: vec![],
+            removal: vec![],
+        }
+    }
+
+    #[test]
+    fn a_plugin_holds_itself_and_each_skill_it_ships_from_its_source() {
+        let plugin = plugin_shipping(Some("o/r"), &["a", "b"]);
+
+        let held = installed_keys(&plugin);
+
+        let mut expected = vec![Key::Plugin("mp".into(), "p".into())];
+        expected.extend(keys(&skills("https://github.com/o/r.git", &["a", "b"])));
+        assert_eq!(held, expected);
+    }
+
+    #[test]
+    fn a_plugin_without_a_known_source_holds_only_itself() {
+        let plugin = plugin_shipping(None, &["a"]);
+
+        assert_eq!(
+            installed_keys(&plugin),
+            [Key::Plugin("mp".into(), "p".into())]
+        );
     }
 
     #[test]

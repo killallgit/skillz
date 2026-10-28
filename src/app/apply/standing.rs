@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use crate::app::profile::{Claim, Profile, claims, installed_claims, lacking};
 use crate::app::snapshot;
 use skillz_harness::Spec;
-use skillz_harness::model::{Installed, Kind};
+use skillz_harness::model::{Installed, Kind, split_plugin_id};
 
 /// How a profile's entries and the installed items overlap.
 #[derive(Debug)]
@@ -67,9 +67,10 @@ pub fn compare(wanted: &[Spec], installed: &[Installed]) -> Standing {
             None => present.push(entry.clone()),
         }
     }
+    let drawn_on = marketplaces_drawn_on(&wanted, &held, &wanted_claims);
     let extras = held
-        .into_iter()
-        .filter_map(|(item, held)| extra(item, &held, &wanted_claims, &wanted))
+        .iter()
+        .filter_map(|(item, held)| extra(item, held, &wanted_claims, &drawn_on))
         .collect();
     Standing {
         present,
@@ -100,16 +101,36 @@ fn claims_of(item: &Installed) -> Vec<Claim> {
     item.parts().iter().flat_map(installed_claims).collect()
 }
 
+/// The marketplaces a wanted entry draws on: those of wanted plugins, and those of installed
+/// plugins holding a wanted claim, such as a wanted skill they ship.
+fn marketplaces_drawn_on<'a>(
+    wanted: &'a [Spec],
+    held: &[(&'a Installed, Vec<Claim>)],
+    wanted_claims: &HashSet<Claim>,
+) -> HashSet<&'a str> {
+    let of_wanted_plugins = wanted.iter().filter_map(|entry| match entry {
+        Spec::Plugin { marketplace, .. } => Some(marketplace.as_str()),
+        _ => None,
+    });
+    let of_held_plugins = held
+        .iter()
+        .filter(|(item, claims)| {
+            item.kind == Kind::Plugin && claims.iter().any(|c| wanted_claims.contains(c))
+        })
+        .map(|(item, _)| split_plugin_id(&item.name).1);
+    of_wanted_plugins.chain(of_held_plugins).collect()
+}
+
 /// An item is wanted when any one of its claims is, so one shared with a wanted entry stays.
-/// A marketplace is wanted while a wanted plugin comes from it.
+/// A marketplace is wanted while a wanted entry draws on it.
 fn extra(
     item: &Installed,
     held: &[Claim],
     wanted_claims: &HashSet<Claim>,
-    wanted: &[Spec],
+    drawn_on: &HashSet<&str>,
 ) -> Option<Extra> {
     if item.kind == Kind::Marketplace {
-        let used = wanted.iter().any(|e| draws_on(e, &item.name));
+        let used = drawn_on.contains(item.name.as_str());
         return (!used).then(|| Extra {
             item: item.clone(),
             sourced: true,
@@ -127,18 +148,18 @@ fn extra(
     })
 }
 
-fn draws_on(entry: &Spec, marketplace: &str) -> bool {
-    matches!(entry, Spec::Plugin { marketplace: m, .. } if m == marketplace)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use skillz_harness::model::{Agent, Installer, Scope};
+    use skillz_harness::model::{Agent, Details, Installer, Scope};
 
     fn skill_entry(names: &[&str]) -> Spec {
+        skill_entry_from("o/r", names)
+    }
+
+    fn skill_entry_from(source: &str, names: &[&str]) -> Spec {
         Spec::Skill {
-            source: "o/r".into(),
+            source: source.into(),
             names: names.iter().map(|n| n.to_string()).collect(),
             agents: vec![Agent::Claude],
         }
@@ -223,6 +244,94 @@ mod tests {
 
         assert!(wanting.extras.is_empty());
         assert_eq!(not_wanting.extras.len(), 1);
+    }
+
+    /// Claude's plugin `p@mp`, from a marketplace at `source`, shipping `shipped`.
+    fn plugin_from(source: &str, shipped: &[&str]) -> Installed {
+        Installed {
+            details: Details::Plugin {
+                location: "/plugins/p".into(),
+                skills: shipped.iter().map(|s| s.to_string()).collect(),
+            },
+            installer: Installer::ClaudeCli,
+            ..installed("p@mp", Kind::Plugin, Some(source))
+        }
+    }
+
+    fn marketplace_mp() -> Installed {
+        Installed {
+            installer: Installer::ClaudeCli,
+            ..installed("mp", Kind::Marketplace, Some("o/r"))
+        }
+    }
+
+    #[test]
+    fn a_skill_its_plugin_ships_is_present_and_the_plugin_is_wanted() {
+        let live = [plugin_from("o/r", &["a"])];
+
+        let standing = compare(&[skill_entry(&["a"])], &live);
+
+        assert_eq!(standing.present, [skill_entry(&["a"])]);
+        assert!(standing.missing.is_empty());
+        assert!(standing.extras.is_empty());
+    }
+
+    #[test]
+    fn a_skill_its_plugin_ships_is_present_however_the_source_is_spelled() {
+        let url = "https://github.com/o/r.git";
+        for (wanted, recorded) in [(url, "o/r"), ("o/r", url)] {
+            let entry = skill_entry_from(wanted, &["a"]);
+
+            let standing = compare(
+                std::slice::from_ref(&entry),
+                &[plugin_from(recorded, &["a"])],
+            );
+
+            assert_eq!(standing.present, [entry]);
+            assert!(standing.extras.is_empty());
+        }
+    }
+
+    #[test]
+    fn only_the_skills_the_plugin_does_not_ship_are_missing() {
+        let live = [plugin_from("o/r", &["a"])];
+
+        let standing = compare(&[skill_entry(&["a", "b"])], &live);
+
+        assert_eq!(standing.missing, [skill_entry(&["b"])]);
+        assert!(standing.extras.is_empty());
+    }
+
+    #[test]
+    fn a_plugin_and_its_marketplace_stay_only_while_a_wanted_skill_comes_through_them() {
+        let live = [plugin_from("o/r", &["a"]), marketplace_mp()];
+
+        let wanting = compare(&[skill_entry(&["a"])], &live);
+        let not_wanting = compare(&[], &live);
+
+        assert!(wanting.extras.is_empty());
+        let extra_kinds: Vec<Kind> = not_wanting.extras.iter().map(|e| e.item.kind).collect();
+        assert_eq!(extra_kinds, [Kind::Plugin, Kind::Marketplace]);
+    }
+
+    #[test]
+    fn a_plugin_does_not_ship_the_same_skill_name_from_another_source() {
+        let entry = skill_entry_from("o/other", &["a"]);
+
+        let standing = compare(std::slice::from_ref(&entry), &[plugin_from("o/r", &["a"])]);
+
+        assert_eq!(standing.missing, [entry]);
+        assert_eq!(standing.extras.len(), 1);
+    }
+
+    #[test]
+    fn a_plugin_for_one_agent_leaves_the_skill_missing_for_another() {
+        let entry = skill_entry(&["a"]).with_agents(vec![Agent::Claude, Agent::Codex]);
+
+        let standing = compare(std::slice::from_ref(&entry), &[plugin_from("o/r", &["a"])]);
+
+        assert_eq!(standing.missing, [entry]);
+        assert!(standing.extras.is_empty());
     }
 
     fn profile(name: &str, skills: &[&str]) -> Profile {

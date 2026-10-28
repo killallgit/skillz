@@ -81,6 +81,22 @@ pub(crate) fn clone_url(source: &str) -> String {
     }
 }
 
+/// A git source as `host/owner/repo`, whichever way it is spelled: shorthand, https, ssh or scp
+/// form, with or without `.git`, a trailing slash or capitals.
+pub fn repo_identity(source: &str) -> String {
+    let url = clone_url(source).to_ascii_lowercase();
+    let rest = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest);
+    let rest = match rest.split_once('@') {
+        Some((user, after)) if !user.contains('/') => after,
+        _ => rest,
+    };
+    rest.replacen(':', "/", 1)
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .trim_end_matches('/')
+        .to_string()
+}
+
 fn clone_command(source: &str, dest: &Path) -> Cmd {
     let args = [
         "clone",

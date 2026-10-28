@@ -656,3 +656,56 @@ fn an_agent_the_marketplace_does_not_supply_keeps_npx_for_itself_alone() {
         .collect();
     assert_eq!(npx_runs, [&codex_only]);
 }
+
+/// Claude's records once `claude plugin install p1@mp --scope local` has run in the project:
+/// marketplace `mp` added from `o/r`, and the plugin's tree shipping `alpha`.
+fn record_p1_installed_for_claude(fx: &Fx) {
+    let plugins = fx.env.home.join(".claude/plugins");
+    let tree = plugins.join("cache/mp/p1/1.0");
+    skill(&tree, "skills/alpha");
+    let marketplace = serde_json::json!({"source": {"source": "github", "repo": "o/r"}});
+    let installed = serde_json::json!({"version": 2, "plugins": {"p1@mp": [
+        {"scope": "local", "projectPath": fx.env.project, "installPath": tree}
+    ]}});
+    fs::write(
+        plugins.join("known_marketplaces.json"),
+        serde_json::json!({"mp": marketplace}).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        plugins.join("installed_plugins.json"),
+        installed.to_string(),
+    )
+    .unwrap();
+    let settings = fx.env.project.join(".claude/settings.local.json");
+    fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    let declared = serde_json::json!({
+        "extraKnownMarketplaces": {"mp": marketplace},
+        "enabledPlugins": {"p1@mp": true}
+    });
+    fs::write(settings, declared.to_string()).unwrap();
+}
+
+#[test]
+fn a_skill_installed_through_its_plugin_plans_nothing_more_even_when_exact() {
+    for source in ["o/r", "https://github.com/o/r.git"] {
+        let fx = Fx::new();
+        let fetch = FakeRunner::new(supplied_and_loose_fixture);
+        let entry = skill_entry(source, &["alpha"], &[Agent::Claude]);
+        let first = planned_steps(&fx, &fetch, Scope::Project, vec![entry.clone()]);
+        let install = s(&["plugin", "install", "p1@mp", "--scope", "local"]);
+        assert!(commands(&first).contains(&("claude".into(), install)));
+        record_p1_installed_for_claude(&fx);
+        let mut library = Profile::new("library");
+        library.entries = vec![entry];
+        let applier = Applier {
+            runner: &fetch,
+            ..fx.applier()
+        };
+
+        let again = applier.plan(&library, true).unwrap();
+
+        assert!(again.is_empty());
+        assert_eq!(again.present.len(), 1);
+    }
+}
