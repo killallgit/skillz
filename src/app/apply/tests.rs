@@ -573,6 +573,19 @@ fn a_skill_whose_plugin_holds_a_symlink_leaving_the_source_keeps_npx() {
 }
 
 #[test]
+fn a_clean_skill_whose_plugin_holds_a_symlink_elsewhere_keeps_npx() {
+    // Only the plugin is refused: `alpha` itself holds no link, so the source still offers it.
+    let leaky_plugin = |root: &Path| {
+        supplied_and_loose_fixture(root);
+        escaping_link(root, "plugins/p1/hooks/secret");
+    };
+
+    let commands = claude_commands(leaky_plugin, &["alpha"]);
+
+    assert_eq!(commands, [npx_for_claude("o/r", &["alpha"])]);
+}
+
+#[test]
 fn a_skill_with_a_copy_outside_its_plugin_that_leaves_the_source_keeps_npx() {
     let leaky_copy = |root: &Path| {
         supplied_and_loose_fixture(root);

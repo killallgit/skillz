@@ -191,7 +191,7 @@ wins.
 ```sh
 skillz profile save web          # snapshot what this project has installed (--force replaces)
 skillz profile ls | show web | rm web
-skillz use web --dry-run         # what installing `web` into this project would do
+skillz use web --dry-run         # what installing `web` would do; installs nothing, but still fetches skill sources to plan
 skillz use web                   # shows the plan, asks, then installs what is missing
 skillz use web --exact           # also removes what `web` does not want (-y skips the question)
 skillz use web -g                # the same at user level: plugins, skills and the rest for every project
@@ -245,7 +245,8 @@ change. It only ever adds: a second run adds nothing, labels you
 gave are kept, and items that are no longer installed stay. The only way out of the library is
 `skillz library remove` or removing it by hand in `store.json`. `SKILLZ_NO_SYNC=1` turns the startup scan
 off. A hand-made skill or subagent is recorded by the directory that holds it (engine `local`,
-marked detected), so it is reinstalled with `npx skills add <that directory> --skill <name>`.
+marked detected), so it is reinstalled from that directory: through the owning plugin when the
+directory's marketplace supplies it, else with `npx skills add <that directory> --skill <name>`.
 Items needing secrets, and items with nothing to reinstall them from, are not recorded.
 
 **Moving a folder.** skillz keeps no registry of projects, so moving a project is fine, but a

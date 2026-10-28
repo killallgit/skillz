@@ -45,8 +45,8 @@ fn apply_all(d: &Deps, profiles: &[&str]) {
     }
 }
 
-/// The commands that ran, leaving out the `git` that fetches a skill's source to plan it.
-fn installs(r: &Recorder) -> usize {
+/// How many commands ran beyond the `git` that fetches a skill's source to plan it.
+fn commands_beyond_fetch(r: &Recorder) -> usize {
     r.calls()
         .iter()
         .filter(|(program, _)| program != "git")
@@ -54,13 +54,14 @@ fn installs(r: &Recorder) -> usize {
 }
 
 #[test]
-fn a_dry_run_use_runs_no_command() {
+fn a_dry_run_use_only_fetches_and_installs_nothing() {
     let w = world_with_web();
     let (r, p) = (Recorder::default(), Scripted::yes());
 
     run_quiet(use_cmd("web", true), &deps(&w, &r, &p)).unwrap();
 
-    assert_eq!(installs(&r), 0);
+    let programs: Vec<String> = r.calls().into_iter().map(|(program, _)| program).collect();
+    assert_eq!(programs, ["git"]);
 }
 
 #[test]
@@ -70,7 +71,7 @@ fn using_a_profile_installs_its_skills_once() {
 
     apply_all(&deps(&w, &r, &p), &["web"]);
 
-    assert_eq!(installs(&r), 1);
+    assert_eq!(commands_beyond_fetch(&r), 1);
 }
 
 #[test]
@@ -80,7 +81,7 @@ fn using_two_profiles_installs_each_ones_skills() {
 
     apply_all(&deps(&w, &r, &p), &["web", "api"]);
 
-    assert_eq!(installs(&r), 2);
+    assert_eq!(commands_beyond_fetch(&r), 2);
 }
 
 #[test]

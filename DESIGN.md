@@ -92,8 +92,9 @@ so an isolated command launches only after its profile is ready.
   stored in profiles and the library. The name suggests a declarative desired state.
 - **`Installed`**: what a harness reports it has, with identity, scope, agents, typed
   details and the removal `Action`s.
-- **`Action`**: one side effect (run a command, remove a path, edit a file). Planning is pure;
-  `harness::action` executes plans with staging.
+- **`Action`**: one side effect (run a command, remove a path, edit a file). Planning changes nothing:
+  it reads, and fetches skill sources through the injected runner; `harness::action` executes
+  plans with staging.
 - **`Harness`**: one coding tool (Claude, Codex). It reports `installed` and plans
   `plan_install`, `plan_update` and `plan_add_source`. The `npx` module (free functions named like the
   trait methods, `installed`, `plan_install` and `plan_update`, with their own parameters; not a
