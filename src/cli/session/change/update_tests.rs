@@ -4,6 +4,7 @@ use std::path::Path;
 use super::tests::{project_with_skill, run_change, session, skill_id};
 use super::*;
 use crate::app::install::test_support::{FakeNpx, FakeRunner, ScriptedPrompter};
+use crate::app::workspace::Act;
 use skillz_harness::agents::registry;
 
 fn locked_at(dir: &Path, hash: &str) {
@@ -141,4 +142,23 @@ fn retrying_an_update_only_retries_the_failed_items() {
 
     assert_eq!(*runner.names.borrow(), ["a", "b", "b"]);
     assert!(matches!(result, Some(Notice::ItemsUpdated(1))));
+}
+
+#[test]
+fn the_workspace_update_act_runs_the_same_update() {
+    let dir = tempfile::tempdir().unwrap();
+    locked_at(dir.path(), "old");
+    let act = Act::Update {
+        scope: Scope::Project,
+        ids: vec![skill_id(dir.path())],
+    };
+    let runner = FakeRunner::new(|_| {});
+    let prompter = ScriptedPrompter::new(&[], true);
+    let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+
+    let result = session(&deps, dir.path()).perform(act);
+
+    let calls = runner.calls();
+    assert!(matches!(result.unwrap(), Some(Notice::ItemsUpdated(1))));
+    assert_eq!(calls[0].1[2], "update");
 }

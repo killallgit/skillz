@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use super::args::{
     Command, Filter, InstallArgs, ListArgs, PruneArgs, ResetArgs, SyncArgs, UninstallArgs,
-    UpdateArgs, UseArgs,
+    UpdateArgs, UpgradeArgs, UseArgs,
 };
 use super::deps::Deps;
 use super::doctor::doctor;
@@ -17,6 +17,7 @@ use super::scope::{Scene, resolve, resolve_project, split_target};
 use super::session::{Change, Session, with_session};
 use super::sync::{SyncRequest, sync};
 use super::update::{UpdateRequest, check, update};
+use super::upgrade::{UpgradeRequest, upgrade};
 use super::workspace::workspace;
 use crate::app::install::{InstallRequest, SkillSelection};
 use skillz_harness::model::Scope;
@@ -28,6 +29,7 @@ pub fn run(command: Command, deps: &Deps, out: &mut dyn Write) -> anyhow::Result
         Command::List(args) => succeeded(run_list(deps, args, out)),
         Command::Uninstall(args) => succeeded(run_uninstall(deps, args, out)),
         Command::Update(args) => succeeded(run_update(deps, args, out)),
+        Command::Upgrade(args) => succeeded(run_upgrade(deps, args, out)),
         Command::Prune(args) => succeeded(run_prune(deps, args, out)),
         Command::Doctor(args) => succeeded(doctor(deps, &args, out)),
         Command::Reset(args) => succeeded(run_reset(deps, args, out)),
@@ -99,6 +101,17 @@ fn run_update(deps: &Deps, args: UpdateArgs, out: &mut dyn Write) -> anyhow::Res
     update(&scene, &request, out)
 }
 
+/// Both levels at once: the project's installs and the user's.
+fn run_upgrade(deps: &Deps, args: UpgradeArgs, out: &mut dyn Write) -> anyhow::Result<()> {
+    let (env, scopes) = resolve(deps, args.project.as_deref(), false)?;
+    let filter = Filter::default();
+    let scene = Scene::new(deps, &env, &scopes, &filter);
+    let request = UpgradeRequest {
+        dry_run: args.dry_run,
+    };
+    upgrade(&scene, &request, out)
+}
+
 fn run_prune(deps: &Deps, args: PruneArgs, out: &mut dyn Write) -> anyhow::Result<()> {
     let (env, scopes) = resolve(deps, args.project.as_deref(), args.filter.global)?;
     let scene = Scene::new(deps, &env, &scopes, &args.filter);
@@ -151,6 +164,7 @@ fn run_install(deps: &Deps, args: InstallArgs) -> anyhow::Result<()> {
         agents: deps.agents_or_all(&args.agents),
         scope,
         selection: skill_selection(args.all, args.skill),
+        npx: args.npx,
     };
     Session::open(deps, &env)
         .install_source(&request)

@@ -31,6 +31,8 @@ pub enum Command {
     Uninstall(UninstallArgs),
     /// Update installed items with the tool that installed them (`--check` only lists the ones with a newer version)
     Update(UpdateArgs),
+    /// Update every Claude and Codex plugin, in the project and at user level, that has a newer version
+    Upgrade(UpgradeArgs),
     /// Remove every skill, plugin and marketplace in scope (hooks, MCP servers and subagents only when asked: `--hooks`, `--mcp`, `--subagents`)
     Reset(ResetArgs),
     /// Find duplicate skills and skills/plugins unused for 7+ days, then remove the ones picked
@@ -160,6 +162,19 @@ pub struct UpdateArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct UpgradeArgs {
+    /// Project directory (default: cwd)
+    #[arg(short = 'p', long)]
+    pub project: Option<PathBuf>,
+    /// Don't prompt
+    #[arg(short, long)]
+    pub yes: bool,
+    /// Print the update plans without changing anything
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct ResetArgs {
     /// Project directory (default: the current one). With `-g`, only global unless given.
     #[arg(value_name = "PATH")]
@@ -242,6 +257,9 @@ pub struct InstallArgs {
     /// Skill names or globs, comma separated (e.g. `tdd,*commit`)
     #[arg(long, value_delimiter = ',')]
     pub skill: Vec<String>,
+    /// Also install the source's skills with `npx skills`: all of them, or the ones named by `--skill`
+    #[arg(long)]
+    pub npx: bool,
     /// Project directory (default: cwd)
     #[arg(short = 'p', long)]
     pub project: Option<PathBuf>,
@@ -338,6 +356,7 @@ pub(super) fn wants_auto_yes(command: &Command) -> bool {
         Command::Uninstall(a) => a.yes,
         Command::Install(a) => a.yes,
         Command::Update(a) => a.yes,
+        Command::Upgrade(a) => a.yes,
         Command::Use(a) => a.yes,
         Command::Run(a) => a.yes,
         Command::Library {
@@ -453,6 +472,8 @@ mod tests {
         assert!(wants_auto_yes(&parse(&["install", "o/r", "--yes"])));
         assert!(!wants_auto_yes(&parse(&["install", "o/r"])));
         assert!(!wants_auto_yes(&parse(&["list"])));
+        assert!(wants_auto_yes(&parse(&["upgrade", "-y"])));
+        assert!(!wants_auto_yes(&parse(&["upgrade", "--dry-run"])));
         assert!(wants_auto_yes(&parse(&["prune", "--force"])));
         assert!(!wants_auto_yes(&parse(&["prune"])));
         assert!(wants_auto_yes(&parse(&["reset", "-f"])));

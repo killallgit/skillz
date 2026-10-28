@@ -21,9 +21,12 @@ impl Session<'_, '_> {
                     install,
                     remove,
                     only: None,
+                    packages: true,
+                    npx: None,
                 };
                 change(self, *scope, &Change::Selection(&picked))
             }
+            Act::Update { scope, ids } => change(self, *scope, &Change::Update(ids)),
         }
     }
 

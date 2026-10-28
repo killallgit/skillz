@@ -37,6 +37,8 @@ fn selection<'a>(install: &'a [Spec], remove: &'a [String]) -> Selection<'a> {
         install,
         remove,
         only: None,
+        packages: false,
+        npx: None,
     }
 }
 
@@ -307,4 +309,122 @@ fn a_plan_whose_removals_are_all_unchecked_is_no_longer_destructive() {
     .unwrap();
 
     assert_eq!(*prompter.destructive.borrow(), [true, false]);
+}
+
+fn package<'a>(install: &'a [Spec]) -> Selection<'a> {
+    Selection {
+        packages: true,
+        ..selection(install, &[])
+    }
+}
+
+fn plugin_entry(source: &str) -> Spec {
+    Spec::Plugin {
+        source: source.into(),
+        marketplace: "mp".into(),
+        name: "p".into(),
+        agents: vec![],
+    }
+}
+
+fn npx_calls(runner: &crate::app::install::test_support::FakeRunner) -> Vec<Vec<String>> {
+    runner
+        .calls()
+        .into_iter()
+        .filter(|(program, _, _)| program == "npx")
+        .map(|(_, args, _)| args)
+        .collect()
+}
+
+#[test]
+fn a_package_of_skills_installs_with_one_npx_run_for_the_whole_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let entries = [
+        skill_entry("grill"),
+        skill_entry("rust"),
+        skill_entry("tdd"),
+    ];
+
+    let (result, runner) = run_change(dir.path(), true, &Change::Selection(&package(&entries)));
+
+    let npx = npx_calls(&runner);
+    assert!(matches!(
+        result.unwrap(),
+        Some(Notice::Changed { installed: 1, .. })
+    ));
+    assert_eq!(npx.len(), 1);
+    assert!(npx[0].windows(2).any(|pair| pair == ["--skill", "*"]));
+}
+
+#[test]
+fn a_package_with_a_plugin_installs_the_plugin_and_leaves_its_skills_to_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = match skill_entry("grill") {
+        Spec::Skill { source, .. } => source,
+        other => panic!("{other:?}"),
+    };
+    let entries = [skill_entry("grill"), plugin_entry(&source)];
+
+    let (_, runner) = run_change(dir.path(), true, &Change::Selection(&package(&entries)));
+
+    let programs: Vec<String> = runner.calls().into_iter().map(|c| c.0).collect();
+    assert!(npx_calls(&runner).is_empty());
+    assert!(programs.contains(&"claude".to_string()));
+}
+
+/// Checks `npx` in the first plan it is shown, then approves.
+struct ChecksNpx {
+    seen: std::cell::RefCell<Vec<Option<bool>>>,
+}
+
+impl crate::app::prompt::Prompter for ChecksNpx {
+    fn multi_select(&self, _title: &str, _options: &[String]) -> anyhow::Result<Vec<usize>> {
+        Ok(vec![])
+    }
+
+    fn confirm(&self, _question: &str) -> anyhow::Result<bool> {
+        Ok(true)
+    }
+
+    fn plan(&self, view: &crate::app::review::PlanView) -> anyhow::Result<Verdict> {
+        let targets = view
+            .targets
+            .clone()
+            .expect("an install offers its installers");
+        self.seen.borrow_mut().push(targets.npx);
+        if self.seen.borrow().len() > 1 {
+            return Ok(Verdict::Apply);
+        }
+        Ok(Verdict::Retarget(Targets {
+            npx: Some(true),
+            ..targets
+        }))
+    }
+}
+
+#[test]
+fn checking_npx_runs_it_next_to_the_agents_plugin_installers() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = match skill_entry("grill") {
+        Spec::Skill { source, .. } => source,
+        other => panic!("{other:?}"),
+    };
+    let entries = [skill_entry("grill"), plugin_entry(&source)];
+    let runner = crate::app::install::test_support::FakeRunner::new(|_| {});
+    let prompter = ChecksNpx {
+        seen: Default::default(),
+    };
+    let deps = Deps::for_test(dir.path(), registry(), (&runner, &prompter));
+
+    change(
+        &session(&deps, dir.path()),
+        Scope::Project,
+        &Change::Selection(&package(&entries)),
+    )
+    .unwrap();
+
+    let programs: Vec<String> = runner.calls().into_iter().map(|c| c.0).collect();
+    assert_eq!(*prompter.seen.borrow(), [Some(false), Some(true)]);
+    assert_eq!(npx_calls(&runner).len(), 1);
+    assert!(programs.contains(&"claude".to_string()));
 }

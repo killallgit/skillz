@@ -17,6 +17,7 @@ pub mod prompt;
 pub mod prune;
 pub(crate) mod remove;
 pub mod review;
+pub mod route;
 pub mod rule;
 pub(crate) mod snapshot;
 pub(crate) mod spinner;

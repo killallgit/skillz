@@ -29,8 +29,12 @@ pub struct ClaudeMarketplaces<R> {
 }
 
 impl<R: CommandRunner + Send + Sync> UpdateCheck for ClaudeMarketplaces<R> {
+    fn can_tell(&self, item: &Installed) -> bool {
+        (item.kind, item.installer) == (Kind::Marketplace, Installer::ClaudeCli)
+    }
+
     fn available(&self, item: &Installed) -> bool {
-        if (item.kind, item.installer) != (Kind::Marketplace, Installer::ClaudeCli) {
+        if !self.can_tell(item) {
             return false;
         }
         let Some(clone) = self.clone_of(&item.name) else {

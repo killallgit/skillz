@@ -67,5 +67,6 @@ pub fn req(fx: &Fixture, source: &str, selection: SkillSelection) -> InstallRequ
         agents: vec![Agent::Claude],
         scope: Scope::Project,
         selection,
+        npx: false,
     }
 }

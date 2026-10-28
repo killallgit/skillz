@@ -113,6 +113,7 @@ mod tests {
             agents: vec![Agent::Claude],
             scope: Scope::Global,
             selection: super::super::SkillSelection::All,
+            npx: false,
         };
         let context = Ctx {
             adapters: &adapters,

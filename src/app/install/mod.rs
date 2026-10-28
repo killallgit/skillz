@@ -4,11 +4,13 @@ mod global;
 mod skills;
 #[cfg(test)]
 pub(crate) mod test_support;
+mod tools;
 
 use std::path::{Path, PathBuf};
 
+use self::tools::{Remembering, Tools};
 use crate::app::prompt::Prompter;
-use crate::app::review::{Group, PlanView, Verdict};
+use crate::app::review::{Group, PlanView, Targets, Verdict};
 use skillz_harness::action::{self, Action};
 use skillz_harness::agent_skills::skill_names_under;
 use skillz_harness::agents::{Harness, PluginOffer, adapter_for};
@@ -36,6 +38,9 @@ pub struct InstallRequest {
     pub agents: Vec<Agent>,
     pub scope: Scope,
     pub selection: SkillSelection,
+    /// Run `npx skills` for the source's skills next to the agents' plugin installers. It takes
+    /// every skill, or the ones `Patterns` names.
+    pub npx: bool,
 }
 
 /// What an install talks to: the registered agents and the outside world.
@@ -53,45 +58,83 @@ struct Tree<'a> {
 }
 
 /// What an install will do, shown for approval before anything runs.
+#[derive(Default)]
 struct Plan {
     lines: Vec<String>,
     steps: Vec<Action>,
     /// Agents that refused the install, with why.
     skipped: Vec<String>,
+    /// Some agent got the source's skills through `npx skills` because it offers no plugin.
+    fell_back: bool,
 }
 
-/// `true` when the plan was approved and ran.
+/// `true` when the plan was approved and ran. The plan lists the installers it runs, each of
+/// which the user may check or not, and is made again when they change.
 pub fn install(ctx: &Ctx, req: &InstallRequest) -> anyhow::Result<bool> {
     skillz_harness::clone::with_source(&req.source, &req.cwd, ctx.runner, |src, source| {
         let tree = Tree { src, source };
-        let Some(plan) = plan(ctx, req, &tree)? else {
-            return Ok(false);
+        let remembering = Remembering::new(ctx.prompter);
+        let ctx = Ctx {
+            prompter: &remembering,
+            ..*ctx
         };
-        let view = PlanView {
-            heading: format!("Install from {source}"),
-            groups: [(Group::Install, plan.lines), (Group::Skip, plan.skipped)]
+        let every: Vec<Agent> = ctx.adapters.iter().map(|a| a.agent()).collect();
+        let mut tools = Tools {
+            agents: req.agents.clone(),
+            npx: req.npx,
+            fallback: true,
+        };
+        let mut first = true;
+        loop {
+            let asked = InstallRequest {
+                agents: tools.agents.clone(),
+                npx: tools.npx,
+                ..req.clone()
+            };
+            let plan = match plan(&ctx, &asked, &tree, (&tools, first))? {
+                Some(plan) => plan,
+                None if first => return Ok(false),
+                None => Plan::default(),
+            };
+            first = false;
+            let view = PlanView {
+                heading: format!("Install from {source}"),
+                groups: [
+                    (Group::Install, plan.lines.clone()),
+                    (Group::Skip, plan.skipped.clone()),
+                ]
                 .into_iter()
                 .filter(|(_, lines)| !lines.is_empty())
                 .collect(),
-            steps: plan.steps.iter().map(Action::describe).collect(),
-            targets: None,
-        };
-        match ctx.prompter.plan(&view)? {
-            Verdict::Apply => run(ctx, &plan.steps).map(|()| true),
-            Verdict::DryRun | Verdict::Cancel | Verdict::Retarget(_) => Ok(false),
+                steps: plan.steps.iter().map(Action::describe).collect(),
+                targets: Some(Targets::installers(
+                    every.clone(),
+                    &tools.agents,
+                    tools.npx || plan.fell_back,
+                )),
+            };
+            match ctx.prompter.plan(&view)? {
+                Verdict::Apply if plan.steps.is_empty() => return Ok(false),
+                Verdict::Apply => return run(&ctx, &plan.steps).map(|()| true),
+                Verdict::Retarget(chosen) => tools = tools.after(&chosen, plan.fell_back),
+                Verdict::DryRun | Verdict::Cancel => return Ok(false),
+            }
         }
     })
 }
 
 /// Each requested agent installs the source's plugins through its own installer when it offers
-/// any; the agents left over install the source's skills with `npx skills`. `None` when the
-/// user picked nothing.
-fn plan(ctx: &Ctx, req: &InstallRequest, tree: &Tree) -> anyhow::Result<Option<Plan>> {
-    let mut plan = Plan {
-        lines: vec![],
-        steps: vec![],
-        skipped: vec![],
-    };
+/// any. With `npx` checked, `npx skills` also installs the source's skills; without, the agents
+/// that were offered no plugin install them that way while `tools.fallback` stands. `None` when
+/// the user picked nothing. `first` is the plan before the user changed anything: one that
+/// leaves nothing to do is an error then, and a plan to change afterwards.
+fn plan(
+    ctx: &Ctx,
+    req: &InstallRequest,
+    tree: &Tree,
+    (tools, first): (&Tools, bool),
+) -> anyhow::Result<Option<Plan>> {
+    let mut plan = Plan::default();
     let mut rest = vec![];
     for &agent in &req.agents {
         match agent_plugins(ctx, req, tree, agent)? {
@@ -104,19 +147,38 @@ fn plan(ctx: &Ctx, req: &InstallRequest, tree: &Tree) -> anyhow::Result<Option<P
             AgentPlugins::Unoffered => rest.push(agent),
         }
     }
-    if !rest.is_empty()
-        && let Some(skills) = skills::plan(ctx, req, tree, &rest)?
-    {
-        plan.lines.push(skills.line);
-        plan.steps.push(skills.step);
+    if req.npx {
+        let every: Vec<Agent> = ctx.adapters.iter().map(|a| a.agent()).collect();
+        let agents = if req.agents.is_empty() {
+            &every
+        } else {
+            &req.agents
+        };
+        let all = skills::plan_all(ctx, req, tree, agents)?;
+        plan.lines.push(all.line);
+        plan.steps.push(all.step);
+    } else if tools.fallback {
+        if !rest.is_empty()
+            && let Some(skills) = skills::plan(ctx, req, tree, &rest)?
+        {
+            plan.lines.push(skills.line);
+            plan.steps.push(skills.step);
+            plan.fell_back = true;
+        }
+    } else {
+        plan.skipped.extend(
+            rest.iter().map(|agent| {
+                format!("{agent}: no plugin in this source, check npx for its skills")
+            }),
+        );
     }
     // Every agent refusing leaves nothing to approve, so say why instead of doing nothing.
     anyhow::ensure!(
-        !plan.steps.is_empty() || plan.skipped.is_empty(),
+        !first || !plan.steps.is_empty() || plan.skipped.is_empty(),
         "{}",
         plan.skipped.join("; ")
     );
-    Ok((!plan.steps.is_empty()).then_some(plan))
+    Ok((!plan.steps.is_empty() || !first).then_some(plan))
 }
 
 /// What one agent does with the plugins a source offers.
@@ -252,7 +314,7 @@ mod tests {
         fx: &Fixture,
         req: &InstallRequest,
         runner: &FakeRunner,
-        prompter: &ScriptedPrompter,
+        prompter: &dyn Prompter,
     ) -> anyhow::Result<bool> {
         let adapters = registry();
         let ctx = Ctx {
@@ -556,6 +618,149 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn npx_args(runner: &FakeRunner) -> Vec<Vec<String>> {
+        let calls = runner.calls();
+        calls
+            .into_iter()
+            .filter(|call| call.0 == "npx")
+            .map(|call| call.1)
+            .collect()
+    }
+
+    fn skill_flags(args: &[String]) -> Vec<&String> {
+        args.windows(2)
+            .filter(|pair| pair[0] == "--skill")
+            .map(|pair| &pair[1])
+            .collect()
+    }
+
+    #[test]
+    fn checking_npx_installs_every_skill_next_to_the_plugins() {
+        let fx = project_with(mattpocock_fixture);
+        let runner = FakeRunner::new(|_| {});
+        let request = InstallRequest {
+            agents: vec![Agent::Claude, Agent::Codex],
+            npx: true,
+            ..req(&fx, "repo", SkillSelection::Interactive)
+        };
+
+        run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[0], true)).unwrap();
+
+        let npx = npx_args(&runner);
+        assert_eq!(npx.len(), 1);
+        assert_eq!(skill_flags(&npx[0]), ["*"]);
+        assert!(runner.calls().iter().any(|call| call.0 == "claude"));
+    }
+
+    #[test]
+    fn checking_npx_with_skills_named_installs_those_only() {
+        let fx = project_with(mattpocock_fixture);
+        let runner = FakeRunner::new(|_| {});
+        let request = InstallRequest {
+            npx: true,
+            ..req(&fx, "repo", SkillSelection::Patterns(s(&["tdd"])))
+        };
+
+        run_install(&fx, &request, &runner, &ScriptedPrompter::new(&[], true)).unwrap();
+
+        assert_eq!(skill_flags(&npx_args(&runner)[0]), ["tdd"]);
+    }
+
+    /// Changes what the first plan offers, then approves the next; notes every question and the
+    /// `npx` box each plan showed.
+    struct ChangesOnce {
+        change: fn(&mut Targets),
+        questions: std::cell::Cell<usize>,
+        plans: std::cell::RefCell<Vec<Option<bool>>>,
+    }
+
+    impl ChangesOnce {
+        fn new(change: fn(&mut Targets)) -> Self {
+            ChangesOnce {
+                change,
+                questions: Default::default(),
+                plans: Default::default(),
+            }
+        }
+    }
+
+    impl Prompter for ChangesOnce {
+        fn multi_select(&self, _title: &str, _options: &[String]) -> anyhow::Result<Vec<usize>> {
+            self.questions.set(self.questions.get() + 1);
+            Ok(vec![0])
+        }
+
+        fn confirm(&self, _question: &str) -> anyhow::Result<bool> {
+            Ok(true)
+        }
+
+        fn plan(&self, view: &PlanView) -> anyhow::Result<Verdict> {
+            let mut targets = view
+                .targets
+                .clone()
+                .expect("an install offers its installers");
+            self.plans.borrow_mut().push(targets.npx);
+            if self.plans.borrow().len() > 1 {
+                return Ok(Verdict::Apply);
+            }
+            (self.change)(&mut targets);
+            Ok(Verdict::Retarget(targets))
+        }
+    }
+
+    #[test]
+    fn checking_npx_on_the_plan_makes_it_again_without_asking_the_picks_twice() {
+        let fx = project_with(mattpocock_fixture);
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ChangesOnce::new(|targets| targets.npx = Some(true));
+        let request = InstallRequest {
+            agents: vec![Agent::Claude],
+            ..req(&fx, "repo", SkillSelection::Interactive)
+        };
+
+        let ran = run_install(&fx, &request, &runner, &prompter);
+
+        assert!(ran.unwrap());
+        assert_eq!(*prompter.plans.borrow(), [Some(false), Some(true)]);
+        assert_eq!(prompter.questions.get(), 1);
+        assert_eq!(npx_args(&runner).len(), 1);
+    }
+
+    #[test]
+    fn skills_without_a_plugin_show_npx_checked_and_unchecking_it_installs_nothing() {
+        let fx = project_with(|root| skill(root, "skills/tdd"));
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ChangesOnce::new(|targets| targets.npx = Some(false));
+        let request = InstallRequest {
+            agents: vec![Agent::Claude],
+            ..req(&fx, "repo", SkillSelection::All)
+        };
+
+        let ran = run_install(&fx, &request, &runner, &prompter);
+
+        assert!(!ran.unwrap());
+        assert_eq!(*prompter.plans.borrow(), [Some(true), Some(false)]);
+        assert!(runner.calls().iter().all(|call| call.0 != "npx"));
+    }
+
+    #[test]
+    fn leaving_the_fallback_checked_still_picks_skills_by_name() {
+        let fx = project_with(|root| skill(root, "skills/tdd"));
+        let runner = FakeRunner::new(|_| {});
+        let prompter = ChangesOnce::new(|targets| targets.agents[1].1 = false);
+        let request = InstallRequest {
+            agents: vec![Agent::Claude, Agent::Codex],
+            ..req(&fx, "repo", SkillSelection::Patterns(s(&["tdd"])))
+        };
+
+        run_install(&fx, &request, &runner, &prompter).unwrap();
+
+        let npx = npx_args(&runner);
+        assert_eq!(skill_flags(&npx[0]), ["tdd"]);
+        assert!(npx[0].contains(&"claude-code".to_string()));
+        assert!(!npx[0].contains(&"codex".to_string()));
     }
 
     #[test]

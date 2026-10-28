@@ -20,6 +20,12 @@ pub enum Act {
         install: Vec<Spec>,
         remove: Vec<String>,
     },
+    /// Bring the installed items with these ids to their latest version, as one plan, in
+    /// `scope`.
+    Update {
+        scope: Scope,
+        ids: Vec<String>,
+    },
 }
 
 /// What the list shows: a snapshot of the project, the user's installs and the library, read

@@ -83,6 +83,9 @@ pub struct Listed {
 pub struct Targets {
     /// Empty when the plan reaches no more than one agent: there is nothing to choose.
     pub agents: Vec<(Agent, bool)>,
+    /// Whether `npx skills` is one of the installers, when the plan installs and so offers it.
+    /// A box after the agents.
+    pub npx: Option<bool>,
     pub items: Vec<Pick>,
     pub cursor: usize,
     /// Items the user unchecked that the plan stopped listing (narrowing the agents hid them):
@@ -99,10 +102,36 @@ impl Targets {
         };
         Targets {
             agents: offered.into_iter().map(|agent| (agent, true)).collect(),
+            npx: None,
             items: vec![],
             cursor: 0,
             left_out: vec![],
         }
+    }
+
+    /// The installers an install may run: each of `offered` checked when it is in `checked`,
+    /// and `npx skills`. They are always offered, even for a single agent.
+    pub fn installers(offered: Vec<Agent>, checked: &[Agent], npx: bool) -> Self {
+        Targets {
+            agents: offered
+                .into_iter()
+                .map(|agent| (agent, checked.contains(&agent)))
+                .collect(),
+            npx: Some(npx),
+            items: vec![],
+            cursor: 0,
+            left_out: vec![],
+        }
+    }
+
+    /// Whether `npx skills` is checked.
+    pub fn npx_on(&self) -> bool {
+        self.npx == Some(true)
+    }
+
+    /// Where the items start among the lines the cursor can rest on.
+    pub fn items_from(&self) -> usize {
+        self.agents.len() + usize::from(self.npx.is_some())
     }
 
     pub fn checked(&self) -> Vec<Agent> {
@@ -120,7 +149,7 @@ impl Targets {
 
     /// How many lines the cursor can rest on.
     pub fn rows(&self) -> usize {
-        self.agents.len() + self.items.len()
+        self.items_from() + self.items.len()
     }
 
     /// Whether the item called `id` is left in the plan; one the plan does not list is.
@@ -159,10 +188,12 @@ impl Targets {
     }
 
     pub fn toggled(mut self) -> Self {
-        let agents = self.agents.len();
+        let items = self.items_from();
         if let Some((_, on)) = self.agents.get_mut(self.cursor) {
             *on = !*on;
-        } else if let Some(pick) = self.items.get_mut(self.cursor - agents) {
+        } else if self.cursor < items {
+            self.npx = self.npx.map(|on| !on);
+        } else if let Some(pick) = self.items.get_mut(self.cursor - items) {
             pick.on = !pick.on;
         }
         self

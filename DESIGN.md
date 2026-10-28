@@ -145,7 +145,11 @@ open groups by their ancestor paths so matching labels in other branches stay in
 
 Plain `list QUERY` prints matching items. Browsing is explicit with `list -i`. Whether an
 installed item has a newer version is asked only by `update --check` and `list --check`; the
-list does not mark updates yet. The README owns key tables and command examples.
+list does not mark updates yet. An install lists its installers (each agent's plugin installer and `npx skills`) as boxes on the
+plan, and every box checked runs (`app::route` for the list, `install::tools` for a source).
+`upgrade` runs `update` over the plugins of both levels that
+the check does not show current: a plugin is as current as its marketplace, and an item the
+check cannot judge (`UpdateCheck::can_tell`, today every Codex one) is always updated. The README owns key tables and command examples.
 
 ## Extension and tests
 

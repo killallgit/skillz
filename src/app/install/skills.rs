@@ -42,6 +42,41 @@ pub(super) fn plan(
     }))
 }
 
+/// `npx skills add <source>` for every skill the source has, or the ones named with `--skill`.
+/// Nothing is left out and nothing is asked: the user checked `npx` to have it all.
+pub(super) fn plan_all(
+    ctx: &Ctx,
+    req: &InstallRequest,
+    tree: &Tree,
+    agents: &[Agent],
+) -> anyhow::Result<SkillsPlan> {
+    let names = skill_names_under(tree.src)?;
+    anyhow::ensure!(
+        !names.is_empty(),
+        "found no marketplace, plugin or skills in {}",
+        tree.source
+    );
+    let (chosen, what) = match &req.selection {
+        SkillSelection::Patterns(_) => {
+            let chosen = select_skills(&names, &req.selection);
+            anyhow::ensure!(
+                !chosen.is_empty(),
+                "no skills to install from {}",
+                tree.source
+            );
+            let what = format!("skills {}", chosen.join(", "));
+            (chosen, what)
+        }
+        _ => (vec!["*".to_string()], "all skills".to_string()),
+    };
+    let (program, args) = commands::add_command(tree.source, &chosen, agents, req.scope);
+    let agents: Vec<String> = agents.iter().map(ToString::to_string).collect();
+    Ok(SkillsPlan {
+        line: format!("npx for {}: {what}", agents.join(", ")),
+        step: Action::required(&program, args, &ctx.env.project),
+    })
+}
+
 /// The skills to install, or `None` when the user backed out.
 fn choose(
     prompter: &dyn Prompter,

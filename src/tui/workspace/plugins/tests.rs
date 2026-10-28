@@ -827,3 +827,65 @@ fn a_marketplace_left_without_plugins_still_has_a_row_to_remove_it_from() {
     let rows_removing_it = rows_removing(&rows, "marketplace:mp");
     assert_eq!(rows_removing_it, 1);
 }
+
+#[test]
+fn u_updates_what_the_project_has_of_the_package_under_the_cursor() {
+    let held = installed("tdd", Kind::Skill, "o/r", Some("o/r"));
+    let mut tab = tab(Model {
+        library: library(vec![skill("o/r", "tdd")]),
+        installed: vec![held.clone()],
+        ..Model::default()
+    });
+
+    let act = press(&mut tab, KeyCode::Char('u'));
+
+    assert_eq!(
+        act,
+        Some(Act::Update {
+            scope: Scope::Project,
+            ids: vec![held.id],
+        })
+    );
+    assert!(tab.pending.is_empty());
+}
+
+#[test]
+fn u_does_nothing_on_a_package_that_is_not_installed() {
+    let mut tab = tab(Model {
+        library: library(vec![skill("o/r", "tdd")]),
+        ..Model::default()
+    });
+
+    assert_eq!(press(&mut tab, KeyCode::Char('u')), None);
+}
+
+#[test]
+fn u_leaves_the_users_packages_alone() {
+    let mut tab = with_global();
+    tab.outline.select_row(5);
+
+    assert_eq!(press(&mut tab, KeyCode::Char('u')), None);
+}
+
+#[test]
+fn u_at_user_level_updates_in_that_scope() {
+    let held = globally("tdd", Kind::Skill, "o/r", Some("o/r"));
+    let mut tab = tab_for(
+        Scope::Global,
+        Model {
+            library: library(vec![skill("o/r", "tdd")]),
+            global: vec![held.clone()],
+            ..Model::default()
+        },
+    );
+
+    let act = press(&mut tab, KeyCode::Char('u'));
+
+    assert_eq!(
+        act,
+        Some(Act::Update {
+            scope: Scope::Global,
+            ids: vec![held.id],
+        })
+    );
+}
