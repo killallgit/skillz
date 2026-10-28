@@ -256,8 +256,9 @@ subagent of the same name (it keeps your label, refreshes the provenance, and fo
 entries that named the old path); the toast says `moved: N` and `sync --json` has `repointed`. If
 several places match it stays stale (`ambiguous`), and if the library already has the live item the
 stale duplicate is dropped. Repository and URL sources are never touched. Installing or applying
-an entry whose directory is missing, or a skill entry whose directory no longer holds that skill,
-fails that entry, naming it and the path, before `npx` runs;
+an entry whose directory is missing, or a skill entry whose directory exists but no longer holds
+that skill, fails that entry, naming it and the path, before `npx` runs (only a missing directory
+is followed by `skillz sync`);
 the other entries still install. `skillz run` environments are keyed by profile only, so a moved
 project reuses its own.
 Installing a skill again fetches it from its recorded
