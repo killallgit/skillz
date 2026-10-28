@@ -23,7 +23,9 @@ Profiles contain typed `Spec` values. `profile::Store` reads the store once per
 resolution, then resolves inheritance in memory with cycle detection and cached
 results. Child entries replace inherited entries with matching identities;
 partially overlapping skill/subagent entries retain the other names. Agent lists
-are resolved before comparison with installed claims.
+are resolved before comparison with installed claims. An installed plugin claims each skill it
+ships under its marketplace's source, and keys hold a repository source as its identity
+(`o/r` and `https://github.com/o/r.git` match) while a local path stays as spelled.
 
 `apply::compare` reports present entries, missing entries, and extras. Planning
 asks each `Harness` (`plan_install`) to turn missing entries into actions, and reuses

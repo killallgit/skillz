@@ -6,13 +6,13 @@
 //! its other names, and disappears when none are left. The agents of an entry are not part of its
 //! identity: the child's agents win along with the entry.
 //!
-//! A skill or subagent key holds its source as a repository identity, so `o/r` and
-//! `https://github.com/o/r.git` name the same source.
+//! A skill or subagent key holds a repository source as its identity, so `o/r` and
+//! `https://github.com/o/r.git` name the same source; a local path stays as spelled.
 
 use std::collections::HashSet;
 
 use skillz_harness::Spec;
-use skillz_harness::clone::repo_identity;
+use skillz_harness::clone::source_identity;
 use skillz_harness::model::{Agent, Details, Installed, Installer, Kind, split_plugin_id};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -150,7 +150,7 @@ fn per_name(source: &str, names: &[String], key: fn(String, String) -> Key) -> V
 }
 
 fn sourced(key: fn(String, String) -> Key, source: &str, name: &str) -> Key {
-    key(repo_identity(source), name.into())
+    key(source_identity(source), name.into())
 }
 
 /// The entry minus the names whose key is taken; `None` when nothing of it is left.
@@ -293,25 +293,42 @@ mod tests {
         assert!(!same_thing(&short, &skills("o/other", &["a"])));
     }
 
+    #[test]
+    fn local_paths_differing_only_by_case_are_different_sources() {
+        let lower = skills("/src/skills", &["a"]);
+
+        assert!(!same_thing(&lower, &skills("/src/Skills", &["a"])));
+        assert!(same_thing(&lower, &skills("/src/skills", &["a"])));
+    }
+
+    fn installed(name: &str, kind: Kind, source: Option<&str>) -> Installed {
+        Installed {
+            details: Default::default(),
+            hooks: vec![],
+            members: vec![],
+            id: format!("{kind}:{name}"),
+            name: name.into(),
+            kind,
+            agents: vec![Agent::Claude],
+            scope: skillz_harness::model::Scope::Project,
+            group: "g".into(),
+            source: source.map(Into::into),
+            installer: Installer::Npx,
+            origin: Default::default(),
+            children: vec![],
+            removal: vec![],
+        }
+    }
+
+    /// Claude's plugin `p@mp`, from a marketplace at `source`, shipping `shipped`.
     fn plugin_shipping(source: Option<&str>, shipped: &[&str]) -> Installed {
         Installed {
             details: Details::Plugin {
                 location: "/plugins/p".into(),
                 skills: shipped.iter().map(|s| s.to_string()).collect(),
             },
-            hooks: vec![],
-            members: vec![],
-            id: "plugin:claude:project:p@mp".into(),
-            name: "p@mp".into(),
-            kind: Kind::Plugin,
-            agents: vec![Agent::Claude],
-            scope: skillz_harness::model::Scope::Project,
-            group: "mp".into(),
-            source: source.map(Into::into),
             installer: Installer::ClaudeCli,
-            origin: Default::default(),
-            children: vec![],
-            removal: vec![],
+            ..installed("p@mp", Kind::Plugin, source)
         }
     }
 

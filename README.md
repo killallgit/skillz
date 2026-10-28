@@ -213,6 +213,8 @@ installed item the profile does not want, after showing the plan; items with no 
 (plugins without a marketplace, skills `npx skills` cannot see) are flagged because no profile
 can bring them back. An item
 shared with a wanted entry, such as a skill for two agents of which the profile wants one, stays.
+A skill installed through its owning plugin counts as there, so that plugin and its marketplace
+stay too.
 
 `use` acts on one level only. In a project it installs into that project (Claude plugins at
 `local` scope, so only that project has them) and counts only what the project holds; with `-g`

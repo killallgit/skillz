@@ -97,6 +97,15 @@ pub fn repo_identity(source: &str) -> String {
         .to_string()
 }
 
+/// A repository source as its `repo_identity`; a local path exactly as spelled, since only the
+/// filesystem knows whether two spellings of a path are the same directory.
+pub fn source_identity(source: &str) -> String {
+    match check_repo_name(source) {
+        Ok(()) => repo_identity(source),
+        Err(_) => source.to_string(),
+    }
+}
+
 fn clone_command(source: &str, dest: &Path) -> Cmd {
     let args = [
         "clone",
