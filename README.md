@@ -75,8 +75,10 @@ skills, and installs everything such a plugin ships. The plan names each plugin 
 skills it brings, and for `--all` lists the skills of the source that no plugin supplies, which
 are not installed (name them with `--skill`). Sources without a matching plugin use `npx
 skills`. A malformed marketplace or plugin manifest in the source never fails the install, its
-skills install loose instead. `library install` and profile applies still install a loose
-skill entry with `npx skills`, not through the plugin its source may offer.
+skills install loose instead. `library install`, `use`, `run` and the list install a skill entry
+the same way: the plan fetches its source, and each agent whose marketplace supplies every named
+skill installs the owning plugin; the others, and all of them when the fetch fails, use `npx
+skills`.
 
 A Codex project install writes the marketplace and plugin into `.codex/config.toml`, which a team
 usually commits, so skillz refuses a source with a user, password or token in its URL (use ssh or
@@ -127,7 +129,7 @@ extends = ["base"]                    # optional, see below
 agents = ["claude", "codex"]          # default for entries that name none (this is the default)
 
 [[entry]]
-kind = "skill"                        # installed with `npx skills`
+kind = "skill"                        # the owning plugin, else `npx skills`
 source = "mattpocock/skills"          # org/repo, git URL or local path
 names = ["tdd", "grilling"]
 
@@ -163,7 +165,7 @@ Every value must be non-empty and must not start with `-`; an MCP entry has exac
 
 | Kind | Claude | Codex |
 | --- | --- | --- |
-| skill | `npx skills add`, all agents at once | same |
+| skill | the owning plugin when the source's marketplace supplies every name, else `npx skills add` with the other agents | same |
 | plugin | `claude plugin marketplace add` + `plugin install`; project scope uses Claude's `local` scope, never the file the team shares | Global: `codex plugin marketplace add` + `plugin add`. Project: marketplace and plugin settings in `.codex/config.toml`; Codex materializes them on a marketplace refresh in a trusted project |
 | subagent | `.md` files into `.claude/agents` (`~/.claude/agents` global) | `.toml` files into `.codex/agents` (`~/.codex/agents` global) |
 | hook | `settings.json` (global) or `.claude/settings.local.json` (project) | `hooks.json` in the same scope |

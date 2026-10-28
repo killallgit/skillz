@@ -45,6 +45,14 @@ fn apply_all(d: &Deps, profiles: &[&str]) {
     }
 }
 
+/// The commands that ran, leaving out the `git` that fetches a skill's source to plan it.
+fn installs(r: &Recorder) -> usize {
+    r.calls()
+        .iter()
+        .filter(|(program, _)| program != "git")
+        .count()
+}
+
 #[test]
 fn a_dry_run_use_runs_no_command() {
     let w = world_with_web();
@@ -52,7 +60,7 @@ fn a_dry_run_use_runs_no_command() {
 
     run_quiet(use_cmd("web", true), &deps(&w, &r, &p)).unwrap();
 
-    assert_eq!(r.count(), 0);
+    assert_eq!(installs(&r), 0);
 }
 
 #[test]
@@ -62,7 +70,7 @@ fn using_a_profile_installs_its_skills_once() {
 
     apply_all(&deps(&w, &r, &p), &["web"]);
 
-    assert_eq!(r.count(), 1);
+    assert_eq!(installs(&r), 1);
 }
 
 #[test]
@@ -72,7 +80,7 @@ fn using_two_profiles_installs_each_ones_skills() {
 
     apply_all(&deps(&w, &r, &p), &["web", "api"]);
 
-    assert_eq!(r.count(), 2);
+    assert_eq!(installs(&r), 2);
 }
 
 #[test]

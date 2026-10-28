@@ -5,9 +5,13 @@ use std::fs;
 use std::path::Path;
 
 use super::*;
+use crate::app::install::test_support::{
+    FakeRunner, link, marketplace_fixture, mattpocock_fixture, npx, s, skill, skills_fixture,
+};
 use crate::app::profile::Profile;
 use crate::app::stale::Disk;
 use skillz_harness::Spec;
+use skillz_harness::action::{Action, apply_edit};
 use skillz_harness::agents::registry;
 use skillz_harness::model::Agent;
 use skillz_harness::runner::{CommandRunner, Output};
@@ -84,6 +88,8 @@ struct Fx {
     _dirs: (tempfile::TempDir, tempfile::TempDir),
     env: Env,
     adapters: Vec<Box<dyn Harness>>,
+    /// Fetches skill sources at plan time: an empty clone, so every skill keeps `npx skills`.
+    fetch: FakeRunner,
 }
 
 impl Fx {
@@ -92,6 +98,7 @@ impl Fx {
         Fx {
             env: Env::new(home.path().into(), project.path().into()),
             adapters: registry(),
+            fetch: FakeRunner::new(|_| {}),
             _dirs: (home, project),
         }
     }
@@ -102,6 +109,7 @@ impl Fx {
             env: &self.env,
             scope: Scope::Project,
             probe: &Disk,
+            runner: &self.fetch,
         }
     }
 
@@ -329,4 +337,309 @@ fn a_relative_local_subagent_source_matches_its_canonical_install() {
 
     assert!(again.is_empty());
     assert_eq!(again.present.len(), 1);
+}
+
+fn skill_entry(source: &str, names: &[&str], agents: &[Agent]) -> Spec {
+    Spec::Skill {
+        source: source.into(),
+        names: s(names),
+        agents: agents.to_vec(),
+    }
+}
+
+/// The steps that install `entries` at `scope`, their sources fetched through `fetch`.
+fn planned_steps(fx: &Fx, fetch: &FakeRunner, scope: Scope, entries: Vec<Spec>) -> Vec<Action> {
+    let mut library = Profile::new("library");
+    library.entries = entries;
+    let applier = Applier {
+        scope,
+        runner: fetch,
+        ..fx.applier()
+    };
+    let switch = applier.plan(&library, false).unwrap();
+    switch
+        .installs
+        .into_iter()
+        .flat_map(|(_, steps)| steps)
+        .collect()
+}
+
+/// Each command among `steps`, as its program and arguments.
+fn commands(steps: &[Action]) -> Vec<(String, Vec<String>)> {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Action::Run { program, args, .. } => Some((program.clone(), args.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The `npx skills add` that installs `names` from `source` for Claude in the project.
+fn npx_for_claude(source: &str, names: &[&str]) -> (String, Vec<String>) {
+    let mut rest: Vec<&str> = names.iter().flat_map(|name| ["--skill", name]).collect();
+    rest.extend(["-a", "claude-code", "-y"]);
+    ("npx".into(), npx(source, &rest))
+}
+
+fn git_calls(fetch: &FakeRunner) -> Vec<Vec<String>> {
+    fetch
+        .calls()
+        .into_iter()
+        .filter(|(program, ..)| program == "git")
+        .map(|(_, args, _)| args)
+        .collect()
+}
+
+/// The project's `.codex/config.toml` as the steps' edits leave a missing one.
+fn codex_project_config(fx: &Fx, steps: &[Action]) -> toml_edit::DocumentMut {
+    let config = fx.env.project.join(".codex/config.toml");
+    steps
+        .iter()
+        .fold(String::new(), |text, step| match step {
+            Action::Edit { file, edit } if *file == config => {
+                apply_edit(file, edit, &text).unwrap()
+            }
+            _ => text,
+        })
+        .parse()
+        .unwrap()
+}
+
+/// Marketplace `mp` whose `p1` ships `alpha` and `p2` ships `beta`, beside a `gamma` no plugin
+/// ships.
+fn supplied_and_loose_fixture(root: &Path) {
+    marketplace_fixture(root);
+    fs::write(
+        root.join(".claude-plugin/marketplace.json"),
+        r#"{"name":"mp","plugins":[{"name":"p1","source":"./plugins/p1"},{"name":"p2","source":"./plugins/p2"}]}"#,
+    )
+    .unwrap();
+    skill(root, "loose/gamma");
+}
+
+/// A link at `root/rel` to a file outside the source.
+fn escaping_link(root: &Path, rel: &str) {
+    link(root, rel, "/etc/hosts");
+}
+
+#[test]
+fn a_skill_its_source_marketplace_supplies_installs_the_owning_plugin_in_the_project() {
+    let fx = Fx::new();
+    let fetch = FakeRunner::new(mattpocock_fixture);
+    let entry = skill_entry("o/r", &["tdd"], &[Agent::Claude, Agent::Codex]);
+
+    let steps = planned_steps(&fx, &fetch, Scope::Project, vec![entry]);
+
+    let install = s(&[
+        "plugin",
+        "install",
+        "mattpocock-skills@mattpocock",
+        "--scope",
+        "local",
+    ]);
+    assert!(commands(&steps).contains(&("claude".into(), install)));
+    let config = codex_project_config(&fx, &steps);
+    assert_eq!(
+        config["plugins"]["mattpocock-skills@mattpocock"]["enabled"].as_bool(),
+        Some(true)
+    );
+    assert!(commands(&steps).iter().all(|(program, _)| program != "npx"));
+}
+
+#[test]
+fn a_skill_its_source_marketplace_supplies_installs_the_owning_plugin_for_the_user() {
+    let fx = Fx::new();
+    let fetch = FakeRunner::new(mattpocock_fixture);
+    let entry = skill_entry("o/r", &["tdd"], &[Agent::Claude, Agent::Codex]);
+
+    let steps = planned_steps(&fx, &fetch, Scope::Global, vec![entry]);
+
+    let add = s(&["plugin", "add", "mattpocock-skills@mattpocock"]);
+    assert!(commands(&steps).contains(&("codex".into(), add)));
+    assert!(commands(&steps).iter().all(|(program, _)| program != "npx"));
+}
+
+/// The commands that install skill `names` of `o/r` for Claude in the project, its clone made
+/// by `fixture`.
+fn claude_commands(
+    fixture: impl Fn(&Path) + 'static,
+    names: &[&str],
+) -> Vec<(String, Vec<String>)> {
+    let fx = Fx::new();
+    let fetch = FakeRunner::new(fixture);
+    let entry = skill_entry("o/r", names, &[Agent::Claude]);
+    commands(&planned_steps(&fx, &fetch, Scope::Project, vec![entry]))
+}
+
+#[test]
+fn a_skill_from_a_source_without_a_marketplace_keeps_the_npx_command() {
+    let commands = claude_commands(skills_fixture, &["tdd"]);
+
+    assert_eq!(commands, [npx_for_claude("o/r", &["tdd"])]);
+}
+
+#[test]
+fn a_skill_no_plugin_supplies_keeps_the_npx_command() {
+    let commands = claude_commands(supplied_and_loose_fixture, &["gamma"]);
+
+    assert_eq!(commands, [npx_for_claude("o/r", &["gamma"])]);
+}
+
+#[test]
+fn skills_the_marketplace_supplies_only_some_of_all_keep_the_npx_command() {
+    let commands = claude_commands(supplied_and_loose_fixture, &["alpha", "gamma"]);
+
+    assert_eq!(commands, [npx_for_claude("o/r", &["alpha", "gamma"])]);
+}
+
+#[test]
+fn an_agent_that_refuses_the_source_keeps_npx_and_the_others_still_install_natively() {
+    let fx = Fx::new();
+    let fetch = FakeRunner::new(mattpocock_fixture);
+    let credentialed = "https://user:s3cret@host/o/r.git";
+    let entry = skill_entry(credentialed, &["tdd"], &[Agent::Claude, Agent::Codex]);
+
+    let steps = planned_steps(&fx, &fetch, Scope::Project, vec![entry]);
+
+    let commands = commands(&steps);
+    let install = s(&[
+        "plugin",
+        "install",
+        "mattpocock-skills@mattpocock",
+        "--scope",
+        "local",
+    ]);
+    assert!(commands.contains(&("claude".into(), install)));
+    let codex_only = npx(credentialed, &["--skill", "tdd", "-a", "codex", "-y"]);
+    assert!(commands.contains(&("npx".into(), codex_only)));
+}
+
+#[test]
+fn each_source_is_fetched_once_however_many_of_its_skills_are_missing() {
+    let fx = Fx::new();
+    let fetch = FakeRunner::new(skills_fixture);
+    let entries = vec![
+        skill_entry("o/r", &["tdd"], &[Agent::Claude]),
+        skill_entry("o/r", &["git-commit"], &[Agent::Claude]),
+        skill_entry("o/s", &["zeta"], &[Agent::Claude]),
+    ];
+
+    planned_steps(&fx, &fetch, Scope::Project, entries);
+
+    let cloned: Vec<String> = git_calls(&fetch)
+        .into_iter()
+        .map(|args| args[4].clone())
+        .collect();
+    assert_eq!(
+        cloned,
+        ["https://github.com/o/r.git", "https://github.com/o/s.git"]
+    );
+}
+
+#[test]
+fn a_source_whose_fetch_fails_keeps_the_npx_command() {
+    let fx = Fx::new();
+    let fetch = FakeRunner::new(mattpocock_fixture).failing("git");
+    let entry = skill_entry("o/r", &["tdd"], &[Agent::Claude]);
+
+    let steps = planned_steps(&fx, &fetch, Scope::Project, vec![entry]);
+
+    assert_eq!(commands(&steps), [npx_for_claude("o/r", &["tdd"])]);
+}
+
+#[test]
+fn a_source_the_fetch_refuses_is_never_cloned_and_keeps_the_npx_command() {
+    let fx = Fx::new();
+    let fetch = FakeRunner::new(mattpocock_fixture);
+    let entry = skill_entry("o/r/extra", &["tdd"], &[Agent::Claude]);
+
+    let steps = planned_steps(&fx, &fetch, Scope::Project, vec![entry]);
+
+    assert!(git_calls(&fetch).is_empty());
+    assert_eq!(commands(&steps), [npx_for_claude("o/r/extra", &["tdd"])]);
+}
+
+#[test]
+fn a_skill_whose_plugin_holds_a_symlink_leaving_the_source_keeps_npx() {
+    let leaky_plugin = |root: &Path| {
+        supplied_and_loose_fixture(root);
+        escaping_link(root, "plugins/p1/skills/alpha/secret");
+    };
+
+    let commands = claude_commands(leaky_plugin, &["alpha"]);
+
+    assert_eq!(commands, [npx_for_claude("o/r", &["alpha"])]);
+}
+
+#[test]
+fn a_skill_with_a_copy_outside_its_plugin_that_leaves_the_source_keeps_npx() {
+    let leaky_copy = |root: &Path| {
+        supplied_and_loose_fixture(root);
+        skill(root, "loose/alpha");
+        escaping_link(root, "loose/alpha/secret");
+    };
+
+    let commands = claude_commands(leaky_copy, &["alpha"]);
+
+    assert_eq!(commands, [npx_for_claude("o/r", &["alpha"])]);
+}
+
+#[test]
+fn a_local_source_installs_natively_from_its_canonical_path_without_fetching() {
+    let fx = Fx::new();
+    let fetch = FakeRunner::new(|_| {});
+    let local = tempfile::tempdir().unwrap();
+    mattpocock_fixture(local.path());
+    let canonical = local.path().canonicalize().unwrap();
+    let source = local.path().to_string_lossy();
+    let entry = skill_entry(&source, &["tdd"], &[Agent::Claude]);
+
+    let steps = planned_steps(&fx, &fetch, Scope::Project, vec![entry]);
+
+    let add = s(&[
+        "plugin",
+        "marketplace",
+        "add",
+        &canonical.to_string_lossy(),
+        "--scope",
+        "local",
+    ]);
+    assert!(fetch.calls().is_empty());
+    assert!(commands(&steps).contains(&("claude".into(), add)));
+}
+
+#[test]
+fn an_agent_the_marketplace_does_not_supply_keeps_npx_for_itself_alone() {
+    let fx = Fx::new();
+    let fetch = FakeRunner::new(|root| {
+        skill(root, "skills/alpha");
+        skill(root, "extras/beta");
+        fs::create_dir_all(root.join(".claude-plugin")).unwrap();
+        fs::write(
+            root.join(".claude-plugin/marketplace.json"),
+            r#"{"name":"mp","plugins":[{"name":"p","source":"./"}]}"#,
+        )
+        .unwrap();
+        // Claude adds `extras` to its default `skills`; Codex reads `extras` instead of them.
+        fs::write(
+            root.join(".claude-plugin/plugin.json"),
+            r#"{"name":"p","skills":"./extras"}"#,
+        )
+        .unwrap();
+    });
+    let entry = skill_entry("o/r", &["alpha"], &[Agent::Claude, Agent::Codex]);
+
+    let steps = planned_steps(&fx, &fetch, Scope::Project, vec![entry]);
+
+    let commands = commands(&steps);
+    let install = s(&["plugin", "install", "p@mp", "--scope", "local"]);
+    assert!(commands.contains(&("claude".into(), install)));
+    let codex_only = npx("o/r", &["--skill", "alpha", "-a", "codex", "-y"]);
+    let npx_runs: Vec<&Vec<String>> = commands
+        .iter()
+        .filter(|(program, _)| program == "npx")
+        .map(|(_, args)| args)
+        .collect();
+    assert_eq!(npx_runs, [&codex_only]);
 }

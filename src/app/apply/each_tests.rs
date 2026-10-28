@@ -89,6 +89,7 @@ fn watched_with(
         env: &env,
         scope: Scope::Project,
         probe,
+        runner,
     };
     let mut events = Vec::new();
     let each = applier.run(

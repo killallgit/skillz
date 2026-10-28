@@ -188,20 +188,10 @@ fn agent_plugins(
         SkillSelection::Patterns(_) => {
             let available = skills::source_skills(tree.src)?.offered;
             let selected = skills::select_skills(&available, &req.selection);
-            if selected.is_empty() || !left_out(offer, &selected).is_empty() {
+            let Some(plugins) = supplying_plugins(offer, &available, &selected) else {
                 return Ok(AgentPlugins::Unoffered);
-            }
-            offer
-                .plugins
-                .iter()
-                .filter(|name| {
-                    offer
-                        .skills
-                        .get(*name)
-                        .is_some_and(|names| names.iter().any(|name| selected.contains(name)))
-                })
-                .cloned()
-                .collect()
+            };
+            plugins
         }
     };
     if chosen.is_empty() {
@@ -233,6 +223,77 @@ fn agent_plugins(
             Err(refusal) => AgentPlugins::Refused(format!("{agent}: {refusal:#}")),
         },
     )
+}
+
+/// What installing skill `names` from a fetched tree comes to, by the rule `install --skill`
+/// uses: each agent whose offer supplies every name, none refused for a symlink that leaves the
+/// source, installs the owning plugins; the rest keep `npx skills`.
+pub(crate) struct NativeSkills {
+    pub native: Vec<(Agent, Vec<Action>)>,
+    pub rest: Vec<Agent>,
+}
+
+pub(crate) fn native_skills(
+    adapters: &[Box<dyn Harness>],
+    env: &Env,
+    scope: Scope,
+    (src, source): (&Path, &str),
+    names: &[String],
+    agents: &[Agent],
+) -> anyhow::Result<NativeSkills> {
+    let offered = skills::source_skills(src)?.offered;
+    let plugin_steps = |adapter: &dyn Harness| -> anyhow::Result<Option<Vec<Action>>> {
+        let Some(offer) = adapter.plugin_offer(src, scope)? else {
+            return Ok(None);
+        };
+        let Some(plugins) = supplying_plugins(&offer, &offered, names) else {
+            return Ok(None);
+        };
+        // An agent that refuses the source keeps `npx skills` for these skills.
+        Ok(adapter
+            .plan_add_source(&offer, &plugins, source, scope, env)
+            .ok())
+    };
+    let mut split = NativeSkills {
+        native: vec![],
+        rest: vec![],
+    };
+    for &agent in agents {
+        match adapter_for(adapters, agent)
+            .map(plugin_steps)
+            .transpose()?
+            .flatten()
+        {
+            Some(steps) => split.native.push((agent, steps)),
+            None => split.rest.push(agent),
+        }
+    }
+    Ok(split)
+}
+
+/// The offer's plugins that ship skills `names`; `None` unless every name is one the source
+/// `offered` and some plugin supplies it.
+fn supplying_plugins(
+    offer: &PluginOffer,
+    offered: &[String],
+    names: &[String],
+) -> Option<Vec<String>> {
+    let supplied = !names.is_empty()
+        && names.iter().all(|name| offered.contains(name))
+        && left_out(offer, names).is_empty();
+    supplied.then(|| {
+        offer
+            .plugins
+            .iter()
+            .filter(|plugin| {
+                offer
+                    .skills
+                    .get(*plugin)
+                    .is_some_and(|ships| ships.iter().any(|name| names.contains(name)))
+            })
+            .cloned()
+            .collect()
+    })
 }
 
 /// The skills in `names` that none of the offer's plugins supplies: installing the plugins
