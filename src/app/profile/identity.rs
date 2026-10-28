@@ -7,7 +7,8 @@
 //! identity: the child's agents win along with the entry.
 //!
 //! A skill or subagent key holds a repository source as its identity, so `o/r` and
-//! `https://github.com/o/r.git` name the same source; a local path stays as spelled.
+//! `https://github.com/o/r.git` name the same source. An `owner/repo` spelling always means the
+//! repository; any other path stays as written (`source_identity`).
 
 use std::collections::HashSet;
 

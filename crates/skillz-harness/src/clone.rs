@@ -97,12 +97,14 @@ pub fn repo_identity(source: &str) -> String {
         .to_string()
 }
 
-/// A repository source as its `repo_identity`; a local path exactly as spelled, since only the
-/// filesystem knows whether two spellings of a path are the same directory.
+/// A repository source (a URL, scp form or `owner/repo`) as its `repo_identity`; anything else
+/// exactly as written, since only the filesystem knows whether two spellings of a path are the
+/// same directory.
 pub fn source_identity(source: &str) -> String {
-    match check_repo_name(source) {
-        Ok(()) => repo_identity(source),
-        Err(_) => source.to_string(),
+    if check_repo_name(source).is_ok() {
+        repo_identity(source)
+    } else {
+        source.to_string()
     }
 }
 
@@ -132,6 +134,22 @@ mod tests {
             "git@github.com:a/b.git"
         );
         assert_eq!(clone_url("a/b"), "https://github.com/a/b.git");
+    }
+
+    #[test]
+    fn a_repository_has_one_identity_however_it_is_spelled_and_a_path_stays_as_written() {
+        let spellings = [
+            "o/r",
+            "https://github.com/o/r.git",
+            "ssh://git@github.com/o/r",
+            "git@github.com:o/r.git",
+        ];
+        let identities: Vec<String> = spellings.iter().map(|s| source_identity(s)).collect();
+
+        assert!(identities.iter().all(|id| *id == identities[0]));
+        for written in ["/src/Skills", "./x/Y", "", "repo"] {
+            assert_eq!(source_identity(written), written);
+        }
     }
 
     #[test]
