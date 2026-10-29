@@ -321,7 +321,6 @@ mod tests {
         }
     }
 
-    /// Claude's plugin `p@mp`, from a marketplace at `source`, shipping `shipped`.
     fn plugin_shipping(source: Option<&str>, shipped: &[&str]) -> Installed {
         Installed {
             details: Details::Plugin {

@@ -83,7 +83,7 @@ pub(crate) fn clone_url(source: &str) -> String {
 
 /// A git source as `host/owner/repo`, whichever way it is spelled: shorthand, https, ssh or scp
 /// form, with or without `.git`, a trailing slash or capitals.
-pub fn repo_identity(source: &str) -> String {
+pub(crate) fn repo_identity(source: &str) -> String {
     let url = clone_url(source).to_ascii_lowercase();
     let rest = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest);
     let rest = match rest.split_once('@') {
@@ -137,19 +137,26 @@ mod tests {
     }
 
     #[test]
-    fn a_repository_has_one_identity_however_it_is_spelled_and_a_path_stays_as_written() {
+    fn a_repository_has_one_identity_however_it_is_spelled() {
         let spellings = [
             "o/r",
             "https://github.com/o/r.git",
             "ssh://git@github.com/o/r",
             "git@github.com:o/r.git",
         ];
+
         let identities: Vec<String> = spellings.iter().map(|s| source_identity(s)).collect();
 
         assert!(identities.iter().all(|id| *id == identities[0]));
-        for written in ["/src/Skills", "./x/Y", "", "repo"] {
-            assert_eq!(source_identity(written), written);
-        }
+    }
+
+    #[test]
+    fn a_source_that_is_no_repository_stays_as_written() {
+        let written = ["/src/Skills", "./x/Y", "", "repo"];
+
+        let identities: Vec<String> = written.iter().map(|s| source_identity(s)).collect();
+
+        assert_eq!(identities, written);
     }
 
     #[test]
