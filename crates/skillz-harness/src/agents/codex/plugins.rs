@@ -8,6 +8,7 @@ use crate::Spec;
 use crate::action::{Action, Edit, RemovalTarget, TomlValue, apply_edit};
 use crate::agents::PluginOffer;
 use crate::agents::plugin::{declared_skill_paths, read_marketplace, tolerate_malformed};
+use crate::clone::repo_identity;
 use crate::env::Env;
 use crate::hooks;
 use crate::model::{
@@ -190,22 +191,6 @@ fn replaces_user_copy(user: &DocumentMut, marketplace: &str, source: &str, git_r
                     .is_none_or(|paths| paths.is_empty());
             name == marketplace && str_field(theirs, "source_type") != Some("local") && !same_copy
         })
-}
-
-/// A git source as `host/owner/repo`, whichever way it is spelled: shorthand, https, ssh or scp
-/// form, with or without `.git`, a trailing slash or capitals.
-fn repo_identity(source: &str) -> String {
-    let url = crate::clone::clone_url(source).to_ascii_lowercase();
-    let rest = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest);
-    let rest = match rest.split_once('@') {
-        Some((user, after)) if !user.contains('/') => after,
-        _ => rest,
-    };
-    rest.replacen(':', "/", 1)
-        .trim_end_matches('/')
-        .trim_end_matches(".git")
-        .trim_end_matches('/')
-        .to_string()
 }
 
 /// Whether a git URL carries a secret, by what `redact` would hide: userinfo, a query string. The

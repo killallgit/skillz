@@ -81,6 +81,33 @@ pub(crate) fn clone_url(source: &str) -> String {
     }
 }
 
+/// A git source as `host/owner/repo`, whichever way it is spelled: shorthand, https, ssh or scp
+/// form, with or without `.git`, a trailing slash or capitals.
+pub(crate) fn repo_identity(source: &str) -> String {
+    let url = clone_url(source).to_ascii_lowercase();
+    let rest = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest);
+    let rest = match rest.split_once('@') {
+        Some((user, after)) if !user.contains('/') => after,
+        _ => rest,
+    };
+    rest.replacen(':', "/", 1)
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .trim_end_matches('/')
+        .to_string()
+}
+
+/// A repository source (a URL, scp form or `owner/repo`) as its `repo_identity`; anything else
+/// exactly as written, since only the filesystem knows whether two spellings of a path are the
+/// same directory.
+pub fn source_identity(source: &str) -> String {
+    if check_repo_name(source).is_ok() {
+        repo_identity(source)
+    } else {
+        source.to_string()
+    }
+}
+
 fn clone_command(source: &str, dest: &Path) -> Cmd {
     let args = [
         "clone",
@@ -107,6 +134,29 @@ mod tests {
             "git@github.com:a/b.git"
         );
         assert_eq!(clone_url("a/b"), "https://github.com/a/b.git");
+    }
+
+    #[test]
+    fn a_repository_has_one_identity_however_it_is_spelled() {
+        let spellings = [
+            "o/r",
+            "https://github.com/o/r.git",
+            "ssh://git@github.com/o/r",
+            "git@github.com:o/r.git",
+        ];
+
+        let identities: Vec<String> = spellings.iter().map(|s| source_identity(s)).collect();
+
+        assert!(identities.iter().all(|id| *id == identities[0]));
+    }
+
+    #[test]
+    fn a_source_that_is_no_repository_stays_as_written() {
+        let written = ["/src/Skills", "./x/Y", "", "repo"];
+
+        let identities: Vec<String> = written.iter().map(|s| source_identity(s)).collect();
+
+        assert_eq!(identities, written);
     }
 
     #[test]
